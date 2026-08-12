@@ -1,0 +1,100 @@
+# Tiger Go
+
+Domain language for the Tiger Go project: a restricted Go dialect whose specification lives in
+the source, checked by the `tiger` analyzer. Terms here come from the Tiger Go Specification and
+the tiger-check blueprints; use them exactly.
+
+## Language
+
+**Rule**:
+A single numbered requirement in the Tiger Go Specification, identified as `TS-<area><number>`.
+_Avoid_: check, lint, guideline
+
+**Analyzer**:
+A `go/analysis` pass this project writes to enforce one or more custom rules.
+_Avoid_: linter (reserved for off-the-shelf golangci-lint linters)
+
+**Auto rule**:
+A rule enforced by an off-the-shelf golangci-lint linter configured in `config/golangci.yml`;
+tiger never reimplements one.
+
+**Custom rule**:
+A rule only a tiger analyzer can enforce.
+
+**Directive**:
+A `//tiger:<verb>` source comment; the shared namespace for pins, intent declarations, and escape
+hatches.
+_Avoid_: annotation, pragma
+
+**Pin**:
+An optional directive that freezes an analyzer-computed fact (effect set, frame, variant) into a
+blocking contract; absence of a pin never means the fact is absent.
+_Avoid_: declaration (pins are one kind of declaration, not the only kind)
+
+**Intent declaration**:
+A directive stating something no analyzer can compute (invariants, restrictions, `hot`, `wire`,
+`owner`); stated first, enforced after.
+
+**Escape hatch**:
+A directive loosening one rule at one site, always carrying a reason (`//tiger:bounded <reason>`).
+_Avoid_: suppression, nolint (the golangci mechanism, not ours)
+
+**Severity**:
+A rule's run-level consequence — **blocking** (fails the run), **advisory** (printed and counted,
+does not fail), or **reported** (annotation-only). Defined once per rule in the registry, never
+inside an analyzer.
+
+**Registry**:
+The closed set of (rule ID, enforcing analyzer, severity, spec reference) from which the binary,
+docs, and meta-tests are derived; the single source of rule identity.
+
+**Corpus**:
+The `analysistest` packages that are a rule's executable specification: failure-mode case,
+compliant rewrite, and marked known misses.
+
+**Known miss**:
+A corpus case documenting code an analyzer's coverage deliberately does not catch; the mechanism
+that forbids silent scope cuts.
+
+**Driver**:
+Whatever runs analyzers — the tiger CLI, golangci-lint via the plugin, or `analysistest`.
+Analyzers are driver-agnostic; run-level policy (severity, exit codes, output) belongs to the
+driver.
+
+**Wave**:
+A build milestone grouping analyzers by what they need from the code (wave 1: single-package
+AST/types, computed-only). Waves sequence the build; **chains** (from the spec) sequence rule
+value — a chain completes across waves.
+
+**Invariant vocabulary**:
+The project-owned `inv` package pattern declaring invariant IDs that `assert.Invariant` references
+and analyzers count (TS-A07..A09).
+
+## Relationships
+
+- A **Rule** is enforced by exactly one engine: an **Auto rule** by a golangci-lint linter, a
+  **Custom rule** by an **Analyzer**.
+- An **Analyzer** enforces one or more **Rules** and owns one **Corpus** per rule.
+- The **Registry** binds each **Custom rule** to its **Analyzer** and **Severity**.
+- A **Driver** runs **Analyzers**; only the driver applies **Severity**.
+- A **Pin**, an **Intent declaration**, and an **Escape hatch** are the three kinds of
+  **Directive**, distinguished by lifecycle.
+
+## Example dialogue
+
+> **Dev:** "The `boundedloop` **analyzer** flagged my retry loop — can I mock it out in the test?"
+> **Domain expert:** "No — if the loop is genuinely unbounded, add the `//tiger:bounded` **escape
+> hatch** with a reason, and the `directives` analyzer will hold you to the reason. If the finding
+> is wrong, that's a false positive on a **blocking** rule, which is a bug in the analyzer: file
+> it, and add the case to the **corpus** as a failure-mode or **known miss** so it can't regress."
+
+## Flagged ambiguities
+
+- "surface" is overloaded: the specification's **surface** (TS-I01..I07, an injectable boundary
+  for nondeterministic effects) is unrelated to **surface testing** (the testing philosophy used
+  by this repo's tests). Qualify which one you mean.
+- "linter" vs "analyzer": golangci-lint linters enforce auto rules; tiger analyzers enforce custom
+  rules. Do not use the words interchangeably.
+- "declaration" was used loosely during design for both pins and intent declarations — resolved:
+  **pin** (computed fact, frozen) and **intent declaration** (stated fact, enforced) are distinct
+  lifecycles under the umbrella term **directive**.
