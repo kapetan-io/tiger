@@ -1,0 +1,375 @@
+# Tiger Go, golangci-lint v2 configuration — Stage 0.
+#
+# Copy this file into your project and replace `myrepo` with your module path.
+#
+# Every linter below maps to a rule ID in the Tiger Specification. Keep the
+# rule ID in the comment so that a developer who hits a finding can go read
+# why.
+#
+# Path patterns express package-level restriction sets (TS-P01), not tiers:
+#   internal/domain/  packages declaring the strictest restriction set
+#   internal/sys/     packages permitted unsafe, cgo, and goroutine supervision
+#
+# Verify linter availability with `golangci-lint linters` for your version.
+
+version: "2"
+
+linters:
+  default: standard
+
+  enable:
+    # Safety and control flow
+    - funlen            # TS-S04 70 line functions
+    - cyclop            # TS-S05 cyclomatic complexity
+    - gocognit          # TS-S05 cognitive complexity
+    - nestif            # TS-S05 nesting depth
+    - exhaustive        # TS-S08 exhaustive switch over enums
+    - gochecknoinits    # TS-S10 no init()
+    - gochecknoglobals  # TS-S11 no package-level mutable state
+    - depguard          # TS-S12, TS-D01 package bans
+    - forbidigo         # TS-C08, TS-T01, TS-T04 function bans
+    - exhaustruct       # TS-S15 every struct field named
+    - mnd               # TS-S16 no magic numbers
+    - gosec             # TS-S19 G115 integer conversion
+    - unconvert         # TS-S19 pointless conversions
+    - forcetypeassert   # TS-S20 checked type assertions
+    - ineffassign       # TS-S13 dead assignments
+    - wastedassign      # TS-S13 dead assignments
+
+    # Errors
+    - errorlint         # TS-E03 %w and errors.Is/As
+    - wrapcheck         # TS-E03 wrap errors crossing package boundaries
+    - errname           # TS-E04 ErrFoo and FooError
+    - nilnil            # TS-E05 no (nil, nil)
+    - ireturn           # TS-E06 do not return interfaces
+    - nakedret          # TS-E08 no naked returns
+
+    # Concurrency
+    - containedctx      # TS-C07 no context in struct fields
+    - contextcheck      # TS-C07 context propagation
+    - noctx             # TS-C07 no HTTP without context
+
+    # Memory and performance
+    - prealloc          # TS-M01 preallocate slices
+    - makezero          # TS-M01 make + append misuse
+    - gocritic          # TS-M03 hugeParam, rangeValCopy
+    - perfsprint        # TS-M07 strconv over fmt
+
+    # Naming
+    - varnamelen        # TS-N02 no invented abbreviations
+    - revive            # TS-N01, TS-N10, TS-L07 naming, stutter, doc comments
+    - interfacebloat    # minimum of excellent abstractions
+    - recvcheck         # consistent receiver types
+
+    # Layout and comments
+    - lll               # TS-L02 100 columns
+    - decorder          # TS-L03 declaration order
+    - godot             # TS-L06 comments are sentences
+    - nolintlint        # TS-L09 justified suppressions
+
+    # General correctness
+    - unparam
+    - dupl
+
+  settings:
+    funlen:
+      # TS-S04. 70 lines is the hard limit. Go costs three lines per error
+      # check, so this bites sooner than it does in Zig. Push ifs up, fors down.
+      lines: 70
+      statements: 45
+      ignore-comments: true
+
+    cyclop:
+      max-complexity: 10
+      package-average: 5.0
+
+    gocognit:
+      min-complexity: 15
+
+    nestif:
+      min-complexity: 3
+
+    govet:
+      enable-all: true
+      settings:
+        shadow:
+          # TS-S14. Shadowed err is the most common silent failure in Go.
+          strict: true
+      disable:
+        # Enable fieldalignment only on wire and hot types via a path rule
+        # below. Globally it is too noisy to be blocking.
+        - fieldalignment
+
+    errcheck:
+      # TS-E01, TS-E02, TS-S20.
+      check-type-assertions: true
+      check-blank: true
+
+    exhaustive:
+      # TS-S08. A default arm does NOT excuse a missing case. We want both the
+      # full set of cases and a default that asserts unreachable.
+      default-signifies-exhaustive: false
+      check:
+        - switch
+        - map
+
+    exhaustruct:
+      # TS-S15. Blocking on config and wire types, where an unset field is a
+      # silent behaviour change. Widen this list as the codebase allows.
+      include:
+        - '.*\.Config$'
+        - '.*\.Options$'
+        - '.*/internal/wire\..*'
+
+    mnd:
+      # TS-S16. Every limit is a named constant.
+      checks:
+        - argument
+        - case
+        - condition
+        - operation
+        - return
+        - assign
+      ignored-numbers:
+        - '0'
+        - '1'
+        - '2'
+
+    depguard:
+      rules:
+        internal-domain:
+          # TS-D01, TS-S12, TS-T01. Mirrors the //tiger:restrict imports axis
+          # declared by internal/domain packages: stdlib only, no unsafe, no
+          # nondeterminism. Hand-maintained until the restrictions analyzer
+          # generates this block from the declarations (TS-P01).
+          files:
+            - '**/internal/domain/**'
+          allow:
+            - $gostd
+            - myrepo/internal/assert
+          deny:
+            - pkg: unsafe
+              desc: TS-S12. unsafe removes the only memory guarantee Go gives you.
+            - pkg: reflect
+              desc: TS-S12. Reflection moves errors to run time and allocates doing it.
+            - pkg: math/rand
+              desc: TS-T01. Inject a deterministic source instead.
+            - pkg: math/rand/v2
+              desc: TS-T01. Inject a deterministic source instead.
+            - pkg: crypto/rand
+              desc: TS-T01. Inject through the platform interface so it can be replayed.
+        baseline:
+          # TS-P01 default imports baseline for the whole module; internal/sys
+          # is the sanctioned exception where the platform touches the world.
+          files:
+            - $all
+            - '!**/internal/sys/**'
+          deny:
+            - pkg: unsafe
+              desc: TS-S12. Allowed only in internal/sys.
+            - pkg: github.com/pkg/errors
+              desc: TS-E03. Use the standard library, wrap with %w.
+
+    forbidigo:
+      # TS-C08, TS-T01, TS-T04. depguard works on packages, forbidigo works on
+      # identifiers, which is what you need for time.Now and friends.
+      analyze-types: true
+      forbid:
+        - pattern: '^time\.Sleep$'
+          msg: TS-C08. Sleep is a guess about someone else timing. Use a channel or a timer you own.
+        - pattern: '^time\.Now$'
+          msg: TS-T01. Inject a Clock so the code can be replayed deterministically.
+        - pattern: '^time\.After$'
+          msg: TS-C05. Leaks a timer until it fires. Use a context or a timer you stop.
+        - pattern: '^fmt\.Print.*$'
+          msg: TS-L08. Use the structured logger so output has a level and a destination.
+        - pattern: '^panic$'
+          msg: TS-S18. Use the assert package so there is one crash path.
+
+    gocritic:
+      enabled-tags:
+        - performance
+        - diagnostic
+        - style
+      settings:
+        hugeParam:
+          # TS-M03. Above this, pass a pointer. Two cache lines.
+          sizeThreshold: 64
+        rangeValCopy:
+          sizeThreshold: 64
+
+    gosec:
+      includes:
+        - G115  # TS-S19 integer overflow on conversion
+
+    ireturn:
+      # TS-E06. Accept interfaces, return concrete types.
+      allow:
+        - error
+        - stdlib
+
+    wrapcheck:
+      ignore-sigs:
+        - .Errorf(
+        - errors.New(
+        - errors.Join(
+        - .Wrap(
+
+    varnamelen:
+      # TS-N02. The allowlist is the whole rule. Every name here is one that a
+      # Go reader already knows. Adding to it is a team decision, not a
+      # personal one.
+      min-name-length: 3
+      ignore-names:
+        - i
+        - j
+        - n
+        - ok
+        - id
+        - t
+        - b
+        - r
+        - w
+        - err
+        - ctx
+        - buf
+        - eg
+      ignore-decls:
+        - t testing.T
+        - b testing.B
+        - f *os.File
+        - i int
+        - n int
+
+    revive:
+      rules:
+        - name: exported          # TS-L07
+        - name: package-comments  # TS-L07
+        - name: var-naming        # TS-N01
+        - name: receiver-naming   # TS-N02
+        - name: context-as-argument   # TS-C07
+        - name: context-keys-type
+        - name: error-return      # TS-E06
+        - name: error-naming      # TS-E04
+        - name: error-strings     # TS-E04
+        - name: deep-exit         # TS-S18
+        - name: empty-block
+        - name: indent-error-flow
+        - name: unreachable-code
+
+    staticcheck:
+      checks:
+        - all
+        # ST1003 covers TS-N01 acronym capitalization, ST1005 covers TS-E04
+        # error string formatting. Both are on under "all".
+
+    lll:
+      # TS-L02. Two files side by side, nothing behind a scrollbar.
+      line-length: 100
+      tab-width: 4
+
+    decorder:
+      # TS-L03. const, var, type, func.
+      dec-order:
+        - const
+        - var
+        - type
+        - func
+      disable-dec-order-check: false
+      disable-init-func-first-check: false
+
+    godot:
+      # TS-L06. Comments are sentences.
+      scope: declarations
+      capital: true
+
+    nakedret:
+      # TS-E08. Zero means never.
+      max-func-lines: 0
+
+    nolintlint:
+      # TS-L09. A suppression without a reason is a rule you deleted quietly.
+      require-explanation: true
+      require-specific: true
+      allow-unused: false
+
+    interfacebloat:
+      max: 5
+
+    dupl:
+      threshold: 150
+
+  exclusions:
+    generated: strict
+    presets:
+      - common-false-positives
+    rules:
+      # Tests get the structural rules relaxed, not the safety ones. They keep
+      # errcheck, forbidigo, and the naming rules.
+      - path: _test\.go
+        linters:
+          - funlen
+          - dupl
+          - gochecknoglobals
+          - mnd
+          - varnamelen
+          - exhaustruct
+          - wrapcheck
+
+      # TS-T04. time.Sleep stays banned in tests, that is the whole point of
+      # testing/synctest, but a test clock legitimately calls time.Now.
+      - path: _test\.go
+        linters:
+          - forbidigo
+        text: 'time\.Now'
+
+      # TS-M06. fieldalignment is blocking only where layout is semantic.
+      - path-except: 'internal/wire/.*\.go'
+        linters:
+          - govet
+        text: fieldalignment
+
+      # Generated code is not held to the style guide, it is held to TS-D04.
+      - path: 'zz_generated\..*\.go$'
+        linters:
+          - lll
+          - godot
+          - revive
+
+formatters:
+  enable:
+    - gofumpt     # TS-L01
+    - gci         # TS-L11
+  settings:
+    gofumpt:
+      extra-rules: true
+    gci:
+      sections:
+        - standard
+        - default
+        - prefix(myrepo)
+      custom-order: true
+
+issues:
+  # No cap. A finding you cannot see is a finding you will not fix.
+  max-issues-per-linter: 0
+  max-same-issues: 0
+  # Adopt with `--new-from-rev=origin/main` so the ratchet only ever tightens.
+
+# ---------------------------------------------------------------------------
+# Custom analyzers
+#
+# The rules that need an analyzer you write ship as a golangci-lint module
+# plugin. Put this in .custom-gcl.yml next to this file, run
+# `golangci-lint custom`, and use the produced binary in CI.
+#
+#   version: v2.x.x
+#   name: tiger-lint
+#   destination: ./bin
+#   plugins:
+#     - module: myrepo/tools/tiger
+#       path: ./tools/tiger
+#
+# Then enable them here under linters.enable as `tiger`, with settings
+# passed through linters.settings.custom.
+# ---------------------------------------------------------------------------
