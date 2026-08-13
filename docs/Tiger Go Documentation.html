@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Tiger Go — Documentation</title>
+<title>Tiger Go Documentation</title>
 <style>
   /* ── Design tokens — canonical source: docs/design.md ───────────────── */
   :root {
@@ -175,13 +175,23 @@ releases.</div>
 
 <p>Every rule in Tiger Go is one of three strategies against that curve: shrink the population of
 possible defects, shorten the distance to detection, or bound the damage while the distance is
-being travelled. The goal order — safety, then performance, then developer experience — is a
+being travelled. The goal order (safety, then performance, then developer experience) is a
 statement about detection distance: a safety defect is detected by a customer, a performance
 defect by a dashboard, a developer-experience defect immediately by the person typing.</p>
 
 <p>Tiger Go is not a style guide. It is a <em>restriction</em> of Go, chosen so that questions a
 reviewer normally answers by reading become questions a tool answers by checking. The formatting
 rules are a side effect, not the point.</p>
+
+<p>Enforcement is split between two engines from the start. Rules an existing linter already
+checks are <strong>auto rules</strong>: delegated to roughly fifty off-the-shelf golangci-lint
+linters (<code>errcheck</code>, <code>funlen</code>, <code>depguard</code>, …) pinned to a
+required baseline configuration at <code>config/golangci.yml</code>. Tiger never reimplements
+one. Rules no existing linter can check are <strong>custom rules</strong>, enforced by the
+analyzers the <code>tiger</code> binary ships. Both engines are the dialect: run only one and
+half of Tiger Go is unenforced. So when a linter name appears anywhere in this document, that
+linter is carrying a Tiger Go rule, and <a href="#cli"><code>tiger golangci</code></a> exists to
+audit that the project's config still carries them.</p>
 
 <!-- ============================================================= -->
 <h2 id="split">How review divides</h2>
@@ -209,7 +219,7 @@ part of the tree that is "the reviewed part." The policy that falls out:</p>
 
 <div class="callout tip"><span class="label">The policy</span>
 A change touching no declaration and passing CI merges without a human reading it. A change
-touching a declaration goes to someone who knows the domain — and nothing else about it is
+touching a declaration goes to someone who knows the domain, and nothing else about it is
 discussed, because everything else has already been checked.</div>
 
 <p>Track one number and make it the headline: <strong>the fraction of merged lines that no human
@@ -219,8 +229,8 @@ read.</strong> It starts near zero. If adoption chains 1 and 3 complete, it shou
 <h2 id="day">A day in Tiger Go</h2>
 
 <p>What the developer experiences once the effects wave ships. Effects are the running example;
-the same infer-then-pin lifecycle applies to frames and variants. (Wave 1 ships none of this yet —
-its 20 analyzers are computed-only, with no pins; see the status table. This section is the target
+the same infer-then-pin lifecycle applies to frames and variants. (Wave 1 ships none of this yet.
+Its 20 analyzers are computed-only, with no pins; see the status table. This section is the target
 the design builds toward.)</p>
 
 <div class="flow">
@@ -243,7 +253,7 @@ the design builds toward.)</p>
 <span class="cmd">SaveHeader</span> changed   <span class="muted">(was: none)</span>
 <span class="cmd">//tiger:effects io(disk)</span></code></pre>
 
-<p>The report does not stop the merge. It prints the computed fact in pin syntax — the exact line
+<p>The report does not stop the merge. It prints the computed fact in pin syntax, the exact line
 you would paste above the function. Report and pin share one format; there is nothing to
 translate.</p>
 
@@ -264,7 +274,7 @@ store/header.go:14:1: TS-F01: <span class="cmd">SaveHeader</span> — the code d
   computed: <span class="cmd">//tiger:effects io(disk), io(net)</span>
 Fix: remove the io(net) call, or replace the pin with the computed line.</code></pre>
 
-<p>Two honest exits: change the code, or change the pin — and a pin change is visible in the diff,
+<p>There are two honest exits. Change the code, or change the pin. A pin change is visible in the diff,
 so the reviewer rules on the new promise. A pin can never go stale: a wrong pin is a failed
 check, not a lie in a comment.</p>
 
@@ -285,12 +295,12 @@ Function-scoped pins attach to <strong>exported functions and methods only</stro
 helpers are the region mechanical refactoring must be free to reshape, and nothing is lost: a pin
 bounds its <em>entire callee subtree</em>, so exported pins constrain unexported internals
 transitively, with the failure naming the introducing call. Sparse pins give dense enforcement.
-(Loop variants are the placement exception — a variant pin attaches to its loop.)</div>
+(Loop variants are the placement exception; a variant pin attaches to its loop.)</div>
 
 <div class="callout tip"><span class="label">The trigger rule</span>
 Most pins are optional. When a package declares closed dispatch (<code>TS-K03</code> under
 <code>TS-P01</code>), pins become <em>required</em> on its exported functions. Pins attach exactly
-where the computed facts are exact — a defined event, not a mood.</div>
+where the computed facts are exact, a defined event, not a mood.</div>
 
 <!-- ============================================================= -->
 <h2 id="concepts">Core concepts</h2>
@@ -331,61 +341,63 @@ small; absence of all effects is purity.</p>
 <table>
   <thead><tr><th>Effect</th><th>Meaning</th></tr></thead>
   <tbody>
-    <tr><td><code>alloc</code></td><td>Heap allocation — the hot-path gate (<code>TS-F03</code>)</td></tr>
-    <tr><td><code>io</code></td><td>Input/output, always qualified — see the two-tier qualifier vocabulary below</td></tr>
-    <tr><td><code>block</code></td><td>Can block: channel ops, locks — excluded from critical sections (<code>TS-F05</code>)</td></tr>
-    <tr><td><code>panic</code></td><td>Can panic — excluded from total functions (<code>TS-V02</code>)</td></tr>
-    <tr><td><code>rand</code></td><td>Reads randomness — must reach an injectable surface (<code>TS-I01</code>)</td></tr>
-    <tr><td><code>time</code></td><td>Reads the clock — must reach an injectable surface (<code>TS-I01</code>)</td></tr>
+    <tr><td><code>alloc</code></td><td>Heap allocation: the hot-path gate (<code>TS-F03</code>)</td></tr>
+    <tr><td><code>io</code></td><td>Input/output, always qualified; see the two-tier qualifier vocabulary below</td></tr>
+    <tr><td><code>block</code></td><td>Can block (channel ops, locks); excluded from critical sections (<code>TS-F05</code>)</td></tr>
+    <tr><td><code>panic</code></td><td>Can panic; excluded from total functions (<code>TS-V02</code>)</td></tr>
+    <tr><td><code>rand</code></td><td>Reads randomness; must reach an injectable surface (<code>TS-I01</code>)</td></tr>
+    <tr><td><code>time</code></td><td>Reads the clock; must reach an injectable surface (<code>TS-I01</code>)</td></tr>
     <tr><td><code>mutate(x)</code></td><td>Writes to <code>x</code>, where <code>x</code> is reachable from parameters or receiver</td></tr>
-    <tr><td><code>spawn</code></td><td>Starts a goroutine — only supervisors may carry it (<code>TS-F08</code>)</td></tr>
+    <tr><td><code>spawn</code></td><td>Starts a goroutine; only supervisors may carry it (<code>TS-F08</code>)</td></tr>
   </tbody>
 </table>
 
 <p>Effects are transitive by construction: if your helper writes to disk, you write to disk. This
 is what turns a name-based ban (<code>TS-C08</code>: no <code>time.Sleep</code>) into a guarantee
-that cannot be laundered through three frames of indirection. An empty effect set is purity — and
+that cannot be laundered through three frames of indirection. An empty effect set is purity, and
 in a pin it is spelled <code>//tiger:effects none</code>, because absence of a pin never means
 purity; it means unpinned.</p>
 
-<h4>The io qualifier vocabulary — two tiers, both closed</h4>
+<h4>The io qualifier vocabulary</h4>
+
+<p>The vocabulary has two tiers, and both are closed sets.</p>
 
 <table>
   <thead><tr><th>Tier</th><th>Qualifiers</th><th>Detected by</th></tr></thead>
   <tbody>
     <tr><td><strong>Built-in</strong></td><td><code>io(disk)</code>, <code>io(net)</code>, <code>io(exec)</code>, <code>io(env)</code></td><td>Standard-library facts; zero configuration</td></tr>
-    <tr><td><strong>Declared</strong></td><td>Project-defined, e.g. <code>io(database)</code>, <code>io(cache)</code></td><td>Anchored to a declared surface (<code>TS-I01</code>): the analyzer infers the qualifier for any function whose call graph reaches the surface — exact, not heuristic</td></tr>
+    <tr><td><strong>Declared</strong></td><td>Project-defined, e.g. <code>io(database)</code>, <code>io(cache)</code></td><td>Anchored to a declared surface (<code>TS-I01</code>): the analyzer infers the qualifier for any function whose call graph reaches the surface (exact, not heuristic)</td></tr>
   </tbody>
 </table>
 
 <p>A pin may only use qualifiers that exist, built-in or declared, so a misspelled qualifier is an
 error rather than a silently meaningless string. The declared tier is <em>visibility</em>: pin the
 <code>Store</code> methods with <code>io(database)</code>, and any other function that acquires the
-effect — through any indirection — surfaces in the PR as an architecture violation. The <em>hard
+effect, through any indirection, surfaces in the PR as an architecture violation. The <em>hard
 wall</em> is the import restriction (<code>TS-P01</code>): only <code>internal/store</code> may
 import the database driver. Use both together.</p>
 
-<h3>The scoping model — two axes</h3>
-
-<div class="callout tip"><span class="label">Status</span>
-Confirmed 2026-08-12 after adversarial review, with amendments: undeclared restriction axes take
-stated defaults (absence is never an error — imports default to stdlib-only, dispatch to open,
-layering to the TS-X03 layer file), the declaration form is <code>//tiger:restrict ...</code> in
-the package doc comment, and TS-P03's surface-diff obligation now also covers drops in the
-computed TS-P02 bound (annotation-only, fires only when the bound's value changes).</div>
+<h3>The scoping model</h3>
 
 <div class="grid2">
-  <div class="card"><h4>Function scope — computed</h4>
+  <div class="card"><h4>Function scope: computed</h4>
     <p class="muted">Effects, frames, contracts, and variants are properties of a single function,
-    derived from its body and its callees. No boundary, no region to defend — only a gradient.</p></div>
-  <div class="card"><h4>Package scope — declared</h4>
+    derived from its body and its callees. No boundary, no region to defend, only a gradient.</p></div>
+  <div class="card"><h4>Package scope: declared</h4>
     <p class="muted">Import allowlists, dependency bans, dispatch closure, and layering can only be
     package-scoped, because Go's import granularity is the package.</p></div>
 </div>
 
-<p>The relationship: package restrictions are <em>enablers, not tiers</em>. They determine the
+<p>Restrictions are declared with <code>//tiger:restrict ...</code> in the package doc comment,
+and every undeclared axis takes a stated default, absence is never an error. Imports default to
+stdlib-only, dispatch to open, layering to the <code>TS-X03</code> layer file. Weakening is never
+silent, either: <code>TS-P03</code>'s surface-diff obligation also covers a drop in the computed
+<code>TS-P02</code> precision bound (annotation-only, firing only when the bound's value
+changes).</p>
+
+<p>Package restrictions are <em>enablers, not tiers</em>. They determine the
 <em>precision</em> of the function-level checks, not whether those checks run. A package that
-permits dynamic dispatch still gets effect analysis — as a conservative over-approximation, at
+permits dynamic dispatch still gets effect analysis, as a conservative over-approximation at
 lower confidence. The result is a precision gradient rather than a wall, which matters because a
 wall gets argued about, eroded, and exempted, and a computed property does not.</p>
 
@@ -401,14 +413,14 @@ the code is wrong, and the only correct response to wrong code is to crash.</div
 
 <p>A disk returning <code>ErrNotExist</code> is an error. A function receiving a negative length
 is a bug, and returning an error for it launders the bug into a caller who can do nothing about
-it either. Assert it and die. Assertions stay <strong>enabled in production</strong> — assertions
+it either. Assert it and die. Assertions stay <strong>enabled in production</strong>. The ones
 you compile out only ever protected your test suite. They downgrade correctness bugs into
 liveness bugs, which is the trade you want.</p>
 
 <table>
   <thead><tr><th>Function</th><th>Use</th></tr></thead>
   <tbody>
-    <tr><td><code>assert.Ok(cond, msg)</code></td><td>The general form. <code>msg</code> must be a constant string — no allocation on the fast path.</td></tr>
+    <tr><td><code>assert.Ok(cond, msg)</code></td><td>The general form. <code>msg</code> must be a constant string; no allocation on the fast path.</td></tr>
     <tr><td><code>assert.Implies(a, b, msg)</code></td><td>The Go replacement for single-line <code>if (a) assert(b)</code>, which gofmt forbids.</td></tr>
     <tr><td><code>assert.Equal(got, want, msg)</code></td><td>Equality with both values in the failure message.</td></tr>
     <tr><td><code>assert.Between(v, low, high, msg)</code></td><td>Inclusive range check. Say what you mean about the ends of a range.</td></tr>
@@ -416,13 +428,13 @@ liveness bugs, which is the trade you want.</p>
     <tr><td><code>assert.NoError(err, msg)</code></td><td>Only where an error is structurally impossible (e.g. writing to <code>bytes.Buffer</code>).</td></tr>
     <tr><td><code>assert.Unreachable(msg)</code></td><td>The default arm of a switch over a closed set.</td></tr>
     <tr><td><code>assert.Fail(format, args...)</code></td><td>Formatted failure. Call inside an <code>if</code>, never as the whole assertion.</td></tr>
-    <tr><td><code>assert.Invariant(id, cond)</code></td><td>Assert a named invariant — see the invariant vocabulary below. At run time this is <code>Ok</code>; the ID exists for the analyzer (<code>TS-A07</code>–<code>A09</code>). Generic over <code>~string</code>, so assert imports nothing.</td></tr>
-    <tr><td><code>assert.Violates(id, func())</code></td><td>Runs the function and fails unless it violates the named invariant — the negative-space proof <code>TS-A09</code> requires. Foreign panics are re-raised, not swallowed.</td></tr>
+    <tr><td><code>assert.Invariant(id, cond)</code></td><td>Assert a named invariant; see the invariant vocabulary below. At run time this is <code>Ok</code>; the ID exists for the analyzer (<code>TS-A07</code>–<code>A09</code>). Generic over <code>~string</code>, so assert imports nothing.</td></tr>
+    <tr><td><code>assert.Violates(id, func())</code></td><td>Runs the function and fails unless it violates the named invariant, the negative-space proof <code>TS-A09</code> requires. Foreign panics are re-raised, not swallowed.</td></tr>
   </tbody>
 </table>
 
 <p>Two Go-specific traps shape the API. Variadic arguments are boxed at the call site before the
-callee tests anything, so there is no formatted variant of <code>Ok</code> — formatting lives
+callee tests anything, so there is no formatted variant of <code>Ok</code>. Formatting lives
 behind an <code>if</code> that only runs on failure. And inlining has a budget, so the failure
 path is a separate <code>//go:noinline</code> function; the fast path compiles down to a
 predictable branch.</p>
@@ -455,17 +467,17 @@ const (
 <div class="layers">
   <div class="layer">
     <div class="num">1</div>
-    <div class="body"><div class="t">TS-A07 — every invariant asserted in at least two functions</div><div class="d">Pair assertion, restated as something countable. Asserted once = misfiled or under-defended.</div></div>
+    <div class="body"><div class="t">TS-A07: every invariant asserted in at least two functions</div><div class="d">Pair assertion, restated as something countable. Asserted once = misfiled or under-defended.</div></div>
     <div class="owner"><span class="pill b">invariantrefs</span></div>
   </div>
   <div class="layer">
     <div class="num">2</div>
-    <div class="body"><div class="t">TS-A08 — symmetric boundaries assert the same set</div><div class="d">encode/decode, marshal/unmarshal, write/read pairs must defend identical invariant sets.</div></div>
+    <div class="body"><div class="t">TS-A08: symmetric boundaries assert the same set</div><div class="d">encode/decode, marshal/unmarshal, write/read pairs must defend identical invariant sets.</div></div>
     <div class="owner"><span class="pill b">invariantsymmetry</span></div>
   </div>
   <div class="layer">
     <div class="num">3</div>
-    <div class="body"><div class="t">TS-A09 — every invariant has a test that violates it</div><div class="d">If no test can make it fail, the invariant is unreachable or the assertion is wrong.</div></div>
+    <div class="body"><div class="t">TS-A09: every invariant has a test that violates it</div><div class="d">If no test can make it fail, the invariant is unreachable or the assertion is wrong.</div></div>
     <div class="owner"><span class="pill b">invariantnegative</span></div>
   </div>
 </div>
@@ -481,26 +493,26 @@ invariant costs more work than thinking of a real one.</p>
 own directive convention (<code>//go:build</code>, <code>//go:generate</code>). Three kinds,
 with different lifecycles:</p>
 
-<h3>Pins — computed by default, blocking when written</h3>
-<p>These have a computed baseline. The analyzer infers the fact and reports changes; writing the
+<h3>Pins</h3>
+<p>A pin is computed by default and blocking once written. The analyzer infers the fact and reports changes; writing the
 directive freezes the fact into a blocking contract. Function-scoped pins attach to exported
-functions and methods only, and each pin bounds its entire callee subtree (<code>TS-F02</code>) —
-a pin changes nothing at run time, only what CI enforces.</p>
+functions and methods only, and each pin bounds its entire callee subtree (<code>TS-F02</code>).
+A pin changes nothing at run time, only what CI enforces.</p>
 
 <table>
   <thead><tr><th>Directive</th><th>Locks</th><th>Rule</th></tr></thead>
   <tbody>
-    <tr><td><code>//tiger:effects io(disk), mutate(r.log)</code></td><td>The function's effect set — exact: undeclared effects fail, and so do declared-but-absent ones. Purity is spelled <code>//tiger:effects none</code></td><td>TS-F01</td></tr>
+    <tr><td><code>//tiger:effects io(disk), mutate(r.log)</code></td><td>The function's effect set, exactly: undeclared effects fail, and so do declared-but-absent ones. Purity is spelled <code>//tiger:effects none</code></td><td>TS-F01</td></tr>
     <tr><td><code>//tiger:frame r.log, r.checkpoint</code></td><td>What the function may write; writes outside the frame fail</td><td>TS-F07</td></tr>
-    <tr><td><code>//tiger:variant len(pending)</code></td><td>Loop termination measure — must strictly decrease on every back edge, bounded below</td><td>TS-V01</td></tr>
-    <tr><td><code>//tiger:requires len(target) == HeaderSizeBytes</code></td><td>Precondition — discharged statically at call sites where provable; degrades to a runtime assertion where not</td><td>TS-V03</td></tr>
-    <tr><td><code>//tiger:ensures result.Checksum == checksum(result.Payload)</code></td><td>Postcondition — same discharge model</td><td>TS-V03</td></tr>
+    <tr><td><code>//tiger:variant len(pending)</code></td><td>Loop termination measure: strictly decreases on every back edge, bounded below</td><td>TS-V01</td></tr>
+    <tr><td><code>//tiger:requires len(target) == HeaderSizeBytes</code></td><td>Precondition: discharged statically at call sites where provable; degrades to a runtime assertion where not</td><td>TS-V03</td></tr>
+    <tr><td><code>//tiger:ensures result.Checksum == checksum(result.Payload)</code></td><td>Postcondition: same discharge model</td><td>TS-V03</td></tr>
   </tbody>
 </table>
 
-<h3>Intent declarations — nothing to infer; you state them first</h3>
-<p>These are commitments about design, not observations about code. The analyzer enforces their
-consequences.</p>
+<h3>Intent declarations</h3>
+<p>These are commitments about design, not observations about code. Nothing to infer, you state
+them first, and the analyzer enforces their consequences.</p>
 
 <table>
   <thead><tr><th>Directive</th><th>Commits to</th><th>Rule</th></tr></thead>
@@ -508,18 +520,20 @@ consequences.</p>
     <tr><td><code>//tiger:owner</code></td><td>Single-owner state: no exported fields, no <code>sync</code> primitives, no copies</td><td>TS-C10</td></tr>
     <tr><td><code>//tiger:hot</code></td><td>Hot path: effect set at most <code>{mutate}</code>, zero allocation, cross-checked against the profiler</td><td>TS-F03</td></tr>
     <tr><td><code>//tiger:wire</code></td><td>Wire type: field order is the format, explicit padding, compile-time size assertion</td><td>TS-K06</td></tr>
-    <tr><td>package restriction set</td><td>Imports, dispatch closure, dependency bans — per package</td><td>TS-P01</td></tr>
+    <tr><td>package restriction set</td><td>Imports, dispatch closure, dependency bans, per package</td><td>TS-P01</td></tr>
   </tbody>
 </table>
 
-<h3>Escape hatches — earned, reasoned, never silent</h3>
+<h3>Escape hatches</h3>
 
-<div class="callout warn"><span class="label">Amended 2026-08-12 · ADR-0003</span>
+<p>An escape hatch is earned, reasoned, and never silent.</p>
+
+<div class="callout warn"><span class="label">The admission test</span>
 An escape hatch exists only where the restricted dialect eliminates something reality
-requires — where <em>no in-dialect rewrite can comply</em>. This is the <strong>admission
+requires, where <em>no in-dialect rewrite can comply</em>. This is the <strong>admission
 test</strong>, and inconvenience never qualifies: the primary consumer is an AI agent, and an
 agent offered a cheaper path than conforming will take it. A directive's reason is
-shape-checked (verb known, reason present — <code>TS-L09</code>), never truth-checked, so every
+shape-checked (verb known, reason present, <code>TS-L09</code>), never truth-checked, so every
 escape in the tree also surfaces as a standing <strong>advisory finding on every run</strong>,
 and the per-package directive count stays a first-class ratchet metric (<code>TS-D06</code>).</div>
 
@@ -527,14 +541,14 @@ and the per-package directive count stays a first-class ratchet metric (<code>TS
   <thead><tr><th>Directive</th><th>Status</th><th>Rule</th></tr></thead>
   <tbody>
     <tr><td><code>//tiger:batched &lt;reason&gt;</code></td><td>The one admitted escape: an external system that only accepts per-item IO is a fact of the world no rewrite removes</td><td>TS-M10</td></tr>
-    <tr><td><code>//tiger:bounded &lt;reason&gt;</code></td><td><strong>Withdrawn</strong> — fails the admission test. Every terminating loop has an in-dialect shape: an explicit cap with an assert or error on exhaustion, or the <code>TS-S03</code> event-loop form. The verb does not parse; it is an unknown-verb error</td><td>TS-S02</td></tr>
-    <tr><td><code>//tiger:&lt;rule-id&gt; &lt;reason&gt;</code></td><td><strong>Gated</strong> — ships, if ever, together with the first heuristic rules and the <code>TS-D06</code> ratchet: mechanism and control in one release. Until then, an unknown-verb error</td><td>TS-L09</td></tr>
+    <tr><td><code>//tiger:bounded &lt;reason&gt;</code></td><td><strong>Withdrawn</strong>: fails the admission test. Every terminating loop has an in-dialect shape, an explicit cap with an assert or error on exhaustion, or the <code>TS-S03</code> event-loop form. The verb does not parse; it is an unknown-verb error</td><td>TS-S02</td></tr>
+    <tr><td><code>//tiger:&lt;rule-id&gt; &lt;reason&gt;</code></td><td><strong>Gated</strong>: ships, if ever, together with the first heuristic rules and the <code>TS-D06</code> ratchet (mechanism and control in one release). Until then, an unknown-verb error</td><td>TS-L09</td></tr>
   </tbody>
 </table>
 
 <p>There is no <code>//nolint</code>-style dismissal anywhere in the dialect. When a rule fires,
 the paths out are: fix the code (the finding names the compliant shape), declare the one earned
-escape if the world forces the shape, or — if you believe the finding is wrong — file a bug,
+escape if the world forces the shape, or, if you believe the finding is wrong, file a bug,
 because a false positive on a blocking rule is a defect in the analyzer, not a condition your
 code absorbs.</p>
 
@@ -552,7 +566,7 @@ func (n *Notifier) Flush(ctx context.Context) error {
 	return nil
 }</code></pre>
 
-<p>There is no directive to reach for. The fix is in-dialect — make the retry budget a real,
+<p>There is no directive to reach for. The fix is in-dialect. Make the retry budget a real,
 named number, and decide what exhaustion means (undelivered hooks are an expected condition, so
 an error, not an assert):</p>
 
@@ -592,29 +606,29 @@ no bulk endpoint; contract caps us at 10 rps" (unverified claim; standing review
 rationale tracing to a named benefit (B0–B8), and an enforcement mechanism. Enforcement levels:
 <strong>auto</strong> (off-the-shelf linter), <strong>custom</strong> (an analyzer specified in
 the implementation plan), <strong>partial</strong> (heuristic, expect false positives),
-<strong>runtime</strong> (test or CI gate), <strong>review</strong> (human judgment — and the
+<strong>runtime</strong> (test or CI gate), <strong>review</strong> (human judgment; the
 reason is always that the declaration is a claim about the world). Severity is blocking unless
 stated; on a legacy codebase, start advisory and ratchet per package.</p>
 
 <table>
   <thead><tr><th>Area</th><th>IDs</th><th>What it covers</th><th>Flagship rule</th></tr></thead>
   <tbody>
-    <tr><td>Safety and control flow</td><td>TS-S01–S22</td><td>No recursion, bounded loops, 70-line functions, no globals/unsafe/reflection, named constants with checked derivations</td><td><code>TS-S22</code>: every limit constant carries a derivation the analyzer evaluates — the only rule that catches a <em>stale</em> number</td></tr>
+    <tr><td>Safety and control flow</td><td>TS-S01–S22</td><td>No recursion, bounded loops, 70-line functions, no globals/unsafe/reflection, named constants with checked derivations</td><td><code>TS-S22</code>: every limit constant carries a derivation the analyzer evaluates, the only rule that catches a <em>stale</em> number</td></tr>
     <tr><td>Assertions and invariants</td><td>TS-A01–A09</td><td>Density ≥ 2 per function, pre/postconditions asserted, the invariant vocabulary</td><td><code>TS-A01</code>: the rule that carries most of the safety, and the one teams quietly drop</td></tr>
     <tr><td>Quantities and types</td><td>TS-Q01–Q03</td><td>Index/Count/Bytes as named types; parse, don't validate; units are types</td><td><code>TS-Q02</code>: exported functions take domain types, closing the check-to-use gap structurally</td></tr>
     <tr><td>Errors</td><td>TS-E01–E08</td><td>Every error handled, wrap once with <code>%w</code>, minimal return arity, no nil-nil</td><td><code>TS-E01</code>: best-evidenced rule in the document (USENIX catastrophic-failures study)</td></tr>
-    <tr><td>Concurrency</td><td>TS-C01–C13</td><td>Owner goroutines over locks, bounded channels, ctx everywhere, one paradigm per package</td><td><code>TS-C10</code>: <code>//tiger:owner</code> — banning the mutex forces the message-passing design</td></tr>
+    <tr><td>Concurrency</td><td>TS-C01–C13</td><td>Owner goroutines over locks, bounded channels, ctx everywhere, one paradigm per package</td><td><code>TS-C10</code> (<code>//tiger:owner</code>): banning the mutex forces the message-passing design</td></tr>
     <tr><td>Effects and frames</td><td>TS-F01–F08</td><td>The effect lattice, narrowing, frames, hot paths, spawn discipline (F06 deleted, ID retired)</td><td><code>TS-F07</code>: frames make "which function could have written this value" one query</td></tr>
-    <tr><td>Termination and contracts</td><td>TS-V01–V03</td><td>Loop variants, totality, declared preconditions discharged at call sites</td><td><code>TS-V03</code>: unproven obligations degrade to runtime assertions — never blocked on the analyzer's incompleteness</td></tr>
-    <tr><td>Surfaces and injectability</td><td>TS-I01–I07</td><td>Nondeterminism through declared surfaces, simulated + production implementations, one conformance suite (I02 deleted, ID retired)</td><td><code>TS-I05</code>: interfaces express every fault the spec permits — "the rule that decides whether any of the rest is worth anything"</td></tr>
+    <tr><td>Termination and contracts</td><td>TS-V01–V03</td><td>Loop variants, totality, declared preconditions discharged at call sites</td><td><code>TS-V03</code>: unproven obligations degrade to runtime assertions, never blocked on the analyzer's incompleteness</td></tr>
+    <tr><td>Surfaces and injectability</td><td>TS-I01–I07</td><td>Nondeterminism through declared surfaces, simulated + production implementations, one conformance suite (I02 deleted, ID retired)</td><td><code>TS-I05</code>: interfaces express every fault the spec permits, "the rule that decides whether any of the rest is worth anything"</td></tr>
     <tr><td>Memory and performance</td><td>TS-M01–M11</td><td>Preallocation, zero-alloc hot paths, pooled-buffer hygiene, no IO in loops, batching</td><td><code>TS-M10</code>: you can't check that a design batches, but you can ban its opposite</td></tr>
     <tr><td>Abstraction</td><td>TS-X01–X03</td><td>No single-implementation interfaces, no pass-through methods, declared import graph</td><td><code>TS-X03</code>: layering is the enforceable residue of architecture</td></tr>
-    <tr><td>Canonical form</td><td>TS-K01–K06</td><td>One spelling per construct, closed-world dispatch, total declaration order, no shadowing</td><td><code>TS-K03</code>: closed dispatch is the enabling rule — precision for everything upstream</td></tr>
-    <tr><td>Mechanical refactoring</td><td>TS-R01–R03</td><td>Proven transforms, surface diffs, generated ≡ hand-written</td><td><code>TS-R01</code>: the cash-out — a proven transform does not need review</td></tr>
+    <tr><td>Canonical form</td><td>TS-K01–K06</td><td>One spelling per construct, closed-world dispatch, total declaration order, no shadowing</td><td><code>TS-K03</code>: closed dispatch is the enabling rule, precision for everything upstream</td></tr>
+    <tr><td>Mechanical refactoring</td><td>TS-R01–R03</td><td>Proven transforms, surface diffs, generated ≡ hand-written</td><td><code>TS-R01</code>: the cash-out. A proven transform does not need review</td></tr>
     <tr><td>Naming</td><td>TS-N01–N15</td><td>MixedCaps, closed abbreviation vocabulary, units last, banned empty tokens, approved name pairs</td><td><code>TS-N12</code>: <code>data</code>, <code>manager</code>, <code>helper</code>… banned by dictionary</td></tr>
-    <tr><td>Layout and comments</td><td>TS-L01–L13</td><td>gofumpt, 100 columns, doc comments, "always say why", every deviation carries a reason</td><td><code>TS-L12</code>: a doc comment may not restate its identifier — rejects <code>// Count returns the count.</code></td></tr>
-    <tr><td>Dependencies and tooling</td><td>TS-D01–D07</td><td>Stdlib-only where restrictions permit, vendored and pinned, Go scripts not shell, ratcheted budgets</td><td><code>TS-D06</code>: per-package budgets may only decrease — a ratchet can't be raised at 2am</td></tr>
-    <tr><td>Testing and determinism</td><td>TS-T01–T11</td><td>Injected time/rand/IDs, fuzz targets, error-path coverage floor, mutation score, run-twice-and-diff</td><td><code>TS-T08</code>: mutation score is the anti-Goodhart oracle — the one metric that can't be raised without tests genuinely improving</td></tr>
+    <tr><td>Layout and comments</td><td>TS-L01–L13</td><td>gofumpt, 100 columns, doc comments, "always say why", every deviation carries a reason</td><td><code>TS-L12</code>: a doc comment may not restate its identifier, rejecting <code>// Count returns the count.</code></td></tr>
+    <tr><td>Dependencies and tooling</td><td>TS-D01–D07</td><td>Stdlib-only where restrictions permit, vendored and pinned, Go scripts not shell, ratcheted budgets</td><td><code>TS-D06</code>: per-package budgets may only decrease, a ratchet can't be raised at 2am</td></tr>
+    <tr><td>Testing and determinism</td><td>TS-T01–T11</td><td>Injected time/rand/IDs, fuzz targets, error-path coverage floor, mutation score, run-twice-and-diff</td><td><code>TS-T08</code>: mutation score is the anti-Goodhart oracle, the one metric that can't be raised without tests genuinely improving</td></tr>
     <tr><td>Structure (scoping)</td><td>TS-P01–P03</td><td>Package restriction sets, transitive precision bound, weakening visible in the surface diff</td><td><code>TS-P02</code>: your precision is bounded by your weakest transitive import</td></tr>
   </tbody>
 </table>
@@ -636,7 +650,7 @@ argument against the benefit, and is not.</div>
 <p>Co-equal with the rule catalogue, not a testing detail. The rules make properties checkable;
 surfaces make the checked properties describe the running system rather than a model of it.</p>
 
-<p>Every nondeterministic effect — time, randomness, IO, scheduling, identity — must reach the
+<p>Every nondeterministic effect (time, randomness, IO, scheduling, identity) must reach the
 system through a declared surface (<code>TS-I01</code>). A function calling <code>time.Now()</code>
 directly cannot be replayed, and a system with one such call cannot be simulated. Prefer
 <em>description</em> (code returns commands as values; something else interprets them) where the
@@ -651,7 +665,7 @@ else.</p>
   </div>
   <div class="layer">
     <div class="num">2</div>
-    <div class="body"><div class="t">Two implementations, one conformance suite (TS-I03)</div><div class="d">Every surface has a production and a simulated implementation, and both pass the same suite — or you have verified a world that does not exist.</div></div>
+    <div class="body"><div class="t">Two implementations, one conformance suite (TS-I03)</div><div class="d">Every surface has a production and a simulated implementation, and both pass the same suite, or you have verified a world that does not exist.</div></div>
     <div class="owner"><span class="pill b">surfaces</span></div>
   </div>
   <div class="layer">
@@ -670,7 +684,7 @@ else.</p>
 <h2 id="cli">The tiger CLI</h2>
 
 <p>One command-line program, ordinary static analysis built on Go's <code>go/analysis</code>
-framework — the same family as <code>go vet</code>. Deterministic: no LLM, no network; the same
+framework, the same family as <code>go vet</code>. Deterministic: no LLM, no network; the same
 source tree produces byte-identical output, verified in CI by running the suite twice and
 diffing. All custom analyzers (57 planned; the 20 computed-only ones are wave&nbsp;1) ship in one
 binary via subcommand dispatch, and as a golangci-lint module plugin so they run in the same pass
@@ -684,21 +698,21 @@ as the ~50 off-the-shelf linters the config already enables.</p>
   </tbody>
 </table>
 
-<p><strong>Exit codes</strong>: 0 clean, 1 at least one blocking finding, 2 operational failure —
-if any package fails to load or any analyzer fails to run, the run exits 2. Partial results are
+<p><strong>Exit codes</strong>: 0 clean, 1 at least one blocking finding, 2 operational failure
+(any package failing to load or any analyzer failing to run exits 2). Partial results are
 never presented as a clean or complete run.</p>
 
-<h3>tiger golangci — auditing the other engine</h3>
+<h3>tiger golangci</h3>
 
 <p>Tiger enforces only the custom rules; the auto rules live in golangci-lint. That delegation
-can silently rot — a project's <code>.golangci.yml</code> missing half the required linters is
+can silently rot. A project's <code>.golangci.yml</code> missing half the required linters is
 half the dialect unenforced with nothing saying so. <code>tiger golangci</code> closes the gap:
 it audits the project's golangci-lint configuration against the registry's auto-rule baseline
 (every required linter enabled, every baseline setting at its expected value; extra linters and
 settings always pass, but a stricter-than-baseline value currently fails with a message saying it
-is stricter — direction-aware comparison is future work), reporting each gap as a finding that
+is stricter; direction-aware comparison is future work), reporting each gap as a finding that
 names the auto rule that stopped being enforced. <code>tiger golangci --init</code> generates the baseline config for a project
-that has none — module path filled in from <code>go.mod</code> — and refuses to touch an existing
+that has none (module path filled in from <code>go.mod</code>) and refuses to touch an existing
 file. Exit codes mirror <code>tiger check</code>.</p>
 
 <pre><code><span class="muted">$</span> <span class="cmd">tiger golangci</span>
@@ -719,7 +733,7 @@ enable errcheck with check-blank: true
 </table>
 
 <p>Three output severities. Severity is defined once per rule in the registry and applied by the
-driver — never decided inside an analyzer (ADR-0002):</p>
+driver, never decided inside an analyzer (ADR-0002):</p>
 
 <table>
   <thead><tr><th>Severity</th><th>Behaviour</th><th>Examples</th></tr></thead>
@@ -734,14 +748,15 @@ driver — never decided inside an analyzer (ADR-0002):</p>
 The blocking/advisory/reported distinction is guaranteed under the <code>tiger</code> CLI, which
 consults the registry. A plain <code>golangci-lint run</code> with the tiger plugin treats all
 tiger findings uniformly until the plugin configuration maps severities (ADR-0002). In wave 1
-this costs little — 19 of the 20 analyzers are blocking-only — but know which driver you're
+this costs little (19 of the 20 analyzers are blocking-only), but know which driver you're
 reading.</div>
 
 <p>Alongside the analyzer, CI runs the runtime gates: <code>-race</code> always, goroutine-leak
 checks per package, seed-logged simulation runs, error-path coverage with its own floor, the
 nightly mutation score, the run-twice-and-diff determinism check, and the per-package budget
-ratchet (<code>TS-D06</code>) — complexity, directive count, skipped tests, assertion density,
-hot-benchmark allocations, all committed to a file that can only decrease.</p>
+ratchet (<code>TS-D06</code>). The ratchet covers complexity, directive count, skipped tests,
+assertion density, and hot-benchmark allocations, all committed to a file that can only
+decrease.</p>
 
 <!-- ============================================================= -->
 <h2 id="adoption">Adoption</h2>
@@ -759,7 +774,7 @@ analysis, an abstract interpreter, and a refactoring prover.</p>
   </div>
   <div class="layer">
     <div class="num">1</div>
-    <div class="body"><div class="t">Chain 1: ownership</div><div class="d">TS-S11, S12, C10, C11, X01, then F07. Makes frames checkable — "who wrote this value" becomes a query. Highest value, prerequisite for everything else.</div></div>
+    <div class="body"><div class="t">Chain 1: ownership</div><div class="d">TS-S11, S12, C10, C11, X01, then F07. Makes frames checkable; "who wrote this value" becomes a query. Highest value, prerequisite for everything else.</div></div>
     <div class="owner"><span class="pill a">start here</span></div>
   </div>
   <div class="layer">
@@ -769,7 +784,7 @@ analysis, an abstract interpreter, and a refactoring prover.</p>
   </div>
   <div class="layer">
     <div class="num">3</div>
-    <div class="body"><div class="t">Chain 3: effects</div><div class="d">TS-K03 first — dispatch precision gates the analysis — then TS-F01–F08. Converts six heuristics into exact checks, so it removes analyzers as well as adding them.</div></div>
+    <div class="body"><div class="t">Chain 3: effects</div><div class="d">TS-K03 first (dispatch precision gates the analysis), then TS-F01–F08. Converts six heuristics into exact checks, so it removes analyzers as well as adding them.</div></div>
     <div class="owner"><span class="pill b">after K03</span></div>
   </div>
   <div class="layer">
@@ -779,7 +794,7 @@ analysis, an abstract interpreter, and a refactoring prover.</p>
   </div>
   <div class="layer">
     <div class="num">5</div>
-    <div class="body"><div class="t">Chain 5: contracts</div><div class="d">TS-A07–A09, then V03. Most expensive and last — depends on a mature invariant vocabulary. Do not start here.</div></div>
+    <div class="body"><div class="t">Chain 5: contracts</div><div class="d">TS-A07–A09, then V03. Most expensive and last; it depends on a mature invariant vocabulary. Do not start here.</div></div>
     <div class="owner"><span class="pill w">last</span></div>
   </div>
   <div class="layer">
@@ -805,22 +820,22 @@ the fault model complete; should this effect be permitted; is this the right pro
 <div class="callout danger"><span class="label">The specification gap</span>
 A machine can prove code satisfies a specification. Nothing can prove the specification is the
 right one, because rightness is a relation between the specification and the world, and the code
-contains no representation of the world. This is not a limitation to engineer around — it is the
+contains no representation of the world. This is not a limitation to engineer around. It is the
 correct final resting place for human attention.</div>
 
 <h3>The engineering limits</h3>
 
 <ul>
   <li><strong>Goodhart applies with force.</strong> Once conformance is the merge criterion,
-  conformance gets optimized. The defence is the proxy test plus one genuine external oracle —
+  conformance gets optimized. The defence is the proxy test plus one genuine external oracle,
   the mutation score (<code>TS-T08</code>). A rising conformance score against a flat mutation
   score is a fire.</li>
   <li><strong>False positives are the real failure mode.</strong> An analyzer wrong 2% of the time
-  on a blocking rule, across a thousand merges, is twenty forced directives — and directives are
+  on a blocking rule, across a thousand merges, is twenty forced directives, and directives are
   how a dialect degrades into a style guide with extra steps. Treat every forced directive as a
   bug report against the analyzer.</li>
   <li><strong>Cost is exponential in the tail.</strong> Whether the last few percent is worth an
-  effect system and a refactoring prover depends entirely on how expensive your defects are —
+  effect system and a refactoring prover depends entirely on how expensive your defects are,
   which is why this is a good idea for a database and a bad idea for most software.</li>
   <li><strong>You are hiring for a language nobody knows.</strong> Onboarding is longer and some
   good engineers will not want to work this way. The precision gradient is the mitigation, and it
@@ -833,16 +848,16 @@ correct final resting place for human attention.</div>
 <table>
   <thead><tr><th>Item</th><th>Status</th></tr></thead>
   <tbody>
-    <tr><td>Rule catalogue (145 rules, Parts I–IV)</td><td><span class="pill b">stable</span> — agreed in discussion; 30 merge-time benefit assignments still unreviewed</td></tr>
-    <tr><td>Scoping model (Part II, TS-P01–P03)</td><td><span class="pill b">confirmed 2026-08-12</span> — adversarial review; amended: per-axis defaults, <code>//tiger:restrict</code> form, stdlib fact-table semantics, TS-P03 extension to computed-bound drops adopted</td></tr>
-    <tr><td>Infer-then-pin (pins)</td><td><span class="pill b">adopted 2026-08-12</span> — specified in Part II ("Pins"); TS-F01/TS-F02/TS-F07/TS-L09 rewritten in its terms; severity taxonomy and qualifier vocabulary added</td></tr>
-    <tr><td>Directive prefix <code>//tiger:</code>, CLI <code>tiger</code></td><td><span class="pill b">decided</span> — renamed from <code>//tigerstyle:</code>; rationale recorded in Part II</td></tr>
-    <tr><td>TS-I01–I07, TS-P01–P03 five-question test</td><td><span class="pill b">run 2026-08-12</span> — nine pass; TS-I02 deleted (folded into TS-I03, per the TS-F06 precedent); matrix recomputed by script</td></tr>
-    <tr><td>assert package</td><td><span class="pill b">shipped, full test suite</span> — <code>Invariant</code>/<code>Violates</code> generic over <code>~string</code>; surface-tested in the repo, cross-package coupling proven by the ledger example</td></tr>
-    <tr><td>Repository</td><td><span class="pill b">created 2026-08-12</span> — <code>github.com/thrawn01/tiger</code> at <code>~/Development/tiger</code>; assert + ledger example green under <code>go test</code>, Stage 0 config shipped at <code>config/golangci.yml</code></td></tr>
-    <tr><td>Escape-hatch admission test</td><td><span class="pill b">adopted 2026-08-12</span> — ADR-0003 + spec amendment: an escape exists only where no in-dialect rewrite can comply; <code>//tiger:bounded</code> withdrawn, <code>//tiger:batched</code> sole escape, deviation form gated to heuristic waves + TS-D06 ratchet, every escape a standing advisory finding</td></tr>
-    <tr><td>Wave-1 blueprint (ENG-147)</td><td><span class="pill b">reviewed, PASS 2026-08-12</span> — <code>docs/features/ENG-147-tiger-check-wave-1/blueprint.md</code>: CLI (<code>check</code> + <code>golangci [--init]</code>), directive grammar with round-trip contract, whole-dialect registry, corpus conventions, 20 computed-only analyzers, golangci plugin at end of v1</td></tr>
-    <tr><td>Analyzers (57 planned)</td><td><span class="pill w">unbuilt — wave 1 (20) is next</span> — effort estimates removed; the binding constraint is the acceptance contract (analysistest corpus per rule, report bytes = pin syntax, no silent scope cuts)</td></tr>
+    <tr><td>Rule catalogue (145 rules, Parts I–IV)</td><td><span class="pill b">stable</span>: agreed in discussion; 30 merge-time benefit assignments still unreviewed</td></tr>
+    <tr><td>Scoping model (Part II, TS-P01–P03)</td><td><span class="pill b">confirmed 2026-08-12</span>: adversarial review; amended: per-axis defaults, <code>//tiger:restrict</code> form, stdlib fact-table semantics, TS-P03 extension to computed-bound drops adopted</td></tr>
+    <tr><td>Infer-then-pin (pins)</td><td><span class="pill b">adopted 2026-08-12</span>: specified in Part II ("Pins"); TS-F01/TS-F02/TS-F07/TS-L09 rewritten in its terms; severity taxonomy and qualifier vocabulary added</td></tr>
+    <tr><td>Directive prefix <code>//tiger:</code>, CLI <code>tiger</code></td><td><span class="pill b">decided</span>: renamed from <code>//tigerstyle:</code>; rationale recorded in Part II</td></tr>
+    <tr><td>TS-I01–I07, TS-P01–P03 five-question test</td><td><span class="pill b">run 2026-08-12</span>: nine pass; TS-I02 deleted (folded into TS-I03, per the TS-F06 precedent); matrix recomputed by script</td></tr>
+    <tr><td>assert package</td><td><span class="pill b">shipped, full test suite</span>: <code>Invariant</code>/<code>Violates</code> generic over <code>~string</code>; surface-tested in the repo, cross-package coupling proven by the ledger example</td></tr>
+    <tr><td>Repository</td><td><span class="pill b">created 2026-08-12</span>: <code>github.com/thrawn01/tiger</code> at <code>~/Development/tiger</code>; assert + ledger example green under <code>go test</code>, Stage 0 config shipped at <code>config/golangci.yml</code></td></tr>
+    <tr><td>Escape-hatch admission test</td><td><span class="pill b">adopted 2026-08-12</span>: ADR-0003 + spec amendment: an escape exists only where no in-dialect rewrite can comply; <code>//tiger:bounded</code> withdrawn, <code>//tiger:batched</code> sole escape, deviation form gated to heuristic waves + TS-D06 ratchet, every escape a standing advisory finding</td></tr>
+    <tr><td>Wave-1 blueprint (ENG-147)</td><td><span class="pill b">reviewed, PASS 2026-08-12</span>: <code>docs/features/ENG-147-tiger-check-wave-1/blueprint.md</code>: CLI (<code>check</code> + <code>golangci [--init]</code>), directive grammar with round-trip contract, whole-dialect registry, corpus conventions, 20 computed-only analyzers, golangci plugin at end of v1</td></tr>
+    <tr><td>Analyzers (57 planned)</td><td><span class="pill w">unbuilt; wave 1 (20) is next</span>: effort estimates removed; the binding constraint is the acceptance contract (analysistest corpus per rule, report bytes = pin syntax, no silent scope cuts)</td></tr>
   </tbody>
 </table>
 
