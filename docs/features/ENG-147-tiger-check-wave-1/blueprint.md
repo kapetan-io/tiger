@@ -195,7 +195,7 @@ cases. The binding constraint is correctness constraint 7 (false positives), not
 - **SSA-based analyzers**: `norecursion`, `maporder`, `poolzero`, the `effects` engine, `frames`,
   `variant`, `contracts`.
 - **Cross-package-fact analyzers**: `invariantrefs`, `invariantnegative`, `restrictions`,
-  `surfacediff`, `closedworld`, `singleimpl`.
+  `surfacediff`, `closedworld`, `singleimpl`, `surfaces`.
 - **Tune-heavy / heuristic analyzers (wave 1.5)**: `noabbrev` ("the dictionary is the work"),
   `restatement`, `declusedistance`, `assertdensity`, `invariantsymmetry`, `paradigm`,
   `queuebound`, `declorder`, `unitsuffix`, `ioinloop`, `outptr`, `passthrough`, `corpuscheck`,
