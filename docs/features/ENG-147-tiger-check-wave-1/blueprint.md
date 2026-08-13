@@ -21,7 +21,8 @@ Tiger Go enforcement has two engines, and this project builds only one of them:
 
 - **Auto rules** are enforced by off-the-shelf golangci-lint linters, configured by
   `config/golangci.yml` (Stage 0, already in this repo). Tiger never reimplements a rule an
-  existing linter covers.
+  existing linter covers — but it audits the delegation: `tiger golangci` verifies a project's
+  golangci-lint configuration actually enforces the baseline, and `--init` generates it.
 - **Custom rules** are enforced by analyzers this project writes. Each is a standard
   `golang.org/x/tools/go/analysis` pass — the same shape as `go vet`'s passes — so it runs
   identically under the `tiger` CLI, under golangci-lint (via module plugin), and under the test
@@ -29,10 +30,12 @@ Tiger Go enforcement has two engines, and this project builds only one of them:
 
 Three concepts organize everything:
 
-1. **The rule registry is the single source of rule identity.** Every analyzer declares which
-   `TS-*` rules it enforces and at what severity. The binary, the documentation, and the
-   acceptance meta-tests are all derived from the registry, so an analyzer cannot exist half-way:
-   registered means built, corpus-tested, and shipped.
+1. **The rule registry is the single source of the dialect.** Every custom rule is registered
+   to the analyzer that enforces it and its severity; every auto rule is registered to the
+   golangci-lint linter and baseline settings that enforce it. The binary, the documentation,
+   the acceptance meta-tests, and the `tiger golangci` audit are all derived from the registry,
+   so a rule cannot exist half-way: registered means enforced — and for custom rules, built and
+   corpus-tested.
 2. **The corpus is the executable specification of a rule.** Each rule's failure-mode example
    (from its "Why" in the spec) must fire the diagnostic; the compliant rewrite must stay silent;
    known coverage gaps are present and marked. A rule without a corpus does not merge.
@@ -54,6 +57,18 @@ Three concepts organize everything:
   model but has no wave-1 rules.
 - **No silent scope cuts.** Where an analyzer covers less than its spec rule claims, the gap is a
   marked known-miss case in its corpus — visible, not implied.
+- **Escape hatches must earn their existence.** A per-site escape directive exists only where the
+  restricted subset eliminates something reality requires — where no in-subset shape can
+  accomplish the task at all. Inconvenience never qualifies: the primary consumer is an AI agent,
+  and an agent offered a cheaper path than conforming will take it. Wave 1 has exactly one escape,
+  `//tiger:batched`, which encodes a constraint of the outside world. `//tiger:bounded` does not
+  exist in this tool — every legitimate loop has an in-subset shape (an explicit cap with an
+  assert on exhaustion, or the TS-S03 event-loop form) — a deliberate deviation from the spec's
+  TS-S02 enforcement text, flagged for spec amendment.
+- **Escapes are never silent.** Every escape directive in the tree surfaces as an advisory finding
+  on every run — a standing "unverified claim" marker that never fails the build and never
+  disappears. Escapes stay counted, visible, and reviewed for as long as they exist; this is the
+  wave-1 stand-in for the TS-D06 ratchet.
 - **Tiger extends the linter ecosystem, it does not compete with it.** Auto rules stay in
   golangci-lint; the module plugin merges both engines into one pass for consumers.
 
@@ -88,7 +103,9 @@ Three concepts organize everything:
    suppression directive.** The spec calls forced directives "how a dialect degrades into a style
    guide with extra steps." Process enforcement: any `//tiger:` or `//nolint` suppression of a
    tiger finding in this repo's own code requires a tracked bug against the analyzer. This is a
-   review-level constraint; it cannot be fully mechanized.
+   review-level constraint; it cannot be fully mechanized. Wave 1 ships no dismissal directive
+   and no `bounded` escape: the paths out of a blocking finding are fixing the code (the finding
+   names the in-subset shape) or fixing the analyzer.
 
 ## Acceptance Criteria
 
@@ -99,6 +116,13 @@ Three concepts organize everything:
 - The directive grammar package round-trip property test passes for every directive form in the
   wave-1 vocabulary.
 - A fixture module containing a package that fails to load exits 2, not 0 and not 1.
+- Every escape directive in a fixture tree surfaces as an advisory finding on every run —
+  escapes are never silent.
+- `tiger golangci` runs against fixture configs designed to evoke each verdict: a missing
+  required linter and a drifted baseline setting each produce a finding naming the auto rule
+  that stopped being enforced; a conforming config passes silently; `--init` refuses to touch an
+  existing config and exits non-zero without modifying it.
+- The config `tiger golangci --init` generates passes `tiger golangci` verification unchanged.
 - CI runs the suite twice and diffs the output; any diff fails the build.
 - The tiger repository dogfoods itself: CI runs Stage 0 golangci-lint plus `tiger check` over the
   tree, green.
@@ -115,15 +139,18 @@ designed-response fixtures are the measure, per the surface-testing approach.
 
 **Foundation**
 
-- The `tiger` CLI: `tiger check ./...`, built on subcommand dispatch so later commands
-  (`pin`) slot in without breaking the interface. `main()` is a thin wrapper over a testable
-  `Run`-style entry point (surface-testing).
+- The `tiger` CLI: `tiger check ./...` and `tiger golangci [--init]`, built on subcommand
+  dispatch so later commands (`pin`) slot in without breaking the interface. `main()` is a thin
+  wrapper over a testable `Run`-style entry point (surface-testing).
 - The directive grammar package: parses and prints the `//tiger:<verb>` namespace. Owns the verb
   vocabulary — an unknown verb is an error, not a silently meaningless comment. Wave-1 verbs:
-  the escape hatches (`bounded`, `batched`, rule-deviation form) and validation that intent/pin
-  verbs it does not yet understand are at least well-formed.
-- The rule registry: rule ID → enforcing analyzer, severity, and spec cross-reference. Drives the
-  binary's analyzer set, the corpus meta-test, and the severity behavior of the run.
+  `batched` (the sole escape hatch, enforced from wave 1.5), plus well-formedness validation for
+  the intent and pin verbs later waves define. There is no `bounded` verb and no dismissal verb
+  (see Functional).
+- The rule registry, covering the whole dialect: custom rules map to their enforcing analyzer
+  and severity; auto rules map to the golangci-lint linter and baseline settings that enforce
+  them. Drives the binary's analyzer set, the corpus meta-test, the severity behavior of the
+  run, and the `tiger golangci` audit.
 - Corpus conventions shared by all analyzers (failure-mode / compliant / known-miss case classes).
 - The golangci-lint module plugin (end of v1, after the CLI works).
 
@@ -142,7 +169,7 @@ cases. The binding constraint is correctness constraint 7 (false positives), not
 | `chandecl` | TS-C12 | blocking |
 | `errignore` | TS-E02 | blocking |
 | `returnarity` | TS-E06 | blocking |
-| `directives` | TS-L09 | blocking |
+| `directives` | TS-L09 | blocking (missing reason, unknown verb), advisory (escape present) |
 | `skipcheck` | TS-D07 | blocking |
 | `tablename` | TS-T10 | blocking |
 | `testdoc` | TS-T06 | blocking |
@@ -159,6 +186,12 @@ cases. The binding constraint is correctness constraint 7 (false positives), not
 - **The `tiger pin` subcommand.** Wave-1 analyzers produce no pinnable computed facts
   (effects, frames, and variants arrive with the SSA waves). The grammar package ships in full so
   the contract exists before the command that uses it; `pin` lands with the effects wave.
+- **Per-site escapes that fail the admission test.** The spec's `//tiger:bounded` form and the
+  generic deviation directive (`//tiger:<rule-id> <reason>`). Every legitimate loop has an
+  in-subset shape, and wave-1 rules are exact — when one fires the code really has the banned
+  shape — so either directive would only serve avoiding the fix, the path an AI agent learns
+  first. The deviation form arrives, if ever, with the heuristic waves and ships together with
+  its accounting (the TS-D06 ratchet), never before.
 - **SSA-based analyzers**: `norecursion`, `maporder`, `poolzero`, the `effects` engine, `frames`,
   `variant`, `contracts`.
 - **Cross-package-fact analyzers**: `invariantrefs`, `invariantnegative`, `restrictions`,
@@ -207,13 +240,56 @@ corpus asserts the shape (rule ID present, compliant form named).
 exists in the model for later waves. A rule with split severity (TS-L10) registers each half at
 its own level.
 
-**Escape hatches.** `//tiger:bounded <reason>` and `//tiger:batched <reason>` suppress their rule
-at one site; the `directives` analyzer fails any escape hatch missing a reason (TS-L09) and any
-`//tiger:` line whose verb is not in the vocabulary.
+**Findings lead with the in-subset fix.** A TS-S02 finding names the compliant shapes — an
+explicit iteration cap with an assert on exhaustion, or the TS-S03 event-loop form — and no
+directive waives it: a loop the author cannot cap is a loop nobody has a termination argument
+for. Chain 4's variant analyzer later upgrades caps to machine-verified termination.
+
+**One escape hatch, earned.** `//tiger:batched <reason>` is wave 1's only escape verb, for the
+one case the subset cannot express: an external system that only accepts per-item IO (TS-M10,
+enforced from wave 1.5). The tool validates the directive's shape — known verb, reason present
+(TS-L09) — never its truth; the reason is a claim for human review. Every escape directive in
+the tree therefore also surfaces as an advisory finding on every run, so unverified claims stay
+permanently in view instead of sinking into the codebase.
+
+**No dismissal directive.** There is no `//nolint`-style comment that makes a tiger finding go
+away, and an unknown verb — including `//tiger:bounded` and any `//tiger:TS-*` deviation
+attempt — is a blocking error, not a loophole. A developer who believes a finding is wrong files
+a bug against the analyzer (constraint 7); the loud, reviewable fallback is disabling that
+analyzer in driver configuration. One honest residual: under the golangci-lint driver,
+golangci's own `//nolint` applies to any linter it runs, including tiger's plugin-registered
+analyzers — that door is golangci's, not tiger's, and Stage 0's `nolintlint` at least demands a
+reason there.
+
+**When the fix is a declaration edit, a human rules on it.** The remaining way around a rule is
+editing the declaration layer itself — raising a `Max` constant, weakening an invariant. That
+layer is exactly what humans review in a Tiger codebase, and wave 1 keeps it honest mechanically
+where it can: `derivation` re-evaluates a constant's stated arithmetic (TS-S22), `limitrelate`
+refuses a limit that relates to nothing (TS-S21), and escape claims stay on the advisory report.
+The residue is judgment; the design makes the judged surface small and loud, not zero.
 
 **Exit codes.** 0 clean, 1 at least one blocking finding, 2 operational failure (any package
 failed to load or any analyzer failed to run — partial results are never presented as a clean or
 complete run).
+
+**`tiger golangci [--init]`** audits the other half of the dialect. Verification reads the
+project's golangci-lint configuration and checks it against the registry's auto-rule baseline:
+every required linter enabled, every baseline setting present with its expected value. Extra
+linters and settings always pass; a stricter-than-baseline value fails in v1 with a message
+saying it is stricter (direction-aware comparison is future work). Each gap is reported as a
+finding naming the auto rule that stopped being enforced and the config change that restores it.
+Exit codes mirror `tiger check`: 0 conforming, 1 non-conforming, 2 operational (config missing
+or unparseable). With `--init`, tiger writes the baseline config for a project that has none —
+module path filled in from `go.mod` — and refuses to touch an existing file: repairing a
+non-conforming config is guided by verification findings, never by YAML surgery.
+
+**Which commands a project runs:**
+
+| Setup | Commands | What runs |
+| --- | --- | --- |
+| Full adoption | `golangci-lint run` (with tiger plugin) + `tiger golangci` | Auto + custom rules in one pass; config audited |
+| Without the plugin | `golangci-lint run` + `tiger check ./...` + `tiger golangci` | Two engines, two reports; config audited |
+| Tiger only | `tiger check ./...` | Custom rules only |
 
 ## Architecture
 
@@ -231,10 +307,13 @@ Components and their contracts — internal shapes are the implementor's to desi
   canonically. The round-trip invariant (constraint 2) is this package's contract. Per-verb
   argument grammars beyond wave-1's needs (effect lattices, frame sets) are explicitly not its
   wave-1 job, but the package is the place they will live.
-- **Rule registry** (internal). Responsibility: the closed set of (rule ID, analyzer, severity,
-  spec reference). Consumed by the CLI driver to assemble the run and decide exit behavior, and by
-  the meta-tests to enforce constraints 1 and 3. Illegal states unrepresentable: the binary's
-  analyzer list is *derived from* the registry, so "shipped but unregistered" cannot be expressed.
+- **Rule registry** (internal). Responsibility: the closed set of rules in the dialect — for
+  custom rules (rule ID, analyzer, severity, spec reference); for auto rules (rule ID, golangci
+  linter, baseline settings). Consumed by the CLI driver to assemble the run and decide exit
+  behavior, by the meta-tests to enforce constraints 1 and 3, and by `tiger golangci` for both
+  verification and `--init` generation. Illegal states unrepresentable: the binary's analyzer
+  list and the generated baseline config are both *derived from* the registry, so "shipped but
+  unregistered" cannot be expressed.
 - **CLI driver** (`cmd/tiger` delegating to a testable run function). Responsibility: subcommand
   dispatch, package loading, running the registered analyzers, ordering findings, applying
   severity, exit codes. All run-level policy lives here.
@@ -290,7 +369,10 @@ Key surfaces:
   analyzer's real consumer. Corpus case classes per rule: failure-mode (fires), compliant rewrite
   (silent), known-miss (silent, marked as a documented gap).
 - **CLI**: the testable run entry point called with fixture modules; asserts exit codes and output
-  bytes (determinism, ordering, severity behavior, partial-failure exit).
+  bytes (determinism, ordering, severity behavior, escape-advisory surfacing, partial-failure
+  exit). `tiger golangci` is tested the same way: fixture configs designed to evoke each verdict
+  (conforming, missing linter, drifted setting, absent file), plus the init-then-verify round
+  trip.
 - **Directive grammar package**: an internal library boundary tested through its exported API,
   including the round-trip property test.
 - **Meta-tests**: derived from the registry — every registered analyzer has a corpus with the
@@ -311,8 +393,17 @@ Tests live in `package xxx_test`, use testify, and follow the repo's testing con
   `tiger pin` subcommand ships here, carrying its deferred constraint — pin writing touches
   nothing but the pin line and is idempotent.
 - **The reported severity level** activates when unpinned-fact reporting exists.
+- **Machine-verified termination** (chain 4, `variant`): explicit loop caps get upgraded from
+  a convention the reviewer trusts to a property the analyzer proves.
+- **The generic deviation directive** ships, if ever, with the first heuristic rules and the
+  TS-D06 ratchet that counts it — mechanism and control in the same release.
+- **Direction-aware config comparison** for `tiger golangci` (stricter-than-baseline passes)
+  once per-setting strictness direction is encoded in the registry.
 - **Ratchet tooling** (TS-D06 budgets), `surfacediff`, and the refactor prover are their own
   campaigns.
+- The corresponding spec amendments (TS-S02 enforcement text, TS-L09 escape list, the
+  declarations-table admission-test note) were applied to the Tiger Go Specification on
+  2026-08-12; the admission-test decision itself is recorded as ADR-0003.
 
 ## Open Questions
 

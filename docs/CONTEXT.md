@@ -36,7 +36,10 @@ A directive stating something no analyzer can compute (invariants, restrictions,
 `owner`); stated first, enforced after.
 
 **Escape hatch**:
-A directive loosening one rule at one site, always carrying a reason (`//tiger:bounded <reason>`).
+A directive loosening one rule at one site, always carrying a reason; admitted only where no
+in-subset code shape can accomplish the task (wave 1: `//tiger:batched <reason>` alone). Shape is
+machine-checked, truth is human-reviewed, and every escape surfaces as a standing advisory
+finding.
 _Avoid_: suppression, nolint (the golangci mechanism, not ours)
 
 **Severity**:
@@ -45,8 +48,9 @@ does not fail), or **reported** (annotation-only). Defined once per rule in the 
 inside an analyzer.
 
 **Registry**:
-The closed set of (rule ID, enforcing analyzer, severity, spec reference) from which the binary,
-docs, and meta-tests are derived; the single source of rule identity.
+The closed set of every rule in the dialect — custom rules bound to their analyzer and severity,
+auto rules bound to their golangci-lint linter and baseline settings — from which the binary,
+docs, meta-tests, and the `tiger golangci` audit are derived; the single source of rule identity.
 
 **Corpus**:
 The `analysistest` packages that are a rule's executable specification: failure-mode case,
@@ -82,11 +86,15 @@ and analyzers count (TS-A07..A09).
 
 ## Example dialogue
 
-> **Dev:** "The `boundedloop` **analyzer** flagged my retry loop — can I mock it out in the test?"
-> **Domain expert:** "No — if the loop is genuinely unbounded, add the `//tiger:bounded` **escape
-> hatch** with a reason, and the `directives` analyzer will hold you to the reason. If the finding
-> is wrong, that's a false positive on a **blocking** rule, which is a bug in the analyzer: file
-> it, and add the case to the **corpus** as a failure-mode or **known miss** so it can't regress."
+> **Dev:** "The `boundedloop` **analyzer** flagged my retry loop — is there a directive that
+> waives it?"
+> **Domain expert:** "No — there is no `bounded` **escape hatch** in the tool. Give the loop an
+> explicit cap and assert on exhaustion, or use the event-loop shape TS-S03 describes. The only
+> wave-1 escape is `//tiger:batched`, because a provider without a bulk endpoint is a fact of the
+> world the code can't restructure away — and even that stays visible as an **advisory** finding
+> on every run. If you think the finding itself is wrong, that's a false positive on a
+> **blocking** rule, which is a bug in the analyzer: file it, and the case lands in the
+> **corpus** so it can't regress."
 
 ## Flagged ambiguities
 

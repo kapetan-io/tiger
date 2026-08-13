@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tiger Directives — Escape Hatches and the Admission Test</title>
+<style>
+  /* ── Design tokens — canonical source: docs/design.md ───────────────── */
+  :root {
+    --bg: #0d1117;          /* page canvas              (colors.background)    */
+    --panel: #161b22;       /* cards, callouts          (colors.surface)       */
+    --panel-2: #1c2230;     /* raised: table headers    (colors.surfaceRaised) */
+    --border: #30363d;      /* hairline borders         (colors.border)        */
+    --text: #e6edf3;        /* body text                (colors.onBackground)  */
+    --muted: #9da7b3;       /* supporting text          (colors.onBackgroundMuted) */
+    --accent: #58a6ff;      /* links, emphasis (blue)   (colors.primary)       */
+    --accent-2: #7ee787;    /* headings, CLI (green)    (colors.secondary)     */
+    --warn: #f0883e;        /* caution                  (colors.warning)       */
+    --danger: #ff7b72;      /* danger                   (colors.error)         */
+    --code-bg: #0b0f14;     /* code surface             (colors.codeSurface)   */
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    font-size: 16px;
+    line-height: 1.65;
+  }
+  .layout { max-width: 880px; margin: 0 auto; }
+  main { padding: 3rem 2rem 6rem; }
+  h1 { font-size: 2.1rem; line-height: 1.2; margin: 0 0 .4rem; }
+  h2 { font-size: 1.5rem; margin: 3rem 0 1rem; padding-bottom: .4rem; border-bottom: 1px solid var(--border); }
+  h3 { font-size: 1.18rem; margin: 2rem 0 .6rem; color: var(--accent-2); }
+  h4 { font-size: 1rem; margin: 1.4rem 0 .4rem; color: var(--text); }
+  p, li { color: var(--text); }
+  a { color: var(--accent); }
+  code {
+    font-family: var(--mono); font-size: .86em;
+    background: var(--code-bg); border: 1px solid var(--border);
+    border-radius: 5px; padding: .1em .4em;
+  }
+  pre {
+    background: var(--code-bg); border: 1px solid var(--border);
+    border-radius: 8px; padding: 1rem 1.1rem; overflow-x: auto;
+    font-size: .85rem; line-height: 1.55;
+  }
+  pre code { background: none; border: none; padding: 0; font-size: inherit; }
+  .lead {
+    font-size: 1.15rem; color: var(--muted);
+    border-left: 3px solid var(--accent); padding-left: 1rem; margin: 1.5rem 0 2rem;
+  }
+  table { width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: .9rem; }
+  th, td { text-align: left; padding: .55rem .7rem; border: 1px solid var(--border); vertical-align: top; }
+  th { background: var(--panel-2); color: var(--text); font-weight: 600; }
+  tr:nth-child(even) td { background: rgba(255,255,255,.015); }
+  .callout { border-radius: 8px; padding: .9rem 1.1rem; margin: 1.2rem 0; border: 1px solid var(--border); background: var(--panel); }
+  .callout.tip    { border-left: 4px solid var(--accent-2); }
+  .callout.warn   { border-left: 4px solid var(--warn); }
+  .callout.danger { border-left: 4px solid var(--danger); }
+  .callout .label { font-weight: 700; font-size: .72rem; letter-spacing: .1em; text-transform: uppercase; display: block; margin-bottom: .3rem; }
+  .callout.tip .label    { color: var(--accent-2); }
+  .callout.warn .label   { color: var(--warn); }
+  .callout.danger .label { color: var(--danger); }
+  .pill { display: inline-block; font-size: .68rem; letter-spacing: .06em; text-transform: uppercase; font-weight: 700; padding: .12rem .55rem; border-radius: 999px; border: 1px solid var(--border); color: var(--muted); vertical-align: middle; }
+  .pill.a { color: var(--accent);   border-color: #58a6ff55; background:#58a6ff12; }
+  .pill.b { color: var(--accent-2); border-color: #7ee78755; background:#7ee78712; }
+  .pill.c { color: #b48ead;         border-color: #b48ead55; background:#b48ead12; }
+  .layers { margin: 1.5rem 0; }
+  .layer { display: flex; align-items: stretch; border: 1px solid var(--border); border-radius: 8px; margin-bottom: .6rem; overflow: hidden; background: var(--panel); }
+  .layer .num { flex: 0 0 56px; display: flex; align-items: center; justify-content: center; font-size: 1.4rem; font-weight: 700; background: var(--panel-2); color: var(--accent); }
+  .layer .body { padding: .7rem 1rem; flex: 1; }
+  .layer .body .t { font-weight: 600; }
+  .layer .body .d { color: var(--muted); font-size: .9rem; }
+  .layer .owner { flex: 0 0 130px; display:flex; align-items:center; justify-content:center; font-size: .72rem; text-align:center; border-left: 1px solid var(--border); }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+  .card { border: 1px solid var(--border); border-radius: 8px; padding: 1rem 1.1rem; background: var(--panel); }
+  .card h4 { margin-top: 0; }
+  .muted { color: var(--muted); }
+  .cmd { color: var(--accent-2); }
+  hr { border: none; border-top: 1px solid var(--border); margin: 2.5rem 0; }
+  footer { color: var(--muted); font-size: .85rem; margin-top: 4rem; border-top: 1px solid var(--border); padding-top: 1.2rem; }
+  @media (max-width: 900px) {
+    main { padding: 2rem 1.2rem 4rem; }
+    .grid2 { grid-template-columns: 1fr; }
+  }
+  /* ── Explainer diagrams ─────────────────────────────────────────────── */
+  .flow { display: flex; align-items: stretch; gap: 0; flex-wrap: wrap; margin: 1.5rem 0; }
+  .flow.vert { flex-direction: column; align-items: flex-start; }
+  .flow .node {
+    border: 1px solid var(--border); border-radius: 8px; background: var(--panel);
+    padding: .7rem 1rem; min-width: 120px; text-align: center;
+  }
+  .flow .node .t { font-weight: 600; font-size: .95rem; }
+  .flow .node .d { color: var(--muted); font-size: .82rem; }
+  .flow .node.surface { border-color: #58a6ff55; background: #58a6ff12; }
+  .flow .node.inside  { border-color: var(--border); background: var(--panel-2); }
+  .flow .arrow { display: flex; align-items: center; justify-content: center; padding: 0 .7rem; color: var(--accent); font-size: 1.3rem; }
+  .flow.vert .arrow { padding: .35rem 0 .35rem 2.2rem; }
+  .flow .arrow .lbl { color: var(--muted); font-size: .72rem; margin-left: .35rem; }
+  .boundary { border: 1px solid #58a6ff55; border-radius: 10px; background: #58a6ff0a; padding: 1rem; margin: 1.5rem 0; }
+  .boundary > .cap { font-size: .72rem; letter-spacing: .08em; text-transform: uppercase; color: var(--accent); font-weight: 700; margin-bottom: .6rem; }
+  .boundary .inner { border: 1px dashed var(--border); border-radius: 8px; background: var(--panel); padding: .9rem; }
+  .boundary .inner > .cap { font-size: .72rem; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); font-weight: 700; margin-bottom: .5rem; }
+  .diagram { width: 100%; margin: 1.5rem 0; }
+  .diagram text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; fill: var(--text); }
+  .diagram .node-box { fill: var(--panel); stroke: var(--border); }
+  .diagram .node-box.surface { fill: #58a6ff12; stroke: #58a6ff88; }
+  .diagram .edge { stroke: var(--accent); stroke-width: 1.5; fill: none; }
+  .diagram .edge-lbl { fill: var(--muted); font-size: 12px; }
+  .diagram .muted { fill: var(--muted); }
+</style>
+</head>
+<body>
+<div class="layout">
+<main>
+
+<h1>Your build is red. Now what?</h1>
+<p class="lead">
+  You write Go in a project checked by <code>tiger check</code>, and a finding just failed your
+  build. This page explains your moves: <strong>fix the code into the shape the finding
+  names</strong>, or — in exactly one earned case — <strong>declare a constraint of the outside
+  world</strong>. There is deliberately no move that just makes a finding disappear.
+</p>
+
+<!-- ============================================================= -->
+<h2 id="boundary">What you see when a rule fires</h2>
+
+<p>Every finding tells you three things: which rule fired, what it saw, and what the compliant
+form looks like. You never need to open the specification to act on one.</p>
+
+<div class="flow">
+  <div class="node surface"><div class="t">you write code</div><div class="d">a loop, a call, a name</div></div>
+  <div class="arrow">→<span class="lbl">tiger check ./...</span></div>
+  <div class="node inside"><div class="t">a rule fires</div><div class="d">exit 1, build red</div></div>
+  <div class="arrow">→<span class="lbl">the finding</span></div>
+  <div class="node surface"><div class="t">your move</div><div class="d">fix — or declare a world constraint</div></div>
+</div>
+
+<pre><code><span class="muted">$</span> <span class="cmd">tiger check ./...</span>
+store/retry.go:41:2: TS-S02: this loop's bound cannot be derived from a
+constant, a len, or a counter — give it an explicit cap with an assert or
+error on exhaustion, or use the ctx.Done() event-loop shape (TS-S03)</code></pre>
+
+<p>Notice the finding names the compliant shapes directly. Which move is right depends on which
+of two situations you're actually in.</p>
+
+<!-- ============================================================= -->
+<h2 id="twokinds">Almost every finding has an in-subset fix</h2>
+
+<div class="grid2">
+  <div class="card">
+    <h4><span class="pill a">The normal case</span> &nbsp;"Your code has the banned shape"</h4>
+    <p class="muted">A <code>goto</code>, a naked <code>panic</code>, an uncapped loop, two
+    same-typed parameters. Every wave-1 rule is exact — when it fires, the shape is really
+    there — and every banned shape has a compliant rewrite <em>inside</em> the dialect, named in
+    the finding. <strong>Your move: fix the code.</strong></p>
+  </div>
+  <div class="card">
+    <h4><span class="pill b">The rare case</span> &nbsp;"The outside world forces this shape"</h4>
+    <p class="muted">Sometimes reality bans the rewrite: a provider with no bulk endpoint makes
+    one-call-per-item the only possible code. For exactly these cases — where <em>no rewrite
+    inside the dialect can comply</em> — a rule admits an <strong>escape hatch</strong> you
+    declare with a reason.</p>
+  </div>
+</div>
+
+<div class="callout tip"><span class="label">The admission test</span>
+An escape hatch exists only where the restricted dialect eliminates something reality requires.
+Inconvenience never qualifies. Wave&nbsp;1 admits exactly <strong>one</strong> escape:
+<code>//tiger:batched</code>. And be clear about what the tool checks: an escape is
+<strong>shape-checked, never truth-checked</strong> — tiger verifies the verb is known and a
+reason is present, but the truth of your reason is a claim for human review. That's why every
+escape in the tree stays on the report as a standing advisory finding: unverified claims never
+sink out of view.</div>
+
+<!-- ============================================================= -->
+<h2 id="bounded">Why there is no //tiger:bounded</h2>
+
+<p>The rule (TS-S02): <em>every loop states its upper bound.</em> Most loops state it in their
+own syntax, and the tool proves it without your help:</p>
+
+<pre><code><span class="muted">// The bound is visible: len(entries). Silent — nothing to do.</span>
+for i := 0; i &lt; len(entries); i++ { apply(entries[i]) }
+
+<span class="muted">// The bound is visible: a constant. Silent.</span>
+for attempt := 0; attempt &lt; RetriesMax; attempt++ { ... }</code></pre>
+
+<p>Some correct loops hide their bound, because the termination argument lives in your head,
+not in the syntax:</p>
+
+<pre><code><span class="muted">// Converges — you know it, the tool can't. TS-S02 fires.</span>
+for !converged(estimate) {
+    estimate = refine(estimate)
+}</code></pre>
+
+<p>You might expect a <code>//tiger:bounded "trust me, it converges"</code> comment here. Tiger
+deliberately doesn't have one — because the tool could check that the comment <em>exists</em>,
+never that it's <em>true</em>. A trust-me comment is a suppression wearing a costume. And it
+fails the admission test, because the dialect never eliminated your ability to write this loop —
+it asked you to make the bound explicit, which you always can:</p>
+
+<pre><code><span class="muted">// The bound is now real, visible, and machine-proved — and if your
+// convergence belief is ever wrong, you find out here, loudly, instead
+// of hanging a core forever.</span>
+for i := 0; i &lt; NewtonItersMax; i++ {
+    if converged(estimate) { break }
+    estimate = refine(estimate)
+}
+assert.Ok(converged(estimate), "no convergence within NewtonItersMax")</code></pre>
+
+<p>This is the dialect's philosophy in one rewrite: <em>everything in reality has a limit — pick
+the number.</em> A bound picked slightly wrong fails locally, early, at a boundary you wrote; a
+trusted comment that was wrong fails globally, late, and far from the cause. Genuinely-forever
+loops (servers, event loops) aren't capped either — they get their own compliant shape
+(TS-S03: select on <code>ctx.Done()</code>), also with no directive.</p>
+
+<div class="callout warn"><span class="label">Where this is headed</span>
+A later wave (the termination chain) upgrades this again: the analyzer will <em>prove</em> loops
+terminate by verifying a decreasing expression on every iteration — machine-checked where today
+you pick a cap. The direction of travel is always toward <strong>checked</strong>, never toward
+<strong>trusted</strong>.</div>
+
+<!-- ============================================================= -->
+<h2 id="batched">//tiger:batched — the one escape that earns its place</h2>
+
+<p>The rule (TS-M10): <em>no IO inside a loop body.</em> A write, query, or request per
+iteration is the anti-batching shape — it's every N+1 query ever written, and it's the pattern
+that turns one network round-trip into ten thousand:</p>
+
+<pre><code><span class="muted">// TS-M10 fires: one INSERT per iteration. The fix is almost always
+// to batch — and the finding says so.</span>
+for _, entry := range entries {
+    db.Insert(ctx, entry)
+}
+
+<span class="muted">// Compliant: one round-trip.</span>
+db.InsertBatch(ctx, entries)</code></pre>
+
+<p>Here is the difference from the loop-bound case: <strong>no rewrite can fix this one</strong>
+when the provider simply has no bulk endpoint. The constraint lives in the outside world, not in
+your code — which is exactly what the admission test requires of an escape:</p>
+
+<pre><code><span class="cmd">//tiger:batched provider offers no bulk endpoint; rate limiter caps us at 10 rps by contract</span>
+for _, hook := range webhooks {
+    notify(ctx, hook)
+}</code></pre>
+
+<p>The tool checks the shape — known verb, reason present (a missing reason is itself a finding,
+TS-L09). It cannot check whether the provider really lacks a bulk endpoint; that's your claim.
+So the claim doesn't get to disappear: <strong>every escape directive in the tree shows up as an
+advisory finding on every run</strong> — it never fails the build, and it never leaves the
+report. If the provider ships a bulk endpoint next year, the standing marker is how the loop
+gets found and fixed.</p>
+
+<div class="callout warn"><span class="label">Wave-1 timing</span>
+The <code>batched</code> verb is understood by the wave-1 tool (it parses, it demands a reason,
+it surfaces as advisory), but the analyzer that enforces TS-M10 arrives in wave&nbsp;1.5.
+Declaring it early is fine and forward-compatible.</div>
+
+<!-- ============================================================= -->
+<h2 id="noescape">"Can't I just make the finding go away?"</h2>
+
+<p>No — and this is a feature, not a missing feature. Here is your complete decision tree when
+a wave-1 rule fires:</p>
+
+<div class="flow vert">
+  <div class="node surface"><div class="t">A rule fired on your code</div><div class="d">exit 1, finding printed</div></div>
+  <div class="arrow">↓<span class="lbl">does a rewrite inside the dialect comply? (almost always)</span></div>
+  <div class="node surface"><div class="t">Fix the code</div><div class="d">the compliant shape is named in the finding — cap the loop, split the condition, drop the goto</div></div>
+  <div class="arrow">↓<span class="lbl">unless the outside world forbids the rewrite…</span></div>
+  <div class="node surface"><div class="t">Declare the world's constraint</div><div class="d">//tiger:batched &lt;the real reason&gt; — shape-checked now, standing advisory forever, judged by humans</div></div>
+  <div class="arrow">↓<span class="lbl">and if you believe the tool itself is wrong…</span></div>
+  <div class="node inside"><div class="t">That's a bug in tiger — file it</div><div class="d">a false positive on a blocking rule is a defect in the analyzer, fixed in the analyzer</div></div>
+</div>
+
+<p>What's deliberately absent: a general-purpose comment that dismisses any finding — the
+<code>//nolint</code> of other linters. Every wave-1 rule is <strong>exact</strong>: if it
+fires, your code really has the shape the rule bans. There is no "the tool is probably
+confused" case to escape from. So an escape comment would have exactly one remaining use:
+<em>avoiding the fix.</em></p>
+
+<div class="callout danger"><span class="label">Why this matters more with AI</span>
+In a Tiger codebase most findings are fixed by an AI agent, and an agent given a one-line
+escape will learn to write the escape — with a perfectly plausible reason attached — instead of
+doing the work. It's the cheapest token path to a green build. The tool refuses to offer that
+path: an unknown directive like <code>//tiger:TS-N07 trust me</code> doesn't parse. It is a
+blocking error, not a loophole.</div>
+
+<p>If a rule ever blocks you unfairly, the pressure lands where it can fix the root cause: on
+the analyzer. That is a design commitment of the project — a false positive on a blocking rule
+is a bug in tiger, and adding rules is gated on that staying true. Later waves will add
+<em>heuristic</em> rules that genuinely can be wrong; a per-site deviation mechanism ships
+<em>with those rules and with its accounting</em> (deviations counted, tracked, and only allowed
+to decrease) — never before.</p>
+
+<!-- ============================================================= -->
+<h2 id="worked">A worked example, end to end</h2>
+
+<p>Here's the full loop — write, check, fix, check — on a small notifier an AI agent might
+produce on its first pass. It has both kinds of problem: a loop whose bound nobody stated, and
+per-item IO forced by the outside world.</p>
+
+<pre><code><span class="muted">// notifier.go — first draft</span>
+func (n *Notifier) Flush(ctx context.Context) error {
+	for !n.queue.Empty() {                      <span class="muted">// how long can this run?</span>
+		for _, hook := range n.queue.Next() {
+			if err := post(ctx, hook); err != nil {
+				n.queue.Requeue(hook)   <span class="muted">// failures loop back — potentially forever</span>
+			}
+		}
+	}
+	return nil
+}</code></pre>
+
+<pre><code><span class="muted">$</span> <span class="cmd">tiger check ./...</span>
+notifier.go:12:2: TS-S02: this loop's bound cannot be derived from a constant,
+a len, or a counter — give it an explicit cap with an assert or error on
+exhaustion, or use the ctx.Done() event-loop shape (TS-S03)
+<span class="muted">exit status 1 — blocking finding, build is red</span></code></pre>
+
+<p>The requeue makes this genuinely unbounded: one permanently-failing webhook spins the loop
+forever. There is no directive to reach for — the fix is to make the retry budget a real,
+named number, and decide what happens when it runs out. Undelivered hooks after the budget is
+spent are an <em>expected operating condition</em>, so they become an error the caller handles,
+not an assert:</p>
+
+<pre><code><span class="muted">// FlushPassesMax = first attempt + 2 retries.</span>
+const FlushPassesMax = 3
+
+func (n *Notifier) Flush(ctx context.Context) error {
+	for pass := 0; pass &lt; FlushPassesMax; pass++ {   <span class="muted">// bound is counter-derived — proved</span>
+		if n.queue.Empty() {
+			break
+		}
+		<span class="cmd">//tiger:batched provider offers no bulk endpoint; contract caps us at 10 rps</span>
+		for _, hook := range n.queue.Next() {
+			if err := post(ctx, hook); err != nil {
+				n.queue.Requeue(hook)
+			}
+		}
+	}
+	if !n.queue.Empty() {
+		return fmt.Errorf("%d hooks undelivered after %d passes",
+			n.queue.Len(), FlushPassesMax)
+	}
+	return nil
+}</code></pre>
+
+<pre><code><span class="muted">$</span> <span class="cmd">tiger check ./...</span>
+notifier.go:18:3: TS-L09 [advisory]: escape //tiger:batched — "provider offers
+no bulk endpoint; contract caps us at 10 rps" (unverified claim; standing review)
+<span class="muted">exit status 0 — build is green; the advisory never fails the run and never leaves the report</span></code></pre>
+
+<p>Read what happened. The unbounded loop got a <em>real</em> fix — a named budget and an error
+path that turns "hangs forever in production" into "fails loudly with a count." The
+world-constrained loop kept its shape, but the claim justifying it is now on the record: the
+build is green, and every future run still prints the escape so the claim can be re-examined
+when the world changes. Nothing was silenced anywhere in this story.</p>
+
+<div class="callout warn"><span class="label">Message wording</span>
+The finding texts above are illustrative — exact wording belongs to each analyzer. The contract
+is the content: rule ID, position, what fired, and the compliant form.</div>
+
+<!-- ============================================================= -->
+<h2 id="reference">Quick reference</h2>
+
+<table>
+  <thead><tr><th>Situation</th><th>Your move</th></tr></thead>
+  <tbody>
+    <tr>
+      <td>A rule fired and the code has the banned shape</td>
+      <td>Fix the code — the finding names the compliant form.</td>
+    </tr>
+    <tr>
+      <td>A loop is correct but its bound lives in your domain knowledge</td>
+      <td>Make the bound real: an explicit cap constant + an assert on exhaustion. No directive exists for this, on purpose — a trust-me comment can't be checked.</td>
+    </tr>
+    <tr>
+      <td>A loop genuinely runs forever (server, event loop)</td>
+      <td>The TS-S03 shape: select on <code>ctx.Done()</code>. Also no directive.</td>
+    </tr>
+    <tr>
+      <td>The outside world forces per-iteration IO (no bulk endpoint exists)</td>
+      <td><code>//tiger:batched &lt;the constraint&gt;</code> on the loop — the one escape hatch. It stays visible as an advisory finding on every run.</td>
+    </tr>
+    <tr>
+      <td>You wrote a directive but no reason</td>
+      <td>That's a finding too (TS-L09). Write the real reason — it's the point.</td>
+    </tr>
+    <tr>
+      <td>You're sure the finding is a false positive</td>
+      <td>File a bug against the analyzer. Blocking rules are held to a zero-false-positive bar; your report is how it stays there.</td>
+    </tr>
+    <tr>
+      <td>You want to silence a finding you'd rather not fix</td>
+      <td>There is no way to do this, on purpose. Fix it or make the case that the rule is wrong.</td>
+    </tr>
+  </tbody>
+</table>
+
+<footer>
+  Generated from the tiger-check wave-1 Blueprint
+  (<code>docs/features/ENG-147-tiger-check-wave-1/blueprint.md</code>) and the Tiger Go
+  Specification (TS-S02, TS-M10, TS-L09). Styling per the html-explainer template.
+</footer>
+
+</main>
+</div>
+</body>
+</html>
