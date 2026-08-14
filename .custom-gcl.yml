@@ -1,0 +1,13 @@
+# Build definition for the golangci-lint module plugin (end of wave 1).
+#
+# Run `golangci-lint custom` next to this file to produce ./bin/tiger-gcl, a
+# golangci-lint binary with the tiger analyzers registered as the custom
+# linter `tiger`. Enable it in a project's .golangci.yml under
+# linters.enable, with `linters.settings.custom.tiger.type: module`.
+version: v2.11.4
+name: tiger-gcl
+destination: ./bin
+plugins:
+  - module: github.com/kapetan-io/tiger
+    import: github.com/kapetan-io/tiger/plugin
+    path: .

@@ -121,7 +121,7 @@ Three concepts organize everything:
 - `tiger golangci` runs against fixture configs designed to evoke each verdict: a missing
   required linter and a drifted baseline setting each produce a finding naming the auto rule
   that stopped being enforced; a conforming config passes silently; `--init` refuses to touch an
-  existing config and exits non-zero without modifying it.
+  existing config and exits 2 without modifying it.
 - The config `tiger golangci --init` generates passes `tiger golangci` verification unchanged.
 - CI runs the suite twice and diffs the output; any diff fails the build.
 - The tiger repository dogfoods itself: CI runs Stage 0 golangci-lint plus `tiger check` over the
@@ -170,7 +170,7 @@ cases. The binding constraint is correctness constraint 7 (false positives), not
 | `errignore` | TS-E02 | blocking |
 | `returnarity` | TS-E06 | blocking |
 | `directives` | TS-L09 | blocking (missing reason, unknown verb), advisory (escape present) |
-| `skipcheck` | TS-D07 | blocking |
+| `skipcheck` | TS-D07 | advisory (every skip reported) |
 | `tablename` | TS-T10 | blocking |
 | `testdoc` | TS-T06 | blocking |
 | `derivation` | TS-S22 | blocking |
@@ -205,9 +205,10 @@ cases. The binding constraint is correctness constraint 7 (false positives), not
 - **Reimplementing any auto rule** golangci-lint already enforces.
 - **Auto-fix, editor/LSP integration, dashboards, the TS-D06 ratchet tooling, the refactor
   prover.**
-- **Verifying tracker IDs against a live tracker** (`skipcheck` checks directive shape and the
-  presence of an ID token; the live-tracker check is a CI concern for adopting projects, per
-  TS-D05's runtime half).
+- **Blocking, annotating, or tracker-linking skipped tests.** `skipcheck` surfaces every skip
+  as a standing advisory — the same never-silent mechanism as escapes — rather than demanding a
+  directive with a tracker ID. A tracker reference can outlive its issue; a report recomputed
+  from the code on every run cannot go stale.
 
 ## Dependencies and Constraints
 
@@ -278,10 +279,12 @@ every required linter enabled, every baseline setting present with its expected 
 linters and settings always pass; a stricter-than-baseline value fails in v1 with a message
 saying it is stricter (direction-aware comparison is future work). Each gap is reported as a
 finding naming the auto rule that stopped being enforced and the config change that restores it.
-Exit codes mirror `tiger check`: 0 conforming, 1 non-conforming, 2 operational (config missing
-or unparseable). With `--init`, tiger writes the baseline config for a project that has none —
-module path filled in from `go.mod` — and refuses to touch an existing file: repairing a
-non-conforming config is guided by verification findings, never by YAML surgery.
+Exit codes mirror `tiger check`: 0 conforming, 1 non-conforming, 2 operational (config missing,
+unparseable, or `--init` refusing to overwrite an existing config — exit 1 is reserved for a
+verification verdict, and refusal short-circuits before verification runs). With `--init`, tiger
+writes the baseline config for a project that has none — module path filled in from `go.mod` —
+and refuses to touch an existing file, exiting 2: repairing a non-conforming config is guided by
+verification findings, never by YAML surgery.
 
 **Which commands a project runs:**
 
@@ -371,8 +374,8 @@ Key surfaces:
 - **CLI**: the testable run entry point called with fixture modules; asserts exit codes and output
   bytes (determinism, ordering, severity behavior, escape-advisory surfacing, partial-failure
   exit). `tiger golangci` is tested the same way: fixture configs designed to evoke each verdict
-  (conforming, missing linter, drifted setting, absent file), plus the init-then-verify round
-  trip.
+  (conforming, missing linter, drifted setting, absent file, `--init` against an existing
+  config), plus the init-then-verify round trip.
 - **Directive grammar package**: an internal library boundary tested through its exported API,
   including the round-trip property test.
 - **Meta-tests**: derived from the registry — every registered analyzer has a corpus with the

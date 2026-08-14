@@ -1380,8 +1380,9 @@ cannot be raised without a commit that says so. **Track the directive count as a
 because forced directives are how a dialect degrades into a style guide with extra steps.
 Enforce. CI, with the budget file in review (runtime).
 
-**`TS-D07` No skipped tests without a directive and a tracker ID.**
-Why. A skipped test is a test that passes.
+**`TS-D07` Skipped tests are reported on every run.**
+Why. A skipped test is a test that passes. Visibility beats paperwork: a report recomputed from
+the code on every run cannot go stale, while a tracker reference can outlive its issue.
 Enforce. `skipcheck` (custom).
 
 ## Testing and determinism
@@ -1593,7 +1594,7 @@ that cannot fill the third column does not go in.
 | TS-D04 | Generated code is committed and verified | B4 | Sub |
 | TS-D05 | TODO and FIXME reference a tracker ID that exists and i... | B7 | Sub |
 | TS-D06 | Per-package budgets may only decrease | B7, B3 | Sub |
-| TS-D07 | No skipped tests without a directive and a tracker ID | B5 | Sub |
+| TS-D07 | Skipped tests are reported on every run | B5 | Sub |
 | TS-T01 | Core logic is deterministic. Time, randomness, and IDs... | B4 | Sub |
 | TS-T02 | Map iteration order never reaches an output | B4 | Sub |
 | TS-T03 | Every parser, decoder, and state machine has a fuzz target | B5 | Sub |
@@ -1739,7 +1740,7 @@ analyzer without its corpus does not merge, no matter how plausible its implemen
 | `corpuscheck` | TS-T09 | Directory presence plus a test that iterates it |
 | `tablename` | TS-T10 | AST, table test literals require a name field |
 | `testdoc` | TS-T06 | AST, Test functions need a Goal line |
-| `skipcheck` | TS-D07 | AST, `t.Skip` requires a directive with a tracker ID |
+| `skipcheck` | TS-D07 | AST, every `t.Skip` surfaces as a standing advisory |
 
 The bottom two thirds are cheap and cover most of the value. The top six are the ones that turn
 heuristics into guarantees, and they are a team rather than a quarter.

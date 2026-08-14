@@ -5,6 +5,9 @@ on:
     branches: [main]
   pull_request:
 
+env:
+  GOLANGCI_LINT_VERSION: v2.11.4
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -15,3 +18,74 @@ jobs:
           go-version-file: go.mod
       - run: go vet ./...
       - run: go test ./...
+
+  # Stage 0 of the adoption ladder, applied to tiger itself.
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@${{ env.GOLANGCI_LINT_VERSION }}
+      - run: golangci-lint run ./...
+
+  # The tiger repository dogfoods itself: the custom rules run over the tree.
+  dogfood:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go run ./cmd/tiger check ./...
+
+  # Correctness constraint 4: the same tree produces byte-identical output
+  # across runs — the check runs twice and any diff fails the build (the
+  # spec's TS-T11 applied to tiger itself).
+  determinism:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: double-run diff on a findings fixture
+        run: |
+          go build -o bin/tiger ./cmd/tiger
+          set +e
+          ./bin/tiger check -C internal/cli/testdata/fixtures/findings ./... > first.txt
+          first=$?
+          ./bin/tiger check -C internal/cli/testdata/fixtures/findings ./... > second.txt
+          second=$?
+          set -e
+          test "$first" -eq 1
+          test "$second" -eq 1
+          diff first.txt second.txt
+      - name: double-run diff on the repository tree
+        run: |
+          ./bin/tiger check ./... > first.txt
+          ./bin/tiger check ./... > second.txt
+          diff first.txt second.txt
+
+  # The golangci-lint module plugin registers all wave-1 analyzers; one known
+  # finding must surface through a golangci-lint run.
+  plugin-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@${{ env.GOLANGCI_LINT_VERSION }}
+      - run: golangci-lint custom
+      - name: known finding surfaces through the plugin
+        working-directory: testdata/plugin-smoke
+        run: |
+          set +e
+          ../../bin/tiger-gcl run ./... > findings.txt 2>&1
+          code=$?
+          set -e
+          cat findings.txt
+          test "$code" -eq 1
+          grep -q "TS-S09" findings.txt
