@@ -1,0 +1,10 @@
+version: "2"
+linters:
+  default: none
+  enable:
+    - tiger
+  settings:
+    custom:
+      tiger:
+        type: module
+        description: Tiger Go custom rules (wave 1)

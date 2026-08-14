@@ -1,0 +1,875 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tiger Go Documentation</title>
+<style>
+  /* ── Design tokens — canonical source: docs/design.md ───────────────── */
+  :root {
+    --bg: #0d1117;          /* page canvas              (colors.background)    */
+    --panel: #161b22;       /* cards, callouts          (colors.surface)       */
+    --panel-2: #1c2230;     /* raised: table headers    (colors.surfaceRaised) */
+    --border: #30363d;      /* hairline borders         (colors.border)        */
+    --text: #e6edf3;        /* body text                (colors.onBackground)  */
+    --muted: #9da7b3;       /* supporting text          (colors.onBackgroundMuted) */
+    --accent: #58a6ff;      /* links, emphasis (blue)   (colors.primary)       */
+    --accent-2: #7ee787;    /* headings, CLI (green)    (colors.secondary)     */
+    --warn: #f0883e;        /* caution                  (colors.warning)       */
+    --danger: #ff7b72;      /* danger                   (colors.error)         */
+    --code-bg: #0b0f14;     /* code surface             (colors.codeSurface)   */
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    font-size: 16px;
+    line-height: 1.65;
+  }
+  /* Single centred reading column — NO sidebar. */
+  .layout { max-width: 880px; margin: 0 auto; }
+  main { padding: 3rem 2rem 6rem; }
+  h1 { font-size: 2.1rem; line-height: 1.2; margin: 0 0 .4rem; }
+  h2 { font-size: 1.5rem; margin: 3rem 0 1rem; padding-bottom: .4rem; border-bottom: 1px solid var(--border); }
+  h3 { font-size: 1.18rem; margin: 2rem 0 .6rem; color: var(--accent-2); }
+  h4 { font-size: 1rem; margin: 1.4rem 0 .4rem; color: var(--text); }
+  p, li { color: var(--text); }
+  a { color: var(--accent); }
+  code {
+    font-family: var(--mono); font-size: .86em;
+    background: var(--code-bg); border: 1px solid var(--border);
+    border-radius: 5px; padding: .1em .4em;
+  }
+  pre {
+    background: var(--code-bg); border: 1px solid var(--border);
+    border-radius: 8px; padding: 1rem 1.1rem; overflow-x: auto;
+    font-size: .85rem; line-height: 1.55;
+  }
+  pre code { background: none; border: none; padding: 0; font-size: inherit; }
+  .lead {
+    font-size: 1.15rem; color: var(--muted);
+    border-left: 3px solid var(--accent); padding-left: 1rem; margin: 1.5rem 0 2rem;
+  }
+  table { width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: .9rem; }
+  th, td { text-align: left; padding: .55rem .7rem; border: 1px solid var(--border); vertical-align: top; }
+  th { background: var(--panel-2); color: var(--text); font-weight: 600; }
+  tr:nth-child(even) td { background: rgba(255,255,255,.015); }
+  /* Callouts — tip / warn / danger encode intent via left border + eyebrow colour */
+  .callout { border-radius: 8px; padding: .9rem 1.1rem; margin: 1.2rem 0; border: 1px solid var(--border); background: var(--panel); }
+  .callout.tip    { border-left: 4px solid var(--accent-2); }
+  .callout.warn   { border-left: 4px solid var(--warn); }
+  .callout.danger { border-left: 4px solid var(--danger); }
+  .callout .label { font-weight: 700; font-size: .72rem; letter-spacing: .1em; text-transform: uppercase; display: block; margin-bottom: .3rem; }
+  .callout.tip .label    { color: var(--accent-2); }
+  .callout.warn .label   { color: var(--warn); }
+  .callout.danger .label { color: var(--danger); }
+  /* Pills / tags */
+  .pill { display: inline-block; font-size: .68rem; letter-spacing: .06em; text-transform: uppercase; font-weight: 700; padding: .12rem .55rem; border-radius: 999px; border: 1px solid var(--border); color: var(--muted); vertical-align: middle; }
+  .pill.a { color: var(--accent);   border-color: #58a6ff55; background:#58a6ff12; }
+  .pill.b { color: var(--accent-2); border-color: #7ee78755; background:#7ee78712; }
+  .pill.c { color: #b48ead;         border-color: #b48ead55; background:#b48ead12; }
+  .pill.w { color: var(--warn);     border-color: #f0883e55; background:#f0883e12; }
+  /* Numbered layer/step diagram */
+  .layers { margin: 1.5rem 0; }
+  .layer { display: flex; align-items: stretch; border: 1px solid var(--border); border-radius: 8px; margin-bottom: .6rem; overflow: hidden; background: var(--panel); }
+  .layer .num { flex: 0 0 56px; display: flex; align-items: center; justify-content: center; font-size: 1.4rem; font-weight: 700; background: var(--panel-2); color: var(--accent); }
+  .layer .body { padding: .7rem 1rem; flex: 1; }
+  .layer .body .t { font-weight: 600; }
+  .layer .body .d { color: var(--muted); font-size: .9rem; }
+  .layer .owner { flex: 0 0 130px; display:flex; align-items:center; justify-content:center; font-size: .72rem; text-align:center; border-left: 1px solid var(--border); }
+  /* Card grid */
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+  .card { border: 1px solid var(--border); border-radius: 8px; padding: 1rem 1.1rem; background: var(--panel); }
+  .card h4 { margin-top: 0; }
+  .muted { color: var(--muted); }
+  .cmd { color: var(--accent-2); }   /* CLI/command text inside <pre> */
+  hr { border: none; border-top: 1px solid var(--border); margin: 2.5rem 0; }
+  footer { color: var(--muted); font-size: .85rem; margin-top: 4rem; border-top: 1px solid var(--border); padding-top: 1.2rem; }
+  @media (max-width: 900px) {
+    main { padding: 2rem 1.2rem 4rem; }
+    .grid2 { grid-template-columns: 1fr; }
+  }
+
+  /* ── Explainer diagrams ─────────────────────────────────────────────── */
+  .flow { display: flex; align-items: stretch; gap: 0; flex-wrap: wrap; margin: 1.5rem 0; }
+  .flow.vert { flex-direction: column; align-items: flex-start; }
+  .flow .node {
+    border: 1px solid var(--border); border-radius: 8px; background: var(--panel);
+    padding: .7rem 1rem; min-width: 120px; text-align: center;
+  }
+  .flow .node .t { font-weight: 600; font-size: .95rem; }
+  .flow .node .d { color: var(--muted); font-size: .82rem; }
+  .flow .node.surface { border-color: #58a6ff55; background: #58a6ff12; }
+  .flow .node.inside  { border-color: var(--border); background: var(--panel-2); }
+  .flow .arrow { display: flex; align-items: center; justify-content: center; padding: 0 .7rem; color: var(--accent); font-size: 1.3rem; }
+  .flow.vert .arrow { padding: .35rem 0 .35rem 2.2rem; }
+  .flow .arrow .lbl { color: var(--muted); font-size: .72rem; margin-left: .35rem; }
+
+  .boundary { border: 1px solid #58a6ff55; border-radius: 10px; background: #58a6ff0a; padding: 1rem; margin: 1.5rem 0; }
+  .boundary > .cap { font-size: .72rem; letter-spacing: .08em; text-transform: uppercase; color: var(--accent); font-weight: 700; margin-bottom: .6rem; }
+  .boundary .inner { border: 1px dashed var(--border); border-radius: 8px; background: var(--panel); padding: .9rem; }
+  .boundary .inner > .cap { font-size: .72rem; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); font-weight: 700; margin-bottom: .5rem; }
+
+  .diagram { width: 100%; margin: 1.5rem 0; }
+  .diagram text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; fill: var(--text); }
+  .diagram .node-box { fill: var(--panel); stroke: var(--border); }
+  .diagram .node-box.surface { fill: #58a6ff12; stroke: #58a6ff88; }
+  .diagram .edge { stroke: var(--accent); stroke-width: 1.5; fill: none; }
+  .diagram .edge-lbl { fill: var(--muted); font-size: 12px; }
+  .diagram .muted { fill: var(--muted); }
+
+  /* TOC */
+  .toc { columns: 2; column-gap: 2rem; font-size: .92rem; margin: 1rem 0 0; padding-left: 1.2rem; }
+  .toc li { margin-bottom: .25rem; }
+  @media (max-width: 700px) { .toc { columns: 1; } }
+</style>
+</head>
+<body>
+<div class="layout">
+<main>
+
+<h1>Tiger Go</h1>
+<p class="lead">
+  A Go dialect where the specification lives in the source and a machine checks that the code
+  matches it. You write Go plus a small layer of declarations. The <code>tiger</code> analyzer
+  checks the correspondence between them on every pull request. A change that touches no
+  declaration and passes CI merges without a human reading it.
+</p>
+
+<p>
+  <span class="pill a">dialect, not style guide</span>
+  <span class="pill b">145 rules</span>
+  <span class="pill b">57 analyzers</span>
+  <span class="pill c">adapted from TigerStyle</span>
+</p>
+
+<ol class="toc">
+  <li><a href="#premise">The premise</a></li>
+  <li><a href="#split">How review divides</a></li>
+  <li><a href="#day">A day in Tiger Go</a></li>
+  <li><a href="#concepts">Core concepts</a></li>
+  <li><a href="#assert">The assert package</a></li>
+  <li><a href="#invariants">The invariant vocabulary</a></li>
+  <li><a href="#directives">Directive reference</a></li>
+  <li><a href="#rules">The rule catalogue</a></li>
+  <li><a href="#surfaces">Surfaces and simulation</a></li>
+  <li><a href="#cli">The tiger CLI</a></li>
+  <li><a href="#adoption">Adoption</a></li>
+  <li><a href="#limits">Limits, honestly</a></li>
+  <li><a href="#status">Status and open questions</a></li>
+</ol>
+
+<!-- ============================================================= -->
+<h2 id="premise">The premise</h2>
+
+<p>One economic claim sits above everything:</p>
+
+<div class="callout tip"><span class="label">The claim</span>
+The cost of a defect grows super-linearly with the distance between the moment it is introduced
+and the moment it is detected. Distance means time, stack frames, call sites, service hops, and
+releases.</div>
+
+<p>Every rule in Tiger Go is one of three strategies against that curve: shrink the population of
+possible defects, shorten the distance to detection, or bound the damage while the distance is
+being travelled. The goal order (safety, then performance, then developer experience) is a
+statement about detection distance: a safety defect is detected by a customer, a performance
+defect by a dashboard, a developer-experience defect immediately by the person typing.</p>
+
+<p>Tiger Go is not a style guide. It is a <em>restriction</em> of Go, chosen so that questions a
+reviewer normally answers by reading become questions a tool answers by checking. The formatting
+rules are a side effect, not the point.</p>
+
+<p>Enforcement is split between two engines from the start. Rules an existing linter already
+checks are <strong>auto rules</strong>: delegated to roughly fifty off-the-shelf golangci-lint
+linters (<code>errcheck</code>, <code>funlen</code>, <code>depguard</code>, …) pinned to a
+required baseline configuration at <code>config/golangci.yml</code>. Tiger never reimplements
+one. Rules no existing linter can check are <strong>custom rules</strong>, enforced by the
+analyzers the <code>tiger</code> binary ships. Both engines are the dialect: run only one and
+half of Tiger Go is unenforced. So when a linter name appears anywhere in this document, that
+linter is carrying a Tiger Go rule, and <a href="#cli"><code>tiger golangci</code></a> exists to
+audit that the project's config still carries them.</p>
+
+<!-- ============================================================= -->
+<h2 id="split">How review divides</h2>
+
+<p>The split is not by topic and not by directory. Every concern has two parts, and the parts get
+different treatment.</p>
+
+<div class="boundary">
+  <div class="cap">Humans and AI review the declarations</div>
+  <p class="muted">Is <code>SequenceMonotonic</code> the invariant this protocol actually needs?
+  Should this function be permitted to touch the disk at all? Is 512-byte sectors true of the
+  hardware? Can the <code>Storage</code> interface express a torn write? These are claims about
+  the world, and no analyzer contains a representation of the world.</p>
+  <div class="inner">
+    <div class="cap">Machines check the correspondence</div>
+    <p class="muted">Does the code satisfy the invariant it names, stay inside its declared frame,
+    terminate, cover every state, match its effect set, route its nondeterminism through an
+    injectable surface, respect the declared layering? These are relations between two artifacts
+    the machine can see, and they are checked on every pull request.</p>
+  </div>
+</div>
+
+<p>The declarations are a <em>layer</em>, not a region. They cut across every file. There is no
+part of the tree that is "the reviewed part." The policy that falls out:</p>
+
+<div class="callout tip"><span class="label">The policy</span>
+A change touching no declaration and passing CI merges without a human reading it. A change
+touching a declaration goes to someone who knows the domain, and nothing else about it is
+discussed, because everything else has already been checked.</div>
+
+<p>Track one number and make it the headline: <strong>the fraction of merged lines that no human
+read.</strong> It starts near zero. If adoption chains 1 and 3 complete, it should pass half.</p>
+
+<!-- ============================================================= -->
+<h2 id="day">A day in Tiger Go</h2>
+
+<p>What the developer experiences once the effects wave ships. Effects are the running example;
+the same infer-then-pin lifecycle applies to frames and variants. (Wave 1 ships none of this yet.
+Its 20 analyzers are computed-only, with no pins; see the status table. This section is the target
+the design builds toward.)</p>
+
+<div class="flow">
+  <div class="node surface"><div class="t">You write code</div><div class="d">plain Go, no comments required</div></div>
+  <div class="arrow">→</div>
+  <div class="node inside"><div class="t">The analyzer computes facts</div><div class="d">effect sets, frames, callgraph</div></div>
+  <div class="arrow">→</div>
+  <div class="node surface"><div class="t">The PR shows a report</div><div class="d">facts printed in pin syntax</div></div>
+  <div class="arrow">→</div>
+  <div class="node surface"><div class="t">You pin what matters</div><div class="d">paste the line; it now blocks</div></div>
+</div>
+
+<h3>1. Write code; the analyzer reports</h3>
+
+<pre><code>func SaveHeader(h Header) error {
+    return os.WriteFile(h.Path, h.Bytes(), 0o644)
+}</code></pre>
+
+<pre><code><span class="muted">── tiger: effect report ───────────────────────</span>
+<span class="cmd">SaveHeader</span> changed   <span class="muted">(was: none)</span>
+<span class="cmd">//tiger:effects io(disk)</span></code></pre>
+
+<p>The report does not stop the merge. It prints the computed fact in pin syntax, the exact line
+you would paste above the function. Report and pin share one format; there is nothing to
+translate.</p>
+
+<h3>2. Pin what matters</h3>
+
+<pre><code><span class="cmd">//tiger:effects io(disk)</span>
+func SaveHeader(h Header) error {
+    return os.WriteFile(h.Path, h.Bytes(), 0o644)
+}</code></pre>
+
+<p>A pin freezes the computed fact into a contract. From now on, any change that makes the code
+disagree with the pin fails the CI check on the pull request, before merge, with both lines shown
+in the same format:</p>
+
+<pre><code><span class="muted">── tiger: effect check ────────────────────────</span>
+store/header.go:14:1: TS-F01: <span class="cmd">SaveHeader</span> — the code does not agree with the pin
+  pin:      //tiger:effects io(disk)
+  computed: <span class="cmd">//tiger:effects io(disk), io(net)</span>
+Fix: remove the io(net) call, or replace the pin with the computed line.</code></pre>
+
+<p>There are two honest exits. Change the code, or change the pin. A pin change is visible in the diff,
+so the reviewer rules on the new promise. A pin can never go stale: a wrong pin is a failed
+check, not a lie in a comment.</p>
+
+<h3>The four rules of the analyzer</h3>
+
+<table>
+  <thead><tr><th>Condition</th><th>Analyzer action</th><th>Merge</th></tr></thead>
+  <tbody>
+    <tr><td>No pin; effects change</td><td>Report in the pull request</td><td>Continues</td></tr>
+    <tr><td>Pin; pin and code agree</td><td>Silence</td><td>Continues</td></tr>
+    <tr><td>Pin; pin and code disagree</td><td>The CI check fails, with the reason</td><td><strong>Stops</strong></td></tr>
+    <tr><td>You edit a pin</td><td>Visible in the diff</td><td>Continues, after review</td></tr>
+  </tbody>
+</table>
+
+<div class="callout tip"><span class="label">Where pins may go</span>
+Function-scoped pins attach to <strong>exported functions and methods only</strong>. Unexported
+helpers are the region mechanical refactoring must be free to reshape, and nothing is lost: a pin
+bounds its <em>entire callee subtree</em>, so exported pins constrain unexported internals
+transitively, with the failure naming the introducing call. Sparse pins give dense enforcement.
+(Loop variants are the placement exception; a variant pin attaches to its loop.)</div>
+
+<div class="callout tip"><span class="label">The trigger rule</span>
+Most pins are optional. When a package declares closed dispatch (<code>TS-K03</code> under
+<code>TS-P01</code>), pins become <em>required</em> on its exported functions. Pins attach exactly
+where the computed facts are exact, a defined event, not a mood.</div>
+
+<!-- ============================================================= -->
+<h2 id="concepts">Core concepts</h2>
+
+<h3>Enforceability is a property of a rule in a language</h3>
+
+<p>The insight the whole dialect is built on: the analyses that are undecidable in general Go are
+almost all decidable in Go restricted by the other rules. <strong>The analysis does not get
+smarter. The language gets smaller.</strong> The restrictions compound in a specific order:</p>
+
+<pre><code>no globals + no unsafe + no reflection
+  → the heap graph is reachable only through parameters and receivers
+    → points-to analysis is exact for the fragment
+      → frame conditions are checkable
+        → "what can this function change" is machine-answerable
+          → mechanical refactoring is provably behavior-preserving
+            → refactoring diffs need no review</code></pre>
+
+<p>Each link is worthless alone. In the chain, each is load-bearing for a guarantee five steps
+away. The practical consequence: <strong>you do not get sixty percent of the value from sixty
+percent of the rules.</strong> You get very little until a chain completes, and then a lot at
+once. Adopt by chain, not by ease.</p>
+
+<h3>Judgment is conserved</h3>
+
+<p>You can relocate judgment; you cannot delete it. Every rule promoted from review to lint moves
+a judgment out of the code and into a declaration, and someone still has to be right about the
+declaration. It is a good trade for three measurable reasons: the declaration layer is
+<em>small</em> (typically two to five percent of lines), <em>stable</em> (changing an order of
+magnitude less often than the code it governs), and <em>dense</em> (attention spent there is spent
+where being wrong is most expensive).</p>
+
+<h3>The effect lattice</h3>
+
+<p>Effects are the vocabulary the analyzer computes and pins freeze. The lattice is closed and
+small; absence of all effects is purity.</p>
+
+<table>
+  <thead><tr><th>Effect</th><th>Meaning</th></tr></thead>
+  <tbody>
+    <tr><td><code>alloc</code></td><td>Heap allocation: the hot-path gate (<code>TS-F03</code>)</td></tr>
+    <tr><td><code>io</code></td><td>Input/output, always qualified; see the two-tier qualifier vocabulary below</td></tr>
+    <tr><td><code>block</code></td><td>Can block (channel ops, locks); excluded from critical sections (<code>TS-F05</code>)</td></tr>
+    <tr><td><code>panic</code></td><td>Can panic; excluded from total functions (<code>TS-V02</code>)</td></tr>
+    <tr><td><code>rand</code></td><td>Reads randomness; must reach an injectable surface (<code>TS-I01</code>)</td></tr>
+    <tr><td><code>time</code></td><td>Reads the clock; must reach an injectable surface (<code>TS-I01</code>)</td></tr>
+    <tr><td><code>mutate(x)</code></td><td>Writes to <code>x</code>, where <code>x</code> is reachable from parameters or receiver</td></tr>
+    <tr><td><code>spawn</code></td><td>Starts a goroutine; only supervisors may carry it (<code>TS-F08</code>)</td></tr>
+  </tbody>
+</table>
+
+<p>Effects are transitive by construction: if your helper writes to disk, you write to disk. This
+is what turns a name-based ban (<code>TS-C08</code>: no <code>time.Sleep</code>) into a guarantee
+that cannot be laundered through three frames of indirection. An empty effect set is purity, and
+in a pin it is spelled <code>//tiger:effects none</code>, because absence of a pin never means
+purity; it means unpinned.</p>
+
+<h4>The io qualifier vocabulary</h4>
+
+<p>The vocabulary has two tiers, and both are closed sets.</p>
+
+<table>
+  <thead><tr><th>Tier</th><th>Qualifiers</th><th>Detected by</th></tr></thead>
+  <tbody>
+    <tr><td><strong>Built-in</strong></td><td><code>io(disk)</code>, <code>io(net)</code>, <code>io(exec)</code>, <code>io(env)</code></td><td>Standard-library facts; zero configuration</td></tr>
+    <tr><td><strong>Declared</strong></td><td>Project-defined, e.g. <code>io(database)</code>, <code>io(cache)</code></td><td>Anchored to a declared surface (<code>TS-I01</code>): the analyzer infers the qualifier for any function whose call graph reaches the surface (exact, not heuristic)</td></tr>
+  </tbody>
+</table>
+
+<p>A pin may only use qualifiers that exist, built-in or declared, so a misspelled qualifier is an
+error rather than a silently meaningless string. The declared tier is <em>visibility</em>: pin the
+<code>Store</code> methods with <code>io(database)</code>, and any other function that acquires the
+effect, through any indirection, surfaces in the PR as an architecture violation. The <em>hard
+wall</em> is the import restriction (<code>TS-P01</code>): only <code>internal/store</code> may
+import the database driver. Use both together.</p>
+
+<h3>The scoping model</h3>
+
+<div class="grid2">
+  <div class="card"><h4>Function scope: computed</h4>
+    <p class="muted">Effects, frames, contracts, and variants are properties of a single function,
+    derived from its body and its callees. No boundary, no region to defend, only a gradient.</p></div>
+  <div class="card"><h4>Package scope: declared</h4>
+    <p class="muted">Import allowlists, dependency bans, dispatch closure, and layering can only be
+    package-scoped, because Go's import granularity is the package.</p></div>
+</div>
+
+<p>Restrictions are declared with <code>//tiger:restrict ...</code> in the package doc comment,
+and every undeclared axis takes a stated default, absence is never an error. Imports default to
+stdlib-only, dispatch to open, layering to the <code>TS-X03</code> layer file. Weakening is never
+silent, either: <code>TS-P03</code>'s surface-diff obligation also covers a drop in the computed
+<code>TS-P02</code> precision bound (annotation-only, firing only when the bound's value
+changes).</p>
+
+<p>Package restrictions are <em>enablers, not tiers</em>. They determine the
+<em>precision</em> of the function-level checks, not whether those checks run. A package that
+permits dynamic dispatch still gets effect analysis, as a conservative over-approximation at
+lower confidence. The result is a precision gradient rather than a wall, which matters because a
+wall gets argued about, eroded, and exempted, and a computed property does not.</p>
+
+<!-- ============================================================= -->
+<h2 id="assert">The assert package</h2>
+
+<p>Go has no <code>assert</code>. This is the single largest gap between TigerStyle and idiomatic
+Go, and nothing else works until you close it. Draw the line clearly and keep it drawn:</p>
+
+<div class="callout danger"><span class="label">The line</span>
+An error is an expected operating condition the caller must handle. An assertion failure means
+the code is wrong, and the only correct response to wrong code is to crash.</div>
+
+<p>A disk returning <code>ErrNotExist</code> is an error. A function receiving a negative length
+is a bug, and returning an error for it launders the bug into a caller who can do nothing about
+it either. Assert it and die. Assertions stay <strong>enabled in production</strong>. The ones
+you compile out only ever protected your test suite. They downgrade correctness bugs into
+liveness bugs, which is the trade you want.</p>
+
+<table>
+  <thead><tr><th>Function</th><th>Use</th></tr></thead>
+  <tbody>
+    <tr><td><code>assert.Ok(cond, msg)</code></td><td>The general form. <code>msg</code> must be a constant string; no allocation on the fast path.</td></tr>
+    <tr><td><code>assert.Implies(a, b, msg)</code></td><td>The Go replacement for single-line <code>if (a) assert(b)</code>, which gofmt forbids.</td></tr>
+    <tr><td><code>assert.Equal(got, want, msg)</code></td><td>Equality with both values in the failure message.</td></tr>
+    <tr><td><code>assert.Between(v, low, high, msg)</code></td><td>Inclusive range check. Say what you mean about the ends of a range.</td></tr>
+    <tr><td><code>assert.Index(i, count, msg)</code></td><td>Valid index into a container of length <code>count</code>.</td></tr>
+    <tr><td><code>assert.NoError(err, msg)</code></td><td>Only where an error is structurally impossible (e.g. writing to <code>bytes.Buffer</code>).</td></tr>
+    <tr><td><code>assert.Unreachable(msg)</code></td><td>The default arm of a switch over a closed set.</td></tr>
+    <tr><td><code>assert.Fail(format, args...)</code></td><td>Formatted failure. Call inside an <code>if</code>, never as the whole assertion.</td></tr>
+    <tr><td><code>assert.Invariant(id, cond)</code></td><td>Assert a named invariant; see the invariant vocabulary below. At run time this is <code>Ok</code>; the ID exists for the analyzer (<code>TS-A07</code>–<code>A09</code>). Generic over <code>~string</code>, so assert imports nothing.</td></tr>
+    <tr><td><code>assert.Violates(id, func())</code></td><td>Runs the function and fails unless it violates the named invariant, the negative-space proof <code>TS-A09</code> requires. Foreign panics are re-raised, not swallowed.</td></tr>
+  </tbody>
+</table>
+
+<p>Two Go-specific traps shape the API. Variadic arguments are boxed at the call site before the
+callee tests anything, so there is no formatted variant of <code>Ok</code>. Formatting lives
+behind an <code>if</code> that only runs on failure. And inlining has a budget, so the failure
+path is a separate <code>//go:noinline</code> function; the fast path compiles down to a
+predictable branch.</p>
+
+<!-- ============================================================= -->
+<h2 id="invariants">The invariant vocabulary</h2>
+
+<p>Stop passing strings to assertions. Declare each invariant once, in one package, and reference
+it by ID. Properties an analyzer could never see in two boolean expressions become reference
+counting and set equality.</p>
+
+<pre><code><span class="muted">// Package inv declares every invariant the storage engine enforces.</span>
+package inv
+
+type ID string
+
+const (
+    HeaderChecksum    ID = "header-checksum"    <span class="muted">// Header checksum matches the payload.</span>
+    HeaderSize        ID = "header-size"        <span class="muted">// Header occupies exactly HeaderSizeBytes.</span>
+    SequenceMonotonic ID = "sequence-monotonic" <span class="muted">// Sequence numbers never decrease within a term.</span>
+)</code></pre>
+
+<pre><code>func encodeHeader(target []byte, h Header) {
+    assert.Invariant(inv.HeaderSize, len(target) == HeaderSizeBytes)
+    assert.Invariant(inv.HeaderChecksum, h.Checksum == checksum(h.Payload))
+}</code></pre>
+
+<p>Three rules make the vocabulary load-bearing:</p>
+
+<div class="layers">
+  <div class="layer">
+    <div class="num">1</div>
+    <div class="body"><div class="t">TS-A07: every invariant asserted in at least two functions</div><div class="d">Pair assertion, restated as something countable. Asserted once = misfiled or under-defended.</div></div>
+    <div class="owner"><span class="pill b">invariantrefs</span></div>
+  </div>
+  <div class="layer">
+    <div class="num">2</div>
+    <div class="body"><div class="t">TS-A08: symmetric boundaries assert the same set</div><div class="d">encode/decode, marshal/unmarshal, write/read pairs must defend identical invariant sets.</div></div>
+    <div class="owner"><span class="pill b">invariantsymmetry</span></div>
+  </div>
+  <div class="layer">
+    <div class="num">3</div>
+    <div class="body"><div class="t">TS-A09: every invariant has a test that violates it</div><div class="d">If no test can make it fail, the invariant is unreachable or the assertion is wrong.</div></div>
+    <div class="owner"><span class="pill b">invariantnegative</span></div>
+  </div>
+</div>
+
+<p>What falls out: grep an invariant and get every site defending it; the invariant list is a
+design document that cannot go stale (a deleted assertion fails <code>TS-A07</code>); and a fake
+invariant costs more work than thinking of a real one.</p>
+
+<!-- ============================================================= -->
+<h2 id="directives">Directive reference</h2>
+
+<p>All source declarations share one namespace: <code>//tiger:&lt;verb&gt;</code>, following Go's
+own directive convention (<code>//go:build</code>, <code>//go:generate</code>). Three kinds,
+with different lifecycles:</p>
+
+<h3>Pins</h3>
+<p>A pin is computed by default and blocking once written. The analyzer infers the fact and reports changes; writing the
+directive freezes the fact into a blocking contract. Function-scoped pins attach to exported
+functions and methods only, and each pin bounds its entire callee subtree (<code>TS-F02</code>).
+A pin changes nothing at run time, only what CI enforces.</p>
+
+<table>
+  <thead><tr><th>Directive</th><th>Locks</th><th>Rule</th></tr></thead>
+  <tbody>
+    <tr><td><code>//tiger:effects io(disk), mutate(r.log)</code></td><td>The function's effect set, exactly: undeclared effects fail, and so do declared-but-absent ones. Purity is spelled <code>//tiger:effects none</code></td><td>TS-F01</td></tr>
+    <tr><td><code>//tiger:frame r.log, r.checkpoint</code></td><td>What the function may write; writes outside the frame fail</td><td>TS-F07</td></tr>
+    <tr><td><code>//tiger:variant len(pending)</code></td><td>Loop termination measure: strictly decreases on every back edge, bounded below</td><td>TS-V01</td></tr>
+    <tr><td><code>//tiger:requires len(target) == HeaderSizeBytes</code></td><td>Precondition: discharged statically at call sites where provable; degrades to a runtime assertion where not</td><td>TS-V03</td></tr>
+    <tr><td><code>//tiger:ensures result.Checksum == checksum(result.Payload)</code></td><td>Postcondition: same discharge model</td><td>TS-V03</td></tr>
+  </tbody>
+</table>
+
+<h3>Intent declarations</h3>
+<p>These are commitments about design, not observations about code. Nothing to infer, you state
+them first, and the analyzer enforces their consequences.</p>
+
+<table>
+  <thead><tr><th>Directive</th><th>Commits to</th><th>Rule</th></tr></thead>
+  <tbody>
+    <tr><td><code>//tiger:owner</code></td><td>Single-owner state: no exported fields, no <code>sync</code> primitives, no copies</td><td>TS-C10</td></tr>
+    <tr><td><code>//tiger:hot</code></td><td>Hot path: effect set at most <code>{mutate}</code>, zero allocation, cross-checked against the profiler</td><td>TS-F03</td></tr>
+    <tr><td><code>//tiger:wire</code></td><td>Wire type: field order is the format, explicit padding, compile-time size assertion</td><td>TS-K06</td></tr>
+    <tr><td>package restriction set</td><td>Imports, dispatch closure, dependency bans, per package</td><td>TS-P01</td></tr>
+  </tbody>
+</table>
+
+<h3>Escape hatches</h3>
+
+<p>An escape hatch is earned, reasoned, and never silent.</p>
+
+<div class="callout warn"><span class="label">The admission test</span>
+An escape hatch exists only where the restricted dialect eliminates something reality
+requires, where <em>no in-dialect rewrite can comply</em>. This is the <strong>admission
+test</strong>, and inconvenience never qualifies: the primary consumer is an AI agent, and an
+agent offered a cheaper path than conforming will take it. A directive's reason is
+shape-checked (verb known, reason present, <code>TS-L09</code>), never truth-checked, so every
+escape in the tree also surfaces as a standing <strong>advisory finding on every run</strong>,
+and the per-package directive count stays a first-class ratchet metric (<code>TS-D06</code>).</div>
+
+<table>
+  <thead><tr><th>Directive</th><th>Status</th><th>Rule</th></tr></thead>
+  <tbody>
+    <tr><td><code>//tiger:batched &lt;reason&gt;</code></td><td>The one admitted escape: an external system that only accepts per-item IO is a fact of the world no rewrite removes</td><td>TS-M10</td></tr>
+    <tr><td><code>//tiger:bounded &lt;reason&gt;</code></td><td><strong>Withdrawn</strong>: fails the admission test. Every terminating loop has an in-dialect shape, an explicit cap with an assert or error on exhaustion, or the <code>TS-S03</code> event-loop form. The verb does not parse; it is an unknown-verb error</td><td>TS-S02</td></tr>
+    <tr><td><code>//tiger:&lt;rule-id&gt; &lt;reason&gt;</code></td><td><strong>Gated</strong>: ships, if ever, together with the first heuristic rules and the <code>TS-D06</code> ratchet (mechanism and control in one release). Until then, an unknown-verb error</td><td>TS-L09</td></tr>
+  </tbody>
+</table>
+
+<p>There is no <code>//nolint</code>-style dismissal anywhere in the dialect. When a rule fires,
+the paths out are: fix the code (the finding names the compliant shape), declare the one earned
+escape if the world forces the shape, or, if you believe the finding is wrong, file a bug,
+because a false positive on a blocking rule is a defect in the analyzer, not a condition your
+code absorbs.</p>
+
+<h4>Example: the uncapped loop, and the escape that earns its place</h4>
+
+<pre><code><span class="muted">// First draft — the retry loop spins forever on a permanently-failing hook.</span>
+func (n *Notifier) Flush(ctx context.Context) error {
+	for !n.queue.Empty() {                      <span class="muted">// TS-S02 fires: no derivable bound</span>
+		for _, hook := range n.queue.Next() {
+			if err := post(ctx, hook); err != nil {
+				n.queue.Requeue(hook)
+			}
+		}
+	}
+	return nil
+}</code></pre>
+
+<p>There is no directive to reach for. The fix is in-dialect. Make the retry budget a real,
+named number, and decide what exhaustion means (undelivered hooks are an expected condition, so
+an error, not an assert):</p>
+
+<pre><code><span class="muted">// FlushPassesMax = first attempt + 2 retries.</span>
+const FlushPassesMax = 3
+
+func (n *Notifier) Flush(ctx context.Context) error {
+	for pass := 0; pass &lt; FlushPassesMax; pass++ {   <span class="muted">// bound is counter-derived — proved</span>
+		if n.queue.Empty() {
+			break
+		}
+		<span class="cmd">//tiger:batched provider offers no bulk endpoint; contract caps us at 10 rps</span>
+		for _, hook := range n.queue.Next() {
+			if err := post(ctx, hook); err != nil {
+				n.queue.Requeue(hook)
+			}
+		}
+	}
+	if !n.queue.Empty() {
+		return fmt.Errorf("%d hooks undelivered after %d passes", n.queue.Len(), FlushPassesMax)
+	}
+	return nil
+}</code></pre>
+
+<pre><code><span class="muted">$</span> <span class="cmd">tiger check ./...</span>
+notifier.go:18:3: TS-L09 [advisory]: escape //tiger:batched — "provider offers
+no bulk endpoint; contract caps us at 10 rps" (unverified claim; standing review)
+<span class="muted">exit status 0 — green build; the claim stays on the report for as long as the escape exists</span></code></pre>
+
+<p class="muted">The full developer-seat walkthrough lives in the
+<a href="features/ENG-147-tiger-check-wave-1/directives-explainer.html">directives explainer</a>.</p>
+
+<!-- ============================================================= -->
+<h2 id="rules">The rule catalogue</h2>
+
+<p>145 rules across 15 areas. Every rule has an ID (<code>TS-&lt;area&gt;&lt;nn&gt;</code>), a
+rationale tracing to a named benefit (B0–B8), and an enforcement mechanism. Enforcement levels:
+<strong>auto</strong> (off-the-shelf linter), <strong>custom</strong> (an analyzer specified in
+the implementation plan), <strong>partial</strong> (heuristic, expect false positives),
+<strong>runtime</strong> (test or CI gate), <strong>review</strong> (human judgment; the
+reason is always that the declaration is a claim about the world). Severity is blocking unless
+stated; on a legacy codebase, start advisory and ratchet per package.</p>
+
+<table>
+  <thead><tr><th>Area</th><th>IDs</th><th>What it covers</th><th>Flagship rule</th></tr></thead>
+  <tbody>
+    <tr><td>Safety and control flow</td><td>TS-S01–S22</td><td>No recursion, bounded loops, 70-line functions, no globals/unsafe/reflection, named constants with checked derivations</td><td><code>TS-S22</code>: every limit constant carries a derivation the analyzer evaluates, the only rule that catches a <em>stale</em> number</td></tr>
+    <tr><td>Assertions and invariants</td><td>TS-A01–A09</td><td>Density ≥ 2 per function, pre/postconditions asserted, the invariant vocabulary</td><td><code>TS-A01</code>: the rule that carries most of the safety, and the one teams quietly drop</td></tr>
+    <tr><td>Quantities and types</td><td>TS-Q01–Q03</td><td>Index/Count/Bytes as named types; parse, don't validate; units are types</td><td><code>TS-Q02</code>: exported functions take domain types, closing the check-to-use gap structurally</td></tr>
+    <tr><td>Errors</td><td>TS-E01–E08</td><td>Every error handled, wrap once with <code>%w</code>, minimal return arity, no nil-nil</td><td><code>TS-E01</code>: best-evidenced rule in the document (USENIX catastrophic-failures study)</td></tr>
+    <tr><td>Concurrency</td><td>TS-C01–C13</td><td>Owner goroutines over locks, bounded channels, ctx everywhere, one paradigm per package</td><td><code>TS-C10</code> (<code>//tiger:owner</code>): banning the mutex forces the message-passing design</td></tr>
+    <tr><td>Effects and frames</td><td>TS-F01–F08</td><td>The effect lattice, narrowing, frames, hot paths, spawn discipline (F06 deleted, ID retired)</td><td><code>TS-F07</code>: frames make "which function could have written this value" one query</td></tr>
+    <tr><td>Termination and contracts</td><td>TS-V01–V03</td><td>Loop variants, totality, declared preconditions discharged at call sites</td><td><code>TS-V03</code>: unproven obligations degrade to runtime assertions, never blocked on the analyzer's incompleteness</td></tr>
+    <tr><td>Surfaces and injectability</td><td>TS-I01–I07</td><td>Nondeterminism through declared surfaces, simulated + production implementations, one conformance suite (I02 deleted, ID retired)</td><td><code>TS-I05</code>: interfaces express every fault the spec permits, "the rule that decides whether any of the rest is worth anything"</td></tr>
+    <tr><td>Memory and performance</td><td>TS-M01–M11</td><td>Preallocation, zero-alloc hot paths, pooled-buffer hygiene, no IO in loops, batching</td><td><code>TS-M10</code>: you can't check that a design batches, but you can ban its opposite</td></tr>
+    <tr><td>Abstraction</td><td>TS-X01–X03</td><td>No single-implementation interfaces, no pass-through methods, declared import graph</td><td><code>TS-X03</code>: layering is the enforceable residue of architecture</td></tr>
+    <tr><td>Canonical form</td><td>TS-K01–K06</td><td>One spelling per construct, closed-world dispatch, total declaration order, no shadowing</td><td><code>TS-K03</code>: closed dispatch is the enabling rule, precision for everything upstream</td></tr>
+    <tr><td>Mechanical refactoring</td><td>TS-R01–R03</td><td>Proven transforms, surface diffs, generated ≡ hand-written</td><td><code>TS-R01</code>: the cash-out. A proven transform does not need review</td></tr>
+    <tr><td>Naming</td><td>TS-N01–N15</td><td>MixedCaps, closed abbreviation vocabulary, units last, banned empty tokens, approved name pairs</td><td><code>TS-N12</code>: <code>data</code>, <code>manager</code>, <code>helper</code>… banned by dictionary</td></tr>
+    <tr><td>Layout and comments</td><td>TS-L01–L13</td><td>gofumpt, 100 columns, doc comments, "always say why", every deviation carries a reason</td><td><code>TS-L12</code>: a doc comment may not restate its identifier, rejecting <code>// Count returns the count.</code></td></tr>
+    <tr><td>Dependencies and tooling</td><td>TS-D01–D07</td><td>Stdlib-only where restrictions permit, vendored and pinned, Go scripts not shell, ratcheted budgets</td><td><code>TS-D06</code>: per-package budgets may only decrease, a ratchet can't be raised at 2am</td></tr>
+    <tr><td>Testing and determinism</td><td>TS-T01–T11</td><td>Injected time/rand/IDs, fuzz targets, error-path coverage floor, mutation score, run-twice-and-diff</td><td><code>TS-T08</code>: mutation score is the anti-Goodhart oracle, the one metric that can't be raised without tests genuinely improving</td></tr>
+    <tr><td>Structure (scoping)</td><td>TS-P01–P03</td><td>Package restriction sets, transitive precision bound, weakening visible in the surface diff</td><td><code>TS-P02</code>: your precision is bounded by your weakest transitive import</td></tr>
+  </tbody>
+</table>
+
+<p class="muted">Full rule text, rationale chains, and the complete traceability matrix live in
+<code>Tiger Specification.md</code>. Distribution: B3 local reasoning (44 rules) and B2 short
+defect distance (40) carry the document; 9 rules are pure convention, and the spec says to know
+that number rather than pretend it is zero.</p>
+
+<div class="callout tip"><span class="label">Thresholds are calibrated, not derived</span>
+Twelve numbers (70 lines, 100 columns, cyclomatic 10, nesting 3, …) are calibration points. The
+<em>existence</em> of each bound is justified by a benefit; the particular number is a starting
+point. Changing a number needs data from your codebase and is normal. Removing a bound needs an
+argument against the benefit, and is not.</div>
+
+<!-- ============================================================= -->
+<h2 id="surfaces">Surfaces and simulation</h2>
+
+<p>Co-equal with the rule catalogue, not a testing detail. The rules make properties checkable;
+surfaces make the checked properties describe the running system rather than a model of it.</p>
+
+<p>Every nondeterministic effect (time, randomness, IO, scheduling, identity) must reach the
+system through a declared surface (<code>TS-I01</code>). A function calling <code>time.Now()</code>
+directly cannot be replayed, and a system with one such call cannot be simulated. Prefer
+<em>description</em> (code returns commands as values; something else interprets them) where the
+shape allows; require <em>injection</em> (code takes a <code>Storage</code> interface) everywhere
+else.</p>
+
+<div class="layers">
+  <div class="layer">
+    <div class="num">1</div>
+    <div class="body"><div class="t">Design the interface around its faults (TS-I05)</div><div class="d">If a real disk can produce a torn write and your Storage interface cannot represent one, the simulator is structurally blind to that bug class and runs green forever. Uglier interfaces are the point.</div></div>
+    <div class="owner"><span class="pill a">review</span></div>
+  </div>
+  <div class="layer">
+    <div class="num">2</div>
+    <div class="body"><div class="t">Two implementations, one conformance suite (TS-I03)</div><div class="d">Every surface has a production and a simulated implementation, and both pass the same suite, or you have verified a world that does not exist.</div></div>
+    <div class="owner"><span class="pill b">surfaces</span></div>
+  </div>
+  <div class="layer">
+    <div class="num">3</div>
+    <div class="body"><div class="t">The simulated one is the adversary (TS-I04)</div><div class="d">Inject every fault the spec allows, not the ones you have happened to observe. A fake that behaves better than reality hides the bugs the simulator exists to find.</div></div>
+    <div class="owner"><span class="pill b">runtime</span></div>
+  </div>
+  <div class="layer">
+    <div class="num">4</div>
+    <div class="body"><div class="t">Adapters contain no logic (TS-I06); fidelity is config (TS-I07)</div><div class="d">A branch in an adapter is a decision the simulator never sees. The same suite runs fully simulated, partially simulated, and fully real, differing only in injection config.</div></div>
+    <div class="owner"><span class="pill b">surfaces</span></div>
+  </div>
+</div>
+
+<!-- ============================================================= -->
+<h2 id="cli">The tiger CLI</h2>
+
+<p>One command-line program, ordinary static analysis built on Go's <code>go/analysis</code>
+framework, the same family as <code>go vet</code>. Deterministic: no LLM, no network; the same
+source tree produces byte-identical output, verified in CI by running the suite twice and
+diffing. All custom analyzers (57 planned; the 20 computed-only ones are wave&nbsp;1) ship in one
+binary via subcommand dispatch, and as a golangci-lint module plugin so they run in the same pass
+as the ~50 off-the-shelf linters the config already enables.</p>
+
+<table>
+  <thead><tr><th>Where</th><th>When</th><th>Result</th></tr></thead>
+  <tbody>
+    <tr><td>Your machine</td><td><code>tiger check ./...</code>, any time</td><td>Reports and blocks before you push</td></tr>
+    <tr><td>CI</td><td>Automatic, every pull request</td><td>Reports in the PR; a broken pin or violated rule fails the check; the reviewer sees both</td></tr>
+  </tbody>
+</table>
+
+<p><strong>Exit codes</strong>: 0 clean, 1 at least one blocking finding, 2 operational failure
+(any package failing to load or any analyzer failing to run exits 2). Partial results are
+never presented as a clean or complete run.</p>
+
+<h3>tiger golangci</h3>
+
+<p>Tiger enforces only the custom rules; the auto rules live in golangci-lint. That delegation
+can silently rot. A project's <code>.golangci.yml</code> missing half the required linters is
+half the dialect unenforced with nothing saying so. <code>tiger golangci</code> closes the gap:
+it audits the project's golangci-lint configuration against the registry's auto-rule baseline
+(every required linter enabled, every baseline setting at its expected value; extra linters and
+settings always pass, but a stricter-than-baseline value currently fails with a message saying it
+is stricter; direction-aware comparison is future work), reporting each gap as a finding that
+names the auto rule that stopped being enforced. <code>tiger golangci --init</code> generates the baseline config for a project
+that has none (module path filled in from <code>go.mod</code>) and refuses to touch an existing
+file. Exit codes mirror <code>tiger check</code>.</p>
+
+<pre><code><span class="muted">$</span> <span class="cmd">tiger golangci</span>
+.golangci.yml: TS-E01: errcheck is not enabled — every error must be handled;
+enable errcheck with check-blank: true
+.golangci.yml: TS-S04: funlen.lines is 120, baseline requires 70
+<span class="muted">exit status 1 — the dialect is only partially enforced until the config conforms</span></code></pre>
+
+<p><strong>Which commands a project runs:</strong></p>
+
+<table>
+  <thead><tr><th>Setup</th><th>Commands</th><th>What runs</th></tr></thead>
+  <tbody>
+    <tr><td>Full adoption</td><td><code>golangci-lint run</code> (with tiger plugin) + <code>tiger golangci</code></td><td>Auto + custom rules in one pass; config audited</td></tr>
+    <tr><td>Without the plugin</td><td><code>golangci-lint run</code> + <code>tiger check ./...</code> + <code>tiger golangci</code></td><td>Two engines, two reports; config audited</td></tr>
+    <tr><td>Tiger only</td><td><code>tiger check ./...</code></td><td>Custom rules only</td></tr>
+  </tbody>
+</table>
+
+<p>Three output severities. Severity is defined once per rule in the registry and applied by the
+driver, never decided inside an analyzer (ADR-0002):</p>
+
+<table>
+  <thead><tr><th>Severity</th><th>Behaviour</th><th>Examples</th></tr></thead>
+  <tbody>
+    <tr><td><strong>Blocking</strong></td><td>Fails the PR check (exit 1)</td><td>Violated pin, broken rule, weakened declaration without a directive (<code>TS-P03</code>)</td></tr>
+    <tr><td><strong>Advisory</strong></td><td>Printed and counted; never affects the exit code. Ratcheted per package on legacy code</td><td>Every escape directive present in the tree (<code>TS-L09</code>), structural rules mid-adoption, declaration-to-use distance</td></tr>
+    <tr><td><strong>Reported</strong></td><td>Dashboard and PR annotation only</td><td>Effect changes on unpinned functions, transitive precision bound (<code>TS-P02</code>)</td></tr>
+  </tbody>
+</table>
+
+<div class="callout warn"><span class="label">Severity under other drivers</span>
+The blocking/advisory/reported distinction is guaranteed under the <code>tiger</code> CLI, which
+consults the registry. A plain <code>golangci-lint run</code> with the tiger plugin treats all
+tiger findings uniformly until the plugin configuration maps severities (ADR-0002). In wave 1
+this costs little (19 of the 20 analyzers are blocking-only), but know which driver you're
+reading.</div>
+
+<p>Alongside the analyzer, CI runs the runtime gates: <code>-race</code> always, goroutine-leak
+checks per package, seed-logged simulation runs, error-path coverage with its own floor, the
+nightly mutation score, the run-twice-and-diff determinism check, and the per-package budget
+ratchet (<code>TS-D06</code>). The ratchet covers complexity, directive count, skipped tests,
+assertion density, and hot-benchmark allocations, all committed to a file that can only
+decrease.</p>
+
+<!-- ============================================================= -->
+<h2 id="adoption">Adoption</h2>
+
+<p>The chains only pay when complete, so build in dependency order rather than by ease.
+Off-the-shelf linters reach roughly 80% mechanization in an afternoon; the promoted rules reach
+96% for about 40 cheap analyzers; the last few percent costs an effect system, a points-to
+analysis, an abstract interpreter, and a refactoring prover.</p>
+
+<div class="layers">
+  <div class="layer">
+    <div class="num">0</div>
+    <div class="body"><div class="t">Stage 0–2: the free stuff, the assert package, structural rules</div><div class="d">Auto rules with no false positives (one afternoon); assert with density-on-the-diff via --new-from-rev; funlen/cyclop/globals/depguard advisory, ratcheted per package.</div></div>
+    <div class="owner"><span class="pill b">shipped</span></div>
+  </div>
+  <div class="layer">
+    <div class="num">1</div>
+    <div class="body"><div class="t">Chain 1: ownership</div><div class="d">TS-S11, S12, C10, C11, X01, then F07. Makes frames checkable; "who wrote this value" becomes a query. Highest value, prerequisite for everything else.</div></div>
+    <div class="owner"><span class="pill a">start here</span></div>
+  </div>
+  <div class="layer">
+    <div class="num">2</div>
+    <div class="body"><div class="t">Chain 2: surfaces</div><div class="d">TS-I01–I07. Independent of chain 1; what makes the test suite worth trusting. TS-I05 alone is worth more than any three analyzers. Do it early.</div></div>
+    <div class="owner"><span class="pill a">parallel</span></div>
+  </div>
+  <div class="layer">
+    <div class="num">3</div>
+    <div class="body"><div class="t">Chain 3: effects</div><div class="d">TS-K03 first (dispatch precision gates the analysis), then TS-F01–F08. Converts six heuristics into exact checks, so it removes analyzers as well as adding them.</div></div>
+    <div class="owner"><span class="pill b">after K03</span></div>
+  </div>
+  <div class="layer">
+    <div class="num">4</div>
+    <div class="body"><div class="t">Chain 4: termination</div><div class="d">TS-S01, V01, V02. Cheap, self-contained, makes worst-case behaviour a stated property.</div></div>
+    <div class="owner"><span class="pill b">cheap</span></div>
+  </div>
+  <div class="layer">
+    <div class="num">5</div>
+    <div class="body"><div class="t">Chain 5: contracts</div><div class="d">TS-A07–A09, then V03. Most expensive and last; it depends on a mature invariant vocabulary. Do not start here.</div></div>
+    <div class="owner"><span class="pill w">last</span></div>
+  </div>
+  <div class="layer">
+    <div class="num">6</div>
+    <div class="body"><div class="t">Chain 6: canonical form</div><div class="d">TS-K01–K06, then R01. Cheap and auto-fixable, runs in parallel, but only pays off once the refactoring prover exists.</div></div>
+    <div class="owner"><span class="pill b">parallel</span></div>
+  </div>
+</div>
+
+<p>Measure one number throughout: <strong>the fraction of merged lines that no human read.</strong>
+If it is not moving, something in a chain is incomplete and the analyzers you added are
+decorative.</p>
+
+<!-- ============================================================= -->
+<h2 id="limits">Limits, honestly</h2>
+
+<h3>What no amount of tooling fixes</h3>
+
+<p>Six items remain in a codebase where every rule is enforced, and they are all the same kind of
+thing: is this the right invariant; are the derivation's inputs true; is the contract right; is
+the fault model complete; should this effect be permitted; is this the right product.</p>
+
+<div class="callout danger"><span class="label">The specification gap</span>
+A machine can prove code satisfies a specification. Nothing can prove the specification is the
+right one, because rightness is a relation between the specification and the world, and the code
+contains no representation of the world. This is not a limitation to engineer around. It is the
+correct final resting place for human attention.</div>
+
+<h3>The engineering limits</h3>
+
+<ul>
+  <li><strong>Goodhart applies with force.</strong> Once conformance is the merge criterion,
+  conformance gets optimized. The defence is the proxy test plus one genuine external oracle,
+  the mutation score (<code>TS-T08</code>). A rising conformance score against a flat mutation
+  score is a fire.</li>
+  <li><strong>False positives are the real failure mode.</strong> An analyzer wrong 2% of the time
+  on a blocking rule, across a thousand merges, is twenty forced directives, and directives are
+  how a dialect degrades into a style guide with extra steps. Treat every forced directive as a
+  bug report against the analyzer.</li>
+  <li><strong>Cost is exponential in the tail.</strong> Whether the last few percent is worth an
+  effect system and a refactoring prover depends entirely on how expensive your defects are,
+  which is why this is a good idea for a database and a bad idea for most software.</li>
+  <li><strong>You are hiring for a language nobody knows.</strong> Onboarding is longer and some
+  good engineers will not want to work this way. The precision gradient is the mitigation, and it
+  is a partial one.</li>
+</ul>
+
+<!-- ============================================================= -->
+<h2 id="status">Status and open questions</h2>
+
+<table>
+  <thead><tr><th>Item</th><th>Status</th></tr></thead>
+  <tbody>
+    <tr><td>Rule catalogue (145 rules, Parts I–IV)</td><td><span class="pill b">stable</span>: agreed in discussion; 30 merge-time benefit assignments still unreviewed</td></tr>
+    <tr><td>Scoping model (Part II, TS-P01–P03)</td><td><span class="pill b">confirmed 2026-08-12</span>: adversarial review; amended: per-axis defaults, <code>//tiger:restrict</code> form, stdlib fact-table semantics, TS-P03 extension to computed-bound drops adopted</td></tr>
+    <tr><td>Infer-then-pin (pins)</td><td><span class="pill b">adopted 2026-08-12</span>: specified in Part II ("Pins"); TS-F01/TS-F02/TS-F07/TS-L09 rewritten in its terms; severity taxonomy and qualifier vocabulary added</td></tr>
+    <tr><td>Directive prefix <code>//tiger:</code>, CLI <code>tiger</code></td><td><span class="pill b">decided</span>: renamed from <code>//tigerstyle:</code>; rationale recorded in Part II</td></tr>
+    <tr><td>TS-I01–I07, TS-P01–P03 five-question test</td><td><span class="pill b">run 2026-08-12</span>: nine pass; TS-I02 deleted (folded into TS-I03, per the TS-F06 precedent); matrix recomputed by script</td></tr>
+    <tr><td>assert package</td><td><span class="pill b">shipped, full test suite</span>: <code>Invariant</code>/<code>Violates</code> generic over <code>~string</code>; surface-tested in the repo, cross-package coupling proven by the ledger example</td></tr>
+    <tr><td>Repository</td><td><span class="pill b">created 2026-08-12</span>: <code>github.com/kapetan-io/tiger</code> at <code>~/Development/tiger</code>; assert + ledger example green under <code>go test</code>, Stage 0 config shipped at <code>config/golangci.yml</code></td></tr>
+    <tr><td>Escape-hatch admission test</td><td><span class="pill b">adopted 2026-08-12</span>: ADR-0003 + spec amendment: an escape exists only where no in-dialect rewrite can comply; <code>//tiger:bounded</code> withdrawn, <code>//tiger:batched</code> sole escape, deviation form gated to heuristic waves + TS-D06 ratchet, every escape a standing advisory finding</td></tr>
+    <tr><td>Wave-1 blueprint (ENG-147)</td><td><span class="pill b">reviewed, PASS 2026-08-12</span>: <code>docs/features/ENG-147-tiger-check-wave-1/blueprint.md</code>: CLI (<code>check</code> + <code>golangci [--init]</code>), directive grammar with round-trip contract, whole-dialect registry, corpus conventions, 20 computed-only analyzers, golangci plugin at end of v1</td></tr>
+    <tr><td>Analyzers (57 planned)</td><td><span class="pill w">unbuilt; wave 1 (20) is next</span>: effort estimates removed; the binding constraint is the acceptance contract (analysistest corpus per rule, report bytes = pin syntax, no silent scope cuts)</td></tr>
+  </tbody>
+</table>
+
+<footer>
+  Generated from <code>Tiger Specification.md</code> (Parts I–V, amended 2026-08-12), the wave-1
+  Blueprint (<code>docs/features/ENG-147-tiger-check-wave-1/blueprint.md</code>), ADRs 0001–0003,
+  and the 2026-08 design sessions. Styling per the html-explainer template. Companion page:
+  <a href="features/ENG-147-tiger-check-wave-1/directives-explainer.html">the directives
+  explainer</a> (escape hatches and the admission test, from the developer's seat).
+</footer>
+
+</main>
+</div>
+</body>
+</html>

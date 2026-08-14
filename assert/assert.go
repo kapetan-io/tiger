@@ -20,8 +20,8 @@ import (
 
 // Ok panics when cond is false.
 //
-// msg must be a constant string so the call allocates nothing on the fast
-// path. When you need formatting, guard the call yourself:
+// The msg argument must be a constant string so the call allocates nothing
+// on the fast path. When you need formatting, guard the call yourself:
 //
 //	if len(entries) > EntriesMax {
 //		assert.Fail("entries %d exceeds max %d", len(entries), EntriesMax)

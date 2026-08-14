@@ -5,7 +5,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"github.com/thrawn01/tiger/assert"
+
+	"github.com/kapetan-io/tiger/assert"
 )
 
 // ID mirrors the inv package pattern: a project-local ~string type passed to
@@ -17,6 +18,10 @@ const (
 	HeaderChecksum ID = "header-checksum"
 )
 
+// TestPassingAssertionsAreSilent exercises every assertion on inputs
+// that hold.
+//
+// Goal: a passing assertion is silent and allocates nothing observable.
 func TestPassingAssertionsAreSilent(t *testing.T) {
 	require.NotPanics(t, func() {
 		assert.Ok(true, "unused")
@@ -35,23 +40,71 @@ func TestPassingAssertionsAreSilent(t *testing.T) {
 	})
 }
 
+// TestFailingAssertionMessages exercises every assertion on inputs that
+// fail.
+//
+// Goal: each assertion panics with its documented, stable message format.
 func TestFailingAssertionMessages(t *testing.T) {
 	for _, test := range []struct {
 		name string
 		fn   func()
 		want string
 	}{
-		{"OkFalse", func() { assert.Ok(false, "boom") }, "assertion failed: boom"},
-		{"ImpliesViolated", func() { assert.Implies(true, false, "open implies locked") }, "assertion failed: implication violated: open implies locked"},
-		{"EqualDiffers", func() { assert.Equal(2, 3, "entry count") }, "assertion failed: entry count: got 2, want 3"},
-		{"BetweenBelowLow", func() { assert.Between(1, 5, 9, "level") }, "assertion failed: level: 1 not in [5, 9]"},
-		{"BetweenAboveHigh", func() { assert.Between(10, 5, 9, "level") }, "assertion failed: level: 10 not in [5, 9]"},
-		{"IndexNegative", func() { assert.Index(-1, 4, "entry") }, "assertion failed: entry: index -1 out of range [0, 4)"},
-		{"IndexAtCount", func() { assert.Index(4, 4, "entry") }, "assertion failed: entry: index 4 out of range [0, 4)"},
-		{"NoErrorGotOne", func() { assert.NoError(errors.New("disk gone"), "flush") }, "assertion failed: flush: disk gone"},
-		{"Unreachable", func() { assert.Unreachable("unknown opcode") }, "assertion failed: unreachable: unknown opcode"},
-		{"FailFormats", func() { assert.Fail("entries %d exceeds max %d", 12, 8) }, "assertion failed: entries 12 exceeds max 8"},
-		{"InvariantViolated", func() { assert.Invariant(HeaderSize, false) }, "assertion failed: invariant violated: header-size"},
+		{
+			"OkFalse",
+			func() { assert.Ok(false, "boom") },
+			"assertion failed: boom",
+		},
+		{
+			"ImpliesViolated",
+			func() { assert.Implies(true, false, "open implies locked") },
+			"assertion failed: implication violated: open implies locked",
+		},
+		{
+			"EqualDiffers",
+			func() { assert.Equal(2, 3, "entry count") },
+			"assertion failed: entry count: got 2, want 3",
+		},
+		{
+			"BetweenBelowLow",
+			func() { assert.Between(1, 5, 9, "level") },
+			"assertion failed: level: 1 not in [5, 9]",
+		},
+		{
+			"BetweenAboveHigh",
+			func() { assert.Between(10, 5, 9, "level") },
+			"assertion failed: level: 10 not in [5, 9]",
+		},
+		{
+			"IndexNegative",
+			func() { assert.Index(-1, 4, "entry") },
+			"assertion failed: entry: index -1 out of range [0, 4)",
+		},
+		{
+			"IndexAtCount",
+			func() { assert.Index(4, 4, "entry") },
+			"assertion failed: entry: index 4 out of range [0, 4)",
+		},
+		{
+			"NoErrorGotOne",
+			func() { assert.NoError(errors.New("disk gone"), "flush") },
+			"assertion failed: flush: disk gone",
+		},
+		{
+			"Unreachable",
+			func() { assert.Unreachable("unknown opcode") },
+			"assertion failed: unreachable: unknown opcode",
+		},
+		{
+			"FailFormats",
+			func() { assert.Fail("entries %d exceeds max %d", 12, 8) },
+			"assertion failed: entries 12 exceeds max 8",
+		},
+		{
+			"InvariantViolated",
+			func() { assert.Invariant(HeaderSize, false) },
+			"assertion failed: invariant violated: header-size",
+		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			require.PanicsWithValue(t, test.want, test.fn)
@@ -59,6 +112,9 @@ func TestFailingAssertionMessages(t *testing.T) {
 	}
 }
 
+// TestViolatesDetectsTheNamedViolation runs the TS-A09 mechanism forward.
+//
+// Goal: Violates is silent when fn fails exactly the named invariant.
 func TestViolatesDetectsTheNamedViolation(t *testing.T) {
 	require.NotPanics(t, func() {
 		assert.Violates(HeaderSize, func() {
@@ -67,6 +123,9 @@ func TestViolatesDetectsTheNamedViolation(t *testing.T) {
 	})
 }
 
+// TestViolatesFailsWhenNothingIsViolated proves the negative-space check.
+//
+// Goal: an invariant no code violates is itself an assertion failure.
 func TestViolatesFailsWhenNothingIsViolated(t *testing.T) {
 	require.PanicsWithValue(t,
 		"assertion failed: invariant header-size was not violated",
@@ -75,6 +134,9 @@ func TestViolatesFailsWhenNothingIsViolated(t *testing.T) {
 		})
 }
 
+// TestViolatesReRaisesOtherInvariants crosses two invariants.
+//
+// Goal: a different invariant's failure passes through untouched.
 func TestViolatesReRaisesOtherInvariants(t *testing.T) {
 	// A different invariant's failure is not ours to swallow.
 	require.PanicsWithValue(t,
@@ -86,6 +148,9 @@ func TestViolatesReRaisesOtherInvariants(t *testing.T) {
 		})
 }
 
+// TestViolatesReRaisesForeignPanics mixes non-assertion panics in.
+//
+// Goal: panics that are not the named invariant pass through untouched.
 func TestViolatesReRaisesForeignPanics(t *testing.T) {
 	require.PanicsWithValue(t, "unrelated failure", func() {
 		assert.Violates(HeaderSize, func() { panic("unrelated failure") })

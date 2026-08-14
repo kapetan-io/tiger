@@ -1,0 +1,68 @@
+# Tiger repository lint: the Stage 0 set from the Tiger Go Specification's
+# adoption ladder (gofumpt, godot, errcheck, errorlint, nakedret,
+# gochecknoinits, decorder, lll) plus golangci-lint's standard defaults.
+# The custom rules are enforced by this repository dogfooding its own
+# `tiger check ./...` in CI; config/golangci.yml stays the full baseline
+# template that `tiger golangci --init` derives for adopters.
+version: "2"
+
+linters:
+  default: standard
+
+  enable:
+    - decorder        # TS-L03
+    - errorlint       # TS-E03
+    - gochecknoinits  # TS-S10
+    - godot           # TS-L06
+    - lll             # TS-L02
+    - nakedret        # TS-E08
+
+  settings:
+    errcheck:
+      # TS-E01, TS-E02, TS-S20.
+      check-type-assertions: true
+      check-blank: true
+      exclude-functions:
+        # CLI output to the user's streams: there is no meaningful recovery
+        # from a failed print, and the exit code is the contract.
+        - fmt.Fprint
+        - fmt.Fprintf
+        - fmt.Fprintln
+
+    godot:
+      # TS-L06. Comments are sentences.
+      scope: declarations
+      capital: true
+
+    lll:
+      # TS-L02. Two files side by side, nothing behind a scrollbar.
+      line-length: 100
+      tab-width: 4
+
+    nakedret:
+      # TS-E08. Zero means never.
+      max-func-lines: 0
+
+  exclusions:
+    generated: strict
+    presets:
+      - common-false-positives
+
+formatters:
+  enable:
+    - gofumpt  # TS-L01
+    - gci      # TS-L11
+  settings:
+    gofumpt:
+      extra-rules: true
+    gci:
+      sections:
+        - standard
+        - default
+        - prefix(github.com/kapetan-io/tiger)
+      custom-order: true
+
+issues:
+  # No cap. A finding you cannot see is a finding you will not fix.
+  max-issues-per-linter: 0
+  max-same-issues: 0

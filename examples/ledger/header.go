@@ -8,8 +8,8 @@ import (
 	"encoding/binary"
 	"hash/crc32"
 
-	"github.com/thrawn01/tiger/assert"
-	"github.com/thrawn01/tiger/examples/ledger/inv"
+	"github.com/kapetan-io/tiger/assert"
+	"github.com/kapetan-io/tiger/examples/ledger/inv"
 )
 
 // HeaderSizeBytes = 4 checksum + 4 length + 4 sequence.
@@ -22,12 +22,19 @@ type Header struct {
 	Sequence uint32
 }
 
+// Length counts the payload bytes a header frames (TS-Q01: domain
+// quantities are named types, so a swapped argument is a compile error).
+type Length uint32
+
+// Sequence orders frames within the log (TS-Q01).
+type Sequence uint32
+
 // EncodeHeader frames length and sequence into a HeaderSizeBytes buffer,
 // computing the checksum over the payload fields.
-func EncodeHeader(length, sequence uint32) []byte {
+func EncodeHeader(length Length, sequence Sequence) []byte {
 	target := make([]byte, HeaderSizeBytes)
-	binary.BigEndian.PutUint32(target[4:8], length)
-	binary.BigEndian.PutUint32(target[8:12], sequence)
+	binary.BigEndian.PutUint32(target[4:8], uint32(length))
+	binary.BigEndian.PutUint32(target[8:12], uint32(sequence))
 	binary.BigEndian.PutUint32(target[0:4], crc32.ChecksumIEEE(target[4:12]))
 	assert.Invariant(inv.HeaderSize, len(target) == HeaderSizeBytes)
 	assert.Invariant(inv.HeaderChecksum,
