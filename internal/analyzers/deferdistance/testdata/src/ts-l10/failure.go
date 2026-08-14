@@ -24,6 +24,20 @@ func closeAllRange(names []string) error {
 	return nil
 }
 
+// closeAllInWorker loops inside a closure: the frame reset starts a fresh
+// depth, and the loop inside it still queues cleanup without bound.
+func closeAllInWorker(names []string) {
+	go func() {
+		for range names {
+			r, err := openResource()
+			if err != nil {
+				return
+			}
+			defer r.Close() // want `TS-L10: defer inside a loop`
+		}
+	}()
+}
+
 func closeAfterUnrelated(name string) error {
 	r, err := openResource()
 	if err != nil {

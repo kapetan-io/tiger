@@ -16,3 +16,17 @@ func runWithTermination(ctx context.Context, input <-chan int, output chan<- int
 		}
 	}
 }
+
+// drainPending selects with a default clause, so it never blocks: a drain
+// loop bounded by the channel's contents at entry needs no shutdown case.
+func drainPending(pending chan int) int {
+	total := 0
+	for {
+		select {
+		case value := <-pending:
+			total += value
+		default:
+			return total
+		}
+	}
+}

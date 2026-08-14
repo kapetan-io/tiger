@@ -12,8 +12,18 @@ func openResource() (*resource, error) {
 
 type transaction struct{}
 
+func (t *transaction) Begin() {}
+
 func (t *transaction) Rollback() error { return nil }
 
 func beginTransaction() (*transaction, error) {
 	return &transaction{}, nil
 }
+
+type gate struct{}
+
+func (g *gate) Lock() {}
+
+func (g *gate) Unlock() {}
+
+var sharedGate gate

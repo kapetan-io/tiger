@@ -58,3 +58,11 @@ type Finding struct{}
 // SeverityBlocking carries the specification's own severity vocabulary;
 // "blocking" is allowlisted for the same reason.
 const SeverityBlocking = 0
+
+// RoleBinding is a genuine noun — an association record — allowlisted after
+// the querator trial flagged it (constraint 7).
+type RoleBinding struct{}
+
+// ProduceWaiting counts requests currently waiting; "waiting" is
+// allowlisted for the same reason.
+const ProduceWaiting = 0

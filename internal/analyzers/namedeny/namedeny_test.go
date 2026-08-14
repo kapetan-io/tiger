@@ -30,10 +30,12 @@ func (quietRun) Errorf(string, ...any) {}
 // TestAllowFlag proves the -allow flag silences exactly the tokens it
 // names, leaving the rest of the TS-N12 dictionary enforced.
 //
-// Goal: an allowlisted token stays silent while an unlisted token in the
-// same package still fires.
+// Goal: an allowlisted token stays silent — folded to both its singular
+// and plural forms — while an unlisted token in the same package still
+// fires.
 func TestAllowFlag(t *testing.T) {
-	require.NoError(t, namedeny.Analyzer.Flags.Set("allow", "helper=legacy vendor API name"))
+	require.NoError(t, namedeny.Analyzer.Flags.Set(
+		"allow", "helper=legacy vendor API name,items=queue domain noun"))
 	defer func() {
 		require.NoError(t, namedeny.Analyzer.Flags.Set("allow", ""))
 	}()

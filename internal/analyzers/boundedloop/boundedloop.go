@@ -91,7 +91,10 @@ func checkFor(pass *analysis.Pass, loop *ast.ForStmt) {
 
 // checkEventLoop handles a for{} with no condition: the TS-S03 shape (a
 // direct select with a ctx.Done() case), a select missing that case
-// (TS-S03), or no select at all (TS-S02).
+// (TS-S03), or no select at all (TS-S02). A select with a default clause
+// is non-blocking — a drain loop, not an event loop waiting on the outside
+// world — so it needs no shutdown case, matching TS-C05's treatment of the
+// same shape.
 func checkEventLoop(pass *analysis.Pass, loop *ast.ForStmt) {
 	sel := directSelect(loop.Body)
 	if sel == nil {
@@ -102,6 +105,9 @@ func checkEventLoop(pass *analysis.Pass, loop *ast.ForStmt) {
 		})
 		return
 	}
+	if selectHasDefault(sel) {
+		return
+	}
 	if !selectHasDoneCase(sel) {
 		pass.Report(analysis.Diagnostic{
 			Pos:      sel.Pos(),
@@ -109,6 +115,17 @@ func checkEventLoop(pass *analysis.Pass, loop *ast.ForStmt) {
 			Message:  msgSelectNoDone,
 		})
 	}
+}
+
+// selectHasDefault reports whether the select carries a default clause,
+// which makes it non-blocking.
+func selectHasDefault(sel *ast.SelectStmt) bool {
+	for _, clause := range sel.Body.List {
+		if comm, ok := clause.(*ast.CommClause); ok && comm.Comm == nil {
+			return true
+		}
+	}
+	return false
 }
 
 // directSelect returns the first SelectStmt among the block's direct

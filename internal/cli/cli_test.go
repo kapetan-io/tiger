@@ -52,6 +52,21 @@ func TestCheckBlockingFindingsExitOne(t *testing.T) {
 		"tiger: 2 blocking, 0 advisory\n", got.stdout)
 }
 
+// TestCheckSkipsGeneratedFiles covers the driver's generated-file policy.
+//
+// Goal: a violation inside a "Code generated ... DO NOT EDIT." file is never
+// reported — nothing there is hand-fixable — while violations in the
+// package's hand-written files still fire.
+func TestCheckSkipsGeneratedFiles(t *testing.T) {
+	got := run(t, "check", "-C", "testdata/fixtures/generated", "./...")
+	assert.Equal(t, cli.ExitFindings, got.code)
+	assert.Empty(t, got.stderr)
+	assert.Equal(t, "hand.go:7:3: TS-S18: naked panic — route the crash through the assert "+
+		"package (assert.Ok for conditions, assert.Fail for formatted failures, "+
+		"assert.Unreachable for impossible arms) so there is one crash path\n"+
+		"tiger: 1 blocking, 0 advisory\n", got.stdout)
+}
+
 // TestCheckOutputIsDeterministic covers correctness constraint 4.
 //
 // Goal: the same tree produces byte-identical output across runs.
