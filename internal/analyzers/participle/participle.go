@@ -33,18 +33,17 @@ func newAnalyzer() *analysis.Analyzer {
 const minParticiple = 4
 
 // nounAllowlist is the default set of genuine nouns that happen to end in
-// "-ing". "finding" (what an analyzer reports) and "blocking" (the
-// specification's own severity vocabulary) entered the list when this
-// repository's dogfood run flagged them; "binding" (an association record,
-// as in RoleBinding) and "waiting" (a count of waiters, as in
-// ProduceWaiting) entered it when the querator trial did — a false positive
-// on a blocking rule is fixed in the analyzer, per correctness constraint 7.
+// "-ing". Each entry is a false positive on a blocking rule, fixed in the
+// analyzer per correctness constraint 7. The allowlist matches exact
+// tokens, so compounds like "nothing" must be listed separately from
+// "thing".
 var nounAllowlist = map[string]bool{
 	"string": true, "encoding": true, "logging": true, "padding": true,
 	"warning": true, "ring": true, "thing": true, "spring": true,
 	"sibling": true, "setting": true, "king": true, "wing": true,
 	"swing": true, "finding": true, "blocking": true, "binding": true,
-	"waiting": true,
+	"waiting": true, "nothing": true, "something": true, "anything": true,
+	"everything": true,
 }
 
 func run(pass *analysis.Pass) (any, error) {
