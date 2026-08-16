@@ -66,3 +66,18 @@ type RoleBinding struct{}
 // ProduceWaiting counts requests currently waiting; "waiting" is
 // allowlisted for the same reason.
 const ProduceWaiting = 0
+
+// IngestsNothing ends in the indefinite pronoun "nothing" — "no" + "thing",
+// not a participle of any verb — allowlisted after the git-server trial
+// flagged TestEmptyPackIngestsNothing (constraint 7). The compounds are
+// listed individually because the allowlist matches exact tokens: "thing"
+// alone does not cover them.
+const IngestsNothing = 0
+
+// ReturnsSomething, MatchesAnything, and CoversEverything prove the rest of
+// the indefinite-pronoun family stays silent for the same reason.
+const (
+	ReturnsSomething = 0
+	MatchesAnything  = 0
+	CoversEverything = 0
+)
