@@ -85,8 +85,10 @@ func run(pass *analysis.Pass) (any, error) {
 }
 
 // parseAllow turns the -allow flag into a set of exempted lowercase
-// tokens. An entry with no "=reason" half is a configuration error: the
-// per-repo allowlist requires a reason, not just a token.
+// tokens, folded to singular and plural exactly as the deny dictionary is:
+// allowing a project-owned term exempts both halves or it exempts neither.
+// An entry with no "=reason" half is a configuration error: the per-repo
+// allowlist requires a reason, not just a token.
 func parseAllow() (map[string]bool, error) {
 	allowed := map[string]bool{}
 	if allowFlag == "" {
@@ -102,7 +104,10 @@ func parseAllow() (map[string]bool, error) {
 			return nil, fmt.Errorf(
 				"namedeny: -allow entry %q needs a reason: token=reason", entry)
 		}
-		allowed[strings.ToLower(strings.TrimSpace(token))] = true
+		lower := strings.ToLower(strings.TrimSpace(token))
+		allowed[lower] = true
+		allowed[lower+"s"] = true
+		allowed[strings.TrimSuffix(lower, "s")] = true
 	}
 	return allowed, nil
 }

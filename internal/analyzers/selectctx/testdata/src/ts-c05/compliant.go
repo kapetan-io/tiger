@@ -40,3 +40,8 @@ func receiveAssignWithShutdown(ctx context.Context, values chan int) (int, error
 		return 0, ctx.Err()
 	}
 }
+
+func awaitShutdown(ctx context.Context) {
+	// The bare receive from Done() is itself the shutdown wait.
+	<-ctx.Done()
+}

@@ -11,6 +11,7 @@ package driver
 import (
 	"errors"
 	"fmt"
+	"go/ast"
 	"go/token"
 	"path/filepath"
 	"sort"
@@ -54,8 +55,9 @@ func Check(root string, patterns []string, analyzers []*analysis.Analyzer) ([]Fi
 	}
 	findings := []Finding{}
 	for _, pkg := range loaded {
+		generated := generatedFiles(pkg)
 		for _, pass := range analyzers {
-			collected, err := runPass(pass, pkg)
+			collected, err := runPass(pass, pkg, generated)
 			if err != nil {
 				return nil, err
 			}
@@ -121,10 +123,30 @@ func dedupe(loaded []*packages.Package) []*packages.Package {
 	return kept
 }
 
-// runPass runs one analyzer over one package, collecting its diagnostics. A
-// panic inside the analyzer is converted to an error so the run can exit
-// with an operational failure instead of presenting partial results.
-func runPass(pass *analysis.Analyzer, pkg *packages.Package) (findings []Finding, err error) {
+// generatedFiles names the package's machine-generated sources, per the
+// standard "// Code generated ... DO NOT EDIT." convention. The files still
+// load and type-check — hand-written code that depends on them is analyzed
+// in full — but a finding inside one names nothing a person can fix, so the
+// driver drops it there.
+func generatedFiles(pkg *packages.Package) map[string]bool {
+	generated := map[string]bool{}
+	for _, file := range pkg.Syntax {
+		if ast.IsGenerated(file) {
+			generated[pkg.Fset.Position(file.Package).Filename] = true
+		}
+	}
+	return generated
+}
+
+// runPass runs one analyzer over one package, collecting its diagnostics
+// outside the generated files. A panic inside the analyzer is converted to
+// an error so the run can exit with an operational failure instead of
+// presenting partial results.
+func runPass(
+	pass *analysis.Analyzer,
+	pkg *packages.Package,
+	generated map[string]bool,
+) (findings []Finding, err error) {
 	// Wave-1 analyzers are pure single-package passes; the driver does not
 	// plumb dependency results or facts, and registration of an analyzer
 	// that needs them is a programming error.
@@ -147,8 +169,12 @@ func runPass(pass *analysis.Analyzer, pkg *packages.Package) (findings []Finding
 		TypesSizes: pkg.TypesSizes,
 		ResultOf:   map[*analysis.Analyzer]any{},
 		Report: func(diagnostic analysis.Diagnostic) {
+			position := pkg.Fset.Position(diagnostic.Pos)
+			if generated[position.Filename] {
+				return
+			}
 			findings = append(findings, Finding{
-				Position: pkg.Fset.Position(diagnostic.Pos),
+				Position: position,
 				Category: diagnostic.Category,
 				Message:  diagnostic.Message,
 			})

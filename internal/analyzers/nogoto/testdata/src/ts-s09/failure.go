@@ -27,6 +27,37 @@ scan:
 	return found
 }
 
+// drain breaks out of a select inside its only loop: Go forces the label
+// because a bare break would leave just the select.
+func drain(work chan int) int {
+	total := 0
+empty:
+	for {
+		select {
+		case n := <-work:
+			total += n
+		default:
+			break empty // want `TS-S09: labeled break escapes a select from inside its only loop`
+		}
+	}
+	return total
+}
+
+// classify breaks out of a switch inside its only loop.
+func classify(sizes []int) int {
+	kept := 0
+scan2:
+	for _, size := range sizes {
+		switch {
+		case size < 0:
+			break scan2 // want `TS-S09: labeled break escapes a switch from inside its only loop`
+		default:
+			kept++
+		}
+	}
+	return kept
+}
+
 // skipEmpty continues an outer loop with a label.
 func skipEmpty(rows [][]int) int {
 	total := 0

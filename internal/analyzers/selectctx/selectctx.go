@@ -45,7 +45,10 @@ func run(pass *analysis.Pass) (any, error) {
 					})
 				}
 			case *ast.UnaryExpr:
-				if stmt.Op == token.ARROW && !protected[stmt] {
+				// A bare receive from a Done() call is itself the shutdown
+				// wait; asking to wrap it in a select on ctx.Done() would
+				// restate the code that is already there.
+				if stmt.Op == token.ARROW && !protected[stmt] && !doneCall(stmt.X) {
 					pass.Report(analysis.Diagnostic{
 						Pos: stmt.Pos(), Category: "TS-C05", Message: msgUnwrapped,
 					})
@@ -96,7 +99,13 @@ func receivesFromDone(comm ast.Stmt) bool {
 	if arrow == nil {
 		return false
 	}
-	call, ok := arrow.X.(*ast.CallExpr)
+	return doneCall(arrow.X)
+}
+
+// doneCall reports whether expr is a call whose callee is a method named
+// Done, the ctx.Done() shape.
+func doneCall(expr ast.Expr) bool {
+	call, ok := expr.(*ast.CallExpr)
 	if !ok {
 		return false
 	}
