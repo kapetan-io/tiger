@@ -33,7 +33,7 @@ _Avoid_: declaration (pins are one kind of declaration, not the only kind)
 
 **Intent declaration**:
 A directive stating something no analyzer can compute (invariants, restrictions, `hot`, `wire`,
-`owner`); stated first, enforced after.
+`owner`, `openenum`); stated first, enforced after.
 
 **Escape hatch**:
 A directive loosening one rule at one site, always carrying a reason; admitted only where no
@@ -73,6 +73,24 @@ value — a chain completes across waves.
 **Invariant vocabulary**:
 The project-owned `inv` package pattern declaring invariant IDs that `assert.Invariant` references
 and analyzers count (TS-A07..A09).
+
+**Cursor shape**:
+A loop whose condition is a boolean method call on an identifier that a method call advances
+(`for it.Valid()`, `for rows.Next()`); finite only because the backing store is finite. The one
+loop shape where `//tiger:batched` waives the TS-S02 bound.
+
+**Shutdown channel**:
+A channel TS-S03/TS-C05 recognize as a termination signal alongside `ctx.Done()`: element type
+`struct{}` (closed-channel broadcast), or a name containing shutdown/stop/quit/done (the
+shutdown-request shape).
+
+**Open enum**:
+A named type marked `//tiger:openenum` whose vocabulary is deliberately extensible; switches
+over it need a default arm but not exhaustiveness or `assert.Unreachable`.
+
+**Promotion**:
+The one-line registry severity edit moving a tuned advisory rule to blocking, backed by trial
+evidence on at least two real codebases; demotion is the same edit in reverse.
 
 ## Relationships
 
