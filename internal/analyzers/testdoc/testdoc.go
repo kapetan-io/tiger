@@ -1,9 +1,9 @@
-// Package testdoc enforces TS-T06: tests state their goal.
+// Package testdoc enforces TS-T06: test functions have a doc comment.
 //
 // Every FuncDecl in a _test.go file shaped like a Go test function — named
 // Test or TestXxx, taking a single *testing.T parameter — needs a doc
-// comment carrying a "Goal:" line. Benchmarks, fuzz targets, and helpers
-// are out of wave-1 scope; only the Test-function shape is checked.
+// comment. Benchmarks, fuzz targets, and helpers are out of wave-1 scope;
+// only the Test-function shape is checked.
 package testdoc
 
 import (
@@ -15,10 +15,10 @@ import (
 	"golang.org/x/tools/go/analysis"
 )
 
-// Analyzer enforces TS-T06: tests state their goal.
+// Analyzer enforces TS-T06: test functions have a doc comment.
 var Analyzer = &analysis.Analyzer{
 	Name: "testdoc",
-	Doc:  "TS-T06: tests state their goal.",
+	Doc:  "TS-T06: test functions have a doc comment.",
 	Run:  run,
 }
 
@@ -36,7 +36,16 @@ func run(pass *analysis.Pass) (any, error) {
 			if !ok || !isTestFunc(pass, function) {
 				continue
 			}
-			inspectDoc(pass, function)
+			if function.Doc == nil {
+				pass.Report(analysis.Diagnostic{
+					Pos:      function.Pos(),
+					Category: "TS-T06",
+					Message: "TS-T06: " + function.Name.Name + " has no doc comment — a reader " +
+						"should be able to skip a test or dive into it without " +
+						"reverse-engineering the setup; add a doc comment describing " +
+						"what the test proves",
+				})
+			}
 		}
 	}
 	return nil, nil
@@ -67,30 +76,4 @@ func isTestingT(target types.Type) bool {
 	}
 	symbol := named.Obj()
 	return symbol.Pkg() != nil && symbol.Pkg().Path() == "testing" && symbol.Name() == "T"
-}
-
-// inspectDoc reports function when its doc comment is missing or carries no
-// Goal line.
-func inspectDoc(pass *analysis.Pass, function *ast.FuncDecl) {
-	if function.Doc == nil {
-		pass.Report(analysis.Diagnostic{
-			Pos:      function.Pos(),
-			Category: "TS-T06",
-			Message: "TS-T06: " + function.Name.Name + " has no doc comment — a reader " +
-				"should be able to skip a test or dive into it without " +
-				"reverse-engineering the setup; add a doc comment with a " +
-				"\"Goal:\" line stating what the test proves",
-		})
-		return
-	}
-	if !strings.Contains(function.Doc.Text(), "Goal:") {
-		pass.Report(analysis.Diagnostic{
-			Pos:      function.Pos(),
-			Category: "TS-T06",
-			Message: "TS-T06: " + function.Name.Name + "'s doc comment has no \"Goal:\" " +
-				"line — a reader should be able to skip a test or dive into it " +
-				"without reverse-engineering the setup; add a \"Goal:\" line " +
-				"stating what the test proves",
-		})
-	}
 }

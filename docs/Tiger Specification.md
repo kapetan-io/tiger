@@ -1217,12 +1217,12 @@ Enforce. `unitsuffix` (custom).
 **`TS-N04` Infuse names with meaning.**
 Why. Name the lifetime and the ownership, not the type. `alloc Allocator` is fine; `gpa` and `arena`
 tell the reader whether cleanup is their problem.
-Enforce. via `TS-N12` and `TS-N13`, which ban the failures rather than requiring the virtue.
+Enforce. Review (human).
 
 **`TS-N05` Related names have the same length.**
 Why. `source` and `target` beat `src` and `dst` because `sourceOffset` and `targetOffset` line up in
 the slice expression underneath, and the eye catches an asymmetry the brain would skim past.
-Enforce. via `TS-N15`.
+Enforce. Review (human).
 
 **`TS-N06` A helper is prefixed with the name of its caller.**
 Why. The name carries the call history, so `readSector` and `readSectorRetry` sort together and read
@@ -1252,29 +1252,10 @@ Enforce. `revive` (auto) for stutter; overloading is `review` against a domain g
 Why. Binary floating point cannot represent a tenth.
 Enforce. `nofloat` (custom), scoped by `TS-P01`.
 
-**`TS-N12` Semantically empty name tokens are forbidden.**
-Why. `data`, `info`, `value`, `object`, `item`, `manager`, `handler`, `helper`, `util`, `process`,
-`temp`, `misc`, `common`, `base`, `impl`, and `wrapper` are placeholders that survived into the commit.
-None tells the reader what the thing is, which is the entire job of the name.
-Enforce. `namedeny` (custom, token dictionary). Per-repo allowlist requires a reason. The escalation,
-once a team is ready, is to invert the list: a committed glossary that every token must appear in,
-which turns naming from a taste argument into a pull request against the glossary.
-
-**`TS-N13` No type echo in names.**
-Why. `userStr`, `cfgStruct`, `idsSlice`, and `errList` restate what the declaration already says and go
-stale the moment the type changes.
-Enforce. `namedeny` (custom).
-
 **`TS-N14` Exported identifiers do not end in a present participle.**
 Why. Enforces `TS-N09`. A trailing `-ing` is a suffix check, so nouns-over-participles turns out to be
 almost free.
 Enforce. `participle` (custom), allowlisting genuine nouns like `Encoding` and `Logging`.
-
-**`TS-N15` Known name pairs use the approved half.**
-Why. Enforces `TS-N05` without measuring anything. Commit a table of known pairs and ban the wrong
-half: `src`/`dst` becomes `source`/`target`, `in`/`output` becomes `input`/`output`. The equal length
-is why the table is built, not what the analyzer checks.
-Enforce. `namepairs` (custom, table lookup). No false positives, because it is a lookup.
 
 ## Layout and comments
 
@@ -1413,9 +1394,9 @@ Why. A failing simulation you cannot replay is a rumour. Every simulation run lo
 to replay it exactly.
 Enforce. CI (runtime).
 
-**`TS-T06` Tests state their goal and method.**
+**`TS-T06` Test functions have a doc comment.**
 Why. A reader should be able to skip a test or dive into it without reverse-engineering the setup.
-Enforce. `testdoc` (custom). Every `Test` function needs a doc comment with a `Goal.` line.
+Enforce. `testdoc` (custom). Every `Test` function needs a doc comment.
 
 **`TS-T07` Error-path branch coverage is measured separately with its own floor.**
 Why. The evidence behind `TS-E01` says catastrophic failures come from mishandling errors the software
@@ -1571,10 +1552,7 @@ that cannot fill the third column does not go in.
 | TS-N09 | Prefer nouns to participles | B3, B0 | Mixed |
 | TS-N10 | No stutter, no context-dependent overloading | B0 | Coord |
 | TS-N11 | Money and other exact quantities are integers, never fl... | B2 | Sub |
-| TS-N12 | Semantically empty name tokens are forbidden | B3 | Sub |
-| TS-N13 | No type echo in names | B3, B7 | Sub |
 | TS-N14 | Exported identifiers do not end in a present participle | B3, B0 | Mixed |
-| TS-N15 | Known name pairs use the approved half | B3, B0 | Mixed |
 | TS-L01 | gofmt is not negotiable. gofumpt on top | B0 | Coord |
 | TS-L02 | Lines at most 100 columns, tab counted as 4 | B0, B3 | Coord |
 | TS-L03 | Declaration order is const, var, type, func | B0 | Coord |
@@ -1600,7 +1578,7 @@ that cannot fill the third column does not go in.
 | TS-T03 | Every parser, decoder, and state machine has a fuzz target | B5 | Sub |
 | TS-T04 | No time.Sleep in tests. Use testing/synctest | B4 | Sub |
 | TS-T05 | -race on every CI run. Seeds are logged and reproducible | B4, B5 | Sub |
-| TS-T06 | Tests state their goal and method | B3 | Sub |
+| TS-T06 | Test functions have a doc comment | B3 | Sub |
 | TS-T07 | Error-path branch coverage is measured separately with... | B5, B2 | Sub |
 | TS-T08 | Mutation score floor | B5 | Sub |
 | TS-T09 | Every parser has a rejection corpus, and every file in... | B5 | Sub |
@@ -1704,8 +1682,6 @@ analyzer without its corpus does not merge, no matter how plausible its implemen
 | `quantitycast` | TS-Q01, Q03 | `types`, forbid direct conversions outside the quantity package |
 | `domaintypes` | TS-Q02 | `types`, exported signatures may not take bare primitives |
 | `sametypeparams` | TS-N07, N08 | `types`, adjacent identical types, bool params, arity |
-| `namedeny` | TS-N12, N13 | AST plus token dictionary |
-| `namepairs` | TS-N15 | Table lookup |
 | `participle` | TS-N14 | Suffix check plus allowlist |
 | `unitsuffix` | TS-N03 | AST plus token dictionary and a position rule |
 | `noabbrev` | TS-N02 | AST plus dictionary; the dictionary is the work |
@@ -1739,7 +1715,7 @@ analyzer without its corpus does not merge, no matter how plausible its implemen
 | `fuzzcoverage` | TS-T03 | `packages`, parsers must have a Fuzz function |
 | `corpuscheck` | TS-T09 | Directory presence plus a test that iterates it |
 | `tablename` | TS-T10 | AST, table test literals require a name field |
-| `testdoc` | TS-T06 | AST, Test functions need a Goal line |
+| `testdoc` | TS-T06 | AST, Test functions need a doc comment |
 | `skipcheck` | TS-D07 | AST, every `t.Skip` surfaces as a standing advisory |
 
 The bottom two thirds are cheap and cover most of the value. The top six are the ones that turn
