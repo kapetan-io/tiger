@@ -33,8 +33,7 @@ Two engines enforce the dialect:
   and types (`nogoto`, `paniccheck`, `boundedloop`, `compoundcond`,
   `nogoroutine`, `selectctx`, `chandecl`, `errignore`, `returnarity`,
   `directives`, `skipcheck`, `tablename`, `testdoc`, `derivation`,
-  `limitrelate`, `sametypeparams`, `namedeny`, `namepairs`, `participle`,
-  `deferdistance`). Analyzers are driver-agnostic `go/analysis` passes;
+  `limitrelate`, `sametypeparams`, `participle`, `deferdistance`). Analyzers are driver-agnostic `go/analysis` passes;
   severity and exit codes live in the driver, per ADR-0002.
 
 Directives share the `//tiger:<verb>` namespace, owned by the grammar package

@@ -1,5 +1,5 @@
-// The compliant rewrites: every Test function's doc comment carries a
-// Goal line.
+// The compliant rewrites: every Test function has a doc comment. A Goal
+// line is welcome but not required.
 package fixture
 
 import "testing"
@@ -11,10 +11,14 @@ func TestWithGoal(t *testing.T) {
 	_ = t
 }
 
+// TestWithoutGoal has a doc comment describing its purpose but omits the
+// Goal token — this is compliant under the relaxed rule.
+func TestWithoutGoal(t *testing.T) {
+	_ = t
+}
+
 // Test is the exact-name edge case; the bare name "Test" is also
-// recognized and must carry a Goal line.
-//
-// Goal: the exact name "Test" is checked the same as any TestXxx name.
+// recognized and must carry a doc comment.
 func Test(t *testing.T) {
 	_ = t
 }

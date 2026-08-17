@@ -23,8 +23,6 @@ import (
 	"github.com/kapetan-io/tiger/internal/analyzers/directives"
 	"github.com/kapetan-io/tiger/internal/analyzers/errignore"
 	"github.com/kapetan-io/tiger/internal/analyzers/limitrelate"
-	"github.com/kapetan-io/tiger/internal/analyzers/namedeny"
-	"github.com/kapetan-io/tiger/internal/analyzers/namepairs"
 	"github.com/kapetan-io/tiger/internal/analyzers/nogoroutine"
 	"github.com/kapetan-io/tiger/internal/analyzers/nogoto"
 	"github.com/kapetan-io/tiger/internal/analyzers/paniccheck"
@@ -160,7 +158,7 @@ var customRules = []CustomRule{
 	{
 		Category: "TS-T06", RuleID: "TS-T06", Analyzer: testdoc.Analyzer,
 		Severity: SeverityBlocking,
-		Title:    "tests state their goal",
+		Title:    "test functions have a doc comment",
 	},
 	{
 		Category: "TS-S22", RuleID: "TS-S22", Analyzer: derivation.Analyzer,
@@ -181,21 +179,6 @@ var customRules = []CustomRule{
 		Category: "TS-N08", RuleID: "TS-N08", Analyzer: sametypeparams.Analyzer,
 		Severity: SeverityBlocking,
 		Title:    "no bool parameters; use a named type",
-	},
-	{
-		Category: "TS-N12", RuleID: "TS-N12", Analyzer: namedeny.Analyzer,
-		Severity: SeverityBlocking,
-		Title:    "semantically empty name tokens are forbidden",
-	},
-	{
-		Category: "TS-N13", RuleID: "TS-N13", Analyzer: namedeny.Analyzer,
-		Severity: SeverityBlocking,
-		Title:    "no type echo in names",
-	},
-	{
-		Category: "TS-N15", RuleID: "TS-N15", Analyzer: namepairs.Analyzer,
-		Severity: SeverityBlocking,
-		Title:    "known name pairs use the approved half",
 	},
 	{
 		Category: "TS-N14", RuleID: "TS-N14", Analyzer: participle.Analyzer,

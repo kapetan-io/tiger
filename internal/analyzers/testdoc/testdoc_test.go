@@ -10,9 +10,9 @@ import (
 
 // TestCorpus runs the TS-T06 corpus through the analysistest driver.
 //
-// Goal: Test functions with no doc comment or no Goal line fire, compliant
-// doc comments stay silent, and the benchmark/fuzz/helper known misses
-// hold.
+// Goal: Test functions with no doc comment fire, doc comments with or
+// without a Goal line stay silent, and the benchmark/fuzz/helper known
+// misses hold.
 func TestCorpus(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), testdoc.Analyzer, "ts-t06")
 }

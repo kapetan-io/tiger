@@ -1,8 +1,8 @@
 // Package words splits a Go identifier into its camelCase tokens.
 //
-// This is shared infrastructure for the naming analyzers (namedeny,
-// namepairs, participle): each needs the same tokenization so a dictionary
-// or table lookup runs against the same words a reader would see.
+// This is shared infrastructure for the naming analyzers (participle and
+// others): each needs the same tokenization so a dictionary or table
+// lookup runs against the same words a reader would see.
 package words
 
 import "unicode"
