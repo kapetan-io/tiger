@@ -37,9 +37,11 @@ A directive stating something no analyzer can compute (invariants, restrictions,
 
 **Escape hatch**:
 A directive loosening one rule at one site, always carrying a reason; admitted only where no
-in-subset code shape can accomplish the task (wave 1: `//tiger:batched <reason>` alone). Shape is
-machine-checked, truth is human-reviewed, and every escape surfaces as a standing advisory
-finding.
+in-subset code shape can accomplish the task — still, through wave 1.5, `//tiger:batched
+<reason>` alone. Wave 1 validated and surfaced it with nothing consuming it; wave 1.5 consumes it
+in `ioinloop` (TS-M10) and, on the cursor shape only, in `boundedloop` (TS-S02 — see Cursor
+shape). Shape is machine-checked, truth is human-reviewed, and every escape surfaces as a
+standing advisory finding regardless of which rule it waives.
 _Avoid_: suppression, nolint (the golangci mechanism, not ours)
 
 **Severity**:
@@ -82,11 +84,16 @@ loop shape where `//tiger:batched` waives the TS-S02 bound.
 **Shutdown channel**:
 A channel TS-S03/TS-C05 recognize as a termination signal alongside `ctx.Done()`: element type
 `struct{}` (closed-channel broadcast), or a name containing shutdown/stop/quit/done (the
-shutdown-request shape).
+shutdown-request shape). Select cases accept either recognition; a bare receive or send outside
+a select is exempt only under the name recognition — a neutral-named `struct{}` channel there is
+a completion wait, the missing-cancellation bug itself.
 
 **Open enum**:
 A named type marked `//tiger:openenum` whose vocabulary is deliberately extensible; switches
-over it need a default arm but not exhaustiveness or `assert.Unreachable`.
+over it need a default arm but not exhaustiveness or `assert.Unreachable`. Recognized
+same-package only — a switch in another package from the marked type is a documented known
+miss — and governs only the custom default-arm check; the `exhaustive` auto rule needs its own
+`//exhaustive:ignore` opt-out.
 
 **Promotion**:
 The one-line registry severity edit moving a tuned advisory rule to blocking, backed by trial
@@ -108,11 +115,12 @@ evidence on at least two real codebases; demotion is the same edit in reverse.
 > waives it?"
 > **Domain expert:** "No — there is no `bounded` **escape hatch** in the tool. Give the loop an
 > explicit cap and assert on exhaustion, or use the event-loop shape TS-S03 describes. The only
-> wave-1 escape is `//tiger:batched`, because a provider without a bulk endpoint is a fact of the
-> world the code can't restructure away — and even that stays visible as an **advisory** finding
-> on every run. If you think the finding itself is wrong, that's a false positive on a
-> **blocking** rule, which is a bug in the analyzer: file it, and the case lands in the
-> **corpus** so it can't regress."
+> escape in the dialect is `//tiger:batched`, because a provider without a bulk endpoint is a fact
+> of the world the code can't restructure away — and unless your loop is a **cursor shape**, it
+> waives nothing here either. It still stays visible as an **advisory** finding on every run,
+> whether it waives anything or not. If you think the finding itself is wrong, that's a false
+> positive on a **blocking** rule, which is a bug in the analyzer: file it, and the case lands in
+> the **corpus** so it can't regress."
 
 ## Flagged ambiguities
 

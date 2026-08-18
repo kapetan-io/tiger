@@ -140,7 +140,11 @@ Fires on an IO call lexically inside a `for`/`range` body, at the call site, cat
 
 **IO classifier (contract).** A call is IO when its callee — function or method — is defined in
 a package on the IO allowlist, resolved through `pass.TypesInfo` (the `*types.Func`'s
-`Pkg()`), never by name matching. The seed list is stdlib packages whose operations are
+`Pkg()`), never by name matching. Exception, added under wave-1 constraint 7 when the
+git-server pin surfaced `http.Header.Set` (a map write) as a blocking false positive: a method
+whose receiver's underlying type is a map, slice, or basic value is exempt even inside an
+allowlist package — a pure container holds no connection or descriptor, so IO stays flagged
+behind struct-backed receivers and package-level functions only. The seed list is stdlib packages whose operations are
 unconditionally IO — `os`, `net`, `net/http`, `database/sql`, `syscall` — with the exact seed
 finalized by the implementor against corpus cases. The list is extensible per-repo via an
 analyzer flag (`-ioinloop.packages`, the same mechanism as `-participle.allow`), which the
@@ -172,12 +176,37 @@ Three exact widenings of `boundedCond`, each with a termination proof:
   to the exit: `x > 0`/`x >= c` with only decrements (`x--`, `x -= positive-const`); `x != 0`
   with only right-shifts or divisions by a constant > 1 (a shift provably reaches zero; a bare
   decrement under `!= 0` does not qualify — a negative start would wrap). If any assignment in
-  the loop moves the identifier the wrong way or is unprovable, the loop is not bounded.
+  the loop moves the identifier the wrong way or is unprovable, the loop is not bounded. This
+  widening is additive only: the existing grammar already accepts any comparison against a
+  literal or constant regardless of assignment direction, so the direction proof gates only the
+  newly admitted `!= 0` shapes. The wrong-direction hole on `x > 0`/`x >= c`
+  (e.g. `for x > 0 { x++ }`) is a pre-existing wave-1 known miss, carried over rather than
+  closed here to hold the monotone-lenient constraint; closing it is follow-up work.
   Covers varint-over-finite-buffer (5 git-server findings).
-- **Tuple-post reversal.** A multi-assignment post (`i, j = i+1, j-1`) where the condition
-  relates two of the assigned identifiers (`i < j`) and the assignments provably close the gap.
-  Extends `postCounter` beyond single-identifier increments. Covers the querator reversal
-  shapes (4 findings).
+  *Resolved during the build (post-review):* two conditions the original proof left implicit
+  are load-bearing and are now explicit. Assignments are matched by **object identity** through
+  `TypesInfo`, never by name — a shadowed redeclaration is a different variable, so its
+  assignments count neither for nor against the outer counter's proof (name matching let a
+  shadow's shift "prove" an outer counter that never moved). And at least one qualifying
+  assignment must be **guaranteed every iteration**: the Post clause (which Go runs even on
+  `continue`), or a direct body statement with no `continue`/`goto` anywhere before it — an
+  assignment nested under an `if`, or skippable by a `continue`, may never execute, so it
+  proves nothing. A loop that moves its counter in both arms of an `if`/`else` does terminate
+  but stays outside the grammar (conservative, corpus-pinned as a failure case): restate the
+  move unconditionally or hoist it to Post.
+- **Tuple-post reversal.** A multi-assignment post (`i, j = i+1, j-1`) where the condition is
+  `<` or `<=` relating two of the assigned identifiers (`i < j`) and the post assigns both by a
+  constant step — one by `+const`, the other by `-const` — so the gap provably shrinks each
+  iteration. If either identifier is reassigned anywhere else in the loop body, the bound is
+  unprovable and the loop is not bounded, the same rule the monotone-counter widening applies.
+  The mirror shape (`>`/`>=`) is out of scope, a documented known miss. Extends `postCounter`
+  beyond single-identifier increments. Covers the querator reversal shapes (4 findings).
+
+Consistent with `deferdistance` and `declusedistance`, a `FuncLit` is a frame boundary for
+these scans: an assignment to the counter (or either tuple identifier) inside a closure
+launched from the loop counts neither toward nor against the direction proof. A closure that
+mutates the counter the wrong way (e.g. a goroutine racing the loop) is a known miss, marked
+in corpus.
 
 **Cursor waiver (heuristic admission, escape-gated).** A loop matches the *cursor shape* when
 its condition is a boolean method call on an identifier (`for it.Valid()`, `for rows.Next()`),
@@ -207,13 +236,18 @@ Consumption, in both analyzers' checks:
 - `boundedloop` (S03): a `for {}` select satisfies the event-loop shape when any comm case
   receives from a `.Done()` call *or* a recognized shutdown channel.
 - `selectctx` (C05): a select needs a `default`, a `.Done()` case, or a shutdown-channel case;
-  a bare receive from — or bare send to — a recognized shutdown channel is exempt from the
-  wrap requirement, the same exemption a bare `<-ctx.Done()` gets today (the shutdown handoff
-  *is* the termination path).
+  a bare receive from — or bare send to — a channel shutdown-recognized *by name* is exempt
+  from the wrap requirement, the same exemption a bare `<-ctx.Done()` gets today (the shutdown
+  handoff *is* the termination path). Element type alone never exempts a bare operation:
+  outside a select, a neutral-named `struct{}` channel is a completion wait (querator's
+  `req.ReadyCh`) — exactly the missing-cancellation findings acceptance criterion 2 pins as
+  still firing. (Resolved during the build: the earlier draft exempted bare operations under
+  both recognitions, which contradicted criterion 2 on the querator pin.)
 
-The name fallback only relaxes: a false name-match silences a finding (a known-miss class,
-marked in corpus), never creates one. Both recognitions get spec amendment notes on TS-S03 and
-TS-C05.
+Both recognitions only relax: a `struct{}`-typed channel that isn't actually a shutdown signal
+(a semaphore, a one-shot notify, a work token) or a false name-match silences a finding — each a
+known-miss class, marked in corpus — never creates one. Both recognitions get spec amendment
+notes on TS-S03 and TS-C05.
 
 ### 4. `//tiger:openenum` (directive + TS-S08 in `compoundcond`)
 
@@ -339,10 +373,15 @@ Key surfaces:
   - `boundedloop/testdata/src/ts-s02/`: new compliant cases for all three widenings and the
     annotated cursor loop; failure cases for `||` with one unbounded arm, `!= 0` with bare
     decrement, cursor shape *without* the directive, non-cursor loop *with* the directive;
-    known-miss for the loop-carried pagination token.
+    known-misses for the loop-carried pagination token, the wrong-direction counter under a
+    literal comparison (`for x > 0 { x++ }`), the closure-launched wrong-direction mutation,
+    and the `>`/`>=` mirror of the tuple-post shape.
   - `ts-s03` / `ts-c05`: compliant cases for `struct{}` channels and shutdown-named channels
-    (select case, bare receive, bare send); failure case for an unrecognized data channel;
-    known-miss for a false name-match silencing a real finding.
+    (select case for both recognitions; bare receive and bare send for the name recognition
+    only); failure cases for an unrecognized data channel and for a bare operation on a
+    neutral-named `struct{}` channel (the completion-wait shape);
+    known-miss for a false name-match silencing a real finding and for a non-shutdown
+    `struct{}`-typed channel (e.g. a semaphore token) silencing a real finding.
   - `ts-s08`: compliant case for a marked open enum with a plain default; failure cases for a
     marked type with *no* default and for an unmarked closed set; known-miss for the
     cross-package switch.

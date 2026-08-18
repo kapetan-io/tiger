@@ -94,6 +94,7 @@ var vocabulary = []Verb{
 	{Name: "hot", Kind: KindIntent},
 	{Name: "wire", Kind: KindIntent},
 	{Name: "owner", Kind: KindIntent},
+	{Name: "openenum", Kind: KindIntent},
 }
 
 // Is reports whether a comment's text is a tiger directive. Text with a

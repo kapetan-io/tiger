@@ -187,3 +187,35 @@ func TestVocabularyKinds(t *testing.T) {
 	_, ok = directive.Lookup("skip")
 	assert.False(t, ok)
 }
+
+// TestOpenEnumParsesFormatsAndRoundTrips covers the openenum verb TS-S08
+// consumes: a same-package intent declaration with no reason argument.
+//
+// Goal: //tiger:openenum parses to the bare verb, Format reprints it
+// canonically, and Parse(Format(d)) returns the identical directive.
+func TestOpenEnumParsesFormatsAndRoundTrips(t *testing.T) {
+	parsed, err := directive.Parse("//tiger:openenum")
+	require.NoError(t, err)
+	assert.Equal(t, directive.Directive{Verb: "openenum", Args: ""}, parsed)
+
+	assert.Equal(t, "//tiger:openenum", directive.Format(parsed))
+
+	roundTripped, err := directive.Parse(directive.Format(parsed))
+	require.NoError(t, err)
+	assert.Equal(t, parsed, roundTripped)
+}
+
+// TestOpenEnumIsKindIntentAndRequiresNoReason covers the openenum verb's
+// vocabulary entry: it is an intent declaration, not an escape, so it
+// parses without a reason argument.
+//
+// Goal: Lookup reports KindIntent for openenum, and a bare //tiger:openenum
+// with no arguments parses without error.
+func TestOpenEnumIsKindIntentAndRequiresNoReason(t *testing.T) {
+	spec, ok := directive.Lookup("openenum")
+	require.True(t, ok)
+	assert.Equal(t, directive.KindIntent, spec.Kind)
+
+	_, err := directive.Parse("//tiger:openenum")
+	assert.NoError(t, err)
+}

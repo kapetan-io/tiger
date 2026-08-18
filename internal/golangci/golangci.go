@@ -275,12 +275,21 @@ func readConfig(dir string) (map[string]any, error) {
 	return document, nil
 }
 
-// configPath probes dir for a golangci-lint configuration file.
+// configPath probes dir for a golangci-lint configuration file. One
+// directory listing answers every candidate name; an unreadable dir means
+// no config, same as a failed per-file probe.
 func configPath(dir string) (string, bool) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return "", false
+	}
+	present := map[string]bool{}
+	for _, entry := range entries {
+		present[entry.Name()] = true
+	}
 	for _, name := range configNames {
-		path := filepath.Join(dir, name)
-		if _, err := os.Stat(path); err == nil {
-			return path, true
+		if present[name] {
+			return filepath.Join(dir, name), true
 		}
 	}
 	return "", false
