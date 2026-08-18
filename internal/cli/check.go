@@ -17,6 +17,11 @@ func runCheck(args []string, streams Streams) int {
 	flags := flag.NewFlagSet("tiger check", flag.ContinueOnError)
 	flags.SetOutput(streams.Stderr)
 	chdir := flags.String("C", ".", "run as if tiger was started in this directory")
+	showFacts := flags.Bool(
+		"show-facts",
+		false,
+		"print computed facts (effect sets, frames, synthesized variants) in pin syntax",
+	)
 	analyzers := rules.Analyzers()
 	for _, registered := range analyzers {
 		prefix := registered.Name + "."
@@ -62,14 +67,19 @@ func runCheck(args []string, streams Streams) int {
 				markAdvisory(finding, entry.RuleID),
 			)
 		case rules.SeverityReported:
-			// No wave-1 rule is reported; the level activates when
-			// unpinned-fact reporting exists.
-			fmt.Fprintf(streams.Stdout, "%s: %s\n", finding.Position, finding.Message)
+			// Reported findings are collected like every other finding but
+			// never counted and never printed unless the caller asked to
+			// see them: a fixture with only unpinned facts and no
+			// violations must exit 0 and, without --show-facts, produce
+			// byte-identical output to a wave-1 run over the same tree.
+			if *showFacts {
+				fmt.Fprintf(streams.Stdout, "%s: %s\n", finding.Position, finding.Message)
+			}
 		default:
 			assert.Unreachable("severity outside the registry's closed set")
 		}
 	}
-	if len(findings) > 0 {
+	if blocking+advisory > 0 {
 		fmt.Fprintf(streams.Stdout, "tiger: %d blocking, %d advisory\n", blocking, advisory)
 	}
 	if blocking > 0 {

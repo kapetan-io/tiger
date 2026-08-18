@@ -121,21 +121,61 @@ func derivationLine(doc *ast.CommentGroup, name string) (string, bool) {
 // evalConst evaluates a derivation expression using go/constant arithmetic,
 // resolving every identifier against the package scope. It reports ok=false
 // for anything it cannot evaluate: an unresolved identifier or an operator
-// outside the supported set.
+// outside the supported set. The expression tree is flattened with an
+// index-advancing worklist (children land after parents), then evaluated in
+// reverse so every node's operands are ready before the node itself.
 func evalConst(pass *analysis.Pass, expr ast.Expr) (constant.Value, bool) {
+	work := []ast.Expr{expr}
+	for i := 0; i < len(work); i++ {
+		switch node := work[i].(type) {
+		case *ast.ParenExpr:
+			work = append(work, node.X)
+		case *ast.UnaryExpr:
+			work = append(work, node.X)
+		case *ast.BinaryExpr:
+			work = append(work, node.X, node.Y)
+		}
+	}
+	evaluated := map[ast.Expr]constant.Value{}
+	for i := len(work) - 1; i >= 0; i-- {
+		if !evalNode(pass, work[i], evaluated) {
+			return nil, false
+		}
+	}
+	return evaluated[expr], true
+}
+
+// evalNode computes one node's value from its already-evaluated operands.
+func evalNode(pass *analysis.Pass, expr ast.Expr, evaluated map[ast.Expr]constant.Value) bool {
 	switch node := expr.(type) {
 	case *ast.ParenExpr:
-		return evalConst(pass, node.X)
+		evaluated[expr] = evaluated[node.X]
+		return true
 	case *ast.BasicLit:
-		return constant.MakeFromLiteral(node.Value, node.Kind, 0), true
+		evaluated[expr] = constant.MakeFromLiteral(node.Value, node.Kind, 0)
+		return true
 	case *ast.Ident:
-		return constFromScope(pass, node.Name)
+		resolved, ok := constFromScope(pass, node.Name)
+		if !ok {
+			return false
+		}
+		evaluated[expr] = resolved
+		return true
 	case *ast.UnaryExpr:
-		return evalUnary(pass, node)
+		if node.Op != token.SUB {
+			return false
+		}
+		evaluated[expr] = constant.UnaryOp(token.SUB, evaluated[node.X], 0)
+		return true
 	case *ast.BinaryExpr:
-		return evalBinary(pass, node)
+		result, ok := binaryOp(node.Op, operands{left: evaluated[node.X], right: evaluated[node.Y]})
+		if !ok {
+			return false
+		}
+		evaluated[expr] = result
+		return true
 	default:
-		return nil, false
+		return false
 	}
 }
 
@@ -147,31 +187,8 @@ func constFromScope(pass *analysis.Pass, name string) (constant.Value, bool) {
 	return resolved.Val(), true
 }
 
-func evalUnary(pass *analysis.Pass, node *ast.UnaryExpr) (constant.Value, bool) {
-	if node.Op != token.SUB {
-		return nil, false
-	}
-	operand, ok := evalConst(pass, node.X)
-	if !ok {
-		return nil, false
-	}
-	return constant.UnaryOp(token.SUB, operand, 0), true
-}
-
-func evalBinary(pass *analysis.Pass, node *ast.BinaryExpr) (constant.Value, bool) {
-	left, ok := evalConst(pass, node.X)
-	if !ok {
-		return nil, false
-	}
-	right, ok := evalConst(pass, node.Y)
-	if !ok {
-		return nil, false
-	}
-	return binaryOp(node.Op, operands{left: left, right: right})
-}
-
 // operands holds a binary expression's two already-evaluated sides so
-// binaryOp takes one struct parameter instead of two adjacent values of
+// binaryOp takes one struct parameter instead of two adjacent evaluated of
 // the same type.
 type operands struct {
 	left  constant.Value

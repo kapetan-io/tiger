@@ -97,25 +97,28 @@ type logicShape struct {
 }
 
 func scanLogic(expr ast.Expr) logicShape {
-	if paren, ok := expr.(*ast.ParenExpr); ok {
-		return scanLogic(paren.X)
+	shape := logicShape{}
+	work := []ast.Expr{expr}
+	for i := 0; i < len(work); i++ {
+		switch at := work[i].(type) {
+		case *ast.ParenExpr:
+			work = append(work, at.X)
+		case *ast.UnaryExpr:
+			if at.Op == token.NOT {
+				work = append(work, at.X)
+			}
+		case *ast.BinaryExpr:
+			if at.Op == token.LAND {
+				shape.hasAnd = true
+				work = append(work, at.X, at.Y)
+			}
+			if at.Op == token.LOR {
+				shape.hasOr = true
+				work = append(work, at.X, at.Y)
+			}
+		}
 	}
-	if unary, ok := expr.(*ast.UnaryExpr); ok && unary.Op == token.NOT {
-		return scanLogic(unary.X)
-	}
-	binary, ok := expr.(*ast.BinaryExpr)
-	if !ok {
-		return logicShape{}
-	}
-	if binary.Op == token.LAND {
-		left, right := scanLogic(binary.X), scanLogic(binary.Y)
-		return logicShape{hasAnd: true, hasOr: left.hasOr || right.hasOr}
-	}
-	if binary.Op == token.LOR {
-		left, right := scanLogic(binary.X), scanLogic(binary.Y)
-		return logicShape{hasAnd: left.hasAnd || right.hasAnd, hasOr: true}
-	}
-	return logicShape{}
+	return shape
 }
 
 // reportMixedLogic fires TS-S06 when cond's boolean expression tree mixes

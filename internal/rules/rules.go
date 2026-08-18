@@ -10,6 +10,8 @@
 package rules
 
 import (
+	"maps"
+	"slices"
 	"sort"
 	"strings"
 
@@ -18,24 +20,31 @@ import (
 	"github.com/kapetan-io/tiger/internal/analyzers/boundedloop"
 	"github.com/kapetan-io/tiger/internal/analyzers/chandecl"
 	"github.com/kapetan-io/tiger/internal/analyzers/compoundcond"
+	"github.com/kapetan-io/tiger/internal/analyzers/contracts"
 	"github.com/kapetan-io/tiger/internal/analyzers/declorder"
 	"github.com/kapetan-io/tiger/internal/analyzers/declusedistance"
 	"github.com/kapetan-io/tiger/internal/analyzers/deferdistance"
 	"github.com/kapetan-io/tiger/internal/analyzers/derivation"
 	"github.com/kapetan-io/tiger/internal/analyzers/directives"
+	"github.com/kapetan-io/tiger/internal/analyzers/effects"
 	"github.com/kapetan-io/tiger/internal/analyzers/errignore"
+	"github.com/kapetan-io/tiger/internal/analyzers/frames"
 	"github.com/kapetan-io/tiger/internal/analyzers/ioinloop"
 	"github.com/kapetan-io/tiger/internal/analyzers/limitrelate"
+	"github.com/kapetan-io/tiger/internal/analyzers/maporder"
 	"github.com/kapetan-io/tiger/internal/analyzers/nogoroutine"
 	"github.com/kapetan-io/tiger/internal/analyzers/nogoto"
+	"github.com/kapetan-io/tiger/internal/analyzers/norecursion"
 	"github.com/kapetan-io/tiger/internal/analyzers/paniccheck"
 	"github.com/kapetan-io/tiger/internal/analyzers/participle"
+	"github.com/kapetan-io/tiger/internal/analyzers/poolzero"
 	"github.com/kapetan-io/tiger/internal/analyzers/returnarity"
 	"github.com/kapetan-io/tiger/internal/analyzers/sametypeparams"
 	"github.com/kapetan-io/tiger/internal/analyzers/selectctx"
 	"github.com/kapetan-io/tiger/internal/analyzers/skipcheck"
 	"github.com/kapetan-io/tiger/internal/analyzers/tablename"
 	"github.com/kapetan-io/tiger/internal/analyzers/testdoc"
+	"github.com/kapetan-io/tiger/internal/analyzers/variant"
 )
 
 // Severity is a rule's run-level consequence, defined once per rule here and
@@ -48,8 +57,8 @@ const (
 	// SeverityAdvisory findings print, marked as advisory, and are counted;
 	// they never affect the exit code.
 	SeverityAdvisory
-	// SeverityReported exists in the model for later waves
-	// (annotation-only); no wave-1 rule uses it.
+	// SeverityReported findings are computed facts: collected on every run,
+	// printed only under --show-facts, never counted toward the exit code.
 	SeverityReported
 )
 
@@ -71,7 +80,8 @@ type CustomRule struct {
 	Title string
 }
 
-// customRules is the wave-1 dialect. Order groups rules by analyzer.
+// customRules is the dialect: the wave-1 rules followed by the SSA wave's.
+// Order groups rules by analyzer.
 var customRules = []CustomRule{
 	{
 		Category: "TS-S09", RuleID: "TS-S09", Analyzer: nogoto.Analyzer,
@@ -218,6 +228,61 @@ var customRules = []CustomRule{
 		Severity: SeverityAdvisory,
 		Title:    "variables are declared at the point of first use",
 	},
+	{
+		Category: "TS-S01", RuleID: "TS-S01", Analyzer: norecursion.Analyzer,
+		Severity: SeverityBlocking,
+		Title:    "no recursion; cycles in the static call graph are findings",
+	},
+	{
+		Category: "TS-T02", RuleID: "TS-T02", Analyzer: maporder.Analyzer,
+		Severity: SeverityBlocking,
+		Title:    "map iteration order never reaches an output",
+	},
+	{
+		Category: "TS-M05", RuleID: "TS-M05", Analyzer: poolzero.Analyzer,
+		Severity: SeverityBlocking,
+		Title:    "pooled types implement Reset, and Put is preceded by a reset",
+	},
+	{
+		Category: "TS-F01", RuleID: "TS-F01", Analyzer: effects.Analyzer,
+		Severity: SeverityBlocking,
+		Title:    "an effects pin is an exact, bidirectional contract",
+	},
+	{
+		Category: "TS-F01-facts", RuleID: "TS-F01", Analyzer: effects.Analyzer,
+		Severity: SeverityReported,
+		Title:    "computed effect sets print in pin syntax under --show-facts",
+	},
+	{
+		Category: "TS-F02", RuleID: "TS-F02", Analyzer: effects.Analyzer,
+		Severity: SeverityBlocking,
+		Title:    "a pin bounds the entire subtree beneath it",
+	},
+	{
+		Category: "TS-F07", RuleID: "TS-F07", Analyzer: frames.Analyzer,
+		Severity: SeverityBlocking,
+		Title:    "writes outside a pinned frame fail, bidirectionally",
+	},
+	{
+		Category: "TS-F07-facts", RuleID: "TS-F07", Analyzer: frames.Analyzer,
+		Severity: SeverityReported,
+		Title:    "computed frames print in pin syntax under --show-facts",
+	},
+	{
+		Category: "TS-V01", RuleID: "TS-V01", Analyzer: variant.Analyzer,
+		Severity: SeverityBlocking,
+		Title:    "every unbounded loop has a verified variant",
+	},
+	{
+		Category: "TS-V01-facts", RuleID: "TS-V01", Analyzer: variant.Analyzer,
+		Severity: SeverityReported,
+		Title:    "synthesized variants print in pin syntax under --show-facts",
+	},
+	{
+		Category: "TS-V03", RuleID: "TS-V03", Analyzer: contracts.Analyzer,
+		Severity: SeverityBlocking,
+		Title:    "preconditions are declared and discharged at call sites",
+	},
 }
 
 // CustomRules returns every registered custom-rule category.
@@ -246,11 +311,7 @@ func Analyzers() []*analysis.Analyzer {
 	for _, rule := range customRules {
 		byName[rule.Analyzer.Name] = rule.Analyzer
 	}
-	names := make([]string, 0, len(byName))
-	for name := range byName {
-		names = append(names, name)
-	}
-	sort.Strings(names)
+	names := slices.Sorted(maps.Keys(byName))
 	listed := make([]*analysis.Analyzer, 0, len(names))
 	for _, name := range names {
 		listed = append(listed, byName[name])
