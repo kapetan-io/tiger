@@ -1,5 +1,8 @@
 // Package compoundcond enforces TS-S06, TS-S07, and TS-S08: simple
-// conditions, split assertions, asserted default arms.
+// conditions, split assertions, asserted default arms. TS-S08 exempts a
+// type declared //tiger:openenum from the assert.Unreachable requirement:
+// the set is deliberately extensible, so a plain default arm is the
+// compliant catch-all for values the wire can still send.
 package compoundcond
 
 import (
@@ -8,6 +11,8 @@ import (
 	"go/types"
 
 	"golang.org/x/tools/go/analysis"
+
+	"github.com/kapetan-io/tiger/internal/analyzers/internal/attach"
 )
 
 // Analyzer enforces TS-S06, TS-S07, and TS-S08: simple conditions, split
@@ -19,6 +24,7 @@ var Analyzer = &analysis.Analyzer{
 }
 
 func run(pass *analysis.Pass) (any, error) {
+	openEnums := collectOpenEnums(pass)
 	for _, file := range pass.Files {
 		ast.Inspect(file, func(node ast.Node) bool {
 			if ifStmt, ok := node.(*ast.IfStmt); ok {
@@ -31,12 +37,54 @@ func run(pass *analysis.Pass) (any, error) {
 				reportSplitAssertion(pass, call)
 			}
 			if switchStmt, ok := node.(*ast.SwitchStmt); ok {
-				reportClosedSwitch(pass, switchStmt)
+				reportClosedSwitch(pass, switchStmt, openEnums)
 			}
 			return true
 		})
 	}
 	return nil, nil
+}
+
+// collectOpenEnums finds every named type declared in the package under
+// analysis whose type declaration carries a well-formed //tiger:openenum
+// directive. Recognition is same-package only: the directive is looked up
+// on both the GenDecl (covers `type X T`, whose doc comment attaches to
+// the GenDecl) and the TypeSpec (covers a grouped `type ( X T )`, whose
+// doc comment attaches per-spec), so either placement is recognized.
+// Because every candidate comes from pass.Files, every marked type
+// necessarily belongs to the package under analysis — a directive on a
+// type in another package is invisible here, by construction.
+func collectOpenEnums(pass *analysis.Pass) map[*types.Named]bool {
+	marked := map[*types.Named]bool{}
+	for _, file := range pass.Files {
+		for _, decl := range file.Decls {
+			genDecl, ok := decl.(*ast.GenDecl)
+			if !ok || genDecl.Tok != token.TYPE {
+				continue
+			}
+			for _, spec := range genDecl.Specs {
+				typeSpec, ok := spec.(*ast.TypeSpec)
+				if !ok {
+					continue
+				}
+				_, onGenDecl := attach.Directive(pass.Fset, file, genDecl, "openenum")
+				_, onTypeSpec := attach.Directive(pass.Fset, file, typeSpec, "openenum")
+				if !onGenDecl && !onTypeSpec {
+					continue
+				}
+				object, ok := pass.TypesInfo.Defs[typeSpec.Name].(*types.TypeName)
+				if !ok {
+					continue
+				}
+				named, ok := object.Type().(*types.Named)
+				if !ok {
+					continue
+				}
+				marked[named] = true
+			}
+		}
+	}
+	return marked
 }
 
 // logicShape records which logical connectives appear in a boolean
@@ -187,7 +235,16 @@ func endsInUnreachable(pass *analysis.Pass, clause *ast.CaseClause) bool {
 // type and either has no default clause or its default does not end in
 // assert.Unreachable. Type switches, tagless switches, and switches over
 // plain basic types or open sets stay silent.
-func reportClosedSwitch(pass *analysis.Pass, switchStmt *ast.SwitchStmt) {
+//
+// A type marked //tiger:openenum (openEnums) is a deliberately extensible
+// wire vocabulary: its switches still need a default arm — the value came
+// off the wire — but that default is a legitimate catch-all, so any body
+// is compliant and assert.Unreachable is not required.
+func reportClosedSwitch(
+	pass *analysis.Pass,
+	switchStmt *ast.SwitchStmt,
+	openEnums map[*types.Named]bool,
+) {
 	if switchStmt.Tag == nil {
 		return
 	}
@@ -204,7 +261,17 @@ func reportClosedSwitch(pass *analysis.Pass, switchStmt *ast.SwitchStmt) {
 	}
 	typeName := named.Obj().Name()
 	clause := defaultCase(switchStmt)
+	open := openEnums[named]
 	if clause == nil {
+		if open {
+			pass.Report(analysis.Diagnostic{
+				Pos:      switchStmt.Pos(),
+				Category: "TS-S08",
+				Message: "TS-S08: switch over open enum " + typeName + " has no default arm — " +
+					"add a default catch-all arm so values the wire can still send are handled",
+			})
+			return
+		}
 		pass.Report(analysis.Diagnostic{
 			Pos:      switchStmt.Pos(),
 			Category: "TS-S08",
@@ -212,6 +279,9 @@ func reportClosedSwitch(pass *analysis.Pass, switchStmt *ast.SwitchStmt) {
 				"`default: assert.Unreachable(\"" + typeName + ": unhandled value\")` so a new " +
 				"constant fails loudly",
 		})
+		return
+	}
+	if open {
 		return
 	}
 	if !endsInUnreachable(pass, clause) {

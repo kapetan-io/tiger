@@ -53,3 +53,27 @@ func emptyDefaultBody(status Status) string {
 	}
 	return ""
 }
+
+// TransferMode is marked //tiger:openenum: the wire can send a mode this
+// package doesn't name yet, so a default arm is still required — just not
+// one ending in assert.Unreachable.
+//
+//tiger:openenum
+type TransferMode string
+
+const (
+	TransferModePush TransferMode = "push"
+	TransferModePull TransferMode = "pull"
+)
+
+// openEnumMissingDefault has no default arm at all: still a failure for a
+// marked type, because the wire can still send an unnamed value.
+func openEnumMissingDefault(mode TransferMode) string {
+	switch mode { // want `TS-S08: switch over open enum TransferMode has no default arm`
+	case TransferModePush:
+		return "push"
+	case TransferModePull:
+		return "pull"
+	}
+	return ""
+}

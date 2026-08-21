@@ -144,3 +144,4 @@ jobs:
           cat findings.txt
           test "$code" -eq 1
           grep -q "TS-S09" findings.txt
+          grep -q "TS-M10" findings.txt

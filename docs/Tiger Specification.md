@@ -408,6 +408,7 @@ hatches** (loosen one rule at one site, always with a reason, counted by `TS-D06
 | Layer graph | checked-in layer file | intent | TS-X03 |
 | Hot path | `//tiger:hot` | intent | TS-F03 |
 | Wire type | `//tiger:wire` | intent | TS-K06 |
+| Open enum | `//tiger:openenum` | intent | TS-S08 |
 | Batched IO | `//tiger:batched <reason>` | escape | TS-M10 |
 | Deviation | `//tiger:<rule-id> <reason>` | escape (gated, does not ship before the first heuristic rules + TS-D06 ratchet) | TS-L09 |
 
@@ -442,6 +443,16 @@ Severity is one of three words, used precisely:
   one made a choice a directive could justify: unpinned effect changes (`TS-F01`), the transitive
   precision bound (`TS-P02`).
 
+**Promotion.** An advisory rule moves to blocking, and a blocking rule moves back to advisory, by a
+one-line severity edit in the registry (`internal/rules/rules.go`) — never inside the analyzer, which
+stays severity-free (ADR-0002). Promotion requires trial runs on at least two real codebases showing
+every finding actionable (no shape the trial judges a false positive) and no open tuning item left
+against the rule; demotion is allowed under the same evidence bar, run in reverse. Either way, the
+evidence is linked in the promoting or demoting pull request, not restated in the registry itself. See
+ADR-0005 for the wave that first drew this line, and the `Assert Adoption Playbook` for the adjacent
+question of when a rule that is gated on a codebase precondition (rather than tuning) is worth
+building at all.
+
 ## Safety and control flow
 
 **`TS-S01` No recursion.**
@@ -455,16 +466,31 @@ Why. Everything in reality has a limit. A loop that does not state its limit is 
 input will always be well-formed. Bound it and an infinite hang becomes a fast, loud failure at the
 boundary. See `TS-V01` for the stronger form.
 Enforce. `boundedloop` (custom). A `for` with no condition, or a condition not derived from a constant,
-a `len`, or a counter, is a finding; no directive waives it. The compliant forms are in-dialect:
-an explicit iteration cap with an assert on exhaustion, or the `TS-S03` event-loop shape.
+a `len`, or a counter, is a finding; no directive waives it, with one shape-gated exception below. The
+compliant forms are in-dialect: an explicit iteration cap with an assert on exhaustion, the `TS-S03`
+event-loop shape, or — for a cursor-shaped loop only — a reasoned `//tiger:batched` escape.
 *(Amended 2026-08-12: the `//tiger:bounded <reason>` escape is withdrawn — it fails the escape
 admission test, since a reason is shape-checkable but not truth-checkable and every terminating
 loop can state a cap. See "Declarations at a glance".)*
+*(Amended 2026-08-17: `//tiger:batched <reason>` waives this rule on a **cursor-shaped** loop —
+one whose condition is a boolean method call on an identifier, where either that call or a call in
+the post or body advances the same identifier (`for it.Valid()`, `for rows.Next()`). The store's
+finiteness is the fact of the world that admits the escape; every other shape, including any other
+annotated loop, still fires. A non-method-call pagination shape (a loop-carried token) stays outside
+the waiver, a documented known miss. See ADR-0004.)*
 
 **`TS-S03` An unbounded event loop selects on `ctx.Done()` and asserts progress.**
 Why. Some loops genuinely run forever. Those get an explicit termination path and an assertion that
 they are still making progress, so a stuck loop reports itself instead of pinning a core in silence.
-Enforce. `boundedloop` (custom) for the select shape; the progress assertion is `review`.
+Enforce. `boundedloop` (custom) for the select shape; the progress assertion is `review`. A comm case
+receiving from a recognized **shutdown channel** (see below) satisfies the event-loop shape the same
+way a `.Done()` case does.
+*(Amended 2026-08-17: a second shutdown shape is recognized alongside `ctx.Done()` — a channel whose
+element type is `struct{}` (the closed-channel broadcast shape), or whose identifier or selected field
+name, lowercased, contains `shutdown`, `stop`, `quit`, or `done` regardless of element type (the
+shutdown-request shape). This only relaxes: a `struct{}` channel that is not actually a shutdown
+signal, or a false name match, silences a finding rather than creating one — each a documented
+known-miss class.)*
 
 **`TS-S04` Hard limit of 70 lines per function.**
 Why. The discontinuity between a function you can see and one you must scroll is real. Go functions
@@ -490,7 +516,21 @@ Enforce. `compoundcond` (custom).
 Why. Adding a variant should break every switch that has not thought about it. Go's compiler will not
 do this, because `iota` constants are just integers. The default arm covers the value that came off
 the wire and was never in your enum.
-Enforce. `exhaustive` (auto) plus `compoundcond` for the default arm (custom).
+
+A type marked `//tiger:openenum` — the directive lives in the type declaration's doc-comment group —
+declares a deliberately extensible vocabulary instead of a closed one: a switch over it still needs a
+`default` arm, but the default is a legitimate catch-all, not the value that should never occur, so
+`assert.Unreachable` is not required and exhaustiveness is not expected. Recognition is same-package
+only — `compoundcond` sees directives on type declarations in the package under analysis, so a switch
+in a different package from the marked type is a documented known miss.
+
+Enforce. `exhaustive` (auto) plus `compoundcond` for the default arm (custom); a type marked
+`//tiger:openenum` waives `compoundcond`'s default-arm-must-`assert.Unreachable` check for switches
+over it. The two enforcement halves have independent opt-outs: `exhaustive`'s own escape is
+`//exhaustive:ignore` on the switch, unrelated to `openenum`. Marking the type governs only
+`compoundcond`'s custom check — a type marked `//tiger:openenum` with no `//exhaustive:ignore` on its
+switches still trips the auto rule's exhaustiveness finding.
+*(Amended 2026-08-17: `//tiger:openenum` intent declaration added, see "Declarations at a glance".)*
 
 **`TS-S09` No `goto`, no labeled break or continue.**
 Why. Simple explicit control flow. A labeled break is usually a loop that wanted to be a function.
@@ -790,7 +830,16 @@ Enforce. `mnd` (auto), `queuebound` (custom) for slice-backed queues.
 **`TS-C05` Every blocking receive or send has a `ctx.Done()` case.**
 Why. Shutdown that hangs is shutdown that gets `SIGKILL`ed, and a process killed mid-write is a
 process that lost data.
-Enforce. `selectctx` (custom).
+Enforce. `selectctx` (custom). A select needs a `default`, a `.Done()` case, or a case on a recognized
+**shutdown channel**; a bare receive from, or bare send to, a channel shutdown-recognized *by name* is
+exempt from the wrap requirement, the same exemption a bare `<-ctx.Done()` already gets.
+*(Amended 2026-08-17: select cases recognize the same second shutdown shape as `TS-S03` — a
+`struct{}`-element channel, or a channel named `shutdown`/`stop`/`quit`/`done`. This is what lets a
+request-carrying shutdown channel whose acknowledged-drain contract is stronger than `ctx.Done()` pass
+without a code change. Bare operations outside a select are exempted by the name recognition only:
+outside a select, a `struct{}` channel with a neutral name is just as often a completion wait with no
+cancellation — the exact bug this rule exists to catch — so element type alone never exempts a bare
+operation. Only relaxes, never creates a finding.)*
 
 **`TS-C06` No mutex held across a channel operation or a call that can block.**
 Why. It is how you build a deadlock without noticing.
@@ -1227,7 +1276,9 @@ Enforce. Review (human).
 **`TS-N06` A helper is prefixed with the name of its caller.**
 Why. The name carries the call history, so `readSector` and `readSectorRetry` sort together and read
 in order.
-Enforce. `declorder` (custom). Partial, detectable for single-caller unexported functions.
+Enforce. `declorder` (custom). Partial, advisory, detectable for single-caller unexported functions.
+*(Amended 2026-08-17: `declorder` ships in wave 1.5, registered advisory per ADR-0005 — no trial
+evidence yet, tuned like every other new heuristic rule this wave.)*
 
 **`TS-N07` Two or more parameters of the same type means you need an options struct.**
 Why. Go has no named arguments, so `Copy(src, dst string, retries, timeout int)` is a call site where
@@ -1276,7 +1327,10 @@ Enforce. `decorder` (auto). Subsumed by `TS-K04` where canonical form is adopted
 **`TS-L04` Important things near the top. Entry points first.**
 Why. A file is read top-down on the first pass. `main` first, then the type the file is about, then
 its constructor, then its methods, exported before unexported.
-Enforce. `declorder` (custom). Subsumed by `TS-K04`.
+Enforce. Subsumed by `TS-K04` (`canonical`, chain 6, not yet shipped).
+*(Amended 2026-08-17: `declorder` removed as an enforcer — wave 1.5 ships `declorder` for TS-N06 and
+TS-L05 only, deliberately not TS-L04, since the spec already marks it subsumed by `TS-K04` and that
+belongs to `canonical`, out of this wave.)*
 
 **`TS-L05` Struct order is fields, nested types, constructor, methods.**
 Why. Same reason, one level down. Complex nested types get promoted to top level.
@@ -1706,7 +1760,7 @@ analyzer without its corpus does not merge, no matter how plausible its implemen
 | `paniccheck` | TS-S18 | AST, panic outside the assert package |
 | `nogoto` | TS-S09 | AST, `BranchStmt` with Goto or a label |
 | `nofloat` | TS-N11 | `types`, float types in restricted packages |
-| `declorder` | TS-N06, L04, L05 | AST, declaration and method order |
+| `declorder` | TS-N06, L05 | AST, declaration and method order (TS-L04 not shipped, see TS-L04) |
 | `deferdistance` | TS-L10 | AST plus token positions |
 | `declusedistance` | TS-S13 | AST, lines between declaration and first use. Noisy, keep advisory |
 | `restatement` | TS-L12 | Token overlap between comment and identifier. Tune it |

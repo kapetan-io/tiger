@@ -108,3 +108,30 @@ func taglessCompliant(n int) string {
 	}
 	return "zero"
 }
+
+// PackReason is the wire-facing reason a pack file was generated, modeled
+// on git-server's PackReason: the wire can carry a value this package
+// hasn't named yet, so the set is deliberately open.
+//
+//tiger:openenum
+type PackReason string
+
+const (
+	PackReasonPush  PackReason = "push"
+	PackReasonFetch PackReason = "fetch"
+)
+
+// openEnumPlainDefaultCompliant has a default arm with no assert.Unreachable
+// — compliant because PackReason is marked //tiger:openenum: the default is
+// a legitimate catch-all for reasons this package doesn't know about yet,
+// not a coverage gap.
+func openEnumPlainDefaultCompliant(reason PackReason) string {
+	switch reason {
+	case PackReasonPush:
+		return "push"
+	case PackReasonFetch:
+		return "fetch"
+	default:
+		return "unknown"
+	}
+}

@@ -37,3 +37,48 @@ func resetCounterKnownMiss(limit int, again func() bool) int {
 	}
 	return rounds
 }
+
+// wrongDirectionLiteralKnownMiss is the pre-existing TS-S02 hole this wave
+// deliberately does not close: x > 0 is accepted because 0 is a literal
+// bound operand, with no check on which way x actually moves. x++ moves
+// away from the exit, so the loop never terminates, but the grammar has
+// no visibility into assignment direction for this shape — only the new
+// != 0 widening gained that proof.
+//
+// known-miss: closing this needs a direction proof on x > 0 / x >= c the
+// same way != 0 got one; deferred to hold the monotone-lenient constraint
+// (this wave's widenings may only remove findings, never add one).
+func wrongDirectionLiteralKnownMiss(x int) int {
+	count := 0
+	for x > 0 {
+		x++
+		count++
+		if count > 1000000 {
+			return count
+		}
+	}
+	return count
+}
+
+// closureWrongDirectionKnownMiss's post right-shifts x toward zero, so
+// the != 0 proof looks solid on its own — but a goroutine launched from
+// the body also mutates x the wrong way.
+//
+// known-miss: FuncLit is a frame boundary for the direction scan (the
+// same rule deferdistance and declusedistance apply), so the closure's
+// assignment is invisible to the proof; seeing it needs a capture-escape
+// analysis this single-package heuristic does not have.
+func closureWrongDirectionKnownMiss(x uint, launch func(func())) int {
+	count := 0
+	for x != 0 {
+		x >>= 1
+		launch(func() {
+			x++
+		})
+		count++
+		if count > 1000000 {
+			return count
+		}
+	}
+	return count
+}

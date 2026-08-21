@@ -169,12 +169,17 @@ func TestRegistryIsCoherent(t *testing.T) {
 		referenced[rule.Analyzer.Name] = true
 		assert.NotEmpty(t, rule.Title)
 	}
+	entries, err := os.ReadDir(filepath.Join("..", "analyzers"))
+	require.NoError(t, err)
+	packageDirs := map[string]bool{}
+	for _, entry := range entries {
+		packageDirs[entry.Name()] = entry.IsDir()
+	}
 	names := []string{}
 	for _, analyzer := range rules.Analyzers() {
 		names = append(names, analyzer.Name)
-		directory, err := os.Stat(filepath.Join("..", "analyzers", analyzer.Name))
-		require.NoError(t, err)
-		assert.True(t, directory.IsDir())
+		assert.True(t, packageDirs[analyzer.Name],
+			"analyzer %s has no package directory", analyzer.Name)
 	}
 	assert.Len(t, names, len(referenced))
 	assert.IsIncreasing(t, names)
