@@ -1,18 +1,5 @@
-// Package declorder enforces TS-N06 and TS-L05: a single-caller helper
-// carries its caller's name, and a struct's file-local declarations read
-// type, then constructor, then methods.
-//
-// TS-N06 only judges an unexported, receiver-less, top-level function whose
-// entire call set in the package is certain: every identifier reference to
-// it must sit in call position (the Fun of a CallExpr), and the distinct
-// FuncDecls doing the calling — excluding the helper calling itself — must
-// number exactly one. A helper ever passed as a value has an uncertain call
-// set and stays silent; two or more callers stays silent too, because the
-// rule only judges a private helper against its one owner. The caller
-// itself is exempt when it is main, init, or shaped like a Go test function
-// (Test or TestXxx taking a single *testing.T) — none of those names make a
-// meaningful prefix. Prefix comparison case-normalizes only the caller
-// name's first rune, so an exported ReadSector prefixes readSectorRetry.
+// Package declorder enforces TS-L05: a struct's file-local declarations
+// read type, then constructor, then methods.
 //
 // TS-L05 checks, per struct type declared in a file, that the same file's
 // related declarations — a constructor named New<Type>/new<Type>, and every
@@ -27,236 +14,20 @@ package declorder
 import (
 	"go/ast"
 	"go/token"
-	"go/types"
-	"regexp"
-	"strings"
-	"unicode"
 
 	"golang.org/x/tools/go/analysis"
 )
 
-// Analyzer enforces TS-N06 and TS-L05: helper naming and struct declaration
-// order.
+// Analyzer enforces TS-L05: struct declaration order.
 var Analyzer = &analysis.Analyzer{
 	Name: "declorder",
-	Doc:  "TS-N06 and TS-L05: helper naming and struct declaration order.",
+	Doc:  "TS-L05: struct declaration order.",
 	Run:  run,
 }
 
 func run(pass *analysis.Pass) (any, error) {
-	checkHelperNaming(pass)
 	checkStructOrder(pass)
 	return nil, nil
-}
-
-// testNamePrefix matches every TestXxx name except the exact name "Test",
-// which is checked separately.
-var testNamePrefix = regexp.MustCompile(`^Test\p{Lu}`)
-
-// checkHelperNaming enforces TS-N06.
-func checkHelperNaming(pass *analysis.Pass) {
-	funcs := topLevelFuncs(pass)
-	callIdents := callPositionIdents(pass)
-
-	usesByObject := map[types.Object][]*ast.Ident{}
-	for ident, obj := range pass.TypesInfo.Uses {
-		usesByObject[obj] = append(usesByObject[obj], ident)
-	}
-
-	for _, fn := range funcs {
-		if fn.Recv != nil || ast.IsExported(fn.Name.Name) {
-			continue
-		}
-		obj, ok := pass.TypesInfo.Defs[fn.Name].(*types.Func)
-		if !ok {
-			continue
-		}
-		caller, ok := soleCaller(fn, funcs, callIdents, usesByObject[obj])
-		if !ok || isExemptCaller(pass, caller) {
-			continue
-		}
-		rename := helperRename{caller: caller.Name.Name, helper: fn.Name.Name}
-		if !nameCarriesPrefix(rename) {
-			reportHelperNaming(pass, helperCallerDecls{helper: fn, caller: caller})
-		}
-	}
-}
-
-// soleCaller reports the single FuncDecl calling helper by plain
-// identifier, or ok=false when the call set is uncertain (a non-call
-// reference exists) or the caller count is not exactly one. Self-recursion
-// — a call inside helper's own body — never counts as a caller.
-func soleCaller(
-	helper *ast.FuncDecl,
-	funcs []*ast.FuncDecl,
-	callIdents map[*ast.Ident]bool,
-	uses []*ast.Ident,
-) (*ast.FuncDecl, bool) {
-	var caller *ast.FuncDecl
-	for _, ident := range uses {
-		if !callIdents[ident] {
-			return nil, false
-		}
-		enclosing := enclosingFunc(funcs, ident.Pos())
-		if enclosing == nil || enclosing == helper {
-			continue
-		}
-		if caller != nil && caller != enclosing {
-			return nil, false
-		}
-		caller = enclosing
-	}
-	if caller == nil {
-		return nil, false
-	}
-	return caller, true
-}
-
-// isExemptCaller reports whether caller's name never makes a meaningful
-// prefix: main, init, or a Go test function.
-func isExemptCaller(pass *analysis.Pass, caller *ast.FuncDecl) bool {
-	name := caller.Name.Name
-	if name == "main" || name == "init" {
-		return true
-	}
-	return isTestShaped(pass, caller)
-}
-
-// isTestShaped reports whether fn is shaped like a Go test function: a name
-// of Test or TestXxx, taking a single *testing.T parameter.
-func isTestShaped(pass *analysis.Pass, fn *ast.FuncDecl) bool {
-	name := fn.Name.Name
-	if name != "Test" && !testNamePrefix.MatchString(name) {
-		return false
-	}
-	if fn.Type.Params == nil || len(fn.Type.Params.List) != 1 {
-		return false
-	}
-	return isTestingT(pass.TypesInfo.TypeOf(fn.Type.Params.List[0].Type))
-}
-
-// isTestingT reports whether target is *testing.T.
-func isTestingT(target types.Type) bool {
-	pointer, ok := target.(*types.Pointer)
-	if !ok {
-		return false
-	}
-	named, ok := pointer.Elem().(*types.Named)
-	if !ok {
-		return false
-	}
-	symbol := named.Obj()
-	return symbol.Pkg() != nil && symbol.Pkg().Path() == "testing" && symbol.Name() == "T"
-}
-
-// helperRename pairs a single-caller helper's name with its caller's name —
-// the names nameCarriesPrefix checks and suggestName recombines. A named
-// struct keeps the two apart, since a swapped caller/helper argument pair is
-// exactly the silent bug TS-N07 exists to prevent.
-type helperRename struct {
-	caller string
-	helper string
-}
-
-// nameCarriesPrefix reports whether r.helper's name starts with r.caller's
-// name, comparing with only the caller name's first rune case-normalized —
-// an exported ReadSector prefixes readSectorRetry.
-func nameCarriesPrefix(r helperRename) bool {
-	if r.caller == "" {
-		return false
-	}
-	return strings.HasPrefix(r.helper, lowerFirst(r.caller))
-}
-
-// topLevelFuncs collects every FuncDecl (function or method) declared at
-// file scope across the package.
-func topLevelFuncs(pass *analysis.Pass) []*ast.FuncDecl {
-	funcs := []*ast.FuncDecl{}
-	for _, file := range pass.Files {
-		for _, decl := range file.Decls {
-			if fn, ok := decl.(*ast.FuncDecl); ok {
-				funcs = append(funcs, fn)
-			}
-		}
-	}
-	return funcs
-}
-
-// callPositionIdents collects every *ast.Ident that is the plain-identifier
-// Fun of a CallExpr, across the package.
-func callPositionIdents(pass *analysis.Pass) map[*ast.Ident]bool {
-	idents := map[*ast.Ident]bool{}
-	for _, file := range pass.Files {
-		ast.Inspect(file, func(node ast.Node) bool {
-			call, ok := node.(*ast.CallExpr)
-			if !ok {
-				return true
-			}
-			if ident, ok := call.Fun.(*ast.Ident); ok {
-				idents[ident] = true
-			}
-			return true
-		})
-	}
-	return idents
-}
-
-// enclosingFunc returns the top-level FuncDecl among funcs whose body
-// contains pos, or nil when pos sits outside every FuncDecl body (for
-// example, a package-level var initializer).
-func enclosingFunc(funcs []*ast.FuncDecl, pos token.Pos) *ast.FuncDecl {
-	for _, fn := range funcs {
-		if fn.Body != nil && pos >= fn.Body.Pos() && pos < fn.Body.End() {
-			return fn
-		}
-	}
-	return nil
-}
-
-// lowerFirst returns s with its first rune lowercased.
-func lowerFirst(s string) string {
-	if s == "" {
-		return s
-	}
-	r := []rune(s)
-	r[0] = unicode.ToLower(r[0])
-	return string(r)
-}
-
-// upperFirst returns s with its first rune uppercased.
-func upperFirst(s string) string {
-	if s == "" {
-		return s
-	}
-	r := []rune(s)
-	r[0] = unicode.ToUpper(r[0])
-	return string(r)
-}
-
-// suggestName joins r.caller's name (first rune lowercased) with r.helper's
-// name (first rune uppercased) into the caller-prefixed rename TS-N06
-// suggests.
-func suggestName(r helperRename) string {
-	return lowerFirst(r.caller) + upperFirst(r.helper)
-}
-
-// helperCallerDecls pairs a single-caller helper's FuncDecl with its
-// caller's, mirroring helperRename for the AST nodes TS-N06 reports against.
-type helperCallerDecls struct {
-	helper *ast.FuncDecl
-	caller *ast.FuncDecl
-}
-
-func reportHelperNaming(pass *analysis.Pass, decls helperCallerDecls) {
-	rename := helperRename{caller: decls.caller.Name.Name, helper: decls.helper.Name.Name}
-	pass.Report(analysis.Diagnostic{
-		Pos:      decls.helper.Pos(),
-		Category: "TS-N06",
-		Message: "TS-N06: " + decls.helper.Name.Name + " has a single caller (" +
-			decls.caller.Name.Name + ") but its name doesn't carry that caller's prefix — " +
-			"rename it to " + suggestName(rename) + " so the call site reads as the caller's " +
-			"own step",
-	})
 }
 
 // structInfo pairs a struct type's name with its TypeSpec, scoped to one

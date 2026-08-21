@@ -557,8 +557,12 @@ Enforce. `depguard` plus `gocritic` (auto), scoped by `TS-P01`.
 Why. A variable declared thirty lines before use is thirty lines in which the wrong variable can be
 picked up. Distance in space is distance in time, and that gap is where check-then-use bugs live. See
 `TS-Q02` for the structural fix.
-Enforce. `declusedistance` (custom, over 10 lines), `ineffassign`, `wastedassign` (auto). Partial,
-advisory.
+Enforce. `ineffassign`, `wastedassign` (auto). Partial — the dead-assignment half only.
+*(Amended 2026-08-21: `declusedistance` removed. Across tiger, querator and git-server it produced
+500 advisories. Three in five named a declaration whose first use sits inside a deeper block — an
+accumulator before its loop, where "move the declaration down" is a reset bug or a compile error.
+One in eight counted a multi-line composite literal's own body as the distance. Textual distance
+cannot tell a hoisted variable from a necessary one; the rule is human review.)*
 
 **`TS-S14` No shadowing.**
 Why. `err` shadowed inside an `if` is the most common way a Go program silently discards a failure.
@@ -1276,9 +1280,12 @@ Enforce. Review (human).
 **`TS-N06` A helper is prefixed with the name of its caller.**
 Why. The name carries the call history, so `readSector` and `readSectorRetry` sort together and read
 in order.
-Enforce. `declorder` (custom). Partial, advisory, detectable for single-caller unexported functions.
-*(Amended 2026-08-17: `declorder` ships in wave 1.5, registered advisory per ADR-0005 — no trial
-evidence yet, tuned like every other new heuristic rule this wave.)*
+Enforce. Review (human).
+*(Amended 2026-08-21: `declorder` no longer enforces this. The suggested rename compounds down a
+call chain — each level's prefix becomes the next level's suggestion, so `checkEventLoop` yields
+`checkEventLoopSelectHasTerminationCase` and the better-decomposed file is punished harder. It
+produced 392 advisories across the three measured codebases, 284 of them against tiger's own
+analyzers, burying the escape-hatch and skipped-test advisories that exist on purpose.)*
 
 **`TS-N07` Two or more parameters of the same type means you need an options struct.**
 Why. Go has no named arguments, so `Copy(src, dst string, retries, timeout int)` is a call site where
@@ -1328,13 +1335,16 @@ Enforce. `decorder` (auto). Subsumed by `TS-K04` where canonical form is adopted
 Why. A file is read top-down on the first pass. `main` first, then the type the file is about, then
 its constructor, then its methods, exported before unexported.
 Enforce. Subsumed by `TS-K04` (`canonical`, chain 6, not yet shipped).
-*(Amended 2026-08-17: `declorder` removed as an enforcer — wave 1.5 ships `declorder` for TS-N06 and
-TS-L05 only, deliberately not TS-L04, since the spec already marks it subsumed by `TS-K04` and that
-belongs to `canonical`, out of this wave.)*
+*(Amended 2026-08-17: `declorder` removed as an enforcer — it covers `TS-L05` only, deliberately not
+TS-L04, since the spec already marks it subsumed by `TS-K04` and that belongs to `canonical`, out of
+this wave.)*
 
 **`TS-L05` Struct order is fields, nested types, constructor, methods.**
 Why. Same reason, one level down. Complex nested types get promoted to top level.
 Enforce. `declorder` (custom). Advisory.
+*(Audited 2026-08-21: five findings across tiger, querator and git-server, each a constructor or
+method sitting above the type it belongs to. Low volume, and the move it asks for is the right
+one.)*
 
 **`TS-L06` Comments are sentences.**
 Why. Comments are prose describing the code, not scribbling in the margin. Trailing comments may be
@@ -1760,9 +1770,8 @@ analyzer without its corpus does not merge, no matter how plausible its implemen
 | `paniccheck` | TS-S18 | AST, panic outside the assert package |
 | `nogoto` | TS-S09 | AST, `BranchStmt` with Goto or a label |
 | `nofloat` | TS-N11 | `types`, float types in restricted packages |
-| `declorder` | TS-N06, L05 | AST, declaration and method order (TS-L04 not shipped, see TS-L04) |
+| `declorder` | TS-L05 | AST, declaration and method order (TS-L04 not shipped, see TS-L04) |
 | `deferdistance` | TS-L10 | AST plus token positions |
-| `declusedistance` | TS-S13 | AST, lines between declaration and first use. Noisy, keep advisory |
 | `restatement` | TS-L12 | Token overlap between comment and identifier. Tune it |
 | `directives` | TS-L09 | AST, every escape-hatch directive carries a reason |
 | `maporder` | TS-T02 | `buildssa`, range over a map whose body appends or writes. Heuristic |

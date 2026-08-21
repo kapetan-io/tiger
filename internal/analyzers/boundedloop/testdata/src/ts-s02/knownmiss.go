@@ -65,7 +65,7 @@ func wrongDirectionLiteralKnownMiss(x int) int {
 // the body also mutates x the wrong way.
 //
 // known-miss: FuncLit is a frame boundary for the direction scan (the
-// same rule deferdistance and declusedistance apply), so the closure's
+// same rule deferdistance applies), so the closure's
 // assignment is invisible to the proof; seeing it needs a capture-escape
 // analysis this single-package heuristic does not have.
 func closureWrongDirectionKnownMiss(x uint, launch func(func())) int {

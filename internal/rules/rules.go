@@ -22,7 +22,6 @@ import (
 	"github.com/kapetan-io/tiger/internal/analyzers/compoundcond"
 	"github.com/kapetan-io/tiger/internal/analyzers/contracts"
 	"github.com/kapetan-io/tiger/internal/analyzers/declorder"
-	"github.com/kapetan-io/tiger/internal/analyzers/declusedistance"
 	"github.com/kapetan-io/tiger/internal/analyzers/deferdistance"
 	"github.com/kapetan-io/tiger/internal/analyzers/derivation"
 	"github.com/kapetan-io/tiger/internal/analyzers/directives"
@@ -214,19 +213,9 @@ var customRules = []CustomRule{
 		Title:    "no IO inside a loop body",
 	},
 	{
-		Category: "TS-N06", RuleID: "TS-N06", Analyzer: declorder.Analyzer,
-		Severity: SeverityAdvisory,
-		Title:    "a helper is prefixed with the name of its caller",
-	},
-	{
 		Category: "TS-L05", RuleID: "TS-L05", Analyzer: declorder.Analyzer,
 		Severity: SeverityAdvisory,
 		Title:    "struct order is fields, nested types, constructor, methods",
-	},
-	{
-		Category: "TS-S13", RuleID: "TS-S13", Analyzer: declusedistance.Analyzer,
-		Severity: SeverityAdvisory,
-		Title:    "variables are declared at the point of first use",
 	},
 	{
 		Category: "TS-S01", RuleID: "TS-S01", Analyzer: norecursion.Analyzer,
