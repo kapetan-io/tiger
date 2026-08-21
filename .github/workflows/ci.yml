@@ -122,9 +122,18 @@ jobs:
           ./bin/tiger check ./... > first.txt
           ./bin/tiger check ./... > second.txt
           diff first.txt second.txt
+      - name: double-run diff with the facts channel on
+        run: |
+          ./bin/tiger check --show-facts ./... > first.txt
+          ./bin/tiger check --show-facts ./... > second.txt
+          diff first.txt second.txt
+          test -s first.txt
 
-  # The golangci-lint module plugin registers all wave-1 analyzers; one known
-  # finding must surface through a golangci-lint run.
+  # The golangci-lint module plugin registers every analyzer, SSA ones
+  # included; a known AST finding and a known SSA finding must surface
+  # through a golangci-lint run, and reported facts must not — the plugin
+  # applies the reported-severity policy, since golangci has no
+  # --show-facts channel.
   plugin-smoke:
     runs-on: ubuntu-latest
     steps:
@@ -145,3 +154,5 @@ jobs:
           test "$code" -eq 1
           grep -q "TS-S09" findings.txt
           grep -q "TS-M10" findings.txt
+          grep -q "TS-S01" findings.txt
+          ! grep -q "computed effects" findings.txt

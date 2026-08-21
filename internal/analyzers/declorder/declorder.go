@@ -92,7 +92,7 @@ func soleCaller(
 	callIdents map[*ast.Ident]bool,
 	uses []*ast.Ident,
 ) (*ast.FuncDecl, bool) {
-	callers := map[*ast.FuncDecl]bool{}
+	var caller *ast.FuncDecl
 	for _, ident := range uses {
 		if !callIdents[ident] {
 			return nil, false
@@ -101,15 +101,15 @@ func soleCaller(
 		if enclosing == nil || enclosing == helper {
 			continue
 		}
-		callers[enclosing] = true
+		if caller != nil && caller != enclosing {
+			return nil, false
+		}
+		caller = enclosing
 	}
-	if len(callers) != 1 {
+	if caller == nil {
 		return nil, false
 	}
-	for caller := range callers {
-		return caller, true
-	}
-	return nil, false
+	return caller, true
 }
 
 // isExemptCaller reports whether caller's name never makes a meaningful

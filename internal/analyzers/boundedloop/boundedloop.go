@@ -10,7 +10,7 @@
 // recognized shutdown channel — or a TS-S02 finding.
 //
 // A ForStmt with a Cond is bounded when its Post advances a variable that
-// appears in Cond (a counter), or when Cond — recursing through parens, !,
+// appears in Cond (a counter), or when Cond — walking through parens, !,
 // && (either operand bounded), and || (every operand bounded) — reduces to
 // one of: a comparison against a constant, a len(), or a cap(); a
 // monotone-counter comparison against zero (x != 0, with every assignment
@@ -41,6 +41,7 @@ import (
 
 	"golang.org/x/tools/go/analysis"
 
+	"github.com/kapetan-io/tiger/assert"
 	"github.com/kapetan-io/tiger/internal/analyzers/internal/attach"
 	"github.com/kapetan-io/tiger/internal/analyzers/internal/shutdown"
 )
@@ -246,34 +247,106 @@ const (
 	unsignedCounter counterSign = true
 )
 
-// condBounded recurses through the boolean structure of a condition: && is
-// bounded if either operand is bounded (the loop exits when the bounded
-// side goes false); || is bounded only if every operand is bounded (either
-// alone going false still lets the loop run on the other side). Negation
-// flips the two rules by De Morgan — !(A && B) is !A || !B, so under
-// negation the &&-either rule would accept a loop the bounded arm cannot
-// stop.
+// condOp classifies a node of the boolean tree condBounded evaluates: a
+// leaf verdict, a conjunction, or a disjunction.
+type condOp int
+
+const (
+	condLeaf condOp = iota
+	condAll
+	condAny
+)
+
+// condNode is one node of the and/or tree built over a loop condition.
+type condNode struct {
+	op       condOp
+	verdict  bool
+	children []*condNode
+}
+
+// condTask pairs one subexpression and its polarity with the tree node its
+// verdict fills.
+type condTask struct {
+	expr ast.Expr
+	p    polarity
+	node *condNode
+}
+
+// condBounded walks the boolean structure of a condition: && is bounded if
+// either operand is bounded (the loop exits when the bounded side goes
+// false); || is bounded only if every operand is bounded (either alone
+// going false still lets the loop run on the other side). Negation flips
+// the two rules by De Morgan — !(A && B) is !A || !B, so under negation
+// the &&-either rule would accept a loop the bounded arm cannot stop. The
+// walk builds an and/or tree with an index-advancing worklist, then
+// evaluates it bottom-up in reverse creation order — no recursion.
 func condBounded(pass *analysis.Pass, loop *ast.ForStmt, expr ast.Expr, p polarity) bool {
-	switch e := expr.(type) {
-	case *ast.ParenExpr:
-		return condBounded(pass, loop, e.X, p)
-	case *ast.UnaryExpr:
-		if e.Op == token.NOT {
-			return condBounded(pass, loop, e.X, !p)
-		}
-		return false
-	case *ast.BinaryExpr:
-		if e.Op == token.LAND || e.Op == token.LOR {
+	root := &condNode{}
+	nodes := []*condNode{root}
+	work := []condTask{{expr: expr, p: p, node: root}}
+	for i := 0; i < len(work); i++ {
+		task := work[i]
+		switch e := task.expr.(type) {
+		case *ast.ParenExpr:
+			task.node.op = condAll
+			work = append(work, condTask{expr: e.X, p: task.p, node: condChild(task.node, &nodes)})
+		case *ast.UnaryExpr:
+			if e.Op != token.NOT {
+				continue
+			}
+			task.node.op = condAll
+			work = append(work, condTask{expr: e.X, p: !task.p, node: condChild(task.node, &nodes)})
+		case *ast.BinaryExpr:
+			if e.Op != token.LAND && e.Op != token.LOR {
+				task.node.verdict = leafBounded(pass, loop, e, task.p)
+				continue
+			}
 			// && needs every operand bounded exactly when negated, ||
 			// exactly when plain — the four cases of the De Morgan flip.
-			if (e.Op == token.LAND) == (p == negatedContext) {
-				return condBounded(pass, loop, e.X, p) && condBounded(pass, loop, e.Y, p)
+			task.node.op = condAny
+			if (e.Op == token.LAND) == (task.p == negatedContext) {
+				task.node.op = condAll
 			}
-			return condBounded(pass, loop, e.X, p) || condBounded(pass, loop, e.Y, p)
+			work = append(work,
+				condTask{expr: e.X, p: task.p, node: condChild(task.node, &nodes)},
+				condTask{expr: e.Y, p: task.p, node: condChild(task.node, &nodes)})
 		}
-		return leafBounded(pass, loop, e, p)
+	}
+	// Children always sit after their parents in creation order, so the
+	// reverse pass sees every child's verdict before its parent needs it.
+	for i := len(nodes) - 1; i >= 0; i-- {
+		evalCond(nodes[i])
+	}
+	return root.verdict
+}
+
+// condChild creates one node under parent, registered for evaluation.
+func condChild(parent *condNode, nodes *[]*condNode) *condNode {
+	created := &condNode{}
+	parent.children = append(parent.children, created)
+	*nodes = append(*nodes, created)
+	return created
+}
+
+// evalCond computes one node's verdict from its already-evaluated children.
+func evalCond(node *condNode) {
+	switch node.op {
+	case condLeaf:
+	case condAll:
+		node.verdict = true
+		for _, held := range node.children {
+			if !held.verdict {
+				node.verdict = false
+			}
+		}
+	case condAny:
+		for _, held := range node.children {
+			if held.verdict {
+				node.verdict = true
+			}
+		}
 	default:
-		return false
+		assert.Unreachable("condOp: unhandled value")
 	}
 }
 
@@ -724,9 +797,15 @@ func identifierAppears(expr ast.Expr, name string) bool {
 // isBoundOperand reports whether expr is a literal, a resolved constant, or
 // a len()/cap() call — the shapes TS-S02 accepts as a stated bound.
 func isBoundOperand(pass *analysis.Pass, expr ast.Expr) bool {
+	// Parentheses nest finitely; the cap bounds the unwrap without recursion.
+	for range 64 {
+		wrapped, ok := expr.(*ast.ParenExpr)
+		if !ok {
+			break
+		}
+		expr = wrapped.X
+	}
 	switch operand := expr.(type) {
-	case *ast.ParenExpr:
-		return isBoundOperand(pass, operand.X)
 	case *ast.BasicLit:
 		return true
 	case *ast.Ident:

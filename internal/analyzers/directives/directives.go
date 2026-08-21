@@ -44,6 +44,7 @@ func inspect(pass *analysis.Pass, comment *ast.Comment) {
 	parsed, err := directive.Parse(comment.Text)
 	var unknown *directive.UnknownVerbError
 	var unreasoned *directive.MissingReasonError
+	var malformed *directive.MalformedArgsError
 	switch {
 	case errors.As(err, &unknown):
 		pass.Report(analysis.Diagnostic{
@@ -60,6 +61,14 @@ func inspect(pass *analysis.Pass, comment *ast.Comment) {
 			Message: "TS-L09: //tiger:" + parsed.Verb + " carries no reason — an escape " +
 				"without a reason is a rule silently deleted; state the constraint of the " +
 				"outside world that forces this shape",
+		})
+	case errors.As(err, &malformed):
+		pass.Report(analysis.Diagnostic{
+			Pos:      comment.Pos(),
+			Category: "TS-L09",
+			Message: "TS-L09: //tiger:" + malformed.Verb + " " + malformed.Detail +
+				" — the pin grammars are closed; a pin that does not parse never " +
+				"freezes a fact, so fix its arguments",
 		})
 	case err != nil:
 		// Is() accepted the prefix, so Parse can only fail one of the ways

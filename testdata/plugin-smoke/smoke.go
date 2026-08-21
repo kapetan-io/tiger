@@ -1,6 +1,6 @@
-// Package smoke contains one known TS-S09 violation and one known TS-M10
-// violation for the plugin smoke test: both findings must surface through
-// a golangci-lint run.
+// Package smoke contains one known TS-S09 violation, one known TS-M10
+// violation, and one known TS-S01 violation for the plugin smoke test: all
+// three findings must surface through a golangci-lint run.
 package smoke
 
 import "os"
@@ -25,4 +25,14 @@ func ReadAll(paths []string) error {
 		}
 	}
 	return nil
+}
+
+// Countdown recurses so norecursion — an SSA analyzer riding the plugin's
+// native buildssa dependency resolution — fires through a golangci-lint
+// run.
+func Countdown(n int) int {
+	if n <= 0 {
+		return 0
+	}
+	return n + Countdown(n-1)
 }

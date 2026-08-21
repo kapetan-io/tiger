@@ -22,8 +22,9 @@ package chandecl
 
 import (
 	"go/ast"
+	"maps"
 	"path/filepath"
-	"sort"
+	"slices"
 
 	"golang.org/x/tools/go/analysis"
 )
@@ -49,11 +50,7 @@ func run(pass *analysis.Pass) (any, error) {
 		return nil, nil
 	}
 
-	files := make([]string, 0, len(byFile))
-	for name := range byFile {
-		files = append(files, name)
-	}
-	sort.Strings(files)
+	files := slices.Sorted(maps.Keys(byFile))
 	canonical := files[0]
 
 	for _, name := range files[1:] {

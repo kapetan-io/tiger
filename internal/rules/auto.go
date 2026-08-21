@@ -6,6 +6,7 @@
 package rules
 
 import (
+	"maps"
 	"slices"
 	"strings"
 )
@@ -401,25 +402,52 @@ func StandardLinter(name string) bool {
 	return slices.Contains(standardLinters, name)
 }
 
+// substituteTask pairs one baseline fragment with the slot its replacement
+// lands in.
+type substituteTask struct {
+	want any
+	slot func(any)
+}
+
 // SubstituteModule replaces ModuleToken with the project's module path
-// throughout a baseline value.
+// throughout a baseline value, walking nested fragments with an
+// index-advancing worklist — containers are created up front and their
+// elements filled through slots on later passes.
 func SubstituteModule(want any, module string) any {
-	switch typed := want.(type) {
+	var substituted any
+	work := []substituteTask{{want: want, slot: func(v any) { substituted = v }}}
+	for i := 0; i < len(work); i++ {
+		work = substituteOne(work, i, module)
+	}
+	return substituted
+}
+
+// substituteOne resolves one task, appending child tasks for nested values.
+func substituteOne(work []substituteTask, i int, module string) []substituteTask {
+	task := work[i]
+	switch typed := task.want.(type) {
 	case string:
-		return strings.ReplaceAll(typed, ModuleToken, module)
+		task.slot(strings.ReplaceAll(typed, ModuleToken, module))
 	case []any:
 		replaced := make([]any, len(typed))
-		for i, element := range typed {
-			replaced[i] = SubstituteModule(element, module)
+		task.slot(replaced)
+		for at, element := range typed {
+			work = append(work, substituteTask{
+				want: element,
+				slot: func(v any) { replaced[at] = v },
+			})
 		}
-		return replaced
 	case map[string]any:
 		replaced := make(map[string]any, len(typed))
-		for key, element := range typed {
-			replaced[key] = SubstituteModule(element, module)
+		task.slot(replaced)
+		for _, key := range slices.Sorted(maps.Keys(typed)) {
+			work = append(work, substituteTask{
+				want: typed[key],
+				slot: func(v any) { replaced[key] = v },
+			})
 		}
-		return replaced
 	default:
-		return want
+		task.slot(task.want)
 	}
+	return work
 }

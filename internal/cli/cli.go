@@ -21,8 +21,8 @@ const (
 )
 
 const usage = `usage:
-  tiger check [-C dir] [analyzer flags] [packages]
-      run the registered wave-1 analyzers; exit 0 clean, 1 findings,
+  tiger check [-C dir] [--show-facts] [analyzer flags] [packages]
+      run the registered analyzers; exit 0 clean, 1 findings,
       2 operational failure
   tiger golangci [-C dir] [--init]
       audit the project golangci-lint config against the auto-rule baseline,

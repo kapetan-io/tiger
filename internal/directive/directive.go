@@ -80,6 +80,19 @@ func (e *MissingReasonError) Error() string {
 	return Prefix + e.Verb + " requires a reason"
 }
 
+// MalformedArgsError reports a pin directive whose arguments fail the
+// verb's grammar. The detail names the offending token, so the TS-L09
+// finding can point at exactly what to fix (invariant 2: a name outside the
+// closed lattice is a parse error, never a silently meaningless string).
+type MalformedArgsError struct {
+	Verb   string
+	Detail string
+}
+
+func (e *MalformedArgsError) Error() string {
+	return Prefix + e.Verb + ": " + e.Detail
+}
+
 // vocabulary is the closed verb set, in declaration-model order: the sole
 // wave-1 escape, then the pin and intent verbs later waves enforce
 // (validated for well-formedness from wave 1).
@@ -129,7 +142,32 @@ func Parse(text string) (Directive, error) {
 	if spec.Kind == KindEscape && parsed.Args == "" {
 		return parsed, &MissingReasonError{Verb: parsed.Verb}
 	}
+	if spec.Kind == KindPin {
+		if err := validatePinArgs(parsed); err != nil {
+			return parsed, &MalformedArgsError{Verb: parsed.Verb, Detail: err.Error()}
+		}
+	}
 	return parsed, nil
+}
+
+// validatePinArgs applies the per-verb argument grammar to a pin. Intent
+// verbs stay free-form until the waves that enforce them arrive.
+func validatePinArgs(parsed Directive) error {
+	switch parsed.Verb {
+	case "effects":
+		_, err := ParseEffects(parsed.Args)
+		return err
+	case "frame":
+		_, err := ParseFrame(parsed.Args)
+		return err
+	case "variant":
+		_, err := ParseVariant(parsed.Args)
+		return err
+	case "requires", "ensures":
+		_, err := ParsePredicate(parsed.Args)
+		return err
+	}
+	return nil
 }
 
 // Format prints a directive canonically: the prefix, the verb, and — when

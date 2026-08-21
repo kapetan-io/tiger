@@ -2,12 +2,14 @@ package cli_test
 
 import (
 	"bytes"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/kapetan-io/tiger/internal/cli"
+	"github.com/kapetan-io/tiger/internal/directive"
 )
 
 // outcome is one CLI invocation's observable result.
@@ -34,6 +36,91 @@ func TestCheckCleanTreeIsSilent(t *testing.T) {
 	assert.Equal(t, cli.ExitClean, got.code)
 	assert.Empty(t, got.stdout)
 	assert.Empty(t, got.stderr)
+}
+
+// factsGolden is the showfacts fixture's complete --show-facts output:
+// computed effect sets, frames, and a synthesized variant, every fact in
+// freeze-ready pin syntax.
+const factsGolden = "facts.go:14:1: TS-F01: computed effects for Append — " +
+	"//tiger:effects alloc, mutate(r.log)\n" +
+	"facts.go:14:1: TS-F07: computed frame for Append — //tiger:frame r.log\n" +
+	"facts.go:19:1: TS-F01: computed effects for Drain — //tiger:effects none\n" +
+	"facts.go:19:1: TS-F07: computed frame for Drain — //tiger:frame none\n" +
+	"facts.go:21:2: TS-V01: synthesized variant — //tiger:variant len(pending)\n" +
+	"facts.go:29:1: TS-F01: computed effects for Home — //tiger:effects io(env)\n" +
+	"facts.go:29:1: TS-F07: computed frame for Home — //tiger:frame none\n"
+
+// TestCheckShowFactsPrintsPinSyntax covers the reported severity level's
+// activation and invariant 1 at the CLI surface.
+//
+// Goal: --show-facts prints every computed fact — effect sets, frames,
+// synthesized variants — as position-prefixed lines whose pin text is
+// byte-exact directive.Format output, the run still exits 0, and no
+// summary line appears because reported findings are never counted.
+func TestCheckShowFactsPrintsPinSyntax(t *testing.T) {
+	got := run(t, "check", "-C", "testdata/fixtures/showfacts", "--show-facts", "./...")
+	assert.Equal(t, cli.ExitClean, got.code)
+	assert.Empty(t, got.stderr)
+	assert.Equal(t, factsGolden, got.stdout)
+}
+
+// TestCheckShowFactsOutputRoundTrips covers invariant 1 end to end.
+//
+// Goal: every printed fact's //tiger: text parses back through the grammar
+// to a directive that formats byte-identically, so ENG-151 can freeze any
+// printed fact into a pin by pasting it.
+func TestCheckShowFactsOutputRoundTrips(t *testing.T) {
+	got := run(t, "check", "-C", "testdata/fixtures/showfacts", "--show-facts", "./...")
+	require.Equal(t, cli.ExitClean, got.code)
+	lines := strings.Split(strings.TrimSuffix(got.stdout, "\n"), "\n")
+	require.NotEmpty(t, lines)
+	for _, line := range lines {
+		at := strings.Index(line, "//tiger:")
+		require.GreaterOrEqual(t, at, 0)
+		pin := line[at:]
+		parsed, err := directive.Parse(pin)
+		require.NoError(t, err)
+		assert.Equal(t, pin, directive.Format(parsed))
+	}
+}
+
+// TestCheckWithoutShowFactsIsByteIdenticalToWaveOne covers the flag-absent
+// contract.
+//
+// Goal: a tree whose only findings are computed facts prints nothing and
+// exits 0 without the flag — byte-identical to a wave-1 run over the same
+// tree, with no summary line, because reported findings are never counted.
+func TestCheckWithoutShowFactsIsByteIdenticalToWaveOne(t *testing.T) {
+	got := run(t, "check", "-C", "testdata/fixtures/showfacts", "./...")
+	assert.Equal(t, cli.ExitClean, got.code)
+	assert.Empty(t, got.stdout)
+	assert.Empty(t, got.stderr)
+}
+
+// TestCheckShowFactsIsDeterministic covers constraint 5 with the facts
+// channel on.
+//
+// Goal: two --show-facts runs over the same tree are byte-identical.
+func TestCheckShowFactsIsDeterministic(t *testing.T) {
+	first := run(t, "check", "-C", "testdata/fixtures/showfacts", "--show-facts", "./...")
+	second := run(t, "check", "-C", "testdata/fixtures/showfacts", "--show-facts", "./...")
+	assert.Equal(t, first, second)
+}
+
+// TestCheckFactsPropagateAcrossPackages covers TS-F02's acceptance
+// criterion: sparse pins, dense enforcement, across a package boundary.
+//
+// Goal: a pinned function whose effect violation is introduced in a
+// different package of the module produces the blocking finding at the
+// pin, naming the introducing call, and the run exits 1.
+func TestCheckFactsPropagateAcrossPackages(t *testing.T) {
+	got := run(t, "check", "-C", "testdata/fixtures/facts", "./...")
+	assert.Equal(t, cli.ExitFindings, got.code)
+	assert.Empty(t, got.stderr)
+	assert.Equal(t, "core/core.go:10:1: TS-F02: computed effects io(net) are not declared "+
+		"by this pin — introduced by a call to fixture.example/facts/helper.Ping at "+
+		"core.go:12:20 — remove the call or update the pin to //tiger:effects io(net)\n"+
+		"tiger: 1 blocking, 0 advisory\n", got.stdout)
 }
 
 // TestCheckBlockingFindingsExitOne covers the findings contract.

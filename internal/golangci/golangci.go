@@ -8,6 +8,7 @@ package golangci
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -16,6 +17,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/kapetan-io/tiger/assert"
 	"github.com/kapetan-io/tiger/internal/rules"
 )
 
@@ -166,62 +168,165 @@ func lookup(document map[string]any, path []string) (any, bool) {
 	return current, true
 }
 
+// matchOp classifies a node of the comparison tree matches builds: a leaf
+// verdict, a conjunction, or a disjunction.
+type matchOp int
+
+const (
+	matchLeaf matchOp = iota
+	matchAll
+	matchAny
+)
+
+// matchNode is one node of the and/or comparison tree.
+type matchNode struct {
+	op       matchOp
+	verdict  bool
+	children []*matchNode
+}
+
+// matchTask pairs a baseline fragment and a project fragment with the tree
+// node their comparison fills.
+type matchTask struct {
+	want any
+	got  any
+	node *matchNode
+}
+
+// matchState carries the tree build: the task worklist and every created
+// node in creation order, so evaluation can run bottom-up without
+// recursion (children always sit after their parents).
+type matchState struct {
+	work  []matchTask
+	nodes []*matchNode
+}
+
 // matches compares a project's YAML fragment against the baseline. Scalars
 // and scalar lists must match exactly; a list of maps must contain every
 // baseline element (extra elements pass); a map must hold every baseline
-// key (extra keys pass).
+// key (extra keys pass). The comparison builds an and/or tree with an
+// index-advancing worklist, then evaluates it bottom-up — no recursion.
 func (b baseline) matches(got any) bool {
-	switch want := b.want.(type) {
+	root := &matchNode{}
+	tree := &matchState{nodes: []*matchNode{root}}
+	tree.work = []matchTask{{want: b.want, got: got, node: root}}
+	for i := 0; i < len(tree.work); i++ {
+		tree.expand(i)
+	}
+	for i := len(tree.nodes) - 1; i >= 0; i-- {
+		evalNode(tree.nodes[i])
+	}
+	return root.verdict
+}
+
+// expand fills one task's node: a leaf verdict, or a connective whose
+// child tasks land back on the worklist.
+func (s *matchState) expand(i int) {
+	task := s.work[i]
+	switch want := task.want.(type) {
 	case []any:
-		listed, ok := got.([]any)
+		listed, ok := task.got.([]any)
 		if !ok {
-			return false
+			task.node.op = matchLeaf
+			return
 		}
-		if len(want) > 0 {
-			if _, mapped := want[0].(map[string]any); mapped {
-				return b.eachContained(listed)
-			}
+		if containment(want) {
+			s.expandContainment(task, listed)
+			return
 		}
 		if len(want) != len(listed) {
-			return false
+			task.node.op = matchLeaf
+			return
 		}
-		for i, element := range want {
-			if !(baseline{want: element}).matches(listed[i]) {
-				return false
-			}
+		task.node.op = matchAll
+		for at, element := range want {
+			s.push(matchTask{want: element, got: listed[at], node: s.child(task.node)})
 		}
-		return true
 	case map[string]any:
-		mapped, ok := got.(map[string]any)
+		mapped, ok := task.got.(map[string]any)
 		if !ok {
-			return false
+			task.node.op = matchLeaf
+			return
 		}
-		for key, element := range want {
+		task.node.op = matchAll
+		for _, key := range slices.Sorted(maps.Keys(want)) {
 			held, found := mapped[key]
-			if !found || !(baseline{want: element}).matches(held) {
-				return false
+			if !found {
+				s.child(task.node).op = matchLeaf
+				continue
 			}
+			s.push(matchTask{want: want[key], got: held, node: s.child(task.node)})
 		}
-		return true
 	default:
-		return b.scalarEqual(got)
+		task.node.op = matchLeaf
+		task.node.verdict = (baseline{want: task.want}).scalarEqual(task.got)
 	}
 }
 
-// eachContained reports whether every element of the baseline list has a
-// matching element in the project's list, in any order.
-func (b baseline) eachContained(listed []any) bool {
-	want, ok := b.want.([]any)
+// expandContainment handles a baseline list of maps: every baseline
+// element (AND) must match some project element (OR), in any order.
+func (s *matchState) expandContainment(task matchTask, listed []any) {
+	want, ok := task.want.([]any)
 	if !ok {
-		return false
+		task.node.op = matchLeaf
+		return
 	}
+	task.node.op = matchAll
 	for _, element := range want {
-		matched := slices.ContainsFunc(listed, (baseline{want: element}).matches)
-		if !matched {
-			return false
+		anyOf := s.child(task.node)
+		anyOf.op = matchAny
+		for _, candidate := range listed {
+			s.push(matchTask{want: element, got: candidate, node: s.child(anyOf)})
 		}
 	}
-	return true
+}
+
+// containment reports whether a baseline list compares by containment: a
+// non-empty list whose first element is a map.
+func containment(want []any) bool {
+	if len(want) == 0 {
+		return false
+	}
+	_, mapped := want[0].(map[string]any)
+	return mapped
+}
+
+// child creates one node under parent, registered for evaluation.
+func (s *matchState) child(parent *matchNode) *matchNode {
+	created := &matchNode{}
+	parent.children = append(parent.children, created)
+	s.nodes = append(s.nodes, created)
+	return created
+}
+
+// push queues one comparison task.
+func (s *matchState) push(task matchTask) {
+	s.work = append(s.work, task)
+}
+
+// evalNode computes one node's verdict from its already-evaluated
+// children: a conjunction of none is true, a disjunction of none false.
+func evalNode(node *matchNode) {
+	switch node.op {
+	case matchLeaf:
+		return
+	case matchAll:
+		node.verdict = true
+		for _, held := range node.children {
+			if !held.verdict {
+				node.verdict = false
+			}
+		}
+	case matchAny:
+		node.verdict = false
+		for _, held := range node.children {
+			if held.verdict {
+				node.verdict = true
+			}
+		}
+	default:
+		assert.Unreachable("matchOp: unhandled value")
+	}
 }
 
 // scalarEqual compares the baseline scalar against a YAML scalar,

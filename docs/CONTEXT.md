@@ -46,8 +46,34 @@ _Avoid_: suppression, nolint (the golangci mechanism, not ours)
 
 **Severity**:
 A rule's run-level consequence — **blocking** (fails the run), **advisory** (printed and counted,
-does not fail), or **reported** (annotation-only). Defined once per rule in the registry, never
-inside an analyzer.
+does not fail), or **reported** (printed only under `--show-facts`, never affects the exit code).
+Defined once per rule in the registry, never inside an analyzer. The reported level activates in
+the SSA wave as the computed-facts channel.
+
+**Effect set**:
+The analyzer-computed summary of what a function does, over the closed lattice `alloc`, `io(q)`,
+`block`, `panic`, `rand`, `time`, `mutate(x)`, `spawn`; the empty set is purity, spelled `none`
+in pin syntax. Transitive by construction — a function's set includes everything reachable
+beneath it.
+
+**Frame**:
+The analyzer-computed set of locations reachable from a function's parameters and receiver that
+the function writes. A pinned frame makes writes outside it blocking.
+
+**Variant**:
+A ranking expression for a loop, required to strictly decrease on every back edge and be bounded
+below — the standard termination argument. Synthesized by the analyzer where it can (linear
+integer expressions over locals), pinned where it cannot.
+
+**Fact**:
+The `go/analysis` mechanism carrying one package's computed results (effect sets, frames) to the
+packages that import it; how transitivity crosses package boundaries within a module. In-memory
+per run, never serialized.
+
+**Stdlib effects table**:
+The curated, committed mapping from standard-library functions to their effects (`os.(*File).Write`
+→ `io(disk)`); the source of built-in io qualifiers. Data with tests; its coverage gaps are
+known-misses.
 
 **Registry**:
 The closed set of every rule in the dialect — custom rules bound to their analyzer and severity,

@@ -2,6 +2,7 @@ package golangci
 
 import (
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -122,42 +123,57 @@ func insert(document map[string]any, path []string, fragment any) {
 	current[leaf] = fragment
 }
 
+// encodeTask pairs one fragment with the node the walk fills for it.
+type encodeTask struct {
+	fragment any
+	node     *yaml.Node
+}
+
 // encode builds a yaml.Node tree with map keys sorted, so the generated
 // document is byte-identical across runs — yaml.Marshal on plain maps would
-// leak map iteration order into the output (constraint 4).
+// leak map iteration order into the output (constraint 4). The walk is an
+// index-advancing worklist: nested fragments get empty child nodes filled
+// on later passes.
 func encode(fragment any) *yaml.Node {
-	switch typed := fragment.(type) {
-	case map[string]any:
-		keys := make([]string, 0, len(typed))
-		for key := range typed {
-			keys = append(keys, key)
-		}
-		sort.Strings(keys)
-		node := &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}
-		for _, key := range keys {
-			node.Content = append(node.Content,
-				&yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: key},
-				encode(typed[key]))
-		}
-		return node
-	case []any:
-		node := &yaml.Node{Kind: yaml.SequenceNode, Tag: "!!seq"}
-		for _, element := range typed {
-			node.Content = append(node.Content, encode(element))
-		}
-		return node
-	case string:
-		return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: typed}
-	case bool:
-		return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!bool", Value: strconv.FormatBool(typed)}
-	case int:
-		return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!int", Value: strconv.Itoa(typed)}
-	case float64:
-		return &yaml.Node{
-			Kind: yaml.ScalarNode, Tag: "!!float",
-			Value: strconv.FormatFloat(typed, 'f', 1, 64),
-		}
-	default:
-		return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: fmt.Sprintf("%v", typed)}
+	root := &yaml.Node{}
+	work := []encodeTask{{fragment: fragment, node: root}}
+	for i := 0; i < len(work); i++ {
+		work = fillNode(work, i)
 	}
+	return root
+}
+
+// fillNode fills one task's node, appending child tasks for nested values.
+func fillNode(work []encodeTask, i int) []encodeTask {
+	node := work[i].node
+	switch typed := work[i].fragment.(type) {
+	case map[string]any:
+		node.Kind, node.Tag = yaml.MappingNode, "!!map"
+		for _, key := range slices.Sorted(maps.Keys(typed)) {
+			child := &yaml.Node{}
+			node.Content = append(node.Content,
+				&yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: key}, child)
+			work = append(work, encodeTask{fragment: typed[key], node: child})
+		}
+	case []any:
+		node.Kind, node.Tag = yaml.SequenceNode, "!!seq"
+		for _, element := range typed {
+			child := &yaml.Node{}
+			node.Content = append(node.Content, child)
+			work = append(work, encodeTask{fragment: element, node: child})
+		}
+	case string:
+		node.Kind, node.Tag, node.Value = yaml.ScalarNode, "!!str", typed
+	case bool:
+		node.Kind, node.Tag, node.Value = yaml.ScalarNode, "!!bool", strconv.FormatBool(typed)
+	case int:
+		node.Kind, node.Tag, node.Value = yaml.ScalarNode, "!!int", strconv.Itoa(typed)
+	case float64:
+		node.Kind, node.Tag = yaml.ScalarNode, "!!float"
+		node.Value = strconv.FormatFloat(typed, 'f', 1, 64)
+	default:
+		node.Kind, node.Tag = yaml.ScalarNode, "!!str"
+		node.Value = fmt.Sprintf("%v", work[i].fragment)
+	}
+	return work
 }
