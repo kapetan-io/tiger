@@ -22,8 +22,8 @@
 // up and j down by the same constant step, closing the gap).
 // A FuncLit is a frame boundary for the monotone-counter and tuple-post
 // direction scans: an assignment inside a closure counts neither for nor
-// against the proof, matching deferdistance's and declusedistance's
-// treatment of the same shape.
+// against the proof, matching deferdistance's treatment of the same
+// shape.
 //
 // Any other Cond is a TS-S02 finding, unless the loop matches the cursor
 // shape — Cond is a boolean method call on a plain identifier (it.Valid(),
@@ -688,8 +688,8 @@ func loopAssignments(pass *analysis.Pass, target *types.Var, loop *ast.ForStmt) 
 // assignmentsTo collects every AssignStmt, IncDecStmt, or range clause
 // targeting target within node, without descending into a FuncLit: a
 // closure is a frame boundary, so a mutation inside it counts neither for
-// nor against the direction proof, matching deferdistance's and
-// declusedistance's treatment of the same shape. Matching is by object
+// nor against the direction proof, matching deferdistance's treatment of
+// the same shape. Matching is by object
 // identity through TypesInfo.Uses — a := redeclaration defines a new
 // object (a shadow), so its assignments count neither for nor against the
 // outer variable's proof. A range clause counts because "for x = range s"

@@ -58,6 +58,10 @@ jobs:
           echo "code=$?" >> "$GITHUB_OUTPUT"
           set -e
           cat report.txt
+      - name: report summarizer matches its golden
+        run: |
+          awk -f .github/report.awk .github/testdata/report.txt > got.md
+          diff .github/testdata/report.golden.md got.md
       - name: report on the pull request
         if: github.event_name == 'pull_request'
         env:
@@ -77,13 +81,7 @@ jobs:
               *) echo "Exit $CODE — operational failure; the dogfood job fails." ;;
             esac
             echo
-            if [ -s report.txt ]; then
-              echo '```'
-              cat report.txt
-              echo '```'
-            else
-              echo 'Clean run: no findings, no advisories.'
-            fi
+            awk -f .github/report.awk report.txt
           } > comment.md
           existing=$(gh api "repos/$REPO/issues/$PR/comments" --paginate \
             --jq ".[] | select(.body | startswith(\"$marker\")) | .id" | head -1)
