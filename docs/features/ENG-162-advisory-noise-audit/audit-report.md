@@ -113,7 +113,9 @@ wreck the comment.
 ## What this says about the advisory tier
 
 ADR-0005 registers new heuristic rules as advisory and promotes them to blocking once trials show
-every finding actionable. It does not name the other outcome, which both ENG-161 and this audit
-have now taken: when the trial shows the findings are not actionable, the rule is removed rather
-than tuned. A rule whose output is dominated by noise does not get fixed later — it teaches
-readers to skip the channel it prints on, and it takes the useful advisories down with it.
+every finding actionable. It named no other outcome, though both ENG-161 and this audit have now
+taken one: when the trial shows the findings are not actionable, the rule is removed rather than
+tuned. ADR-0006 records that missing exit — a rule whose output is dominated by noise does not get
+fixed later, it teaches readers to skip the channel it prints on and takes the deliberate
+advisories down with it. ADR-0005 is unchanged and still in force; its TS-M10 exact-tier decision
+was never in question here.
