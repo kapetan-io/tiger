@@ -48,9 +48,10 @@ import (
 	"golang.org/x/tools/go/ssa"
 
 	"github.com/kapetan-io/tiger/assert"
-	"github.com/kapetan-io/tiger/internal/analyzers/internal/pins"
 	"github.com/kapetan-io/tiger/internal/analyzers/internal/ssalib"
 	"github.com/kapetan-io/tiger/internal/directive"
+	"github.com/kapetan-io/tiger/internal/facts"
+	"github.com/kapetan-io/tiger/internal/pins"
 )
 
 // EffectsFact carries one named function's enforced effect summary in
@@ -559,11 +560,12 @@ func reportFacts(pass *analysis.Pass, entries []funcEntry, computed map[*ssa.Fun
 		pass.Report(analysis.Diagnostic{
 			Pos:      e.decl.Pos(),
 			Category: "TS-F01-facts",
-			Message: fmt.Sprintf("TS-F01: computed effects for %s — %s",
-				e.decl.Name.Name,
-				directive.Format(directive.Directive{
+			Message: facts.Message(facts.Fact{
+				RuleID: "TS-F01", Kind: "computed effects", Function: e.decl.Name.Name,
+				Directive: directive.Directive{
 					Verb: "effects", Args: directive.FormatEffects(rendered),
-				})),
+				},
+			}),
 		})
 	}
 }

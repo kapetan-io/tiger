@@ -66,8 +66,9 @@ import (
 	"golang.org/x/tools/go/analysis"
 
 	"github.com/kapetan-io/tiger/assert"
-	"github.com/kapetan-io/tiger/internal/analyzers/internal/pins"
 	"github.com/kapetan-io/tiger/internal/directive"
+	"github.com/kapetan-io/tiger/internal/facts"
+	"github.com/kapetan-io/tiger/internal/pins"
 )
 
 const (
@@ -79,8 +80,7 @@ const (
 		"strictly decrease on every back edge — %s; rewrite the loop with an explicit iteration " +
 		"cap and an assert on exhaustion (for tries := 0; tries < capLimit; tries++), whose " +
 		"counter is itself a linear variant, or pin a variant the analyzer can verify"
-	msgSynthesizedPrefix = "TS-V01: synthesized variant — //tiger:variant "
-	msgPointlessPin      = "TS-V01: this loop needs no variant — it terminates structurally, " +
+	msgPointlessPin = "TS-V01: this loop needs no variant — it terminates structurally, " +
 		"not by a decreasing measure, so the pin states nothing; remove the pin"
 )
 
@@ -95,23 +95,53 @@ var Analyzer = &analysis.Analyzer{
 func run(pass *analysis.Pass) (any, error) {
 	set := pins.Collect(pass.Fset, pass.Files)
 	for _, file := range pass.Files {
-		ast.Inspect(file, func(node ast.Node) bool {
-			switch loop := node.(type) {
-			case *ast.RangeStmt:
-				checkOutOfScopePin(pass, set, loop)
-			case *ast.ForStmt:
-				checkFor(pass, set, loop)
-			}
-			return true
-		})
+		for _, decl := range file.Decls {
+			inspectDecl(pass, set, decl)
+		}
 	}
 	return nil, nil
+}
+
+// inspectDecl walks one top-level declaration's loops, carrying the name
+// the fact message attributes them to: the function declaration's own
+// name, or — for a loop inside a function literal in a value spec — the
+// named entity whose initializer holds it.
+func inspectDecl(pass *analysis.Pass, set pins.Set, decl ast.Decl) {
+	switch d := decl.(type) {
+	case *ast.FuncDecl:
+		if d.Body != nil {
+			inspectLoops(pass, set, d.Body, d.Name.Name)
+		}
+	case *ast.GenDecl:
+		for _, spec := range d.Specs {
+			value, ok := spec.(*ast.ValueSpec)
+			if !ok || len(value.Names) == 0 {
+				continue
+			}
+			for _, expr := range value.Values {
+				inspectLoops(pass, set, expr, value.Names[0].Name)
+			}
+		}
+	}
+}
+
+// inspectLoops applies the loop checks to every loop beneath root.
+func inspectLoops(pass *analysis.Pass, set pins.Set, root ast.Node, function string) {
+	ast.Inspect(root, func(node ast.Node) bool {
+		switch loop := node.(type) {
+		case *ast.RangeStmt:
+			checkOutOfScopePin(pass, set, loop)
+		case *ast.ForStmt:
+			checkFor(pass, set, loop, function)
+		}
+		return true
+	})
 }
 
 // checkFor classifies a for statement: out of scope (no Cond, or
 // fixed-count — a stray pin there is itself a finding), pinned (verify the
 // pin), or unpinned (attempt synthesis).
-func checkFor(pass *analysis.Pass, set pins.Set, loop *ast.ForStmt) {
+func checkFor(pass *analysis.Pass, set pins.Set, loop *ast.ForStmt, function string) {
 	if loop.Cond == nil {
 		checkOutOfScopePin(pass, set, loop)
 		return
@@ -125,7 +155,7 @@ func checkFor(pass *analysis.Pass, set pins.Set, loop *ast.ForStmt) {
 		checkPinned(pass, loop, pinned[0])
 		return
 	}
-	checkUnpinned(pass, loop)
+	checkUnpinned(pass, loop, function)
 }
 
 // checkOutOfScopePin reports a variant pin bound to a loop that needs no
@@ -162,7 +192,7 @@ func checkPinned(pass *analysis.Pass, loop *ast.ForStmt, pin pins.Pin) {
 
 // checkUnpinned attempts synthesis: success is a reported fact in pin
 // syntax, failure is a blocking finding naming the counter-cap rewrite.
-func checkUnpinned(pass *analysis.Pass, loop *ast.ForStmt) {
+func checkUnpinned(pass *analysis.Pass, loop *ast.ForStmt, function string) {
 	candidate, ok := condMeasure(pass, loop.Cond)
 	if ok {
 		result := verify(pass, loop.Body, candidate)
@@ -170,7 +200,12 @@ func checkUnpinned(pass *analysis.Pass, loop *ast.ForStmt) {
 			pass.Report(analysis.Diagnostic{
 				Pos:      loop.Pos(),
 				Category: "TS-V01-facts",
-				Message:  msgSynthesizedPrefix + directive.FormatVariant(candidate),
+				Message: facts.Message(facts.Fact{
+					RuleID: "TS-V01", Kind: "synthesized variant", Function: function,
+					Directive: directive.Directive{
+						Verb: "variant", Args: directive.FormatVariant(candidate),
+					},
+				}),
 			})
 			return
 		}

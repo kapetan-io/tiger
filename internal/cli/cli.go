@@ -27,6 +27,10 @@ const usage = `usage:
   tiger golangci [-C dir] [--init]
       audit the project golangci-lint config against the auto-rule baseline,
       or generate it with --init
+  tiger pin [-C dir] [--dry-run] <Name> [<Name>...] [packages]
+      freeze each named function's computed facts into //tiger: pins
+      written at their targets; exit 0 written or already satisfied,
+      1 refusals, 2 could not proceed
 `
 
 // Streams carries a command's output writers — an options struct, per the
@@ -47,6 +51,8 @@ func Run(args []string, streams Streams) int {
 		return runCheck(args[1:], streams)
 	case "golangci":
 		return runGolangci(args[1:], streams)
+	case "pin":
+		return runPin(args[1:], streams)
 	case "help", "-h", "--help":
 		fmt.Fprint(streams.Stdout, usage)
 		return ExitClean

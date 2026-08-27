@@ -31,8 +31,8 @@ import (
 	"golang.org/x/tools/go/analysis"
 
 	"github.com/kapetan-io/tiger/assert"
-	"github.com/kapetan-io/tiger/internal/analyzers/internal/pins"
 	"github.com/kapetan-io/tiger/internal/directive"
+	"github.com/kapetan-io/tiger/internal/pins"
 )
 
 const (

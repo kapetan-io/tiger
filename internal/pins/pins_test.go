@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/kapetan-io/tiger/internal/analyzers/internal/pins"
+	"github.com/kapetan-io/tiger/internal/pins"
 )
 
 const pinned = `package fixture
