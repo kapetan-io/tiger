@@ -31,6 +31,12 @@ An optional directive that freezes an analyzer-computed fact (effect set, frame,
 blocking contract; absence of a pin never means the fact is absent.
 _Avoid_: declaration (pins are one kind of declaration, not the only kind)
 
+**Placement**:
+The rule binding a directive to the node it annotates: the node starting on the line after the
+directive's comment group ends. One site reads it (collection, for the analyzers) and one site
+writes it (insertion, for `tiger pin`); a pin written by the tool and a pin typed by hand are
+indistinguishable afterward.
+
 **Intent declaration**:
 A directive stating something no analyzer can compute (invariants, restrictions, `hot`, `wire`,
 `owner`, `openenum`); stated first, enforced after.
@@ -134,6 +140,8 @@ evidence on at least two real codebases; demotion is the same edit in reverse.
 - A **Driver** runs **Analyzers**; only the driver applies **Severity**.
 - A **Pin**, an **Intent declaration**, and an **Escape hatch** are the three kinds of
   **Directive**, distinguished by lifecycle.
+- **Placement** binds every **Directive** to a node; `tiger pin` writes a **Pin** at that
+  placement, and never edits or removes one that is already there.
 
 ## Example dialogue
 

@@ -46,7 +46,7 @@ const factsGolden = "facts.go:14:1: TS-F01: computed effects for Append — " +
 	"facts.go:14:1: TS-F07: computed frame for Append — //tiger:frame r.log\n" +
 	"facts.go:19:1: TS-F01: computed effects for Drain — //tiger:effects none\n" +
 	"facts.go:19:1: TS-F07: computed frame for Drain — //tiger:frame none\n" +
-	"facts.go:21:2: TS-V01: synthesized variant — //tiger:variant len(pending)\n" +
+	"facts.go:21:2: TS-V01: synthesized variant for Drain — //tiger:variant len(pending)\n" +
 	"facts.go:29:1: TS-F01: computed effects for Home — //tiger:effects io(env)\n" +
 	"facts.go:29:1: TS-F07: computed frame for Home — //tiger:frame none\n"
 

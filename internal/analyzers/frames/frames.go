@@ -36,9 +36,10 @@ import (
 	"golang.org/x/tools/go/ssa"
 
 	"github.com/kapetan-io/tiger/assert"
-	"github.com/kapetan-io/tiger/internal/analyzers/internal/pins"
 	"github.com/kapetan-io/tiger/internal/analyzers/internal/ssalib"
 	"github.com/kapetan-io/tiger/internal/directive"
+	"github.com/kapetan-io/tiger/internal/facts"
+	"github.com/kapetan-io/tiger/internal/pins"
 )
 
 // FrameFact is the analyzer's sole exported fact: one exported function's
@@ -495,8 +496,10 @@ func (s *state) reportFacts(fn *ssa.Function, decl *ast.FuncDecl) {
 	s.pass.Report(analysis.Diagnostic{
 		Pos:      decl.Pos(),
 		Category: "TS-F07-facts",
-		Message: "TS-F07: computed frame for " + decl.Name.Name + " — " + directive.Format(
-			directive.Directive{Verb: "frame", Args: directive.FormatFrame(rendered)}),
+		Message: facts.Message(facts.Fact{
+			RuleID: "TS-F07", Kind: "computed frame", Function: decl.Name.Name,
+			Directive: directive.Directive{Verb: "frame", Args: directive.FormatFrame(rendered)},
+		}),
 	})
 }
 
