@@ -72,16 +72,14 @@ import (
 )
 
 const (
-	msgNoVariant = "TS-V01: this loop has no synthesized or pinned variant — no linear ranking " +
-		"provably decreases on every back edge; add an explicit iteration cap with an assert on " +
-		"exhaustion (for tries := 0; tries < capLimit; tries++ { if done { break } ... }), whose " +
-		"counter is itself a synthesizable variant, or pin one with //tiger:variant <expr>"
-	msgUnverifiedPinFmt = "TS-V01: the pinned variant //tiger:variant %s cannot be verified to " +
-		"strictly decrease on every back edge — %s; rewrite the loop with an explicit iteration " +
-		"cap and an assert on exhaustion (for tries := 0; tries < capLimit; tries++), whose " +
-		"counter is itself a linear variant, or pin a variant the analyzer can verify"
-	msgPointlessPin = "TS-V01: this loop needs no variant — it terminates structurally, " +
-		"not by a decreasing measure, so the pin states nothing; remove the pin"
+	msgNoVariant = "TS-V01: tiger can't prove this loop ends: nothing in its condition shrinks " +
+		"on every pass — add a cap (for tries := 0; tries < max; tries++ { if done { break } " +
+		"... }) that fails when the cap is hit, or say what shrinks with //tiger:variant <expr>"
+	msgUnverifiedPinFmt = "TS-V01: //tiger:variant %s doesn't provably shrink on every pass " +
+		"(%s) — add a cap (for tries := 0; tries < max; tries++) that fails when " +
+		"hit, or name an expression that does shrink"
+	msgPointlessPin = "TS-V01: this loop has a //tiger:variant comment but ends on its own (a " +
+		"range or counted loop), so the comment says nothing — remove it"
 )
 
 // Analyzer enforces TS-V01: every unbounded loop has a synthesized or
@@ -201,7 +199,7 @@ func checkUnpinned(pass *analysis.Pass, loop *ast.ForStmt, function string) {
 				Pos:      loop.Pos(),
 				Category: "TS-V01-facts",
 				Message: facts.Message(facts.Fact{
-					RuleID: "TS-V01", Kind: "synthesized variant", Function: function,
+					RuleID: "TS-V01", Function: function,
 					Directive: directive.Directive{
 						Verb: "variant", Args: directive.FormatVariant(candidate),
 					},

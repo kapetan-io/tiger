@@ -12,7 +12,7 @@ import "reason"
 // requiring assert.Unreachable. This fires — a false positive against the
 // documented intent — so it lives in a failure file, not a knownmiss file.
 func crossPackageOpenEnum(code reason.Code) string {
-	switch code { // want `TS-S08: switch over closed set Code has no default arm`
+	switch code { // want `TS-S08: this switch over Code has no default arm`
 	case reason.CodeOne:
 		return "one"
 	case reason.CodeTwo:

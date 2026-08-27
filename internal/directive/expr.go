@@ -62,7 +62,8 @@ func ParseVariant(args string) (Variant, error) {
 	trimmed := strings.TrimSpace(args)
 	if trimmed == "" {
 		return Variant{}, errors.New(
-			"a variant pin states a fact — write the loop's ranking expression")
+			"has nothing after it — write the expression that shrinks on every pass of the loop, " +
+				"for example //tiger:variant high - low")
 	}
 	parsed := Variant{}
 	minus := false
@@ -74,7 +75,7 @@ func ParseVariant(args string) (Variant, error) {
 			continue
 		}
 		if segment == "" {
-			return Variant{}, errors.New("the variant ends in an operator or starts with one")
+			return Variant{}, errors.New("starts or ends with an operator — remove it")
 		}
 		atom, err := parseAtom(segment, variantLanguage)
 		if err != nil {
@@ -111,15 +112,17 @@ type language struct {
 	name     string
 	allowNil bool
 	atoms    string
+	hint     string
 }
 
 var (
 	variantLanguage = language{
 		name:  "variant",
 		atoms: "an integer, a path, or len(path)",
+		hint:  ", joined by + or -",
 	}
 	predicateLanguage = language{
-		name:     "predicate",
+		name:     "comparison",
 		allowNil: true,
 		atoms:    "an integer, nil, a path, or len(path)",
 	}
@@ -127,7 +130,8 @@ var (
 
 // parseAtom reads one operand.
 func parseAtom(text string, lang language) (Atom, error) {
-	outside := fmt.Errorf("atom %q is outside the %s language (%s)", text, lang.name, lang.atoms)
+	outside := fmt.Errorf("has %q, which is not %s — rewrite the %s using only those%s",
+		text, lang.atoms, lang.name, lang.hint)
 	if text == "nil" {
 		if !lang.allowNil {
 			return Atom{}, outside
@@ -146,7 +150,8 @@ func parseAtom(text string, lang language) (Atom, error) {
 			return Atom{}, outside
 		}
 		if !validPath(split.inner[0]) {
-			return Atom{}, fmt.Errorf("len path %q is not a parameter-rooted path", split.inner[0])
+			return Atom{}, fmt.Errorf("has len(%s), whose path does not start at a parameter "+
+				"or receiver — write one, for example len(r.items)", split.inner[0])
 		}
 		return Atom{Kind: AtomLen, Ref: split.inner[0]}, nil
 	}
@@ -197,21 +202,23 @@ func ParsePredicate(args string) (Predicate, error) {
 	trimmed := strings.TrimSpace(args)
 	if trimmed == "" {
 		return Predicate{}, errors.New(
-			"a contract pin states a fact — write a predicate over nil-ness, integer " +
-				"ranges, length relations, or invariant IDs")
+			"has nothing after it — write a comparison over nil, integers, or lengths, or name " +
+				"an invariant ID, for example n > 0")
 	}
 	found, ok := findOperator(trimmed)
 	if !ok {
 		if !validPath(trimmed) {
 			return Predicate{}, fmt.Errorf(
-				"%q — a predicate compares atoms or names an invariant ID", trimmed)
+				"has %q, which is neither a comparison nor an invariant ID — write one, "+
+					"for example n > 0", trimmed)
 		}
 		return Predicate{Invariant: trimmed}, nil
 	}
 	leftText := strings.TrimSpace(trimmed[:found.at])
 	rightText := strings.TrimSpace(trimmed[found.at+len(found.op):])
 	if leftText == "" || rightText == "" {
-		return Predicate{}, errors.New("the comparison is missing an atom")
+		return Predicate{}, errors.New(
+			"is missing one side of the comparison — write both sides, for example n > 0")
 	}
 	left, err := parseAtom(leftText, predicateLanguage)
 	if err != nil {
@@ -222,12 +229,14 @@ func ParsePredicate(args string) (Predicate, error) {
 		return Predicate{}, err
 	}
 	if left.Kind == AtomNil && right.Kind == AtomNil {
-		return Predicate{}, errors.New("a comparison of nil against nil compares nothing")
+		return Predicate{}, errors.New("compares nil against nil, which says nothing — " +
+			"compare a parameter or result against nil")
 	}
 	ordered := found.op != "==" && found.op != "!="
 	if ordered {
 		if left.Kind == AtomNil || right.Kind == AtomNil {
-			return Predicate{}, errors.New("nil supports only == and != comparisons")
+			return Predicate{}, errors.New(
+				"orders nil with < or >, but nil supports only == and != — use one of those")
 		}
 	}
 	return Predicate{Op: found.op, Left: left, Right: right}, nil

@@ -47,18 +47,18 @@ import (
 )
 
 const (
-	msgUnbounded = "TS-S02: this loop's bound cannot be derived from a constant, a len, or a " +
-		"counter — give it an explicit cap with an assert or error on exhaustion, or use the " +
-		"ctx.Done() event-loop shape (TS-S03)"
-	msgNoSelect = "TS-S02: this loop has no condition and no ctx.Done() select — give it an " +
-		"explicit cap with an assert or error on exhaustion, or use the ctx.Done() event-loop " +
-		"shape (TS-S03)"
-	msgChannelRange = "TS-S02: ranging over a channel terminates only when another goroutine " +
-		"closes it — give it an explicit counter cap with an assert or error on exhaustion, or " +
-		"use the ctx.Done() event-loop shape (TS-S03)"
-	msgSelectNoDone = "TS-S03: this unbounded event loop's select has no case receiving from " +
-		"ctx.Done() or a recognized shutdown channel — add a case <-ctx.Done(): return, or a " +
-		"case on a struct{}-typed or shutdown-named channel, so the loop has a termination path"
+	msgUnbounded = "TS-S02: tiger can't tell how many times this loop runs: its condition is " +
+		"not a constant, a len, or a counter — add a cap (for tries := 0; tries < max; tries++) " +
+		"that fails when the cap is hit, or make it an event loop that selects on ctx.Done()"
+	msgNoSelect = "TS-S02: this for loop has no condition and no select on ctx.Done(), so " +
+		"nothing bounds it — add a cap (for tries := 0; tries < max; tries++) that fails when " +
+		"the cap is hit, or select on ctx.Done() inside it"
+	msgChannelRange = "TS-S02: this loop ranges over a channel, so it ends only when some " +
+		"other goroutine closes the channel — add a counter cap that fails when the cap is " +
+		"hit, or make it an event loop that selects on ctx.Done()"
+	msgSelectNoDone = "TS-S03: this event loop's select has no case that stops the loop — add " +
+		"case <-ctx.Done(): return, or a case on a shutdown channel (struct{}-typed or named " +
+		"like one), so the loop can end"
 )
 
 // Analyzer enforces TS-S02 and TS-S03: every loop has an upper bound, or the

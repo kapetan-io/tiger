@@ -266,7 +266,8 @@ func (s *state) reportAmbiguous(decl *ast.FuncDecl, matched []pins.Pin) {
 		Pos:      matched[0].Pos,
 		Category: "TS-F07",
 		Message: fmt.Sprintf(
-			"TS-F07: %s has %d frame pins — keep exactly one", decl.Name.Name, len(matched)),
+			"TS-F07: %s has %d //tiger:frame comments — keep exactly one",
+			decl.Name.Name, len(matched)),
 	})
 }
 
@@ -278,8 +279,8 @@ func (s *state) reportUnexportedPin(decl *ast.FuncDecl, pin pins.Pin) {
 		Pos:      pin.Pos,
 		Category: "TS-F07",
 		Message: fmt.Sprintf(
-			"TS-F07: frame pin on unexported function %s — a pin binds only exported "+
-				"functions and methods; remove the pin or export %s",
+			"TS-F07: %s has a //tiger:frame comment but is unexported, and tiger only honors "+
+				"that comment on exported functions and methods — remove the comment, or export %s",
 			decl.Name.Name, decl.Name.Name),
 	})
 }
@@ -472,9 +473,9 @@ func (s *state) enforcePin(fn *ssa.Function) {
 			Pos:      pinAt,
 			Category: "TS-F07",
 			Message: fmt.Sprintf(
-				"TS-F07: computed frame writes %s, introduced at %s, outside the pinned "+
-					"frame — remove the write or update the pin to %s",
-				name, nearPos(s.pass.Fset, origin[name]), fix),
+				"TS-F07: this function writes %s (at %s) but its //tiger:frame comment "+
+					"doesn't list it — add %s to the comment (%s), or remove the write",
+				name, nearPos(s.pass.Fset, origin[name]), name, fix),
 		})
 	}
 	for _, name := range s.pinNames[fn].diff(rendered) {
@@ -482,7 +483,8 @@ func (s *state) enforcePin(fn *ssa.Function) {
 			Pos:      pinAt,
 			Category: "TS-F07",
 			Message: fmt.Sprintf(
-				"TS-F07: pinned frame location %s is never written — tighten the pin to %s",
+				"TS-F07: this function never writes %s, yet its //tiger:frame comment lists it "+
+					"— change the comment to %s",
 				name, fix),
 		})
 	}
@@ -497,7 +499,7 @@ func (s *state) reportFacts(fn *ssa.Function, decl *ast.FuncDecl) {
 		Pos:      decl.Pos(),
 		Category: "TS-F07-facts",
 		Message: facts.Message(facts.Fact{
-			RuleID: "TS-F07", Kind: "computed frame", Function: decl.Name.Name,
+			RuleID: "TS-F07", Function: decl.Name.Name,
 			Directive: directive.Directive{Verb: "frame", Args: directive.FormatFrame(rendered)},
 		}),
 	})

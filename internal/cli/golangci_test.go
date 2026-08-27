@@ -93,7 +93,8 @@ func TestGolangciDriftedSettingFindsTheAutoRule(t *testing.T) {
 	assert.Equal(t, cli.ExitFindings, got.code)
 	assert.Empty(t, got.stderr)
 	assert.Contains(t, got.stdout,
-		"TS-S04: setting linters.settings.funlen.lines is 60, baseline requires 70")
+		"TS-S04: linters.settings.funlen.lines is 60, but tiger's baseline for the rule "+
+			"\"hard limit of 70 lines per function\" is 70")
 	assert.Contains(t, got.stdout, "stricter value also fails")
 }
 

@@ -9,7 +9,7 @@ import "strings"
 func pkgCallBatchedStillFires(s string) int {
 	count := 0
 	//tiger:batched not a cursor; a package function scans nothing forward
-	for strings.Contains(s, "x") { // want `TS-S02: this loop's bound cannot be derived`
+	for strings.Contains(s, "x") { // want `TS-S02: tiger can't tell how many times this loop runs`
 		count++
 	}
 	return count

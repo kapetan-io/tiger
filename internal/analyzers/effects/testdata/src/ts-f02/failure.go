@@ -13,7 +13,7 @@ import (
 // Serve is pinned pure but its own unexported helper dials the network —
 // the widening surfaces at this pin, naming the helper call.
 //
-// want +2 `TS-F02: computed effects io\(net\) are not declared by this pin`
+// want +2 `TS-F02: this function makes a network call \(.*\) but its //tiger:effects comment doesn't list io\(net\)`
 //
 //tiger:effects none
 func Serve() { // want Serve:`none`
@@ -27,7 +27,7 @@ func dial() {
 // Bridge is pinned pure but calls into another package's widening
 // helper — the fact crosses the package boundary and still fails here.
 //
-// want +2 `TS-F02: computed effects io\(net\) are not declared by this pin`
+// want +2 `TS-F02: this function makes a network call \(.*\) but its //tiger:effects comment doesn't list io\(net\)`
 //
 //tiger:effects none
 func Bridge() { // want Bridge:`none`

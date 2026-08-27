@@ -52,11 +52,11 @@ import (
 const (
 	resetName = "Reset"
 
-	msgNoResetFmt = "TS-M05: %s is put into a sync.Pool but has no Reset method — implement " +
-		"Reset() so zeroing on release is a single, checkable call"
-	msgNotReset = "TS-M05: this Put is not preceded by a reset of the same value on every path " +
-		"— call Reset() (or zero the value) before every Put so a leak cannot outlive the owner " +
-		"who knew what was sensitive"
+	msgNoResetFmt = "TS-M05: %s is put into a sync.Pool but has no Reset method — add a " +
+		"Reset() method that zeroes it, and call it before every Put"
+	msgNotReset = "TS-M05: this Put is not preceded by a Reset (or a zeroing) of the same " +
+		"value on every path to it — call Reset() or zero the value before every Put, so " +
+		"pooled data can't leak to the next user"
 )
 
 // Analyzer enforces TS-M05: pooled types implement Reset, and every Put is

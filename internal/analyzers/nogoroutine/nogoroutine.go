@@ -35,12 +35,12 @@ func newAnalyzer() *analysis.Analyzer {
 }
 
 const (
-	msgUnowned = "TS-C02: bare goroutine has no owner, no documented exit condition, and no " +
-		"lifetime tied to a context — start it through errgroup.Group.Go or a supervisor " +
-		"function on the -supervisors allowlist"
-	msgReactive = "TS-C09: goroutine spawned per loop iteration reacts directly to each item " +
-		"instead of running at its own pace — append the work to a bounded queue and drain it " +
-		"from a supervisor"
+	msgUnowned = "TS-C02: this go statement starts a goroutine nobody owns: nothing says when " +
+		"it exits or ties it to a context — start it through errgroup.Group.Go, or a " +
+		"supervisor function named in the -supervisors flag"
+	msgReactive = "TS-C09: this loop starts a goroutine per item, so the goroutines react to " +
+		"each item instead of working at their own pace — append the items to a bounded " +
+		"queue and drain it from one supervisor goroutine"
 )
 
 func run(pass *analysis.Pass) (any, error) {

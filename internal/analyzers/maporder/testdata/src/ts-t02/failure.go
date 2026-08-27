@@ -12,7 +12,7 @@ import (
 // so the slice's element order mirrors map iteration order.
 func collectValuesAppends(m map[string]int) []int {
 	var result []int
-	for _, v := range m { // want `TS-T02: ranging over a map appends to a slice`
+	for _, v := range m { // want `TS-T02: this loop appends to a slice while ranging over a map`
 		result = append(result, v)
 	}
 	return result
@@ -21,7 +21,7 @@ func collectValuesAppends(m map[string]int) []int {
 // printValuesCalls writes every entry to w while ranging over m, so the
 // printed order mirrors map iteration order.
 func printValuesCalls(m map[string]int, w io.Writer) {
-	for k, v := range m { // want `TS-T02: ranging over a map calls a function`
+	for k, v := range m { // want `TS-T02: this loop calls a function on each map entry`
 		fmt.Fprintf(w, "%s=%d\n", k, v)
 	}
 }
@@ -30,7 +30,7 @@ func printValuesCalls(m map[string]int, w io.Writer) {
 // so the joined order mirrors map iteration order.
 func joinKeysBuilds(m map[string]int) string {
 	result := ""
-	for k := range m { // want `TS-T02: ranging over a map builds a string`
+	for k := range m { // want `TS-T02: this loop builds a string while ranging over a map`
 		result = result + k
 	}
 	return result
@@ -39,7 +39,7 @@ func joinKeysBuilds(m map[string]int) string {
 // forwardValuesSends sends every value on out while ranging over m, so the
 // order values arrive on the channel mirrors map iteration order.
 func forwardValuesSends(m map[string]int, out chan<- int) {
-	for _, v := range m { // want `TS-T02: ranging over a map sends on a channel`
+	for _, v := range m { // want `TS-T02: this loop sends on a channel while ranging over a map`
 		out <- v
 	}
 }
@@ -48,7 +48,7 @@ func forwardValuesSends(m map[string]int, out chan<- int) {
 // validate's argument is derived from the iteration, so its call order
 // mirrors map iteration order even though the loop itself builds nothing.
 func validateEachCalls(m map[string]int, validate func(int) bool) {
-	for _, v := range m { // want `TS-T02: ranging over a map calls a function`
+	for _, v := range m { // want `TS-T02: this loop calls a function on each map entry`
 		validate(v)
 	}
 }
@@ -58,7 +58,7 @@ func validateEachCalls(m map[string]int, validate func(int) bool) {
 // wrapper does not change what the inner append does to the result's order.
 func collectPositiveAppends(m map[string]int) []int {
 	var result []int
-	for _, v := range m { // want `TS-T02: ranging over a map appends to a slice`
+	for _, v := range m { // want `TS-T02: this loop appends to a slice while ranging over a map`
 		if v > 0 {
 			result = append(result, v)
 		}
@@ -75,7 +75,7 @@ func collectPositiveAppends(m map[string]int) []int {
 // zero false-positive risk on this blocking rule.
 func productMulKnownSafe(m map[string]int) int {
 	product := 1
-	for _, v := range m { // want `TS-T02: this map range's body is not in the closed order-insensitive allowlist`
+	for _, v := range m { // want `TS-T02: this loop's body may depend on the order of map entries`
 		product *= v
 	}
 	return product

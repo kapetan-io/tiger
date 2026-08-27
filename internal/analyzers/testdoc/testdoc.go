@@ -40,10 +40,9 @@ func run(pass *analysis.Pass) (any, error) {
 				pass.Report(analysis.Diagnostic{
 					Pos:      function.Pos(),
 					Category: "TS-T06",
-					Message: "TS-T06: " + function.Name.Name + " has no doc comment — a reader " +
-						"should be able to skip a test or dive into it without " +
-						"reverse-engineering the setup; add a doc comment describing " +
-						"what the test proves",
+					Message: "TS-T06: " + function.Name.Name + " has no doc comment — add one " +
+						"above it saying what the test proves, so a reader can decide to " +
+						"skip it or dig in without reverse-engineering the setup",
 				})
 			}
 		}

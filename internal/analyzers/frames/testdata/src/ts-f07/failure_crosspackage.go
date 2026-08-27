@@ -10,7 +10,7 @@ import "ts-f07helper"
 // fact says it writes l.Entries — the violation surfaces at this pin, not
 // in the helper's package.
 //
-// want +1 `TS-F07: computed frame writes l\.Entries, introduced at .*, outside the pinned frame`
+// want +1 `TS-F07: this function writes l\.Entries \(at .*\) but its //tiger:frame comment doesn't list it`
 //tiger:frame none
 func Purge(l *helper.Ledger) { // want Purge:`^$`
 	helper.Scrub(l)

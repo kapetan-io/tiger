@@ -134,8 +134,8 @@ func reportMixedLogic(pass *analysis.Pass, cond ast.Expr) {
 	pass.Report(analysis.Diagnostic{
 		Pos:      cond.Pos(),
 		Category: "TS-S06",
-		Message: "TS-S06: condition mixes && and || — split into nested if/else (one logical " +
-			"operator per condition) so each case is explicit and the else has somewhere to live",
+		Message: "TS-S06: this condition mixes && and ||, so the reader has to work out " +
+			"precedence — split it into nested if/else with one operator per condition",
 	})
 }
 
@@ -184,8 +184,8 @@ func reportSplitAssertion(pass *analysis.Pass, call *ast.CallExpr) {
 	pass.Report(analysis.Diagnostic{
 		Pos:      cond.Pos(),
 		Category: "TS-S07",
-		Message: "TS-S07: assert." + name + " condition combines checks with && — split into " +
-			"two assert." + name + " calls (one check each) so the failure names which half broke",
+		Message: "TS-S07: this assert." + name + " checks two things joined by && — split it " +
+			"into one assert." + name + " per check so a failure names which one broke",
 	})
 }
 
@@ -270,17 +270,18 @@ func reportClosedSwitch(
 			pass.Report(analysis.Diagnostic{
 				Pos:      switchStmt.Pos(),
 				Category: "TS-S08",
-				Message: "TS-S08: switch over open enum " + typeName + " has no default arm — " +
-					"add a default catch-all arm so values the wire can still send are handled",
+				Message: "TS-S08: this switch over " + typeName + " has no default arm, and " +
+					typeName + " can hold values from outside the package — add a default arm " +
+					"that handles them",
 			})
 			return
 		}
 		pass.Report(analysis.Diagnostic{
 			Pos:      switchStmt.Pos(),
 			Category: "TS-S08",
-			Message: "TS-S08: switch over closed set " + typeName + " has no default arm — add " +
-				"`default: assert.Unreachable(\"" + typeName + ": unhandled value\")` so a new " +
-				"constant fails loudly",
+			Message: "TS-S08: this switch over " + typeName + " has no default arm — add " +
+				"default: assert.Unreachable(\"" + typeName + ": unhandled value\") so a new " +
+				typeName + " constant fails loudly",
 		})
 		return
 	}
@@ -291,9 +292,10 @@ func reportClosedSwitch(
 		pass.Report(analysis.Diagnostic{
 			Pos:      clause.Case,
 			Category: "TS-S08",
-			Message: "TS-S08: switch over closed set " + typeName + "'s default arm does not " +
-				"end in assert.Unreachable — make assert.Unreachable(...) the default arm's last " +
-				"statement so a new constant fails loudly",
+			Message: "TS-S08: this switch over " + typeName + " has a default arm that doesn't " +
+				"end in assert.Unreachable — make assert.Unreachable(\"" + typeName +
+				": unhandled value\") its last statement so a new " + typeName +
+				" constant fails loudly",
 		})
 	}
 }

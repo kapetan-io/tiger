@@ -12,7 +12,7 @@ import (
 // readAllFor calls os.ReadFile once per index inside a for body.
 func readAllFor(paths []string) error {
 	for i := 0; i < len(paths); i++ {
-		_, err := os.ReadFile(paths[i]) // want `TS-M10: this call resolves to a package on the IO allowlist`
+		_, err := os.ReadFile(paths[i]) // want `TS-M10: this call does IO \(network, disk, or database\) and runs once per loop iteration`
 		if err != nil {
 			return err
 		}
@@ -23,7 +23,7 @@ func readAllFor(paths []string) error {
 // fetchAllRange calls the http client once per URL inside a range body.
 func fetchAllRange(client *http.Client, urls []string) error {
 	for _, url := range urls {
-		resp, err := client.Get(url) // want `TS-M10: this call resolves to a package on the IO allowlist`
+		resp, err := client.Get(url) // want `TS-M10: this call does IO \(network, disk, or database\) and runs once per loop iteration`
 		if err != nil {
 			return err
 		}
@@ -36,11 +36,11 @@ func fetchAllRange(client *http.Client, urls []string) error {
 // body.
 func queryAllRange(db *sql.DB, ids []int) error {
 	for _, id := range ids {
-		rows, err := db.Query("SELECT 1 WHERE id = ?", id) // want `TS-M10: this call resolves to a package on the IO allowlist`
+		rows, err := db.Query("SELECT 1 WHERE id = ?", id) // want `TS-M10: this call does IO \(network, disk, or database\) and runs once per loop iteration`
 		if err != nil {
 			return err
 		}
-		rows.Close() // want `TS-M10: this call resolves to a package on the IO allowlist`
+		rows.Close() // want `TS-M10: this call does IO \(network, disk, or database\) and runs once per loop iteration`
 	}
 	return nil
 }
@@ -51,7 +51,7 @@ func readNested(groups [][]string) error {
 	//tiger:batched groups originate from an external drop directory; each read is required I/O
 	for _, group := range groups {
 		for _, path := range group {
-			_, err := os.ReadFile(path) // want `TS-M10: this call resolves to a package on the IO allowlist`
+			_, err := os.ReadFile(path) // want `TS-M10: this call does IO \(network, disk, or database\) and runs once per loop iteration`
 			if err != nil {
 				return err
 			}

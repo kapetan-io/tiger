@@ -6,7 +6,7 @@ package fixture
 // notifyAll performs per-item IO the outside world forces; the escape
 // stays visible as a standing advisory finding.
 func notifyAll(hooks []string) {
-	// want +1 `TS-L09: escape //tiger:batched — "provider offers no bulk endpoint; contract caps us at 10 rps" \(unverified claim; standing review\)`
+	// want +1 `TS-L09: //tiger:batched "provider offers no bulk endpoint; contract caps us at 10 rps" waives a rule here`
 	//tiger:batched provider offers no bulk endpoint; contract caps us at 10 rps
 	for range hooks {
 		notifyOne()

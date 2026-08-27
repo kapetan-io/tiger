@@ -37,21 +37,22 @@ import (
 )
 
 const (
-	msgAppend = "TS-T02: ranging over a map appends to a slice, so map iteration order " +
-		"reaches an output — iterate the sorted keys instead: for _, k := range " +
+	msgSortedKeys = " — range over the sorted keys instead: for _, k := range " +
 		"slices.Sorted(maps.Keys(m))"
-	msgCall = "TS-T02: ranging over a map calls a function whose behavior depends on call " +
-		"order, so map iteration order reaches an output — iterate the sorted keys instead: " +
-		"for _, k := range slices.Sorted(maps.Keys(m))"
-	msgStringBuild = "TS-T02: ranging over a map builds a string, so map iteration order " +
-		"reaches an output — iterate the sorted keys instead: for _, k := range " +
-		"slices.Sorted(maps.Keys(m))"
-	msgChannelSend = "TS-T02: ranging over a map sends on a channel, so map iteration order " +
-		"reaches an output — iterate the sorted keys instead: for _, k := range " +
-		"slices.Sorted(maps.Keys(m))"
-	msgGeneric = "TS-T02: this map range's body is not in the closed order-insensitive " +
-		"allowlist, so map iteration order can reach an output — iterate the sorted keys " +
-		"instead: for _, k := range slices.Sorted(maps.Keys(m))"
+	msgAppend = "TS-T02: this loop appends to a slice while ranging over a map, and Go " +
+		"visits map entries in a different order every run, so the slice's order varies" +
+		msgSortedKeys
+	msgCall = "TS-T02: this loop calls a function on each map entry, and Go visits map " +
+		"entries in a different order every run, so the calls happen in varying order" +
+		msgSortedKeys
+	msgStringBuild = "TS-T02: this loop builds a string while ranging over a map, and Go " +
+		"visits map entries in a different order every run, so the string varies" +
+		msgSortedKeys
+	msgChannelSend = "TS-T02: this loop sends on a channel while ranging over a map, and Go " +
+		"visits map entries in a different order every run, so the receiver's order varies" +
+		msgSortedKeys
+	msgGeneric = "TS-T02: this loop's body may depend on the order of map entries, which Go " +
+		"changes every run" + msgSortedKeys
 )
 
 // Analyzer enforces TS-T02: every range over a map is order-insensitive by

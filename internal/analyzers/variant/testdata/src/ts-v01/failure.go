@@ -13,7 +13,7 @@ type node struct {
 // being acyclic, a fact no linear ranking over locals can see, so the
 // analyzer's closed synthesis set has nothing to offer here.
 func findTail(n *node) *node {
-	for n != nil { // want `TS-V01: this loop has no synthesized or pinned variant`
+	for n != nil { // want `TS-V01: tiger can't prove this loop ends`
 		if n.next == nil {
 			return n
 		}
@@ -26,7 +26,7 @@ func findTail(n *node) *node {
 // synthesizer's required unconditional top-level decrease is missing.
 func drainConditional(pending []int, extra func() bool) int {
 	drained := 0
-	for len(pending) > 0 { // want `TS-V01: this loop has no synthesized or pinned variant`
+	for len(pending) > 0 { // want `TS-V01: tiger can't prove this loop ends`
 		if extra() {
 			pending = pending[1:]
 		}
@@ -39,7 +39,7 @@ func drainConditional(pending []int, extra func() bool) int {
 // edge can bypass the decrease entirely.
 func drainContinue(pending []int, skip func() bool) int {
 	drained := 0
-	for len(pending) > 0 { // want `TS-V01: this loop has no synthesized or pinned variant`
+	for len(pending) > 0 { // want `TS-V01: tiger can't prove this loop ends`
 		if skip() {
 			continue
 		}
@@ -55,7 +55,7 @@ func drainContinue(pending []int, skip func() bool) int {
 // rewrite the finding names (or a future analyzer wave), never a directive.
 func binarySearch(arr []int, target int) int {
 	low, high := 0, len(arr)
-	for low < high { // want `TS-V01: this loop has no synthesized or pinned variant`
+	for low < high { // want `TS-V01: tiger can't prove this loop ends`
 		mid := (low + high) / 2
 		if arr[mid] == target {
 			return mid
@@ -76,7 +76,7 @@ func binarySearch(arr []int, target int) int {
 func drainPinnedAppend(pending []int, refill func() []int) int {
 	drained := 0
 	//tiger:variant len(pending)
-	for len(pending) > 0 { // want `TS-V01: the pinned variant //tiger:variant len\(pending\) cannot be verified`
+	for len(pending) > 0 { // want `TS-V01: //tiger:variant len\(pending\) doesn't provably shrink on every pass`
 		pending = pending[1:]
 		drained++
 		pending = append(pending, refill()...)
@@ -89,7 +89,7 @@ func drainPinnedAppend(pending []int, refill func() []int) int {
 func rangeWithPin(items []int) int {
 	total := 0
 	//tiger:variant len(items)
-	for _, item := range items { // want `TS-V01: this loop needs no variant`
+	for _, item := range items { // want `TS-V01: this loop has a //tiger:variant comment but ends on its own`
 		total += item
 	}
 	return total

@@ -8,7 +8,7 @@ package fixture
 // withdrew; every terminating loop can state a cap instead.
 func withdrawnBoundedEscape(estimates []float64) float64 {
 	refined := 0.0
-	// want +1 `TS-L09: unknown directive verb //tiger:bounded`
+	// want +1 `TS-L09: //tiger:bounded is not a directive tiger recognizes`
 	//tiger:bounded trust me, it converges
 	for _, estimate := range estimates {
 		refined += estimate
@@ -20,7 +20,7 @@ func withdrawnBoundedEscape(estimates []float64) float64 {
 // ship before the heuristic waves and their ratchet.
 func ruleIDDismissalAttempt(entries []int) int {
 	total := 0
-	// want +1 `TS-L09: unknown directive verb //tiger:TS-N07`
+	// want +1 `TS-L09: //tiger:<rule code> is not a directive tiger recognizes`
 	//tiger:TS-N07 trust me
 	for _, entry := range entries {
 		total += entry
@@ -31,7 +31,7 @@ func ruleIDDismissalAttempt(entries []int) int {
 // escapeWithoutReason declares the world constraint but not the reason,
 // which is the point of the declaration.
 func escapeWithoutReason(hooks []string) {
-	// want +1 `TS-L09: //tiger:batched carries no reason`
+	// want +1 `TS-L09: //tiger:batched has no reason after it`
 	//tiger:batched
 	for range hooks {
 		notifyOne()
@@ -42,7 +42,7 @@ func escapeWithoutReason(hooks []string) {
 // every skipped test now surfaces as a standing advisory instead, so the
 // verb left the vocabulary.
 //
-// want +1 `TS-L09: unknown directive verb //tiger:skip`
+// want +1 `TS-L09: //tiger:skip is not a directive tiger recognizes`
 //tiger:skip ENG-147 needs the fake clock
 func withdrawnSkipVerb() {}
 

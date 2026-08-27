@@ -1888,6 +1888,73 @@ Measure one number throughout and make it the headline: **the fraction of merged
 read.** It starts near zero. If chains 1 and 3 complete, it should pass half. If it is not moving,
 something in a chain is incomplete and the analyzers you added are decorative.
 
+## Diagnostics
+
+A diagnostic is one line with two halves:
+
+```
+<path>:<line>:<col>: TS-XXX: <body>
+```
+
+The prefix `path:line:col: TS-XXX:` is a parsing contract. The position is rendered by the CLI
+from `token.Position`; the rule code is the first thing each analyzer writes into its message.
+Structured output, the pull-request summarizer, and the advisory audit all key on it, and no
+wording change touches it. The `[advisory]` marker `tiger check` inserts after the code on
+advisory lines is a print-time annotation, not part of the prefix.
+
+The body is prose for a reader who has never seen a `//tiger:` directive. It has three parts in
+a fixed order, separated by ` — `:
+
+1. **What the code does.** Concrete and local: "this function makes a network call
+   (`helper.Ping` at core.go:12:20)".
+2. **What tiger expected.** The gap in plain words: "but its `//tiger:effects` comment doesn't
+   list `io(net)`".
+3. **The edit.** A change the reader can make without opening this document: "add `io(net)` to
+   the comment, or remove the call".
+
+Parts 1 and 2 may merge when one clause carries both ("goto jumps to a label" already says what
+tiger expected). Part 3 is never omitted from a blocking finding. The `--show-facts` channel
+prints facts, not findings: what tiger found, "nothing to fix", and the directive that would
+freeze the fact, so the line ends in text that can be pasted above the function.
+
+Before:
+
+```
+TS-F02: computed effects io(net) are not declared by this pin — introduced by a call to helper.Ping at core.go:12:20 — remove the call or update the pin to //tiger:effects io(net)
+```
+
+After:
+
+```
+TS-F02: this function makes a network call (helper.Ping at core.go:12:20) but its //tiger:effects comment doesn't list io(net) — add io(net) to the comment, or remove the call
+```
+
+The checklist an author runs before committing a message:
+
+1. Does the body open with what the code does, in words a Go programmer with no tiger context
+   understands?
+2. Does it name the gap without a banned word? The list: pin, pinned, computed, fact, facts,
+   effect set, frame condition, lattice, closed set, back edge, dominating, synthesized, ranking,
+   allowlist. Matched case-insensitively at word boundaries. Directive verbs (`effects`,
+   `frame`, `variant`, `requires`, `ensures`, `batched`) appear only as the literal directive
+   spelling.
+3. Does it end with an edit the reader can make now? A comment to add, a call to remove, a name
+   to change, a snippet to paste. Never a restatement of the rule.
+4. Is every directive spelled `//tiger:<verb> <args>`?
+5. Is there exactly one `TS-` code, in the prefix? Where a message once pointed at a sibling
+   rule, it names the shape in words instead.
+6. One line, under 160 characters of body if you can, under 240 always? A code snippet stays
+   only when the edit is the snippet.
+7. If a why clause is present, would the edit look arbitrary without it? Otherwise the reasoning
+   lives here and in the reference documentation, not on the finding line.
+
+Items 2, 4, 5, and 6 are enforced mechanically: `internal/rules/meta_test.go` runs every rule's
+corpus and fails on any emitted message that breaks them, naming the analyzer, the message, and
+the invariant, and `internal/golangci` applies the same checks to every `tiger golangci` audit
+line over a fixture config. The banned list in that test and the list above change together.
+Items 1, 3, and 7 are checked by a blind reader: someone given the message text alone writes
+what the code did and the edit, and both must match the author's intent.
+
 ## Adding a rule
 
 Fill this in. A blank line means the rule is not ready, and which line is blank tells you what kind of

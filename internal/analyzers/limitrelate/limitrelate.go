@@ -142,9 +142,10 @@ func reportUnrelated(pass *analysis.Pass, limits []*ast.Ident, participating map
 		pass.Report(analysis.Diagnostic{
 			Pos:      name.Pos(),
 			Category: "TS-S21",
-			Message: "TS-S21: a limit that relates to nothing is a limit nobody reasoned about " +
-				"— add const _ = uint(<relation>) relating " + name.Name +
-				" to the quantities that bound it",
+			Message: "TS-S21: " + name.Name + " is a limit that no assertion relates to any " +
+				"other quantity, so nothing checks it makes sense — add a compile-time relation " +
+				"such as const _ = uint(bufferSize - " + name.Name + "), which stops compiling " +
+				"once " + name.Name + " outgrows what bounds it",
 		})
 	}
 }

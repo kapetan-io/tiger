@@ -43,9 +43,9 @@ func run(pass *analysis.Pass) (any, error) {
 			pass.Report(analysis.Diagnostic{
 				Pos:      call.Pos(),
 				Category: "TS-S18",
-				Message: "TS-S18: naked panic — route the crash through the assert package " +
-					"(assert.Ok for conditions, assert.Fail for formatted failures, " +
-					"assert.Unreachable for impossible arms) so there is one crash path",
+				Message: "TS-S18: panic is called directly here — use assert.Ok (condition), " +
+					"assert.Fail (formatted failure), or assert.Unreachable (impossible arm) " +
+					"instead so every crash goes through one path",
 			})
 			return true
 		})

@@ -93,16 +93,16 @@ func TestParseEffectsRejectsOutsideTheLattice(t *testing.T) {
 		args    string
 		wantErr string
 	}{
-		{name: "UnknownEffect", args: "iio(disk)", wantErr: `unknown effect "iio"`},
-		{name: "MisspelledQualifier", args: "io(dsk)", wantErr: `io qualifier "dsk"`},
+		{name: "UnknownEffect", args: "iio(disk)", wantErr: `names "iio", which is not an effect`},
+		{name: "MisspelledQualifier", args: "io(dsk)", wantErr: `io qualifier "dsk", which tiger`},
 		{name: "DeclaredTierQualifier", args: "io(database)", wantErr: `io qualifier "database"`},
-		{name: "BareIO", args: "io", wantErr: "io requires a qualifier"},
-		{name: "BareMutate", args: "mutate", wantErr: "mutate requires a location"},
-		{name: "QualifiedTime", args: "time(wall)", wantErr: `"time" takes no arguments`},
-		{name: "NoneAmongOthers", args: "none, alloc", wantErr: `"none" states purity`},
-		{name: "EmptyArgs", args: "", wantErr: "states a fact"},
-		{name: "EmptyTerm", args: "alloc,, spawn", wantErr: "empty effect term"},
-		{name: "BadMutatePath", args: "mutate(r..log)", wantErr: `location "r..log"`},
+		{name: "BareIO", args: "io", wantErr: "has a bare io"},
+		{name: "BareMutate", args: "mutate", wantErr: "has a bare mutate"},
+		{name: "QualifiedTime", args: "time(wall)", wantErr: `has "time" with arguments`},
+		{name: "NoneAmongOthers", args: "none, alloc", wantErr: "lists none alongside other"},
+		{name: "EmptyArgs", args: "", wantErr: "write //tiger:effects none"},
+		{name: "EmptyTerm", args: "alloc,, spawn", wantErr: "empty item between commas"},
+		{name: "BadMutatePath", args: "mutate(r..log)", wantErr: `mutate location "r..log"`},
 		{name: "UnbalancedParen", args: "io(disk", wantErr: `unclosed "(" in "io(disk"`},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -142,12 +142,12 @@ func TestParseFrameRejectsMalformedLocations(t *testing.T) {
 		args    string
 		wantErr string
 	}{
-		{name: "EmptyArgs", args: "", wantErr: "states a fact"},
+		{name: "EmptyArgs", args: "", wantErr: "write //tiger:frame none"},
 		{name: "BrokenPath", args: "r..log", wantErr: `location "r..log"`},
 		{name: "TrailingDot", args: "r.log.", wantErr: `location "r.log."`},
 		{name: "LeadingDigit", args: "0.log", wantErr: `location "0.log"`},
-		{name: "NoneAmongOthers", args: "none, r.log", wantErr: `"none" states the empty frame`},
-		{name: "EmptyLocation", args: "r.log,,r.checkpoint", wantErr: "empty location"},
+		{name: "NoneAmongOthers", args: "none, r.log", wantErr: "lists none alongside locations"},
+		{name: "EmptyLocation", args: "r.log,,r.checkpoint", wantErr: "empty item between commas"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			_, err := directive.ParseFrame(test.args)
@@ -195,12 +195,12 @@ func TestParseVariantRejectsOutsideThePredicateLanguage(t *testing.T) {
 		args    string
 		wantErr string
 	}{
-		{name: "EmptyArgs", args: "", wantErr: "states a fact"},
+		{name: "EmptyArgs", args: "", wantErr: "expression that shrinks on every pass"},
 		{name: "CallOutsideLen", args: "size(pending)", wantErr: `"size(pending)"`},
-		{name: "TrailingOperator", args: "high -", wantErr: "ends in an operator"},
+		{name: "TrailingOperator", args: "high -", wantErr: "starts or ends with an operator"},
 		{name: "NilAtom", args: "nil", wantErr: `"nil"`},
 		{name: "Multiplication", args: "2 * n", wantErr: `"2 * n"`},
-		{name: "BrokenPath", args: "len(r..log)", wantErr: `"r..log"`},
+		{name: "BrokenPath", args: "len(r..log)", wantErr: "len(r..log), whose path"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			_, err := directive.ParseVariant(test.args)
@@ -251,16 +251,16 @@ func TestParsePredicateRejectsOutsideThePredicateLanguage(t *testing.T) {
 		args    string
 		wantErr string
 	}{
-		{name: "EmptyArgs", args: "", wantErr: "states a fact"},
+		{name: "EmptyArgs", args: "", wantErr: "comparison over nil, integers, or lengths"},
 		{name: "OrderedNil", args: "count < nil", wantErr: "nil supports only == and !="},
 		{
 			name: "CallOutsideLen", args: "result.Checksum == checksum(result.Payload)",
 			wantErr: `"checksum(result.Payload)"`,
 		},
-		{name: "BareInteger", args: "42", wantErr: "compares atoms or names an invariant"},
+		{name: "BareInteger", args: "42", wantErr: "neither a comparison nor an invariant ID"},
 		{name: "DoubleComparison", args: "0 <= i < n", wantErr: `"i < n"`},
-		{name: "MissingRightAtom", args: "count >=", wantErr: "missing an atom"},
-		{name: "BothSidesNil", args: "nil == nil", wantErr: "compares nothing"},
+		{name: "MissingRightAtom", args: "count >=", wantErr: "missing one side of the comparison"},
+		{name: "BothSidesNil", args: "nil == nil", wantErr: "which says nothing"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			_, err := directive.ParsePredicate(test.args)
@@ -282,9 +282,9 @@ func TestParseValidatesPinVerbArguments(t *testing.T) {
 	}{
 		{
 			name: "MisspelledQualifier", text: "//tiger:effects io(dsk)",
-			wantErr: `io qualifier "dsk"`,
+			wantErr: `io qualifier "dsk", which tiger doesn't know`,
 		},
-		{name: "EmptyEffectsPin", text: "//tiger:effects", wantErr: "states a fact"},
+		{name: "EmptyEffectsPin", text: "//tiger:effects", wantErr: "write //tiger:effects none"},
 		{name: "BrokenFrame", text: "//tiger:frame r..log", wantErr: `location "r..log"`},
 		{name: "VariantOutsideTheLanguage", text: "//tiger:variant 2 * n", wantErr: `"2 * n"`},
 		{

@@ -3,11 +3,14 @@ package rules_test
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/analysis/analysistest"
 
 	"github.com/kapetan-io/tiger/internal/rules"
@@ -183,6 +186,88 @@ func TestRegistryIsCoherent(t *testing.T) {
 	}
 	assert.Len(t, names, len(referenced))
 	assert.IsIncreasing(t, names)
+}
+
+// bannedWords is the vocabulary a message body may not use: tiger-internal
+// terms a reader new to the dialect has never met. The specification's
+// Diagnostics section is this list's human-readable twin; the two change
+// together.
+var bannedWords = []string{
+	"pin", "pinned", "computed", "fact", "facts", "effect set", "frame condition",
+	"lattice", "closed set", "back edge", "dominating", "synthesized", "ranking",
+	"allowlist",
+}
+
+const (
+	maxBodyRunes    = 240
+	directivePrefix = "//tiger:"
+)
+
+var (
+	ruleCodePattern = regexp.MustCompile(`TS-[A-Z]+[0-9]+`)
+	directiveVerbs  = regexp.MustCompile(`\b(effects|frame|variant|requires|ensures|batched)\b`)
+)
+
+// bannedPattern matches word as a whole word, case-insensitively.
+func bannedPattern(word string) *regexp.Regexp {
+	return regexp.MustCompile(`(?i)\b` + regexp.QuoteMeta(word) + `\b`)
+}
+
+// checkStyle applies invariants I1–I6 of the diagnostic style guide to one
+// diagnostic against the registry entry it resolved to, naming the
+// analyzer, the message, and the invariant in every failure.
+func checkStyle(t *testing.T, entry rules.CustomRule, diagnostic analysis.Diagnostic) {
+	t.Helper()
+	analyzerName, ruleID, message := entry.Analyzer.Name, entry.RuleID, diagnostic.Message
+	body, found := strings.CutPrefix(message, ruleID+": ")
+	require.True(t, found, "I1: %s: %q must lead with %s: ", analyzerName, message, ruleID)
+	assert.NotRegexp(t, ruleCodePattern, body,
+		"I2: %s: body of %q repeats a rule code", analyzerName, message)
+	assert.NotContains(t, message, "\n",
+		"I3: %s: %q spans more than one line", analyzerName, message)
+	assert.LessOrEqual(t, utf8.RuneCountInString(body), maxBodyRunes,
+		"I4: %s: body of %q is %d characters, over the cap of %d",
+		analyzerName, message, utf8.RuneCountInString(body), maxBodyRunes)
+	for _, word := range bannedWords {
+		assert.NotRegexp(t, bannedPattern(word), body,
+			"I5: %s: body of %q uses the banned word %q", analyzerName, message, word)
+	}
+	if directiveVerbs.MatchString(body) {
+		assert.Contains(t, body, directivePrefix,
+			"I6: %s: body of %q names a directive without spelling %s",
+			analyzerName, message, directivePrefix)
+	}
+}
+
+// TestEveryCorpusMessageFollowsTheStyleGuide enforces the diagnostic
+// style guide's invariants I1–I6 on every message every corpus emits: the
+// body carries no second rule code, no newline, at most 240 characters, no
+// banned internal vocabulary, and any directive it names is spelled
+// //tiger:.
+//
+// Goal: a message a reader new to tiger cannot act on does not merge.
+func TestEveryCorpusMessageFollowsTheStyleGuide(t *testing.T) {
+	byAnalyzer := map[string][]corpusFor{}
+	for _, corpus := range corpora(t) {
+		byAnalyzer[corpus.analyzerName] = append(byAnalyzer[corpus.analyzerName], corpus)
+	}
+	for _, analyzer := range rules.Analyzers() {
+		t.Run(analyzer.Name, func(t *testing.T) {
+			dirs := []string{}
+			for _, corpus := range byAnalyzer[analyzer.Name] {
+				dirs = append(dirs, corpus.dir)
+			}
+			results := analysistest.Run(
+				quietRun{}, testdataPath(t, analyzer.Name), analyzer, dirs...)
+			for _, result := range results {
+				for _, diagnostic := range result.Diagnostics {
+					entry, known := rules.ByCategory(diagnostic.Category)
+					require.True(t, known)
+					checkStyle(t, entry, diagnostic)
+				}
+			}
+		})
+	}
 }
 
 // readCorpusFile reads one corpus source file.

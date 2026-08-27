@@ -76,8 +76,8 @@ func checkComposite(pass *analysis.Pass, composite *ast.CompositeLit) {
 	pass.Report(analysis.Diagnostic{
 		Pos:      composite.Pos(),
 		Category: "TS-T10",
-		Message: "TS-T10: table-driven test case struct has no name field — add a `name string` " +
-			"(or `Name string`) field so a failing case explains itself in the test output",
+		Message: "TS-T10: this table-driven test's case struct has no name field, so a failing " +
+			"case can't say which one it was — add a name string (or Name string) field",
 	})
 }
 

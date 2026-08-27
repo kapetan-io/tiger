@@ -54,8 +54,8 @@ func inspectCall(pass *analysis.Pass, node ast.Node) {
 	pass.Report(analysis.Diagnostic{
 		Pos:      call.Pos(),
 		Category: "TS-D07",
-		Message: "TS-D07: skipped test — a skipped test is a test that passes; " +
-			"this notice stands until the " + selector.Sel.Name + " call is removed",
+		Message: "TS-D07: this test is skipped, so it passes without running — remove the " +
+			selector.Sel.Name + " call when the test can run again; this notice stands until then",
 	})
 }
 

@@ -50,8 +50,8 @@ func checkResults(pass *analysis.Pass, funcType *ast.FuncType) {
 		pass.Report(analysis.Diagnostic{
 			Pos:      funcType.Results.Pos(),
 			Category: "TS-E06",
-			Message: fmt.Sprintf("TS-E06: %d results — prefer nothing, T, (T, bool), or "+
-				"(T, error); never (T, bool, error)", count),
+			Message: fmt.Sprintf("TS-E06: this function returns %d results — return at most "+
+				"two: nothing, T, (T, bool), or (T, error); never (T, bool, error)", count),
 		})
 		return
 	}
@@ -66,8 +66,8 @@ func checkResults(pass *analysis.Pass, funcType *ast.FuncType) {
 	pass.Report(analysis.Diagnostic{
 		Pos:      last.Pos(),
 		Category: "TS-E06",
-		Message: fmt.Sprintf("TS-E06: second result is %s, not error or bool — prefer "+
-			"(T, error) or (T, bool)", lastType.String()),
+		Message: fmt.Sprintf("TS-E06: this function's second result is %s, but a second "+
+			"result must be error or bool — return (T, error) or (T, bool)", lastType.String()),
 	})
 }
 

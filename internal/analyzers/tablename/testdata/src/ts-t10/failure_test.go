@@ -5,7 +5,7 @@ package fixture
 import "testing"
 
 func TestSumUnnamed(t *testing.T) {
-	cases := []struct { // want `TS-T10: table-driven test case struct has no name field`
+	cases := []struct { // want `TS-T10: this table-driven test's case struct has no name field`
 		input int
 		want  int
 	}{
@@ -20,7 +20,7 @@ func TestSumUnnamed(t *testing.T) {
 }
 
 func BenchmarkAddUnnamed(b *testing.B) {
-	cases := []struct { // want `TS-T10: table-driven test case struct has no name field`
+	cases := []struct { // want `TS-T10: this table-driven test's case struct has no name field`
 		input int
 	}{
 		{input: 1},

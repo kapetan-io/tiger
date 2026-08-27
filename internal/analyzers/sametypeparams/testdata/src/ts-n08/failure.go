@@ -3,12 +3,12 @@ package fixture
 
 // save persists state and takes a plain bool for whether to sync
 // immediately.
-func save(immediate bool) { // want `TS-N08: plain bool parameter`
+func save(immediate bool) { // want `TS-N08: this parameter is a plain bool`
 	_ = immediate
 }
 
 // configure takes a bool among other parameters.
-func configure(name string, verbose bool) { // want `TS-N08: plain bool parameter`
+func configure(name string, verbose bool) { // want `TS-N08: this parameter is a plain bool`
 	_, _ = name, verbose
 }
 
@@ -16,5 +16,5 @@ func configure(name string, verbose bool) { // want `TS-N08: plain bool paramete
 // Saver is an interface whose method takes a plain bool parameter.
 type Saver interface {
 	// Save takes a plain bool parameter.
-	Save(immediate bool) // want `TS-N08: plain bool parameter`
+	Save(immediate bool) // want `TS-N08: this parameter is a plain bool`
 }

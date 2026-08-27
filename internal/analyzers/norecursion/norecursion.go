@@ -44,9 +44,9 @@ import (
 	"github.com/kapetan-io/tiger/internal/analyzers/internal/ssalib"
 )
 
-const msgRewrite = ": rewrite the recursion as an explicit stack or queue with a bound: an " +
-	"index-advancing worklist (for i := 0; i < len(work); i++ { work = append(work, next...) }) " +
-	"or an iteration cap with an assert on exhaustion"
+const msgRewrite = " is a cycle of calls (recursion) — replace it with a loop over an explicit " +
+	"worklist: for i := 0; i < len(work); i++ { work = append(work, next...) }, or a capped " +
+	"loop that fails when the cap is hit"
 
 // Analyzer enforces TS-S01: no cycle in the package's static call graph.
 var Analyzer = &analysis.Analyzer{

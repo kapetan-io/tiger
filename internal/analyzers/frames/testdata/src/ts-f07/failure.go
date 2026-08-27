@@ -7,7 +7,7 @@ package fixture
 // WriteBoth is pinned to r.log only, but its body also writes
 // r.checkpoint — a write outside the pinned frame.
 //
-// want +1 `TS-F07: computed frame writes r\.checkpoint, introduced at .*, outside the pinned frame`
+// want +1 `TS-F07: this function writes r\.checkpoint \(at .*\) but its //tiger:frame comment doesn't list it`
 //tiger:frame r.log
 func (r *Recorder) WriteBoth(msg string) { // want WriteBoth:`0\.log`
 	r.log = msg
@@ -17,7 +17,7 @@ func (r *Recorder) WriteBoth(msg string) { // want WriteBoth:`0\.log`
 // LogOnly is pinned to both r.log and r.checkpoint, but only ever writes
 // r.log — a superset pin that declares a location it never touches.
 //
-// want +1 `TS-F07: pinned frame location r\.checkpoint is never written`
+// want +1 `TS-F07: this function never writes r\.checkpoint, yet its //tiger:frame comment lists it`
 //tiger:frame r.log, r.checkpoint
 func (r *Recorder) LogOnly(msg string) { // want LogOnly:`0\.checkpoint,0\.log`
 	r.log = msg
@@ -26,7 +26,7 @@ func (r *Recorder) LogOnly(msg string) { // want LogOnly:`0\.checkpoint,0\.log`
 // computeInternal is a plain unexported function; pinning it violates
 // invariant 3 — a pin binds only exported functions and methods.
 //
-// want +1 `TS-F07: frame pin on unexported function computeInternal`
+// want +1 `TS-F07: computeInternal has a //tiger:frame comment but is unexported`
 //tiger:frame r.log
 func computeInternal(r *Recorder, msg string) {
 	r.log = msg
@@ -37,7 +37,7 @@ func computeInternal(r *Recorder, msg string) {
 // writes r.checkpoint — outside the pin, and the finding names the
 // introducing call.
 //
-// want +1 `TS-F07: computed frame writes r\.checkpoint, introduced at .*, outside the pinned frame`
+// want +1 `TS-F07: this function writes r\.checkpoint \(at .*\) but its //tiger:frame comment doesn't list it`
 //tiger:frame r.log
 func (r *Recorder) StoreVia(msg string) { // want StoreVia:`0\.log`
 	r.log = msg

@@ -153,4 +153,4 @@ jobs:
           grep -q "TS-S09" findings.txt
           grep -q "TS-M10" findings.txt
           grep -q "TS-S01" findings.txt
-          ! grep -q "computed effects" findings.txt
+          ! grep -q "TS-F0" findings.txt
