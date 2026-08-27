@@ -3,7 +3,7 @@ package fixture
 
 // mixedIf mixes && and || with no parentheses.
 func mixedIf(a, b, c bool) bool {
-	if a && b || c { // want `TS-S06: condition mixes && and \|\|`
+	if a && b || c { // want `TS-S06: this condition mixes && and \|\|`
 		return true
 	}
 	return false
@@ -11,7 +11,7 @@ func mixedIf(a, b, c bool) bool {
 
 // mixedParenIf mixes && and || with the && group parenthesized.
 func mixedParenIf(a, b, c bool) bool {
-	if (a && b) || c { // want `TS-S06: condition mixes && and \|\|`
+	if (a && b) || c { // want `TS-S06: this condition mixes && and \|\|`
 		return true
 	}
 	return false
@@ -20,7 +20,7 @@ func mixedParenIf(a, b, c bool) bool {
 // mixedFor mixes && and || in a for loop's condition.
 func mixedFor(n int, done bool) int {
 	total := 0
-	for n > 0 && !done || total < 10 { // want `TS-S06: condition mixes && and \|\|`
+	for n > 0 && !done || total < 10 { // want `TS-S06: this condition mixes && and \|\|`
 		n--
 		total++
 	}
@@ -29,7 +29,7 @@ func mixedFor(n int, done bool) int {
 
 // mixedNegated mixes && and || through a negated parenthesized group.
 func mixedNegated(a, b, c bool) bool {
-	if !(a && b) || c { // want `TS-S06: condition mixes && and \|\|`
+	if !(a && b) || c { // want `TS-S06: this condition mixes && and \|\|`
 		return true
 	}
 	return false

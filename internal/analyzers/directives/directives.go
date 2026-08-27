@@ -11,6 +11,7 @@ package directives
 import (
 	"errors"
 	"go/ast"
+	"strings"
 
 	"golang.org/x/tools/go/analysis"
 
@@ -47,28 +48,33 @@ func inspect(pass *analysis.Pass, comment *ast.Comment) {
 	var malformed *directive.MalformedArgsError
 	switch {
 	case errors.As(err, &unknown):
+		// A rule code written as the verb is the unshipped deviation form;
+		// naming it generically keeps a second rule code out of the body.
+		verb := parsed.Verb
+		if strings.HasPrefix(verb, "TS-") {
+			verb = "<rule code>"
+		}
 		pass.Report(analysis.Diagnostic{
 			Pos:      comment.Pos(),
 			Category: "TS-L09",
-			Message: "TS-L09: unknown directive verb //tiger:" + parsed.Verb +
-				" — the verb vocabulary is closed and there is no dismissal directive; " +
-				"fix the code the finding names, or file a bug against the analyzer",
+			Message: "TS-L09: //tiger:" + verb + " is not a directive tiger recognizes, " +
+				"and no directive dismisses a finding — fix the code the finding names, or " +
+				"file a bug against tiger",
 		})
 	case errors.As(err, &unreasoned):
 		pass.Report(analysis.Diagnostic{
 			Pos:      comment.Pos(),
 			Category: "TS-L09",
-			Message: "TS-L09: //tiger:" + parsed.Verb + " carries no reason — an escape " +
-				"without a reason is a rule silently deleted; state the constraint of the " +
-				"outside world that forces this shape",
+			Message: "TS-L09: //tiger:" + parsed.Verb + " has no reason after it — write the " +
+				"outside-world constraint that forces this shape, for example //tiger:" +
+				parsed.Verb + " provider offers no bulk endpoint",
 		})
 	case errors.As(err, &malformed):
 		pass.Report(analysis.Diagnostic{
 			Pos:      comment.Pos(),
 			Category: "TS-L09",
 			Message: "TS-L09: //tiger:" + malformed.Verb + " " + malformed.Detail +
-				" — the pin grammars are closed; a pin that does not parse never " +
-				"freezes a fact, so fix its arguments",
+				"; until it parses, this comment enforces nothing",
 		})
 	case err != nil:
 		// Is() accepted the prefix, so Parse can only fail one of the ways
@@ -80,9 +86,11 @@ func inspect(pass *analysis.Pass, comment *ast.Comment) {
 			pass.Report(analysis.Diagnostic{
 				Pos:      comment.Pos(),
 				Category: "TS-L09-escape",
-				Message: "TS-L09: escape " + directive.Format(directive.Directive{
+				Message: "TS-L09: " + directive.Format(directive.Directive{
 					Verb: parsed.Verb, Args: "",
-				}) + " — \"" + parsed.Args + "\" (unverified claim; standing review)",
+				}) + " \"" + parsed.Args + "\" waives a rule here; tiger cannot check the " +
+					"claim, so this notice stands on every run — remove the directive when " +
+					"the constraint no longer holds",
 			})
 		}
 	}

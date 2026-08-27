@@ -7,7 +7,7 @@ func retry(attempts int) int {
 begin:
 	count++
 	if count < attempts {
-		goto begin // want `TS-S09: goto transfers control invisibly`
+		goto begin // want `TS-S09: goto jumps to a label`
 	}
 	return count
 }
@@ -20,7 +20,7 @@ scan:
 		for _, cell := range row {
 			if cell == needle {
 				found = true
-				break scan // want `TS-S09: labeled break reaches across loops`
+				break scan // want `TS-S09: this labeled break jumps out of an inner loop to an outer one`
 			}
 		}
 	}
@@ -37,7 +37,7 @@ empty:
 		case n := <-work:
 			total += n
 		default:
-			break empty // want `TS-S09: labeled break escapes a select from inside its only loop`
+			break empty // want `TS-S09: this labeled break leaves a select from inside its only loop`
 		}
 	}
 	return total
@@ -50,7 +50,7 @@ scan2:
 	for _, size := range sizes {
 		switch {
 		case size < 0:
-			break scan2 // want `TS-S09: labeled break escapes a switch from inside its only loop`
+			break scan2 // want `TS-S09: this labeled break leaves a switch from inside its only loop`
 		default:
 			kept++
 		}
@@ -65,7 +65,7 @@ rows:
 	for _, row := range rows {
 		for _, cell := range row {
 			if cell == 0 {
-				continue rows // want `TS-S09: labeled continue reaches across loops`
+				continue rows // want `TS-S09: this labeled continue jumps out of an inner loop to an outer one`
 			}
 			total += cell
 		}

@@ -18,7 +18,7 @@ func refine(estimate float64) float64 {
 // syntax bounds how long it can run.
 func pollForever() int {
 	count := 0
-	for { // want `TS-S02: this loop has no condition and no ctx\.Done\(\) select`
+	for { // want `TS-S02: this for loop has no condition and no select on ctx\.Done\(\)`
 		count++
 		if count > 1000000 {
 			return count
@@ -29,7 +29,7 @@ func pollForever() int {
 // newton iterates until converged reports true, with no explicit cap — the
 // termination argument lives in the reader's head, not in the syntax.
 func newton(estimate float64) float64 {
-	for !converged(estimate) { // want `TS-S02: this loop's bound cannot be derived`
+	for !converged(estimate) { // want `TS-S02: tiger can't tell how many times this loop runs`
 		estimate = refine(estimate)
 	}
 	return estimate
@@ -39,7 +39,7 @@ func newton(estimate float64) float64 {
 // goroutine closing it.
 func drain(work chan int) int {
 	total := 0
-	for value := range work { // want `TS-S02: ranging over a channel`
+	for value := range work { // want `TS-S02: this loop ranges over a channel`
 		total += value
 	}
 	return total
@@ -50,7 +50,7 @@ func drain(work chan int) int {
 func pollActive() int {
 	active := true
 	count := 0
-	for active { // want `TS-S02: this loop's bound cannot be derived`
+	for active { // want `TS-S02: tiger can't tell how many times this loop runs`
 		count++
 		if count > 3 {
 			active = false
@@ -65,7 +65,7 @@ func pollActive() int {
 func orOneUnbounded(limit int) int {
 	active := true
 	count := 0
-	for active || count < limit { // want `TS-S02: this loop's bound cannot be derived`
+	for active || count < limit { // want `TS-S02: tiger can't tell how many times this loop runs`
 		count++
 		if count > 1000 {
 			active = false
@@ -79,7 +79,7 @@ func orOneUnbounded(limit int) int {
 // of hitting zero, so no proof admits it.
 func neqZeroBareDecrement(x int) int {
 	count := 0
-	for x != 0 { // want `TS-S02: this loop's bound cannot be derived`
+	for x != 0 { // want `TS-S02: tiger can't tell how many times this loop runs`
 		x--
 		count++
 	}
@@ -91,7 +91,7 @@ func neqZeroBareDecrement(x int) int {
 // proof no matter what else in the loop is provably monotone.
 func neqZeroWrongDirection(x int) int {
 	count := 0
-	for x != 0 { // want `TS-S02: this loop's bound cannot be derived`
+	for x != 0 { // want `TS-S02: tiger can't tell how many times this loop runs`
 		x >>= 1
 		x++
 		count++
@@ -103,7 +103,7 @@ func neqZeroWrongDirection(x int) int {
 // directive, so the waiver never applies and the loop still fires.
 func cursorScanUnannotated(it *iterator) int {
 	count := 0
-	for it.Valid() { // want `TS-S02: this loop's bound cannot be derived`
+	for it.Valid() { // want `TS-S02: tiger can't tell how many times this loop runs`
 		it.Next()
 		count++
 	}
@@ -117,7 +117,7 @@ func cursorScanUnannotated(it *iterator) int {
 func nonCursorBatchedStillFires(active bool) int {
 	count := 0
 	//tiger:batched not actually a cursor, this annotation should not help
-	for active { // want `TS-S02: this loop's bound cannot be derived`
+	for active { // want `TS-S02: tiger can't tell how many times this loop runs`
 		count++
 	}
 	return count
@@ -132,7 +132,7 @@ func nonCursorBatchedStillFires(active bool) int {
 //tiger:batched next-page token pagination is bounded by the backend
 func paginationTokenFires(fetch func(token string) ([]int, string, bool)) int {
 	token, more, total := "", true, 0
-	for more { // want `TS-S02: this loop's bound cannot be derived`
+	for more { // want `TS-S02: tiger can't tell how many times this loop runs`
 		var items []int
 		items, token, more = fetch(token)
 		total += len(items)
@@ -147,7 +147,7 @@ func paginationTokenFires(fetch func(token string) ([]int, string, bool)) int {
 // the grammar cannot see at all; this one is visible, just not admitted).
 func tupleMirrorFires(i, j int) int {
 	count := 0
-	for i > j { // want `TS-S02: this loop's bound cannot be derived`
+	for i > j { // want `TS-S02: tiger can't tell how many times this loop runs`
 		i, j = i-1, j+1
 		count++
 	}
@@ -161,7 +161,7 @@ func tupleMirrorFires(i, j int) int {
 func foreverBatchedStillFires() int {
 	count := 0
 	//tiger:batched no shape at all; this annotation should not help
-	for { // want `TS-S02: this loop has no condition and no ctx\.Done\(\) select`
+	for { // want `TS-S02: this for loop has no condition and no select on ctx\.Done\(\)`
 		count++
 		if count > 10 {
 			return count
@@ -175,7 +175,7 @@ func foreverBatchedStillFires() int {
 // &&-either rule to the ||-every rule.
 func negatedConjunctionFires(done bool, i int) int {
 	count := 0
-	for !(done && i < 10) { // want `TS-S02: this loop's bound cannot be derived`
+	for !(done && i < 10) { // want `TS-S02: tiger can't tell how many times this loop runs`
 		count++
 		i++
 	}
@@ -187,7 +187,7 @@ func negatedConjunctionFires(done bool, i int) int {
 // termination proof — only an unsigned counter qualifies.
 func signedShiftFires(x int) int {
 	count := 0
-	for x != 0 { // want `TS-S02: this loop's bound cannot be derived`
+	for x != 0 { // want `TS-S02: tiger can't tell how many times this loop runs`
 		x >>= 1
 		count++
 	}
@@ -198,7 +198,7 @@ func signedShiftFires(x int) int {
 // amount can be zero, and x >> 0 never moves.
 func variableShiftFires(x uint, k uint) int {
 	count := 0
-	for x != 0 { // want `TS-S02: this loop's bound cannot be derived`
+	for x != 0 { // want `TS-S02: tiger can't tell how many times this loop runs`
 		x >>= k
 		count++
 	}
@@ -210,7 +210,7 @@ func variableShiftFires(x uint, k uint) int {
 // integer counters only.
 func floatDivideFires(f float64) int {
 	count := 0
-	for f != 0 { // want `TS-S02: this loop's bound cannot be derived`
+	for f != 0 { // want `TS-S02: tiger can't tell how many times this loop runs`
 		f /= 2
 		count++
 	}
@@ -222,7 +222,7 @@ func floatDivideFires(f float64) int {
 // x after every division, so the outer loop never has to reach zero.
 func rangeResetFires(x int, items []int) int {
 	count := 0
-	for x != 0 { // want `TS-S02: this loop's bound cannot be derived`
+	for x != 0 { // want `TS-S02: tiger can't tell how many times this loop runs`
 		x /= 2
 		for x = range items {
 			count++
@@ -237,7 +237,7 @@ func rangeResetFires(x int, items []int) int {
 // never by name.
 func shadowedShiftFires(x uint, big func() bool) int {
 	count := 0
-	for x != 0 { // want `TS-S02: this loop's bound cannot be derived`
+	for x != 0 { // want `TS-S02: tiger can't tell how many times this loop runs`
 		if big() {
 			var x uint = 8
 			x >>= 1
@@ -256,7 +256,7 @@ func shadowedShiftFires(x uint, big func() bool) int {
 // the proof needs an assignment that provably runs every round.
 func conditionalShiftFires(x uint, sometimes func() bool) int {
 	count := 0
-	for x != 0 { // want `TS-S02: this loop's bound cannot be derived`
+	for x != 0 { // want `TS-S02: tiger can't tell how many times this loop runs`
 		if sometimes() {
 			x >>= 1
 		}
@@ -273,7 +273,7 @@ func conditionalShiftFires(x uint, sometimes func() bool) int {
 // Post clause, nothing forces progress on the skipped rounds.
 func continueSkipsShiftFires(x uint, skip func() bool) int {
 	count := 0
-	for x != 0 { // want `TS-S02: this loop's bound cannot be derived`
+	for x != 0 { // want `TS-S02: tiger can't tell how many times this loop runs`
 		if skip() {
 			continue
 		}
@@ -290,7 +290,7 @@ func continueSkipsShiftFires(x uint, skip func() bool) int {
 // move unconditionally (or hoist it to Post) to pass.
 func branchedShiftFires(x uint, pick func() bool) int {
 	count := 0
-	for x != 0 { // want `TS-S02: this loop's bound cannot be derived`
+	for x != 0 { // want `TS-S02: tiger can't tell how many times this loop runs`
 		if pick() {
 			x >>= 1
 		} else {
@@ -306,7 +306,7 @@ func branchedShiftFires(x uint, pick func() bool) int {
 // stops shrinking and the loop never exits.
 func floatTupleFires(lo, hi float64) int {
 	count := 0
-	for ; lo < hi; lo, hi = lo+1, hi-1 { // want `TS-S02: this loop's bound cannot be derived`
+	for ; lo < hi; lo, hi = lo+1, hi-1 { // want `TS-S02: tiger can't tell how many times this loop runs`
 		count++
 	}
 	return count

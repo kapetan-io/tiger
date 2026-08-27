@@ -229,8 +229,8 @@ func buildPinned(pass *analysis.Pass, entries []funcEntry) map[*ssa.Function]sum
 			pass.Report(analysis.Diagnostic{
 				Pos:      e.decl.Pos(),
 				Category: "TS-F01",
-				Message: "TS-F01: more than one effects pin on this function is an " +
-					"ambiguous contract — keep exactly one",
+				Message: "TS-F01: this function has more than one //tiger:effects comment — " +
+					"keep exactly one",
 			})
 			continue
 		}
@@ -239,9 +239,9 @@ func buildPinned(pass *analysis.Pass, entries []funcEntry) map[*ssa.Function]sum
 			pass.Report(analysis.Diagnostic{
 				Pos:      pin.Pos,
 				Category: "TS-F01",
-				Message: "TS-F01: a pin may only appear on an exported function or " +
-					"method — remove this pin; the exported pins above already " +
-					"constrain this helper (TS-F02)",
+				Message: "TS-F01: this function has a //tiger:effects comment but is " +
+					"unexported, and tiger only honors that comment on exported functions " +
+					"and methods — remove the comment",
 			})
 			continue
 		}
@@ -561,7 +561,7 @@ func reportFacts(pass *analysis.Pass, entries []funcEntry, computed map[*ssa.Fun
 			Pos:      e.decl.Pos(),
 			Category: "TS-F01-facts",
 			Message: facts.Message(facts.Fact{
-				RuleID: "TS-F01", Kind: "computed effects", Function: e.decl.Name.Name,
+				RuleID: "TS-F01", Function: e.decl.Name.Name,
 				Directive: directive.Directive{
 					Verb: "effects", Args: directive.FormatEffects(rendered),
 				},
@@ -603,8 +603,8 @@ func reportEnforcement(pass *analysis.Pass, fn *ssa.Function, pin pins.Pin, val 
 			Pos:      pin.Pos,
 			Category: "TS-F01",
 			Message: fmt.Sprintf(
-				"TS-F01: pin declares %s that the computed effects do not have — "+
-					"tighten the pin to %s",
+				"TS-F01: this function's //tiger:effects comment lists %s, but the function "+
+					"never does that — change the comment to %s",
 				directive.FormatEffects(missing),
 				directive.Format(directive.Directive{
 					Verb: "effects", Args: directive.FormatEffects(rendered),
@@ -634,19 +634,17 @@ type violation struct {
 // call and its position), TS-F01 when it came from fn's own instructions.
 func reportWidening(pass *analysis.Pass, pin pins.Pin, v violation) {
 	found := firstWidenedOrigin(v.Fn, v.Val, v.Widened)
-	fix := directive.Format(directive.Directive{
-		Verb: "effects", Args: directive.FormatEffects(v.Rendered),
-	})
+	missing := directive.FormatEffects(v.Widened)
 
 	if found.Origin.Kind == sourceCall {
 		pass.Report(analysis.Diagnostic{
 			Pos:      pin.Pos,
 			Category: "TS-F02",
 			Message: fmt.Sprintf(
-				"TS-F02: computed effects %s are not declared by this pin — introduced "+
-					"by a call to %s at %s — remove the call or update the pin to %s",
-				directive.FormatEffects(v.Widened), found.Origin.Detail,
-				nearPos(pass.Fset, found.Origin.Pos), fix,
+				"TS-F02: this function %s (%s at %s) but its //tiger:effects comment "+
+					"doesn't list %s — add %s to the comment, or remove the call",
+				describeEffects(v.Widened), found.Origin.Detail,
+				nearPos(pass.Fset, found.Origin.Pos), missing, missing,
 			),
 		})
 		return
@@ -655,11 +653,59 @@ func reportWidening(pass *analysis.Pass, pin pins.Pin, v violation) {
 		Pos:      pin.Pos,
 		Category: "TS-F01",
 		Message: fmt.Sprintf(
-			"TS-F01: computed effects %s are not declared by this pin — introduced by "+
-				"%s — remove it or update the pin to %s",
-			directive.FormatEffects(v.Widened), found.Origin.Detail, fix,
+			"TS-F01: this function %s (%s at %s) but its //tiger:effects comment doesn't "+
+				"list %s — add %s to the comment, or remove that code",
+			describeEffects(v.Widened), found.Origin.Detail,
+			nearPos(pass.Fset, found.Origin.Pos), missing, missing,
 		),
 	})
+}
+
+// describeEffects says in plain words what a function with set does, one
+// clause per present effect, joined in the set's canonical order.
+func describeEffects(set directive.EffectSet) string {
+	clauses := []string{}
+	if set.Alloc {
+		clauses = append(clauses, "allocates")
+	}
+	for _, qualifier := range set.IO {
+		clauses = append(clauses, ioClause(qualifier))
+	}
+	if set.Block {
+		clauses = append(clauses, "blocks")
+	}
+	if set.Panic {
+		clauses = append(clauses, "can panic")
+	}
+	if set.Rand {
+		clauses = append(clauses, "uses randomness")
+	}
+	if set.Time {
+		clauses = append(clauses, "reads the clock")
+	}
+	for _, location := range set.Mutate {
+		clauses = append(clauses, "writes "+location)
+	}
+	if set.Spawn {
+		clauses = append(clauses, "starts a goroutine")
+	}
+	return strings.Join(clauses, " and ")
+}
+
+// ioClause names one io qualifier's activity in plain words.
+func ioClause(qualifier string) string {
+	switch qualifier {
+	case "net":
+		return "makes a network call"
+	case "disk":
+		return "reads or writes disk"
+	case "env":
+		return "reads the environment"
+	case "exec":
+		return "runs a program"
+	default:
+		return "does io(" + qualifier + ")"
+	}
 }
 
 // located names one widened atom or mutate location and the source that

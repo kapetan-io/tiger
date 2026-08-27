@@ -2,14 +2,14 @@
 package fixture
 
 func launch() {
-	go work() // want `TS-C02: bare goroutine`
+	go work() // want `TS-C02: this go statement starts a goroutine nobody owns`
 }
 
 // launchClosure spawns from inside a closure; the owner is still
 // launchClosure, the FuncDecl the closure lexically sits in.
 func launchClosure() {
 	fn := func() {
-		go work() // want `TS-C02: bare goroutine`
+		go work() // want `TS-C02: this go statement starts a goroutine nobody owns`
 	}
 	fn()
 }

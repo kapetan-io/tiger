@@ -58,9 +58,9 @@ func run(pass *analysis.Pass) (any, error) {
 			pass.Report(analysis.Diagnostic{
 				Pos:      spec.Pos(),
 				Category: "TS-C12",
-				Message: "TS-C12: channel type declared outside " + canonical +
-					" — move this declaration to " + canonical + " so the communication " +
-					"topology and its capacity constants read in one place",
+				Message: "TS-C12: this channel type is declared outside " + canonical +
+					", the file that holds this package's channel types — move the " +
+					"declaration to " + canonical,
 			})
 		}
 	}

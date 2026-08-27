@@ -8,7 +8,7 @@ func closeAllFor(names []string) error {
 		if err != nil {
 			return err
 		}
-		defer r.Close() // want `TS-L10: defer inside a loop`
+		defer r.Close() // want `TS-L10: this defer sits inside a loop`
 	}
 	return nil
 }
@@ -19,7 +19,7 @@ func closeAllRange(names []string) error {
 		if err != nil {
 			return err
 		}
-		defer r.Close() // want `TS-L10: defer inside a loop`
+		defer r.Close() // want `TS-L10: this defer sits inside a loop`
 	}
 	return nil
 }
@@ -33,7 +33,7 @@ func closeAllInWorker(names []string) {
 			if err != nil {
 				return
 			}
-			defer r.Close() // want `TS-L10: defer inside a loop`
+			defer r.Close() // want `TS-L10: this defer sits inside a loop`
 		}
 	}()
 }
@@ -44,7 +44,7 @@ func closeAfterUnrelated(name string) error {
 		return err
 	}
 	println("opened", name)
-	defer r.Close() // want `TS-L10: defer sits away from its acquisition`
+	defer r.Close() // want `TS-L10: this defer is not right after the call that acquired what it releases`
 	return nil
 }
 
@@ -54,7 +54,7 @@ func closeConditional(name string, verbose bool) error {
 		return err
 	}
 	if verbose {
-		defer r.Close() // want `TS-L10: defer sits away from its acquisition`
+		defer r.Close() // want `TS-L10: this defer is not right after the call that acquired what it releases`
 	}
 	_ = name
 	return nil

@@ -5,7 +5,7 @@ package fixture
 // applyEntry crashes on a malformed entry without going through assert.
 func applyEntry(size int) {
 	if size < 0 {
-		panic("negative size") // want `TS-S18: naked panic`
+		panic("negative size") // want `TS-S18: panic is called directly here`
 	}
 }
 
@@ -15,6 +15,6 @@ func unreachableArm(kind int) string {
 	case 0:
 		return "zero"
 	default:
-		panic("unknown kind") // want `TS-S18: naked panic`
+		panic("unknown kind") // want `TS-S18: panic is called directly here`
 	}
 }

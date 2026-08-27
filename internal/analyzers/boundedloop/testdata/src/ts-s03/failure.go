@@ -6,7 +6,7 @@ package fixture
 // nothing in the select can end the loop.
 func runNoTermination(input <-chan int, output chan<- int) {
 	for {
-		select { // want `TS-S03: this unbounded event loop's select has no case`
+		select { // want `TS-S03: this event loop's select has no case that stops the loop`
 		case value := <-input:
 			output <- value * 2
 		}

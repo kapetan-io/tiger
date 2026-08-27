@@ -141,8 +141,8 @@ func check(pass *analysis.Pass, ident *ast.Ident, allowed map[string]bool) {
 		Pos:      ident.Pos(),
 		Category: "TS-N14",
 		Message: fmt.Sprintf(
-			"TS-N14: %q ends in the participle %q — a trailing participle cannot head a "+
-				"design doc and derived names do not compose; prefer the noun (or add "+
-				"-allow=%s for a genuine noun)", ident.Name, last, lower),
+			"TS-N14: %q ends in the -ing word %q, which names an activity rather than a "+
+				"thing — rename it to the noun it stands for, or pass the flag -allow=%s if "+
+				"it really is a noun", ident.Name, last, lower),
 	})
 }

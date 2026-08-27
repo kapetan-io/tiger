@@ -7,7 +7,7 @@ package fixture
 type Timing struct{}
 
 // Preparing is not allowlisted, so it still fires.
-type Preparing struct{} // want `TS-N14: "Preparing" ends in the participle "Preparing"`
+type Preparing struct{} // want `TS-N14: "Preparing" ends in the -ing word "Preparing"`
 
 // String is still silent through the built-in default allowlist, proving
 // the flag extends rather than replaces it.

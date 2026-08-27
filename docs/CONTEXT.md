@@ -131,6 +131,19 @@ miss — and governs only the custom default-arm check; the `exhaustive` auto ru
 The one-line registry severity edit moving a tuned advisory rule to blocking, backed by trial
 evidence on at least two real codebases; demotion is the same edit in reverse.
 
+**Diagnostic prefix**:
+The `path:line:col: TS-XXX:` head of a finding line — position rendered by the CLI, rule code
+written first by the analyzer. A parsing contract: tooling keys on it and wording changes never
+touch it. The CLI's ` [advisory]` marker is a separate print-time annotation inserted after the
+code on advisory lines, not part of the prefix.
+_Avoid_: header, tag
+
+**Message body**:
+The prose after the diagnostic prefix, written for a reader new to tiger: what the code does,
+what tiger expected, the edit to make. Carries exactly one rule code (the prefix's), spells
+directives literally, and uses no internal vocabulary without a gloss.
+_Avoid_: description, explanation
+
 ## Relationships
 
 - A **Rule** is enforced by exactly one engine: an **Auto rule** by a golangci-lint linter, a

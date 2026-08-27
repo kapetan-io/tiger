@@ -7,7 +7,7 @@ package ts01
 // Grow is pinned pure but its body allocates a slice — an own-instruction
 // widening the pin does not declare.
 //
-// want +2 `TS-F01: computed effects alloc are not declared by this pin`
+// want +2 `TS-F01: this function allocates \(.*\) but its //tiger:effects comment doesn't list alloc`
 //
 //tiger:effects none
 func Grow() []int { // want Grow:`none`
@@ -17,7 +17,7 @@ func Grow() []int { // want Grow:`none`
 // Quiet is pinned to read from disk but its body touches nothing — a
 // superset pin that means nothing.
 //
-// want +2 `TS-F01: pin declares io\(disk\) that the computed effects do not have`
+// want +2 `TS-F01: this function's //tiger:effects comment lists io\(disk\), but the function never does that`
 //
 //tiger:effects io(disk)
 func Quiet() int { // want Quiet:`io\(disk\)`
@@ -28,7 +28,7 @@ func Quiet() int { // want Quiet:`io\(disk\)`
 // function or method (invariant 3) — the exported pins above already
 // constrain whatever helper needs this one, per TS-F02's modularity.
 //
-// want +2 `TS-F01: a pin may only appear on an exported function or method`
+// want +2 `TS-F01: this function has a //tiger:effects comment but is unexported`
 //
 //tiger:effects none
 func hidden() {}

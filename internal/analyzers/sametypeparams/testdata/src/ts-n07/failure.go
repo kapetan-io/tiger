@@ -15,7 +15,7 @@ func copySeparateFields(source string, retries int, timeout int) { // want `TS-N
 
 // tooManyParams has more than four parameters, all of different types so
 // only the count fires.
-func tooManyParams(a int, b string, c float64, d byte, e rune) { // want `TS-N07: 5 parameters`
+func tooManyParams(a int, b string, c float64, d byte, e rune) { // want `TS-N07: this function takes 5 parameters`
 	_, _, _, _, _ = a, b, c, d, e
 }
 

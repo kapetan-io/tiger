@@ -5,12 +5,12 @@ package fixture
 
 // TouchLog writes r.log and carries no pin, so its computed frame is
 // reported.
-func (r *Recorder) TouchLog(msg string) { // want `TS-F07: computed frame for TouchLog — //tiger:frame r\.log` TouchLog:`0\.log`
+func (r *Recorder) TouchLog(msg string) { // want `TS-F07: TouchLog writes r\.log through its receiver or parameters — nothing to fix; to make tiger fail the build if that changes, add //tiger:frame r\.log` TouchLog:`0\.log`
 	r.log = msg
 }
 
 // Inspect never writes through its receiver, so its computed frame is
 // empty.
-func (r *Recorder) Inspect() string { // want `TS-F07: computed frame for Inspect — //tiger:frame none` Inspect:`^$`
+func (r *Recorder) Inspect() string { // want `TS-F07: Inspect writes nothing through its receiver or parameters — nothing to fix; to make tiger fail the build if that changes, add //tiger:frame none` Inspect:`^$`
 	return r.log
 }

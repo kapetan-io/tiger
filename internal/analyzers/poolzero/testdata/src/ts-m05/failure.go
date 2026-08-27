@@ -35,7 +35,7 @@ func putAfterPartialReset(cond bool, buf *Buffer) {
 	if cond {
 		buf.Reset()
 	}
-	bufferPool.Put(buf) // want `TS-M05: this Put is not preceded by a reset of the same value on every path`
+	bufferPool.Put(buf) // want `TS-M05: this Put is not preceded by a Reset \(or a zeroing\) of the same value on every path to it`
 }
 
 // putNoResetMethod puts a Widget, which has no Reset method, so there is no
@@ -47,7 +47,7 @@ func putNoResetMethod(w *Widget) {
 // putBeforeReset resets buf only after the Put, which is too late to
 // protect the caller who receives buf from the next Get.
 func putBeforeReset(buf *Buffer) {
-	bufferPool.Put(buf) // want `TS-M05: this Put is not preceded by a reset of the same value on every path`
+	bufferPool.Put(buf) // want `TS-M05: this Put is not preceded by a Reset \(or a zeroing\) of the same value on every path to it`
 	buf.Reset()
 }
 
@@ -62,5 +62,5 @@ func getUseAndPutBack(entry byte) {
 		return
 	}
 	buf.data = append(buf.data, entry)
-	bufferPool.Put(buf) // want `TS-M05: this Put is not preceded by a reset of the same value on every path`
+	bufferPool.Put(buf) // want `TS-M05: this Put is not preceded by a Reset \(or a zeroing\) of the same value on every path to it`
 }

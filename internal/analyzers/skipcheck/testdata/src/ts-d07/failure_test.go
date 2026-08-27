@@ -7,25 +7,25 @@ import "testing"
 
 // TestSkip covers the plain Skip spelling.
 func TestSkip(t *testing.T) {
-	t.Skip() // want `TS-D07: skipped test`
+	t.Skip() // want `TS-D07: this test is skipped, so it passes without running`
 }
 
 // TestSkipf covers the formatted spelling.
 func TestSkipf(t *testing.T) {
-	t.Skipf("flaky on windows") // want `TS-D07: skipped test`
+	t.Skipf("flaky on windows") // want `TS-D07: this test is skipped, so it passes without running`
 }
 
 // TestSkipNow covers the SkipNow spelling.
 func TestSkipNow(t *testing.T) {
-	t.SkipNow() // want `TS-D07: skipped test`
+	t.SkipNow() // want `TS-D07: this test is skipped, so it passes without running`
 }
 
 // BenchmarkSkip covers the *testing.B receiver.
 func BenchmarkSkip(b *testing.B) {
-	b.Skip() // want `TS-D07: skipped test`
+	b.Skip() // want `TS-D07: this test is skipped, so it passes without running`
 }
 
 // skipViaHelper covers the testing.TB interface receiver.
 func skipViaHelper(tb testing.TB) {
-	tb.Skip() // want `TS-D07: skipped test`
+	tb.Skip() // want `TS-D07: this test is skipped, so it passes without running`
 }

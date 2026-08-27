@@ -42,9 +42,9 @@ import (
 // unconditionally IO, independent of receiver type.
 var seedPackages = []string{"os", "net", "net/http", "database/sql", "syscall"}
 
-const msg = "TS-M10: this call resolves to a package on the IO allowlist and runs once per " +
-	"loop iteration — hoist it above the loop, or mark the loop //tiger:batched <reason> when " +
-	"per-item IO is what the outside world forces"
+const msg = "TS-M10: this call does IO (network, disk, or database) and runs once per loop " +
+	"iteration — move it above the loop, or if each item genuinely needs its own IO, mark " +
+	"the loop //tiger:batched <reason>"
 
 var packagesFlag string
 

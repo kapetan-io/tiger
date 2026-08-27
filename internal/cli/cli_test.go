@@ -41,14 +41,22 @@ func TestCheckCleanTreeIsSilent(t *testing.T) {
 // factsGolden is the showfacts fixture's complete --show-facts output:
 // computed effect sets, frames, and a synthesized variant, every fact in
 // freeze-ready pin syntax.
-const factsGolden = "facts.go:14:1: TS-F01: computed effects for Append — " +
+const factsGolden = "facts.go:14:1: TS-F01: Append's effects are alloc, mutate(r.log) — " +
+	"nothing to fix; to make tiger fail the build if they change, add " +
 	"//tiger:effects alloc, mutate(r.log)\n" +
-	"facts.go:14:1: TS-F07: computed frame for Append — //tiger:frame r.log\n" +
-	"facts.go:19:1: TS-F01: computed effects for Drain — //tiger:effects none\n" +
-	"facts.go:19:1: TS-F07: computed frame for Drain — //tiger:frame none\n" +
-	"facts.go:21:2: TS-V01: synthesized variant for Drain — //tiger:variant len(pending)\n" +
-	"facts.go:29:1: TS-F01: computed effects for Home — //tiger:effects io(env)\n" +
-	"facts.go:29:1: TS-F07: computed frame for Home — //tiger:frame none\n"
+	"facts.go:14:1: TS-F07: Append writes r.log through its receiver or parameters — " +
+	"nothing to fix; to make tiger fail the build if that changes, add //tiger:frame r.log\n" +
+	"facts.go:19:1: TS-F01: Drain has no effects — nothing to fix; to make tiger fail the " +
+	"build if that changes, add //tiger:effects none\n" +
+	"facts.go:19:1: TS-F07: Drain writes nothing through its receiver or parameters — " +
+	"nothing to fix; to make tiger fail the build if that changes, add //tiger:frame none\n" +
+	"facts.go:21:2: TS-V01: this loop in Drain ends because len(pending) shrinks on every pass — " +
+	"nothing to fix; to make tiger fail the build if that changes, add " +
+	"//tiger:variant len(pending)\n" +
+	"facts.go:29:1: TS-F01: Home's effects are io(env) — nothing to fix; to make tiger " +
+	"fail the build if they change, add //tiger:effects io(env)\n" +
+	"facts.go:29:1: TS-F07: Home writes nothing through its receiver or parameters — " +
+	"nothing to fix; to make tiger fail the build if that changes, add //tiger:frame none\n"
 
 // TestCheckShowFactsPrintsPinSyntax covers the reported severity level's
 // activation and invariant 1 at the CLI surface.
@@ -117,9 +125,9 @@ func TestCheckFactsPropagateAcrossPackages(t *testing.T) {
 	got := run(t, "check", "-C", "testdata/fixtures/facts", "./...")
 	assert.Equal(t, cli.ExitFindings, got.code)
 	assert.Empty(t, got.stderr)
-	assert.Equal(t, "core/core.go:10:1: TS-F02: computed effects io(net) are not declared "+
-		"by this pin — introduced by a call to fixture.example/facts/helper.Ping at "+
-		"core.go:12:20 — remove the call or update the pin to //tiger:effects io(net)\n"+
+	assert.Equal(t, "core/core.go:10:1: TS-F02: this function makes a network call "+
+		"(fixture.example/facts/helper.Ping at core.go:12:20) but its //tiger:effects "+
+		"comment doesn't list io(net) — add io(net) to the comment, or remove the call\n"+
 		"tiger: 1 blocking, 0 advisory\n", got.stdout)
 }
 
@@ -131,11 +139,11 @@ func TestCheckBlockingFindingsExitOne(t *testing.T) {
 	got := run(t, "check", "-C", "testdata/fixtures/findings", "./...")
 	assert.Equal(t, cli.ExitFindings, got.code)
 	assert.Empty(t, got.stderr)
-	assert.Equal(t, "alpha.go:7:3: TS-S18: naked panic — route the crash through the assert "+
-		"package (assert.Ok for conditions, assert.Fail for formatted failures, "+
-		"assert.Unreachable for impossible arms) so there is one crash path\n"+
-		"beta.go:10:5: TS-S09: labeled break reaches across loops — extract the inner loop "+
-		"into a function and return instead\n"+
+	assert.Equal(t, "alpha.go:7:3: TS-S18: panic is called directly here — use assert.Ok "+
+		"(condition), assert.Fail (formatted failure), or assert.Unreachable (impossible "+
+		"arm) instead so every crash goes through one path\n"+
+		"beta.go:10:5: TS-S09: this labeled break jumps out of an inner loop to an outer "+
+		"one — move the inner loop into its own function and return instead\n"+
 		"tiger: 2 blocking, 0 advisory\n", got.stdout)
 }
 
@@ -148,9 +156,9 @@ func TestCheckSkipsGeneratedFiles(t *testing.T) {
 	got := run(t, "check", "-C", "testdata/fixtures/generated", "./...")
 	assert.Equal(t, cli.ExitFindings, got.code)
 	assert.Empty(t, got.stderr)
-	assert.Equal(t, "hand.go:7:3: TS-S18: naked panic — route the crash through the assert "+
-		"package (assert.Ok for conditions, assert.Fail for formatted failures, "+
-		"assert.Unreachable for impossible arms) so there is one crash path\n"+
+	assert.Equal(t, "hand.go:7:3: TS-S18: panic is called directly here — use assert.Ok "+
+		"(condition), assert.Fail (formatted failure), or assert.Unreachable (impossible "+
+		"arm) instead so every crash goes through one path\n"+
 		"tiger: 1 blocking, 0 advisory\n", got.stdout)
 }
 
@@ -168,9 +176,10 @@ func TestCheckOutputIsDeterministic(t *testing.T) {
 // Goal: a well-formed //tiger:batched escape prints as an advisory finding
 // on every run, is counted, and never affects the exit code.
 func TestCheckEscapeSurfacesAsAdvisory(t *testing.T) {
-	wantAdvisory := "notify.go:7:2: TS-L09 [advisory]: escape //tiger:batched — " +
-		"\"provider offers no bulk endpoint; contract caps us at 10 rps\" " +
-		"(unverified claim; standing review)\n" +
+	wantAdvisory := "notify.go:7:2: TS-L09 [advisory]: //tiger:batched " +
+		"\"provider offers no bulk endpoint; contract caps us at 10 rps\" waives a rule " +
+		"here; tiger cannot check the claim, so this notice stands on every run — remove " +
+		"the directive when the constraint no longer holds\n" +
 		"tiger: 0 blocking, 1 advisory\n"
 
 	got := run(t, "check", "-C", "testdata/fixtures/escape", "./...")
@@ -190,9 +199,9 @@ func TestCheckEscapeSurfacesAsAdvisory(t *testing.T) {
 // Goal: a skipped test prints as an advisory finding on every run, is
 // counted, and never affects the exit code.
 func TestCheckSkippedTestSurfacesAsAdvisory(t *testing.T) {
-	wantAdvisory := "skipped_test.go:11:2: TS-D07 [advisory]: skipped test — " +
-		"a skipped test is a test that passes; this notice stands until the " +
-		"Skip call is removed\n" +
+	wantAdvisory := "skipped_test.go:11:2: TS-D07 [advisory]: this test is skipped, so it " +
+		"passes without running — remove the Skip call when the test can run again; this " +
+		"notice stands until then\n" +
 		"tiger: 0 blocking, 1 advisory\n"
 
 	got := run(t, "check", "-C", "testdata/fixtures/skipped", "./...")

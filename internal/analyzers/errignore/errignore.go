@@ -58,9 +58,9 @@ func inspectAssign(pass *analysis.Pass, file *ast.File, assign *ast.AssignStmt) 
 		pass.Report(analysis.Diagnostic{
 			Pos:      assign.Lhs[i].Pos(),
 			Category: "TS-E02",
-			Message: "TS-E02: discarding this error silently hides a failure — say why the " +
-				"discard is safe in a trailing comment, or a comment on the line above, or " +
-				"handle the error",
+			Message: "TS-E02: this error is discarded with _, so a failure here goes unnoticed " +
+				"— handle the error, or say in a comment on this line or the line above why " +
+				"ignoring it is safe",
 		})
 	}
 }

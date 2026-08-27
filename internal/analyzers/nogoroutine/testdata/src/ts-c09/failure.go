@@ -4,7 +4,7 @@ package fixture
 
 func notify(entries []string) {
 	for _, entry := range entries {
-		go notifyOne(entry) // want `TS-C09: goroutine spawned per loop iteration`
+		go notifyOne(entry) // want `TS-C09: this loop starts a goroutine per item`
 	}
 }
 

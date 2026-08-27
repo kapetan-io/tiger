@@ -4,9 +4,9 @@
 package fixture
 
 // Signals is declared outside the package's canonical channel-type file.
-type Signals chan int // want `TS-C12: channel type declared outside compliant\.go`
+type Signals chan int // want `TS-C12: this channel type is declared outside compliant\.go`
 
 // Pipe pairs unrelated state with a channel field; it still counts.
-type Pipe struct { // want `TS-C12: channel type declared outside compliant\.go`
+type Pipe struct { // want `TS-C12: this channel type is declared outside compliant\.go`
 	acks chan int
 }

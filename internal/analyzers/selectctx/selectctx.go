@@ -34,10 +34,10 @@ var Analyzer = &analysis.Analyzer{
 }
 
 const (
-	msgNoShutdown = "TS-C05: blocking select has no shutdown case — add " +
-		"`case <-ctx.Done(): return ctx.Err()` so shutdown does not hang"
-	msgUnwrapped = "TS-C05: blocking channel operation outside a select — wrap it in a select " +
-		"with a `case <-ctx.Done(): return ctx.Err()` case"
+	msgNoShutdown = "TS-C05: this select blocks with no case that ends the wait on shutdown — " +
+		"add case <-ctx.Done(): return ctx.Err()"
+	msgUnwrapped = "TS-C05: this channel operation blocks outside a select, so shutdown can't " +
+		"interrupt it — wrap it in a select that also has case <-ctx.Done(): return ctx.Err()"
 )
 
 func run(pass *analysis.Pass) (any, error) {

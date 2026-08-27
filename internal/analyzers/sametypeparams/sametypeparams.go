@@ -69,8 +69,8 @@ func checkParams(pass *analysis.Pass, funcType *ast.FuncType) {
 		pass.Report(analysis.Diagnostic{
 			Pos:      funcType.Params.Pos(),
 			Category: "TS-N07",
-			Message: fmt.Sprintf("TS-N07: %d parameters — group related parameters into an "+
-				"options struct instead of growing the parameter list", len(slots)),
+			Message: fmt.Sprintf("TS-N07: this function takes %d parameters — group the "+
+				"related ones into an options struct", len(slots)),
 		})
 	}
 	for i := 0; i < len(slots)-1; i++ {
@@ -91,9 +91,9 @@ func checkAdjacent(pass *analysis.Pass, slots []paramSlot, index int) {
 	pass.Report(analysis.Diagnostic{
 		Pos:      next.pos,
 		Category: "TS-N07",
-		Message: fmt.Sprintf("TS-N07: adjacent parameters share type %s — Go has no named "+
-			"arguments, so a swapped call is silent; use an options struct or distinct named "+
-			"types", current.typ.String()),
+		Message: fmt.Sprintf("TS-N07: adjacent parameters share type %s, so a caller can swap "+
+			"them and nothing complains — use an options struct, or give each a distinct "+
+			"named type", current.typ.String()),
 	})
 }
 
@@ -107,9 +107,9 @@ func checkBoolParam(pass *analysis.Pass, slot paramSlot) {
 	pass.Report(analysis.Diagnostic{
 		Pos:      slot.pos,
 		Category: "TS-N08",
-		Message: "TS-N08: plain bool parameter — Save(true) means nothing at the call site; " +
-			"define a named type with a bool underlying type (for example type SyncMode bool) " +
-			"so Save(SyncImmediate) means something",
+		Message: "TS-N08: this parameter is a plain bool, so a call like Save(true) says " +
+			"nothing at the call site — define a named bool type (type SyncMode bool) with " +
+			"named constants, so the call reads Save(SyncImmediate)",
 	})
 }
 

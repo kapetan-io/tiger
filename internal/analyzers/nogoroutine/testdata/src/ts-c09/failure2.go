@@ -4,6 +4,6 @@ package fixture
 
 func poll(count int) {
 	for i := 0; i < count; i++ {
-		go notifyOne("tick") // want `TS-C09: goroutine spawned per loop iteration`
+		go notifyOne("tick") // want `TS-C09: this loop starts a goroutine per item`
 	}
 }

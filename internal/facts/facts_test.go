@@ -19,7 +19,6 @@ func TestMessageAndExtractRoundTrip(t *testing.T) {
 	for _, test := range []struct {
 		name     string
 		ruleID   string
-		kind     string
 		function string
 		d        directive.Directive
 		want     string
@@ -27,31 +26,32 @@ func TestMessageAndExtractRoundTrip(t *testing.T) {
 		{
 			name:     "Effects",
 			ruleID:   "TS-F01",
-			kind:     "computed effects",
 			function: "Append",
 			d:        directive.Directive{Verb: "effects", Args: "alloc, mutate(r.log)"},
-			want:     "TS-F01: computed effects for Append — //tiger:effects alloc, mutate(r.log)",
+			want: "TS-F01: Append's effects are alloc, mutate(r.log) — nothing to fix; to make " +
+				"tiger fail the build if they change, add //tiger:effects alloc, mutate(r.log)",
 		},
 		{
 			name:     "Frame",
 			ruleID:   "TS-F07",
-			kind:     "computed frame",
 			function: "Append",
 			d:        directive.Directive{Verb: "frame", Args: "r.log"},
-			want:     "TS-F07: computed frame for Append — //tiger:frame r.log",
+			want: "TS-F07: Append writes r.log through its receiver or parameters — nothing to " +
+				"fix; to make tiger fail the build if that changes, add //tiger:frame r.log",
 		},
 		{
 			name:     "Variant",
 			ruleID:   "TS-V01",
-			kind:     "synthesized variant",
 			function: "drain",
 			d:        directive.Directive{Verb: "variant", Args: "len(pending)"},
-			want:     "TS-V01: synthesized variant for drain — //tiger:variant len(pending)",
+			want: "TS-V01: this loop in drain ends because len(pending) shrinks on every pass — " +
+				"nothing to fix; to make tiger fail the build if that changes, add " +
+				"//tiger:variant len(pending)",
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			message := facts.Message(facts.Fact{
-				RuleID: test.ruleID, Kind: test.kind, Function: test.function, Directive: test.d,
+				RuleID: test.ruleID, Function: test.function, Directive: test.d,
 			})
 			assert.Equal(t, test.want, message)
 
@@ -74,17 +74,17 @@ func TestExtractErrors(t *testing.T) {
 	}{
 		{
 			name:    "NoDirective",
-			message: "TS-F01: computed effects for Append",
+			message: "TS-F01: Append has no effects — nothing to fix",
 			wantErr: "no directive in fact message",
 		},
 		{
 			name:    "UnknownVerb",
-			message: "TS-F01: computed effects for Append — //tiger:bogus none",
+			message: "TS-F01: Append has no effects — nothing to fix; add //tiger:bogus none",
 			wantErr: "unknown directive verb",
 		},
 		{
 			name:    "MalformedArgs",
-			message: "TS-F01: computed effects for Append — //tiger:effects notaneffect",
+			message: "TS-F01: Append's effects are notaneffect — add //tiger:effects notaneffect",
 			wantErr: "//tiger:effects",
 		},
 	} {

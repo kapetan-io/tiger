@@ -11,7 +11,7 @@ const entrySize = 4
 const writeBufferSize = 32768
 
 // batchMax = (writeBufferSize - headerSizeBytes) / entrySize.
-const batchMax = 8188 // want `TS-S22: batchMax is 8188 but its stated derivation \(writeBufferSize - headerSizeBytes\) / entrySize evaluates to 8189`
+const batchMax = 8188 // want `TS-S22: batchMax is 8188 but the derivation in its comment, \(writeBufferSize - headerSizeBytes\) / entrySize, works out to 8189`
 
 // The grouped-declaration form: blockMax's doc comment attaches directly to
 // its own ValueSpec rather than falling back to the GenDecl's Doc, since it
@@ -20,5 +20,5 @@ const (
 	blockBase = 1
 
 	// blockMax = sectorSize << 1.
-	blockMax = 999 // want `TS-S22: blockMax is 999 but its stated derivation sectorSize << 1 evaluates to 1024`
+	blockMax = 999 // want `TS-S22: blockMax is 999 but the derivation in its comment, sectorSize << 1, works out to 1024`
 )

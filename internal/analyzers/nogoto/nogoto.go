@@ -48,27 +48,27 @@ func report(pass *analysis.Pass, branch *ast.BranchStmt, path []ast.Node) {
 		pass.Report(analysis.Diagnostic{
 			Pos:      branch.Pos(),
 			Category: "TS-S09",
-			Message: "TS-S09: goto transfers control invisibly — restructure " +
-				"into a loop, an early return, or a function so the flow " +
-				"reads top to bottom",
+			Message: "TS-S09: goto jumps to a label, so the reader has to trace the flow " +
+				"by hand — replace it with a loop, an early return, or a function so " +
+				"the code reads top to bottom",
 		})
 	case branch.Label != nil:
 		if construct, escaped := escapesSelectOrSwitch(branch, path); escaped {
 			pass.Report(analysis.Diagnostic{
 				Pos:      branch.Pos(),
 				Category: "TS-S09",
-				Message: "TS-S09: labeled " + branch.Tok.String() + " escapes a " +
-					construct + " from inside its only loop — extract the loop " +
-					"into a function and return instead",
+				Message: "TS-S09: this labeled " + branch.Tok.String() + " leaves a " +
+					construct + " from inside its only loop — move the loop into " +
+					"its own function and return instead",
 			})
 			return
 		}
 		pass.Report(analysis.Diagnostic{
 			Pos:      branch.Pos(),
 			Category: "TS-S09",
-			Message: "TS-S09: labeled " + branch.Tok.String() +
-				" reaches across loops — extract the inner loop into a function and " +
-				"return instead",
+			Message: "TS-S09: this labeled " + branch.Tok.String() +
+				" jumps out of an inner loop to an outer one — move the inner loop into " +
+				"its own function and return instead",
 		})
 	}
 }

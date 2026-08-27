@@ -36,9 +36,8 @@ import (
 )
 
 const (
-	requiresExit = "fix the argument or establish the precondition " +
-		"with a dominating check before the call"
-	ensuresExit = "fix the returned value so it satisfies the postcondition"
+	requiresExit = "pass a value that satisfies the condition, or check it before the call"
+	ensuresExit  = "change the returned value so the condition holds"
 )
 
 // Analyzer enforces TS-V03: a requires or ensures pin fails only when the
@@ -117,7 +116,8 @@ func checkRequires(pass *analysis.Pass, funcs map[types.Object]pinnedFunc, call 
 			Pos:      call.Pos(),
 			Category: "TS-V03",
 			Message: "TS-V03: this call violates //tiger:requires " +
-				directive.FormatPredicate(pred) + " — " + reason + " — " + requiresExit,
+				directive.FormatPredicate(pred) + " on the callee — " + reason + " — " +
+				requiresExit,
 		})
 	}
 }

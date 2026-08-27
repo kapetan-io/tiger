@@ -33,7 +33,8 @@ var ioQualifiers = []string{"disk", "env", "exec", "net"}
 func ParseEffects(args string) (EffectSet, error) {
 	trimmed := strings.TrimSpace(args)
 	if trimmed == "" {
-		return EffectSet{}, errors.New("an effects pin states a fact — write none for purity")
+		return EffectSet{}, errors.New("has nothing after it — write //tiger:effects none " +
+			"for a function with no effects, or list its effects")
 	}
 	if trimmed == "none" {
 		return EffectSet{}, nil
@@ -41,11 +42,13 @@ func ParseEffects(args string) (EffectSet, error) {
 	set := EffectSet{}
 	for _, term := range splitCommas(trimmed) {
 		if term == "" {
-			return EffectSet{}, errors.New("empty effect term")
+			return EffectSet{}, errors.New(
+				"has an empty item between commas — remove the extra comma")
 		}
 		if term == "none" {
 			return EffectSet{}, errors.New(
-				`"none" states purity and cannot combine with other effects`)
+				"lists none alongside other effects, and none means no effects at all — " +
+					"drop none, or drop the others")
 		}
 		if err := parseEffectTerm(&set, term); err != nil {
 			return EffectSet{}, err
@@ -65,34 +68,37 @@ func parseEffectTerm(set *EffectSet, term string) error {
 	switch split.name {
 	case "alloc", "block", "panic", "rand", "time", "spawn":
 		if split.inner != nil {
-			return fmt.Errorf("%q takes no arguments", split.name)
+			return fmt.Errorf("has %q with arguments, but it takes none — write it bare, as %s",
+				split.name, split.name)
 		}
 		markBare(set, split.name)
 	case "io":
 		if len(split.inner) == 0 {
-			return errors.New("io requires a qualifier: io(disk), io(env), io(exec), io(net)")
+			return errors.New(
+				"has a bare io — say which kind: io(disk), io(env), io(exec), or io(net)")
 		}
 		for _, qualifier := range split.inner {
 			if !slices.Contains(ioQualifiers, qualifier) {
-				return fmt.Errorf("io qualifier %q is not in the built-in tier (%s)",
+				return fmt.Errorf("has io qualifier %q, which tiger doesn't know — use one of %s",
 					qualifier, strings.Join(ioQualifiers, ", "))
 			}
 		}
 		set.IO = append(set.IO, split.inner...)
 	case "mutate":
 		if len(split.inner) == 0 {
-			return errors.New("mutate requires a location: mutate(r.log)")
+			return errors.New("has a bare mutate — name what it writes, for example mutate(r.log)")
 		}
 		for _, location := range split.inner {
 			if !validPath(location) {
-				return fmt.Errorf("mutate location %q is not a parameter-rooted path", location)
+				return fmt.Errorf("has mutate location %q, which is not a path starting at a "+
+					"parameter or receiver — write one, for example mutate(r.log)", location)
 			}
 		}
 		set.Mutate = append(set.Mutate, split.inner...)
 	default:
 		return fmt.Errorf(
-			"unknown effect %q — the lattice is closed (alloc, io, block, panic, rand, "+
-				"time, mutate, spawn)", split.name)
+			"names %q, which is not an effect tiger tracks — use only alloc, io, block, panic, "+
+				"rand, time, mutate, spawn", split.name)
 	}
 	return nil
 }
@@ -216,7 +222,8 @@ func (set EffectSet) Diff(other EffectSet) EffectSet {
 func ParseFrame(args string) ([]string, error) {
 	trimmed := strings.TrimSpace(args)
 	if trimmed == "" {
-		return nil, errors.New("a frame pin states a fact — write none for the empty frame")
+		return nil, errors.New("has nothing after it — write //tiger:frame none for a " +
+			"function that writes nothing through its parameters, or list what it writes")
 	}
 	if trimmed == "none" {
 		return nil, nil
@@ -224,14 +231,16 @@ func ParseFrame(args string) ([]string, error) {
 	locations := []string{}
 	for _, location := range splitCommas(trimmed) {
 		if location == "" {
-			return nil, errors.New("empty location")
+			return nil, errors.New("has an empty item between commas — remove the extra comma")
 		}
 		if location == "none" {
 			return nil, errors.New(
-				`"none" states the empty frame and cannot combine with locations`)
+				"lists none alongside locations, and none means no writes at all — " +
+					"drop none, or drop the locations")
 		}
 		if !validPath(location) {
-			return nil, fmt.Errorf("frame location %q is not a parameter-rooted path", location)
+			return nil, fmt.Errorf("has location %q, which is not a path starting at a "+
+				"parameter or receiver — write one, for example r.log", location)
 		}
 		locations = append(locations, location)
 	}
@@ -280,12 +289,13 @@ func splitCall(term string) (call, error) {
 	open := strings.IndexByte(term, '(')
 	if open < 0 {
 		if strings.ContainsRune(term, ')') {
-			return call{}, fmt.Errorf("unbalanced %q in %q", ")", term)
+			return call{}, fmt.Errorf("has an unmatched %q in %q — balance the parentheses",
+				")", term)
 		}
 		return call{name: term}, nil
 	}
 	if !strings.HasSuffix(term, ")") {
-		return call{}, fmt.Errorf("unclosed %q in %q", "(", term)
+		return call{}, fmt.Errorf("has an unclosed %q in %q — close it", "(", term)
 	}
 	split := call{name: strings.TrimSpace(term[:open])}
 	body := term[open+1 : len(term)-1]

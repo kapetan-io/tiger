@@ -8,7 +8,7 @@ package fixture
 import "os"
 
 func readAllBatched(paths []string) error {
-	// want +1 `TS-L09: escape //tiger:batched — "paths originate from an external drop directory; each read is required I/O" \(unverified claim; standing review\)`
+	// want +1 `TS-L09: //tiger:batched "paths originate from an external drop directory; each read is required I/O" waives a rule here`
 	//tiger:batched paths originate from an external drop directory; each read is required I/O
 	for i := 0; i < len(paths); i++ {
 		_, err := os.ReadFile(paths[i])

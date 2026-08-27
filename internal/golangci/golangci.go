@@ -84,12 +84,11 @@ func verifyRule(document map[string]any, rule rules.AutoRule, module string) []F
 			RuleID: rule.RuleID,
 			Linter: rule.Linter,
 			Message: fmt.Sprintf(
-				"%s: %s is missing from %s.enable — auto rule %s (%s) is not "+
-					"enforced; add %s to %s.enable",
+				"%s: %s is missing from %s.enable, so nothing enforces the rule %q — "+
+					"add %s to %s.enable",
 				rule.RuleID,
 				rule.Linter,
 				rule.Section,
-				rule.RuleID,
 				rule.Title,
 				rule.Linter,
 				rule.Section,
@@ -106,8 +105,9 @@ func verifyRule(document map[string]any, rule rules.AutoRule, module string) []F
 				RuleID: rule.RuleID,
 				Linter: rule.Linter,
 				Message: fmt.Sprintf(
-					"%s: setting %s is absent — auto rule %s (%s) is not enforced; set it to %v",
-					rule.RuleID, joined, rule.RuleID, rule.Title, formatWant(want)),
+					"%s: %s isn't set, and tiger's baseline for the rule %q needs it — "+
+						"set %s to %v",
+					rule.RuleID, joined, rule.Title, joined, formatWant(want)),
 			})
 			continue
 		}
@@ -116,14 +116,14 @@ func verifyRule(document map[string]any, rule rules.AutoRule, module string) []F
 				RuleID: rule.RuleID,
 				Linter: rule.Linter,
 				Message: fmt.Sprintf(
-					"%s: setting %s is %v, baseline requires %v — auto rule %s (%s) drifted; "+
-						"v1 compares exactly, so a stricter value also fails",
+					"%s: %s is %v, but tiger's baseline for the rule %q is %v — set it to %v "+
+						"(tiger compares exactly, so a stricter value also fails)",
 					rule.RuleID,
 					joined,
 					formatWant(got),
-					formatWant(want),
-					rule.RuleID,
 					rule.Title,
+					formatWant(want),
+					formatWant(want),
 				),
 			})
 		}

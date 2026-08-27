@@ -97,9 +97,9 @@ func checkConstant(pass *analysis.Pass, name *ast.Ident, doc *ast.CommentGroup) 
 	pass.Report(analysis.Diagnostic{
 		Pos:      name.Pos(),
 		Category: "TS-S22",
-		Message: "TS-S22: " + name.Name + " is " + actual.String() + " but its stated derivation " +
-			exprText + " evaluates to " + derived.String() +
-			" — the sketch went stale; recompute the constant or fix the derivation",
+		Message: "TS-S22: " + name.Name + " is " + actual.String() + " but the derivation in " +
+			"its comment, " + exprText + ", works out to " + derived.String() +
+			" — the two drifted apart; recompute the constant or correct the comment",
 	})
 }
 

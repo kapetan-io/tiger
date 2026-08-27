@@ -299,8 +299,9 @@ func reportLoop(pass *analysis.Pass, deferStmt *ast.DeferStmt) {
 	pass.Report(analysis.Diagnostic{
 		Pos:      deferStmt.Pos(),
 		Category: "TS-L10",
-		Message: "TS-L10: defer inside a loop queues cleanup without bound — move the loop body " +
-			"into its own function so the defer runs once per call",
+		Message: "TS-L10: this defer sits inside a loop, so its cleanup waits until the whole " +
+			"function returns, once per iteration — move the loop body into its own function " +
+			"so the defer runs at the end of each call",
 	})
 }
 
@@ -308,8 +309,8 @@ func reportDistance(pass *analysis.Pass, deferStmt *ast.DeferStmt) {
 	pass.Report(analysis.Diagnostic{
 		Pos:      deferStmt.Pos(),
 		Category: "TS-L10-distance",
-		Message: "TS-L10: defer sits away from its acquisition — move this defer to the " +
-			"statement immediately after the acquisition (or after its if err != nil check) " +
-			"so acquire and release read together",
+		Message: "TS-L10: this defer is not right after the call that acquired what it " +
+			"releases — move it to the line after the acquisition (or after its if err != nil " +
+			"check) so acquire and release read together",
 	})
 }

@@ -9,13 +9,13 @@ import "os"
 
 // closeQuiet discards the close error without saying why it is safe.
 func closeQuiet(f *os.File) {
-	_ = f. // want `TS-E02: discarding this error silently hides a failure`
+	_ = f. // want `TS-E02: this error is discarded with _, so a failure here goes unnoticed`
 		Close()
 }
 
 // lookupQuiet discards the error half of a paired result from one call.
 func lookupQuiet() int {
-	v, _ := lookupOne( // want `TS-E02: discarding this error silently hides a failure`
+	v, _ := lookupOne( // want `TS-E02: this error is discarded with _, so a failure here goes unnoticed`
 		1,
 	)
 	return v
@@ -28,7 +28,7 @@ func lookupOne(id int) (int, error) {
 // mixedDiscard discards the error half of two independent, single-valued
 // right-hand-side expressions.
 func mixedDiscard() int {
-	total, _ := sumOne(), lookupErr( // want `TS-E02: discarding this error silently hides a failure`
+	total, _ := sumOne(), lookupErr( // want `TS-E02: this error is discarded with _, so a failure here goes unnoticed`
 		1,
 	)
 	return total

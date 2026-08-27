@@ -22,7 +22,7 @@ const (
 
 // missingDefault has no default arm at all.
 func missingDefault(status Status) string {
-	switch status { // want `TS-S08: switch over closed set Status has no default arm`
+	switch status { // want `TS-S08: this switch over Status has no default arm`
 	case StatusActive:
 		return "active"
 	case StatusInactive:
@@ -39,7 +39,7 @@ func wrongDefaultStatement(kind Kind) string {
 		return "one"
 	case KindTwo:
 		return "two"
-	default: // want `TS-S08: switch over closed set Kind's default arm does not end in assert\.Unreachable`
+	default: // want `TS-S08: this switch over Kind has a default arm that doesn't end in assert\.Unreachable`
 		return "unknown"
 	}
 }
@@ -49,7 +49,7 @@ func emptyDefaultBody(status Status) string {
 	switch status {
 	case StatusActive:
 		return "active"
-	default: // want `TS-S08: switch over closed set Status's default arm does not end in assert\.Unreachable`
+	default: // want `TS-S08: this switch over Status has a default arm that doesn't end in assert\.Unreachable`
 	}
 	return ""
 }
@@ -69,7 +69,7 @@ const (
 // openEnumMissingDefault has no default arm at all: still a failure for a
 // marked type, because the wire can still send an unnamed value.
 func openEnumMissingDefault(mode TransferMode) string {
-	switch mode { // want `TS-S08: switch over open enum TransferMode has no default arm`
+	switch mode { // want `TS-S08: this switch over TransferMode has no default arm, and TransferMode can hold values from outside the package`
 	case TransferModePush:
 		return "push"
 	case TransferModePull:
