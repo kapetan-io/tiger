@@ -103,8 +103,9 @@ rule's findings are absent, and the plugin documentation names the three rule co
    today. Findings from other rules are not returned alongside.
 2. **Never fire on a package that made no claim.** No `//tiger:restrict` means no TS-P01, no
    TS-K03. A module with no invariant consts produces no TS-A07/A09.
-3. **Never count a `_test.go` type as an implementation for TS-X01, and never count a
-   `assert.Violates` outside `_test.go` for TS-A09.** The file suffix is the boundary; it is
+3. **Never count a `_test.go` type as an implementation for TS-X01, never count an
+   `assert.Invariant` inside `_test.go` for TS-A07, and never count an `assert.Violates` outside
+   `_test.go` for TS-A09.** The file suffix is the boundary; it is
    exact and it is what the message tells the reader to change.
 4. **Under the golangci-lint plugin, whole-program rules produce no findings and no errors.**
    The plugin's `BuildAnalyzers` returns the per-package halves unchanged.
@@ -158,7 +159,7 @@ constraint 1.
 - Two-package plugin smoke fixture and CI assertions.
 - Plugin and CLI documentation naming the CLI-only rule codes.
 - ADR-0010: the finish step as a driver-side extension (written with this blueprint).
-- Specification amendments: TS-A07 "distinct functions" definition, TS-X01 test-double
+- Specification amendments: TS-A07 "distinct functions" definition (non-test only), TS-X01 test-double
   definition, TS-P01 grammar, the "CLI-only" enforcement note on the three whole-program rules.
 
 ### Out of Scope / Non-Goals
@@ -192,9 +193,11 @@ correctness constraints and acceptance criteria are already at story granularity
 ### Rule behavior
 
 **TS-A07 (`invariantrefs`).** For every invariant const, count the distinct named functions
-(methods included; closures fold into their enclosing function; test functions count) whose body
-calls `assert.Invariant` with that const as ID, across every package in the module including
-test variants. Fewer than two is a finding at the const.
+(methods included; closures fold into their enclosing function; functions in `_test.go` files
+do not count) whose body calls `assert.Invariant` with that const as ID, across every package in
+the module. Fewer than two is a finding at the const. Tests are excluded because the rule
+guarantees the property is checked at runtime on both sides of a boundary; two test functions
+asserting it defend nothing in production. The test-side guarantee is TS-A09's.
 
 **TS-A09 (`invariantnegative`).** For every invariant const, require at least one
 `assert.Violates(<const>, ...)` call in a `_test.go` file anywhere in the module. None is a
@@ -430,3 +433,11 @@ Time and concurrency do not enter; no clock injection needed.
   one people actually make; if the trial on ENG-159's mono-repo shows the rule dominated by
   plugin-shaped interfaces with one in-tree implementation and out-of-tree consumers, that is an
   ADR-0006 conversation, not a threshold.
+- Whether real single-site invariants (a property checked only where it is established:
+  `SequenceMonotonic` in the one append path, a constructor-established shape) dominate TS-A07
+  findings on real trees. The specification's stance is that such a property is a precondition or
+  postcondition, spelled `assert.Ok` or a `//tiger:ensures` pin, and `inv` is reserved for
+  properties checked on both sides of a boundary. The cost is that demoting one to `assert.Ok`
+  drops the TS-A09 violating-test obligation. If the trial shows readers declining to demote,
+  the candidate amendment is "one production site plus a TS-A09 test satisfies TS-A07" — a
+  threshold change in one analyzer and one specification line, decided with evidence.
