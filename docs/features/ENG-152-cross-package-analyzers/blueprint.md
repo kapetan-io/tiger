@@ -129,16 +129,19 @@ constraint 1.
 4. A fixture package declaring `closed-dispatch` with an interface method call whose receiver is
    a parameter exits 1 with TS-K03 at the call; the same call after the receiver is built from a
    single concrete value in the same function exits 0.
-5. `tiger check --show-facts` prints one TS-P02 line per package that declares a restriction,
-   naming the weakest transitive dependency on each declared axis; a second run prints identical
-   bytes.
+5. `tiger check --show-facts` prints one TS-P02 line per (package, weakened axis) — a package
+   weakened on two axes by two different dependencies prints two lines — each naming the
+   weakest transitive dependency on that axis; a second run prints identical bytes.
 6. `TestEveryRegisteredRuleHasCorpus` and `TestEveryCorpusMessageFollowsTheStyleGuide` pass with
    the five new analyzers registered; the corpus for each whole-program rule runs through the
    finish step, not `analysistest` alone.
 7. CI's `plugin-smoke` job runs the real `golangci-lint custom` binary over a two-package
    fixture and greps a TS-F02 finding that can only fire if the effects fact crossed the import,
    plus a TS-P01 finding; it asserts no TS-A07, TS-A09, or TS-X01 line appears (the plugin does
-   not run finish steps).
+   not run finish steps). The fixture contains an invariant const asserted in exactly one
+   function with no violating test and an interface with exactly one non-test implementation,
+   and a CLI test asserts `tiger check` on the same fixture exits 1 with TS-A07, TS-A09, and
+   TS-X01 — so the plugin run's silence on those codes is meaningful, not vacuous.
 8. `tiger check ./...` on tiger's own tree exits 0 after the five analyzers register, with any
    real findings fixed in the same change.
 
@@ -219,9 +222,14 @@ TS-P01 finding at the second directive. Absent directive, absent axis: no findin
 **TS-P02 (`restrictions`, reported).** Each package with a declaration exports a package fact
 carrying its declared axes. A package's bound on each axis is the weakest value among its own
 declaration and every transitively imported module package's declaration (missing declaration is
-weakest: open dispatch, stdlib-only baseline unclaimed, reflect permitted). Stdlib packages are
-ground and never weaken. The bound is reported at the `package` clause under `--show-facts`,
-naming the first dependency (in stable order) that sets each weakened axis.
+weakest: open dispatch, stdlib-only baseline unclaimed, reflect permitted). Each axis is a
+boolean, claimed or unclaimed; two present `imports(...)` declarations with different patterns
+are both "claimed" and never compared against each other. Stdlib packages are ground and never
+weaken. Each weakened axis is reported as its own TS-P02 line at the `package` clause under
+`--show-facts`, naming the first dependency (in stable order) that sets it; lines for one package
+are ordered closed-dispatch, no-reflect, imports. An axis that is not weakened prints nothing.
+One axis per line keeps every line inside the 160-character preference regardless of how many
+dependencies weaken the package.
 
 **TS-K03 (`closedworld`).** In a package declaring `closed-dispatch`, every SSA call through an
 interface (`CallCommon.IsInvoke()`) must have a receiver that resolves, walking backward through
