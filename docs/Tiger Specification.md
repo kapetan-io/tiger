@@ -706,10 +706,12 @@ failure message names the invariant with no generated code, and the assert packa
 `~string` ID via generics — coupled by shape, not by import — so `assert` keeps zero dependencies
 and `inv` stays project-owned.
 
-**`TS-A07` Every declared invariant is asserted in at least two distinct functions.**
-Why. Pair assertion, restated as something countable. An invariant asserted once is either misfiled or
-under-defended, and both are worth knowing.
-Enforce. `invariantrefs` (custom). Also fails on a declared invariant with zero references.
+**`TS-A07` Every declared invariant is asserted in at least one function outside test files.**
+Why. A declared invariant nobody asserts is a design document that lies. Whether it is asserted on
+both sides of a boundary is `TS-A08`'s question; whether a test can make it fail is `TS-A09`'s. A
+property with one production site (a sequence number checked only where it is appended) is still an
+invariant, and keeps its violating test.
+Enforce. `invariantrefs` (custom). Functions in `_test.go` files do not count.
 
 **`TS-A08` Symmetric boundary functions assert the same invariant set.**
 Why. Once invariants are named, "the same property on both sides" is set equality.
@@ -723,8 +725,8 @@ Enforce. `invariantnegative` (custom). Requires `assert.Violates(inv.X, func(){.
 
 Three things fall out that the string version never gave you. Grep an invariant and get every site
 defending it. The invariant list becomes a design document that cannot go stale, because a deleted
-assertion fails `TS-A07`. And a fake invariant costs a declaration, two call sites, a symmetric
-counterpart, and a negative test, which is more work than thinking of a real one.
+assertion fails `TS-A07`. And a fake invariant costs a declaration, a call site, a symmetric
+counterpart where a boundary exists, and a negative test, which is more work than thinking of a real one.
 
 ## Quantities and types
 
@@ -1537,7 +1539,7 @@ that cannot fill the third column does not go in.
 | TS-A04 | Assert the negative space | B5 | Sub |
 | TS-A05 | Assertions never have side effects | B4, B2 | Sub |
 | TS-A06 | Distinguish index, count, and size | B2 | Sub |
-| TS-A07 | Every declared invariant is asserted in at least two di... | B2, B5, B7 | Sub |
+| TS-A07 | Every declared invariant is asserted in at least one fu... | B2, B5, B7 | Sub |
 | TS-A08 | Symmetric boundary functions assert the same invariant set | B2 | Sub |
 | TS-A09 | Every invariant has a test that violates it | B5 | Sub |
 | TS-Q01 | Domain quantities are named types. Conversions live in... | B2, B7 | Sub |

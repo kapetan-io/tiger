@@ -11,7 +11,7 @@ more than one package:
 
 | Rule | Analyzer | What it needs from other packages |
 | --- | --- | --- |
-| TS-A07 every invariant asserted in two functions | `invariantrefs` | references to a const declared elsewhere |
+| TS-A07 every invariant asserted in production | `invariantrefs` | references to a const declared elsewhere |
 | TS-A09 every invariant has a violating test | `invariantnegative` | `assert.Violates` calls in other packages' tests |
 | TS-P01 declared package restrictions hold | `restrictions` | nothing (own imports); P02 needs dependencies' declarations |
 | TS-K03 no dynamic dispatch where closure is claimed | `closedworld` | nothing beyond the package's own SSA and its declaration |
@@ -116,10 +116,10 @@ constraint 1.
 
 ## Acceptance Criteria
 
-1. `tiger check` on `examples/ledger` exits 0. Deleting one `assert.Invariant` call from
-   `header.go` makes it exit 1 with one TS-A07 finding at `inv/inv.go` naming the const and the
-   one remaining function. Deleting `TestCorruptHeaderViolatesChecksum` produces one TS-A09
-   finding at the const.
+1. `tiger check` on `examples/ledger` exits 0. Deleting every `assert.Invariant(inv.HeaderSize,
+   ...)` call from `header.go` makes it exit 1 with one TS-A07 finding at `inv/inv.go` naming
+   the const; deleting only the one in `EncodeHeader` keeps exit 0. Deleting
+   `TestCorruptHeaderViolatesChecksum` produces one TS-A09 finding at the const.
 2. A fixture module with an interface implemented once by a non-test type exits 1 with TS-X01 at
    the interface; adding a second implementation in a non-test file exits 0; adding it in a
    `_test.go` file instead still exits 1.
@@ -139,8 +139,9 @@ constraint 1.
 7. CI's `plugin-smoke` job runs the real `golangci-lint custom` binary over a two-package
    fixture and greps a TS-F02 finding that can only fire if the effects fact crossed the import,
    plus a TS-P01 finding; it asserts no TS-A07, TS-A09, or TS-X01 line appears (the plugin does
-   not run finish steps). The fixture contains an invariant const asserted in exactly one
-   function with no violating test and an interface with exactly one non-test implementation,
+   not run finish steps). The fixture declares two invariant consts of one ID type: one asserted in a
+   production function (so the type is recognized), one asserted nowhere and violated by no
+   test, plus an interface with exactly one non-test implementation,
    and a CLI test asserts `tiger check` on the same fixture exits 1 with TS-A07, TS-A09, and
    TS-X01 — so the plugin run's silence on those codes is meaningful, not vacuous.
 8. `tiger check ./...` on tiger's own tree exits 0 after the five analyzers register, with any
@@ -159,7 +160,7 @@ constraint 1.
 - Two-package plugin smoke fixture and CI assertions.
 - Plugin and CLI documentation naming the CLI-only rule codes.
 - ADR-0010: the finish step as a driver-side extension (written with this blueprint).
-- Specification amendments: TS-A07 "distinct functions" definition (non-test only), TS-X01 test-double
+- Specification amendments: TS-A07 threshold (one production function, not two), TS-X01 test-double
   definition, TS-P01 grammar, the "CLI-only" enforcement note on the three whole-program rules.
 
 ### Out of Scope / Non-Goals
@@ -192,12 +193,17 @@ correctness constraints and acceptance criteria are already at story granularity
 
 ### Rule behavior
 
-**TS-A07 (`invariantrefs`).** For every invariant const, count the distinct named functions
-(methods included; closures fold into their enclosing function; functions in `_test.go` files
-do not count) whose body calls `assert.Invariant` with that const as ID, across every package in
-the module. Fewer than two is a finding at the const. Tests are excluded because the rule
-guarantees the property is checked at runtime on both sides of a boundary; two test functions
-asserting it defend nothing in production. The test-side guarantee is TS-A09's.
+**TS-A07 (`invariantrefs`).** For every invariant const, require at least one function outside
+`_test.go` files (methods included; closures fold into their enclosing function) whose body
+calls `assert.Invariant` with that const as ID, anywhere in the module. None is a finding at the
+const. Tests are excluded because the rule guarantees production code checks the property; a
+test asserting it defends nothing in production. The test-side guarantee is TS-A09's. The rule
+does not require a second production site: whether a property is checked on both sides of a
+boundary is TS-A08's set comparison, and a property with one production site (a sequence number
+checked only in the append path) stays a declared invariant with a TS-A09 test rather than
+demoting to `assert.Ok`. Decided by deliberation: a blocking rule with no escape directive must
+not encode "there is a boundary", a claim the specification's own `SequenceMonotonic` example
+fails.
 
 **TS-A09 (`invariantnegative`).** For every invariant const, require at least one
 `assert.Violates(<const>, ...)` call in a `_test.go` file anywhere in the module. None is a
@@ -255,8 +261,7 @@ Bodies are one line, at most 160 characters after the prefix in the corpus, each
 edit. Identifiers are interpolated; `<pkg>.<Name>` is the qualified const or type.
 
 ```
-TS-A07: invariant inv.HeaderSize is declared but no function asserts it — add assert.Invariant(inv.HeaderSize, ...) in two functions, or delete the declaration
-TS-A07: invariant inv.HeaderSize is asserted only in encodeHeader — assert it in a second function, or delete the declaration
+TS-A07: invariant inv.HeaderSize is declared but no function outside _test.go files asserts it — add assert.Invariant(inv.HeaderSize, ...) where the property is established, or delete the declaration
 TS-A09: no test violates invariant inv.HeaderSize — add a _test.go function that calls assert.Violates(inv.HeaderSize, func() { ... })
 TS-P01: package ledger imports github.com/acme/x, which its //tiger:restrict imports(...) list does not allow — remove the import or add the path to imports(...)
 TS-P01: package ledger declares //tiger:restrict no-reflect but imports reflect — remove the reflect import or drop no-reflect from the directive
@@ -433,11 +438,6 @@ Time and concurrency do not enter; no clock injection needed.
   one people actually make; if the trial on ENG-159's mono-repo shows the rule dominated by
   plugin-shaped interfaces with one in-tree implementation and out-of-tree consumers, that is an
   ADR-0006 conversation, not a threshold.
-- Whether real single-site invariants (a property checked only where it is established:
-  `SequenceMonotonic` in the one append path, a constructor-established shape) dominate TS-A07
-  findings on real trees. The specification's stance is that such a property is a precondition or
-  postcondition, spelled `assert.Ok` or a `//tiger:ensures` pin, and `inv` is reserved for
-  properties checked on both sides of a boundary. The cost is that demoting one to `assert.Ok`
-  drops the TS-A09 violating-test obligation. If the trial shows readers declining to demote,
-  the candidate amendment is "one production site plus a TS-A09 test satisfies TS-A07" — a
-  threshold change in one analyzer and one specification line, decided with evidence.
+- (Resolved.) Whether TS-A07 should require two production sites. It requires one; the pair
+  property is TS-A08's. The trial question that remains is whether TS-A08's naming-convention
+  pairing catches the boundary asymmetries the two-site count would have caught by accident.
