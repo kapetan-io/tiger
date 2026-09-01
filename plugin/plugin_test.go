@@ -58,3 +58,47 @@ func TestPluginDropsFacts(t *testing.T) {
 	assert.Positive(t, effects)
 	assert.Positive(t, blocking)
 }
+
+// TestPluginInstallsConfigFromSettings covers acceptance criterion 18 at
+// the plugin's construction surface.
+//
+// Goal: a plugin built with a `config` setting naming a directory applies
+// that directory's tiger.yaml — a scoped participle.allow entry silences
+// TS-N14 in the scoped package and leaves it firing outside — and a
+// directory whose tiger.yaml fails to load fails plugin construction with
+// the one-line message.
+func TestPluginInstallsConfigFromSettings(t *testing.T) {
+	build, err := register.GetPlugin("tiger")
+	require.NoError(t, err)
+
+	corpus, err := filepath.Abs(filepath.Join("testdata", "corpus"))
+	require.NoError(t, err)
+	built, err := build(map[string]any{"config": filepath.Join("testdata", "withconfig")})
+	require.NoError(t, err)
+	analyzers, err := built.BuildAnalyzers()
+	require.NoError(t, err)
+	for _, analyzer := range analyzers {
+		if analyzer.Name != "participle" {
+			continue
+		}
+		results := analysistest.Run(t, corpus, analyzer,
+			"smoke.example/plugin/scoped", "smoke.example/plugin/outside")
+		fired := 0
+		for _, result := range results {
+			fired += len(result.Diagnostics)
+		}
+		assert.Equal(t, 1, fired)
+	}
+
+	// The config is process-global; leave nothing installed for other tests.
+	t.Cleanup(func() {
+		_, err := build(map[string]any{"config": t.TempDir()})
+		require.NoError(t, err)
+	})
+
+	_, err = build(map[string]any{"config": filepath.Join("testdata", "badconfig")})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "tiger.yaml")
+	assert.Contains(t, err.Error(), "frobnicate")
+	assert.NotContains(t, err.Error(), "\n")
+}

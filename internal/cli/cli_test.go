@@ -128,7 +128,7 @@ func TestCheckFactsPropagateAcrossPackages(t *testing.T) {
 	assert.Equal(t, "core/core.go:10:1: TS-F02: this function makes a network call "+
 		"(fixture.example/facts/helper.Ping at core.go:12:20) but its //tiger:effects "+
 		"comment doesn't list io(net) — add io(net) to the comment, or remove the call\n"+
-		"tiger: 1 blocking, 0 advisory\n", got.stdout)
+		"tiger: 1 blocking\n", got.stdout)
 }
 
 // TestCheckBlockingFindingsExitOne covers the findings contract.
@@ -144,7 +144,7 @@ func TestCheckBlockingFindingsExitOne(t *testing.T) {
 		"arm) instead so every crash goes through one path\n"+
 		"beta.go:10:5: TS-S09: this labeled break jumps out of an inner loop to an outer "+
 		"one — move the inner loop into its own function and return instead\n"+
-		"tiger: 2 blocking, 0 advisory\n", got.stdout)
+		"tiger: 2 blocking\n", got.stdout)
 }
 
 // TestCheckSkipsGeneratedFiles covers the driver's generated-file policy.
@@ -159,7 +159,7 @@ func TestCheckSkipsGeneratedFiles(t *testing.T) {
 	assert.Equal(t, "hand.go:7:3: TS-S18: panic is called directly here — use assert.Ok "+
 		"(condition), assert.Fail (formatted failure), or assert.Unreachable (impossible "+
 		"arm) instead so every crash goes through one path\n"+
-		"tiger: 1 blocking, 0 advisory\n", got.stdout)
+		"tiger: 1 blocking\n", got.stdout)
 }
 
 // TestCheckOutputIsDeterministic covers correctness constraint 4.
@@ -171,47 +171,50 @@ func TestCheckOutputIsDeterministic(t *testing.T) {
 	assert.Equal(t, first, second)
 }
 
-// TestCheckEscapeSurfacesAsAdvisory covers "escapes are never silent".
+// TestCheckEscapeCountsAgainstBudget covers "escapes are never silent"
+// under the ratchet.
 //
-// Goal: a well-formed //tiger:batched escape prints as an advisory finding
-// on every run, is counted, and never affects the exit code.
-func TestCheckEscapeSurfacesAsAdvisory(t *testing.T) {
-	wantAdvisory := "notify.go:7:2: TS-L09 [advisory]: //tiger:batched " +
+// Goal: a well-formed //tiger:batched escape in a module with no budget
+// row fails the run with a TS-D06 missing-row line, the escape printed as
+// a blocking line under it, and the same output on every run.
+func TestCheckEscapeCountsAgainstBudget(t *testing.T) {
+	want := "tiger.budget.yaml: TS-D06: . has 1 escape directive and tiger.budget.yaml has " +
+		"no row for it — fix it, or run tiger budget --write to record the current count\n" +
+		"notify.go:7:2: TS-L09: //tiger:batched " +
 		"\"provider offers no bulk endpoint; contract caps us at 10 rps\" waives a rule " +
 		"here; tiger cannot check the claim, so this notice stands on every run — remove " +
 		"the directive when the constraint no longer holds\n" +
-		"tiger: 0 blocking, 1 advisory\n"
+		"tiger: 2 blocking\n"
 
 	got := run(t, "check", "-C", "testdata/fixtures/escape", "./...")
-	assert.Equal(t, cli.ExitClean, got.code)
+	assert.Equal(t, cli.ExitFindings, got.code)
 	assert.Empty(t, got.stderr)
-	assert.Equal(t, wantAdvisory, got.stdout)
+	assert.Equal(t, want, got.stdout)
 
-	// Never silent means never: the second run reports the same standing
-	// advisory, not a remembered-and-suppressed one.
 	again := run(t, "check", "-C", "testdata/fixtures/escape", "./...")
-	assert.Equal(t, cli.ExitClean, again.code)
-	assert.Equal(t, wantAdvisory, again.stdout)
+	assert.Equal(t, cli.ExitFindings, again.code)
+	assert.Equal(t, want, again.stdout)
 }
 
-// TestCheckSkippedTestSurfacesAsAdvisory covers TS-D07's reporting contract.
+// TestCheckSkippedTestCountsAgainstBudget covers TS-D07's reporting
+// contract under the ratchet.
 //
-// Goal: a skipped test prints as an advisory finding on every run, is
-// counted, and never affects the exit code.
-func TestCheckSkippedTestSurfacesAsAdvisory(t *testing.T) {
-	wantAdvisory := "skipped_test.go:11:2: TS-D07 [advisory]: this test is skipped, so it " +
-		"passes without running — remove the Skip call when the test can run again; this " +
-		"notice stands until then\n" +
-		"tiger: 0 blocking, 1 advisory\n"
+// Goal: a skipped test in a module with no budget row fails the run with a
+// TS-D06 missing-row line and the skip printed under it; the [advisory]
+// marker and the advisory trailer count are gone.
+func TestCheckSkippedTestCountsAgainstBudget(t *testing.T) {
+	want := "tiger.budget.yaml: TS-D06: . has 1 skipped test and tiger.budget.yaml has no " +
+		"row for it — fix it, or run tiger budget --write to record the current count\n" +
+		"skipped_test.go:11:2: TS-D07: this test is skipped, so it passes without running " +
+		"— remove the Skip call when the test can run again; this notice stands until " +
+		"then\n" +
+		"tiger: 2 blocking\n"
 
 	got := run(t, "check", "-C", "testdata/fixtures/skipped", "./...")
-	assert.Equal(t, cli.ExitClean, got.code)
+	assert.Equal(t, cli.ExitFindings, got.code)
 	assert.Empty(t, got.stderr)
-	assert.Equal(t, wantAdvisory, got.stdout)
-
-	again := run(t, "check", "-C", "testdata/fixtures/skipped", "./...")
-	assert.Equal(t, cli.ExitClean, again.code)
-	assert.Equal(t, wantAdvisory, again.stdout)
+	assert.Equal(t, want, got.stdout)
+	assert.NotContains(t, got.stdout, "advisory")
 }
 
 // TestCheckLoadFailureExitsTwo covers correctness constraint 5.

@@ -47,6 +47,16 @@ func Generate(module string) ([]byte, error) {
 	return yaml.Marshal(root)
 }
 
+// Print returns the baseline Init would write for dir's module, reading
+// nothing but go.mod and writing nothing.
+func Print(dir string) ([]byte, error) {
+	module, err := modulePath(dir)
+	if err != nil {
+		return nil, err
+	}
+	return Generate(module)
+}
+
 // Init writes the generated baseline into dir, refusing to touch an
 // existing configuration. It returns the path written.
 func Init(dir string) (string, error) {

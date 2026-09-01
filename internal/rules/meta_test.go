@@ -1,6 +1,7 @@
 package rules_test
 
 import (
+	"bytes"
 	"fmt"
 	"maps"
 	"os"
@@ -16,6 +17,7 @@ import (
 	"golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/analysis/analysistest"
 
+	"github.com/kapetan-io/tiger/internal/cli"
 	"github.com/kapetan-io/tiger/internal/driver/drivertest"
 	"github.com/kapetan-io/tiger/internal/finish"
 	"github.com/kapetan-io/tiger/internal/rules"
@@ -42,6 +44,9 @@ func corpora(t *testing.T) []corpusFor {
 	seen := map[string]bool{}
 	listed := []corpusFor{}
 	for _, rule := range rules.CustomRules() {
+		if rule.Analyzer == nil {
+			continue
+		}
 		key := rule.Analyzer.Name + "/" + rule.RuleID
 		if seen[key] {
 			continue
@@ -271,10 +276,23 @@ func TestRegistryIsCoherent(t *testing.T) {
 		assert.True(t, strings.HasPrefix(rule.RuleID, "TS-"))
 		assert.True(t, strings.HasPrefix(rule.Category, rule.RuleID),
 			"category %s must extend its rule ID %s", rule.Category, rule.RuleID)
-		require.NotNil(t, rule.Analyzer)
-		referenced[rule.Analyzer.Name] = true
 		assert.NotEmpty(t, rule.Title)
+		if rule.Severity == rules.SeverityAdvisory {
+			assert.True(t, strings.HasSuffix(rule.Counted, "s"),
+				"advisory rule %s needs a plural counted noun phrase", rule.Category)
+		} else {
+			assert.Empty(t, rule.Counted, "only advisory rules are counted: %s", rule.Category)
+		}
+		if rule.Analyzer == nil {
+			assert.Equal(t, rules.SeverityBlocking, rule.Severity,
+				"driver-enforced rule %s must be blocking", rule.Category)
+			continue
+		}
+		referenced[rule.Analyzer.Name] = true
 	}
+	ratchet, known := rules.ByCategory("TS-D06")
+	require.True(t, known)
+	assert.Nil(t, ratchet.Analyzer)
 	entries, err := os.ReadDir(filepath.Join("..", "analyzers"))
 	require.NoError(t, err)
 	packageDirs := map[string]bool{}
@@ -414,6 +432,47 @@ func TestEveryCorpusMessageFollowsTheStyleGuide(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestRatchetMessagesFollowTheStyleGuide covers acceptance criterion 11:
+// the driver-produced TS-D06 lines obey the same invariants as every
+// analyzer message.
+//
+// Goal: both TS-D06 templates — overrun and missing row — rendered through
+// a real tiger check run over the budget fixture, in singular and plural
+// form, pass the mechanical checks I1–I6.
+func TestRatchetMessagesFollowTheStyleGuide(t *testing.T) {
+	entry, known := rules.ByCategory("TS-D06")
+	require.True(t, known)
+	fixture := filepath.Join("..", "cli", "testdata", "fixtures", "budget", "tree")
+	overrun := checkOutput(t, fixture)
+	missing := t.TempDir()
+	require.NoError(t, os.CopyFS(missing, os.DirFS(fixture)))
+	require.NoError(t, os.Remove(filepath.Join(missing, "tiger.budget.yaml")))
+	rendered := 0
+	for _, line := range strings.Split(overrun+checkOutput(t, missing), "\n") {
+		_, message, found := strings.Cut(line, ": TS-D06: ")
+		if !found {
+			continue
+		}
+		rendered++
+		checkStyle(t, bound{
+			analyzer: "driver", ruleID: entry.RuleID, message: "TS-D06: " + message,
+		})
+	}
+	assert.GreaterOrEqual(t, rendered, 4)
+}
+
+// checkOutput runs tiger check over dir through the CLI surface and returns
+// its stdout; the run is expected to exit 1.
+func checkOutput(t *testing.T, dir string) string {
+	t.Helper()
+	stdout := &bytes.Buffer{}
+	code := cli.Run([]string{"check", "-C", dir, "./..."}, cli.Streams{
+		Stdout: stdout, Stderr: &bytes.Buffer{},
+	})
+	require.Equal(t, cli.ExitFindings, code)
+	return stdout.String()
 }
 
 // readCorpusFile reads one corpus source file.

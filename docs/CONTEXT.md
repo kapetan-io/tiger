@@ -46,15 +46,17 @@ A directive loosening one rule at one site, always carrying a reason; admitted o
 in-subset code shape can accomplish the task — still, through wave 1.5, `//tiger:batched
 <reason>` alone. Wave 1 validated and surfaced it with nothing consuming it; wave 1.5 consumes it
 in `ioinloop` (TS-M10) and, on the cursor shape only, in `boundedloop` (TS-S02 — see Cursor
-shape). Shape is machine-checked, truth is human-reviewed, and every escape surfaces as a
-standing advisory finding regardless of which rule it waives.
+shape). Shape is machine-checked, truth is human-reviewed, and every escape is counted against
+its package's budget on every run regardless of which rule it waives.
 _Avoid_: suppression, nolint (the golangci mechanism, not ours)
 
 **Severity**:
-A rule's run-level consequence — **blocking** (fails the run) or **advisory** (printed and
-counted, does not fail; reserved for the standing notices the specification names and ADR-0006's
-trial). There is no third level: a rule either blocks or it is not a rule (ADR-0012). Defined once
-per rule in the registry, never inside an analyzer.
+A rule's run-level consequence — **blocking** (fails the run) or **advisory** (counted per
+package against the budget file: prints nothing under budget, prints as blocking under a `TS-D06`
+line on overrun; reserved for the standing notices the specification names and ADR-0006's
+trial). There is no third level: a rule either blocks or it is not a rule (ADR-0012), and no
+warning tier: check output is a verdict. Defined once per rule in the registry, never inside an
+analyzer.
 _Avoid_: reported (the removed tier; computed facts are not rules and carry no severity)
 
 **Fact (computed)**:
@@ -172,8 +174,8 @@ checked.
 **Diagnostic prefix**:
 The `path:line:col: TS-XXX:` head of a finding line — position rendered by the CLI, rule code
 written first by the analyzer. A parsing contract: tooling keys on it and wording changes never
-touch it. The CLI's ` [advisory]` marker is a separate print-time annotation inserted after the
-code on advisory lines, not part of the prefix.
+touch it. A `TS-D06` line is positioned at `tiger.budget.yaml:<line>` (the row) or
+`tiger.budget.yaml` alone (no row); the counted findings under it carry their own prefixes.
 _Avoid_: header, tag
 
 **Message body**:
@@ -181,6 +183,31 @@ The prose after the diagnostic prefix, written for a reader new to tiger: what t
 what tiger expected, the edit to make. Carries exactly one rule code (the prefix's), spells
 directives literally, and uses no internal vocabulary without a gloss.
 _Avoid_: description, explanation
+
+**Config file**:
+The committed `tiger.yaml` at the module root holding facts about the world for the analyzers
+(participle nouns, IO packages). Every entry is a value, a reason, and an optional package
+scope, and is reviewed like code. An entry widens what an analyzer detects or corrects a
+dictionary; no entry names a function, file, or site to exempt.
+_Avoid_: allowlist file, settings (the golangci term), suppression list
+
+**Budget file**:
+The committed `tiger.budget.yaml` at the module root: one integer per package per advisory rule,
+written by `tiger budget --write` and only ever lowered by it. A missing row is a budget of zero.
+_Avoid_: baseline (the golangci term), threshold
+
+**Budget**:
+The number of advisory findings of one rule a package is allowed to carry; the count of the
+rule's findings in that package must not exceed it.
+
+**Ratchet**:
+The TS-D06 rule that budgets only decrease. `tiger check` enforces count ≤ budget and fails the
+run on an overrun; the tool never raises a number; a raise is a hand edit visible in review.
+_Avoid_: quota, cap
+
+**Slack**:
+A budget above its package's current count. Silent in check output; visible only as the number
+in the budget file's diff, lowered by `tiger budget --write`.
 
 ## Relationships
 
@@ -195,6 +222,8 @@ _Avoid_: description, explanation
   **Directive**, distinguished by lifecycle.
 - **Placement** binds every **Directive** to a node; `tiger pin` writes a **Pin** at that
   placement, and never edits or removes one that is already there.
+- The **Config file** feeds **Analyzers** through the **Driver**; the **Budget file** feeds only
+  the `tiger` CLI driver, which applies the **Ratchet** to **Advisory** counts.
 
 ## Example dialogue
 
@@ -204,8 +233,8 @@ _Avoid_: description, explanation
 > explicit cap and assert on exhaustion, or use the event-loop shape TS-S03 describes. The only
 > escape in the dialect is `//tiger:batched`, because a provider without a bulk endpoint is a fact
 > of the world the code can't restructure away — and unless your loop is a **cursor shape**, it
-> waives nothing here either. It still stays visible as an **advisory** finding on every run,
-> whether it waives anything or not. If you think the finding itself is wrong, that's a false
+> waives nothing here either. It still counts against the package's **budget** on every run,
+> whether it waives anything or not, and prints as a blocking finding once the package is over. If you think the finding itself is wrong, that's a false
 > positive on a **blocking** rule, which is a bug in the analyzer: file it, and the case lands in
 > the **corpus** so it can't regress."
 

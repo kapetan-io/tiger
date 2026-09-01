@@ -447,10 +447,11 @@ Severity is one of two words, used precisely (ADR-0012: a rule either blocks or 
 warnings are golangci-lint's job):
 
 - **Blocking.** The CI check fails on the pull request. The default unless stated.
-- **Advisory.** Printed and counted against the per-package ratchet (`TS-D06`); does not fail the
-  check. Reserved for the standing notices this specification names (every escape directive,
-  every skipped test) and for the time-boxed trial of a heuristic rule (ADR-0006): start
-  advisory, ratchet per package, then promote or remove.
+- **Advisory.** Counted per package against the `TS-D06` ratchet's budget file: under budget the
+  findings print nothing, and a package over its row fails the check with the counted findings
+  printed as blocking lines. Reserved for the standing notices this specification names (every
+  escape directive, every skipped test) and for the time-boxed trial of a heuristic rule
+  (ADR-0006): start advisory, ratchet per package, then promote or remove.
 
 Computed facts — an unpinned function's effect set (`TS-F01`), its frame (`TS-F07`), a synthesized
 loop variant (`TS-V01`) — are not rules and carry no severity. They print only under
@@ -1447,7 +1448,9 @@ of numbers per package: total complexity, directive count, skipped tests, assert
 allocation counts on hot benchmarks. A global threshold gets raised at 2am before a release; a ratchet
 cannot be raised without a commit that says so. **Track the directive count as a first-class metric**,
 because forced directives are how a dialect degrades into a style guide with extra steps.
-Enforce. CI, with the budget file in review (runtime).
+Enforce. `tiger check` compares each package's advisory counts to its rows in `tiger.budget.yaml`
+and fails on overrun; `tiger budget --write` lowers rows to the current counts and never raises
+one; the budget file is raised only by a hand edit in review (custom, driver-enforced).
 
 **`TS-D07` Skipped tests are reported on every run.**
 Why. A skipped test is a test that passes. Visibility beats paperwork: a report recomputed from
@@ -1922,9 +1925,13 @@ A diagnostic is one line with two halves:
 
 The prefix `path:line:col: TS-XXX:` is a parsing contract. The position is rendered by the CLI
 from `token.Position`; the rule code is the first thing each analyzer writes into its message.
-Structured output, the pull-request summarizer, and the advisory audit all key on it, and no
-wording change touches it. The `[advisory]` marker `tiger check` inserts after the code on
-advisory lines is a print-time annotation, not part of the prefix.
+Structured output and the pull-request summarizer key on it, and no wording change touches it.
+
+`TS-D06` lines are produced by the `tiger` driver, not by an analyzer, and their position names
+the budget file: `tiger.budget.yaml:<line>:` when the row exists, where `<line>` is the row's
+line in the file, and `tiger.budget.yaml:` alone when the package has no row. The counted
+findings that overran print as ordinary lines under the `TS-D06` line, with their own positions
+and no marker; under budget they do not print at all.
 
 The body is prose for a reader who has never seen a `//tiger:` directive. It has three parts in
 a fixed order, separated by ` — `:

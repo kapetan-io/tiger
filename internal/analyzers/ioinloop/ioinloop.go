@@ -12,7 +12,8 @@
 // positive on the git-server pin). The seed allowlist — os (filesystem),
 // net and net/http (sockets and HTTP transport), database/sql (database
 // drivers), and syscall (raw system calls) — is extensible per repo
-// through the -ioinloop.packages flag, appended to the seed.
+// through the -ioinloop.packages flag or ioinloop.packages entries in
+// tiger.yaml, appended to the seed.
 //
 // Init, Cond, Post, and a RangeStmt's X each run once per loop, not once
 // per iteration, so IO there is deliberately unflagged — this is what
@@ -36,6 +37,7 @@ import (
 	"golang.org/x/tools/go/analysis"
 
 	"github.com/kapetan-io/tiger/internal/analyzers/internal/attach"
+	"github.com/kapetan-io/tiger/internal/config"
 )
 
 // seedPackages are the stdlib import paths whose operations are
@@ -63,7 +65,7 @@ func newAnalyzer() *analysis.Analyzer {
 var Analyzer = newAnalyzer()
 
 func run(pass *analysis.Pass) (any, error) {
-	allowed := allowlist()
+	allowed := allowlist(pass)
 	for _, file := range pass.Files {
 		w := walker{pass: pass, file: file, allowed: allowed}
 		w.walk(file, nil)
@@ -71,13 +73,18 @@ func run(pass *analysis.Pass) (any, error) {
 	return nil, nil
 }
 
-// allowlist merges seedPackages with the per-repo -packages flag.
-func allowlist() map[string]bool {
+// allowlist merges seedPackages with the per-repo -packages flag and the
+// tiger.yaml ioinloop.packages entries that apply to the analyzed package.
+func allowlist(pass *analysis.Pass) map[string]bool {
 	allowed := map[string]bool{}
 	for _, path := range seedPackages {
 		allowed[path] = true
 	}
-	for path := range strings.SplitSeq(packagesFlag, ",") {
+	paths := strings.Split(packagesFlag, ",")
+	paths = append(paths, config.Values(
+		pass.Pkg.Path(), config.Key{Analyzer: "ioinloop", Flag: "packages"},
+	)...)
+	for _, path := range paths {
 		path = strings.TrimSpace(path)
 		if path != "" {
 			allowed[path] = true

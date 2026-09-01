@@ -34,7 +34,7 @@ func TestCheckUnassertedInvariantFailsA07(t *testing.T) {
 		"but no function outside _test.go files asserts it — add "+
 		"assert.Invariant(inv.HeaderSize, ...) where the property is established, or delete "+
 		"the declaration\n"+
-		"tiger: 1 blocking, 0 advisory\n", got.stdout)
+		"tiger: 1 blocking\n", got.stdout)
 }
 
 // TestCheckSingleProductionAssertionSatisfiesA07 covers TS-A07's
@@ -59,7 +59,7 @@ func TestCheckUnviolatedInvariantFailsA09(t *testing.T) {
 	assert.Equal(t, "unviolated/inv/inv.go:8:2: TS-A09: no test violates invariant "+
 		"inv.HeaderChecksum — add a _test.go function that calls "+
 		"assert.Violates(inv.HeaderChecksum, func() { ... })\n"+
-		"tiger: 1 blocking, 0 advisory\n", got.stdout)
+		"tiger: 1 blocking\n", got.stdout)
 }
 
 // TestCheckSingleImplementationFailsX01 covers acceptance criterion 2.
@@ -76,7 +76,7 @@ func TestCheckSingleImplementationFailsX01(t *testing.T) {
 	assert.Equal(t, "single/storage.go:5:6: TS-X01: interface Storage has one implementation, "+
 		"diskStorage — use diskStorage directly and delete the interface, or add a second "+
 		"implementation outside _test.go files\n"+
-		"tiger: 1 blocking, 0 advisory\n", single.stdout)
+		"tiger: 1 blocking\n", single.stdout)
 
 	pair := run(t, "check", "-C", "testdata/fixtures/singleimpl", "./pair/...")
 	assert.Equal(t, cli.ExitClean, pair.code)
@@ -87,7 +87,7 @@ func TestCheckSingleImplementationFailsX01(t *testing.T) {
 	assert.Equal(t, "double/storage.go:6:6: TS-X01: interface Storage has one implementation, "+
 		"diskStorage — use diskStorage directly and delete the interface, or add a second "+
 		"implementation outside _test.go files\n"+
-		"tiger: 1 blocking, 0 advisory\n", double.stdout)
+		"tiger: 1 blocking\n", double.stdout)
 }
 
 // TestCheckWholeProgramOutputIsDeterministic covers state invariant 3 on
@@ -137,7 +137,7 @@ func TestCheckRestrictionContradictedByImportsFailsP01(t *testing.T) {
 		"banned/banned.go:13:2: TS-P01: package banned imports fixture.example/restrict/other, "+
 		"which its //tiger:restrict imports(...) list does not allow — remove the import or "+
 		"add the path to imports(...)\n"+
-		"tiger: 2 blocking, 0 advisory\n", banned.stdout)
+		"tiger: 2 blocking\n", banned.stdout)
 
 	clean := run(t, "check", "-C", "testdata/fixtures/restrict", "./clean/...")
 	assert.Equal(t, cli.ExitClean, clean.code)
@@ -159,7 +159,7 @@ func TestCheckOpenDispatchUnderClosedDispatchFailsK03(t *testing.T) {
 	assert.Equal(t, "param/param.go:14:16: TS-K03: s.Write is called through interface Storage "+
 		"in a package that declares //tiger:restrict closed-dispatch — call the concrete type's "+
 		"method, or drop closed-dispatch\n"+
-		"tiger: 1 blocking, 0 advisory\n", param.stdout)
+		"tiger: 1 blocking\n", param.stdout)
 
 	local := run(t, "check", "-C", "testdata/fixtures/closed", "./local/...")
 	assert.Equal(t, cli.ExitClean, local.code)
@@ -183,7 +183,7 @@ func TestCheckWeakenedRestrictionFailsP02PerAxis(t *testing.T) {
 		"app/app.go:6:1: TS-P02: package app claims no-reflect but imports codec, which does " +
 		"not claim no-reflect — add //tiger:restrict no-reflect to codec, or drop no-reflect " +
 		"from app's declaration\n" +
-		"tiger: 2 blocking, 0 advisory\n"
+		"tiger: 2 blocking\n"
 	first := run(t, "check", "-C", "testdata/fixtures/weakened", "./...")
 	assert.Equal(t, cli.ExitFindings, first.code)
 	assert.Empty(t, first.stderr)

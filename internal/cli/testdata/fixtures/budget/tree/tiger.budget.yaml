@@ -1,0 +1,4 @@
+internal/cli:
+  TS-D07: 2
+internal/store:
+  TS-L09: 3

@@ -1,0 +1,6 @@
+version: 1
+participle:
+  allow:
+    - value: signing
+      reason: KeySigning is a credential record, not an action
+      packages: [internal/auth/...]
