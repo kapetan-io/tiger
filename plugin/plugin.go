@@ -17,6 +17,15 @@
 // nothing breaks, but those three rule codes never appear in a
 // golangci-lint run; only `tiger check` reports them.
 //
+// The plugin also installs the repository's tiger.yaml (ADR-0002: the
+// driver loads config, analyzers only query it). It is read from the
+// working directory — golangci-lint runs from the module root — unless the
+// plugin's settings carry a `config` key naming another directory. A load
+// error fails plugin construction with the same one-line message tiger
+// check prints. Budgets (tiger.budget.yaml) are not enforced here: the
+// plugin API has no end-of-run hook to aggregate counts, so every counted
+// finding surfaces as an issue.
+//
 // Build it with golangci-lint's module plugin mechanism: see .custom-gcl.yml
 // at the repository root and run `golangci-lint custom`.
 package plugin
@@ -25,6 +34,7 @@ import (
 	"github.com/golangci/plugin-module-register/register"
 	"golang.org/x/tools/go/analysis"
 
+	"github.com/kapetan-io/tiger/internal/config"
 	"github.com/kapetan-io/tiger/internal/rules"
 )
 
@@ -36,7 +46,28 @@ func init() {
 	register.Plugin("tiger", newPlugin)
 }
 
+// settings is the plugin's own configuration block under
+// linters.settings.custom.tiger.settings.
+type settings struct {
+	// Config is the directory holding tiger.yaml; the working directory
+	// when empty.
+	Config string `json:"config"`
+}
+
 func newPlugin(conf any) (register.LinterPlugin, error) {
+	parsed, err := register.DecodeSettings[settings](conf)
+	if err != nil {
+		return nil, err
+	}
+	dir := parsed.Config
+	if dir == "" {
+		dir = "."
+	}
+	loaded, err := config.Load(dir, rules.Analyzers())
+	if err != nil {
+		return nil, err
+	}
+	config.Install(loaded)
 	return tiger{}, nil
 }
 

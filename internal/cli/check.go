@@ -6,13 +6,15 @@ import (
 	"strings"
 
 	"github.com/kapetan-io/tiger/assert"
+	"github.com/kapetan-io/tiger/internal/config"
 	"github.com/kapetan-io/tiger/internal/driver"
 	"github.com/kapetan-io/tiger/internal/rules"
 )
 
-// runCheck is tiger check: load the named packages, run every registered
-// analyzer, print findings ordered by position, and apply the registry's
-// severity to the exit code.
+// runCheck is tiger check: install the directory's config, load the named
+// packages, run every registered analyzer and finish step, print blocking
+// findings ordered by position, compare counted findings to
+// tiger.budget.yaml, and apply the registry's severity to the exit code.
 func runCheck(args []string, streams Streams) int {
 	flags := flag.NewFlagSet("tiger check", flag.ContinueOnError)
 	flags.SetOutput(streams.Stderr)
@@ -37,65 +39,93 @@ func runCheck(args []string, streams Streams) int {
 		patterns = []string{"./..."}
 	}
 
-	findings, err := driver.Check(*chdir, patterns, analyzers, rules.Finishers())
+	setup, err := prepare(*chdir)
 	if err != nil {
 		fmt.Fprintf(streams.Stderr, "tiger check: %v\n", err)
 		return ExitOperational
 	}
-	blocking, advisory := 0, 0
-	for _, finding := range findings {
-		if _, isFact := rules.ByFact(finding.Category); isFact {
-			// Facts are collected like every other diagnostic but never
-			// counted and never printed unless the caller asked to see
-			// them: a tree whose only output is computed facts must exit 0
-			// and, without --show-facts, print nothing.
-			if *showFacts {
-				fmt.Fprintf(streams.Stdout, "%s: %s\n", finding.Position, finding.Message)
-			}
-			continue
-		}
-		entry, known := rules.ByCategory(finding.Category)
-		if !known {
-			fmt.Fprintf(
-				streams.Stderr,
-				"tiger check: analyzer emitted unregistered category %q at %s\n",
-				finding.Category,
-				finding.Position,
-			)
+	if config.Installed() {
+		if set := explicitAnalyzerFlag(flags); set != "" {
+			fmt.Fprintf(streams.Stderr, "tiger check: -%s is set on the command line but "+
+				"%s is the reviewed source — move the value into %s\n",
+				set, config.FileName, config.FileName)
 			return ExitOperational
 		}
-		switch entry.Severity {
-		case rules.SeverityBlocking:
-			blocking++
+	}
+
+	report, err := driver.Run(*chdir, patterns, analyzers, rules.Finishers())
+	if err != nil {
+		fmt.Fprintf(streams.Stderr, "tiger check: %v\n", err)
+		return ExitOperational
+	}
+	sorted, err := partition(setup.module, report.Findings)
+	if err != nil {
+		fmt.Fprintf(streams.Stderr, "tiger check: %v\n", err)
+		return ExitOperational
+	}
+	printed := 0
+	for _, finding := range sorted.blocking {
+		printed++
+		fmt.Fprintf(streams.Stdout, "%s: %s\n", finding.Position, finding.Message)
+	}
+	if *showFacts {
+		for _, finding := range sorted.facts {
 			fmt.Fprintf(streams.Stdout, "%s: %s\n", finding.Position, finding.Message)
-		case rules.SeverityAdvisory:
-			advisory++
-			fmt.Fprintf(
-				streams.Stdout,
-				"%s: %s\n",
-				finding.Position,
-				markAdvisory(finding, entry.RuleID),
-			)
-		default:
-			assert.Unreachable("severity outside the registry's closed set")
 		}
 	}
-	if blocking+advisory > 0 {
-		fmt.Fprintf(streams.Stdout, "tiger: %d blocking, %d advisory\n", blocking, advisory)
-	}
-	if blocking > 0 {
+	printed += printRatchet(streams, setup.budgets, sorted)
+	if printed > 0 {
+		fmt.Fprintf(streams.Stdout, "tiger: %d blocking\n", printed)
 		return ExitFindings
 	}
 	return ExitClean
 }
 
-// markAdvisory rewrites a finding's leading rule ID to name its severity, so
-// an advisory line is unmistakable without changing what fired or the
-// compliant form: "TS-L09: ..." becomes "TS-L09 [advisory]: ...".
-func markAdvisory(finding driver.Finding, ruleID string) string {
-	rest, found := strings.CutPrefix(finding.Message, ruleID+":")
-	if !found {
-		return finding.Message + " [advisory]"
+// explicitAnalyzerFlag returns the name of the first analyzer flag
+// (<analyzer>.<flag>) the command line set explicitly, or "".
+func explicitAnalyzerFlag(flags *flag.FlagSet) string {
+	set := ""
+	flags.Visit(func(each *flag.Flag) {
+		if set == "" && strings.Contains(each.Name, ".") {
+			set = each.Name
+		}
+	})
+	return set
+}
+
+// partitioned is one run's findings split by kind: blocking findings,
+// computed facts (printed only under --show-facts, never counted), and the
+// advisory ones tallied per package and rule code for the ratchet.
+type partitioned struct {
+	blocking []driver.Finding
+	facts    []driver.Finding
+	counts   budgetCounts
+}
+
+// partition resolves every finding's category through the registry — the
+// facts table first, then the rules table — and splits the findings by
+// kind. An unregistered category is an error: the run cannot apply a
+// severity it does not know.
+func partition(module config.Module, findings []driver.Finding) (partitioned, error) {
+	sorted := partitioned{counts: newBudgetCounts()}
+	for _, finding := range findings {
+		if _, isFact := rules.ByFact(finding.Category); isFact {
+			sorted.facts = append(sorted.facts, finding)
+			continue
+		}
+		entry, known := rules.ByCategory(finding.Category)
+		if !known {
+			return partitioned{}, fmt.Errorf("analyzer emitted unregistered category %q at %s",
+				finding.Category, finding.Position)
+		}
+		switch entry.Severity {
+		case rules.SeverityBlocking:
+			sorted.blocking = append(sorted.blocking, finding)
+		case rules.SeverityAdvisory:
+			sorted.counts.add(packageKey(module, finding.Package), entry, finding)
+		default:
+			assert.Unreachable("severity outside the registry's closed set")
+		}
 	}
-	return ruleID + " [advisory]:" + rest
+	return sorted, nil
 }

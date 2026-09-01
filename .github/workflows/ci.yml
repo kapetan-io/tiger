@@ -30,11 +30,10 @@ jobs:
       - run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@${{ env.GOLANGCI_LINT_VERSION }}
       - run: golangci-lint run ./...
 
-  # The tiger repository dogfoods itself: the custom rules run over the tree,
-  # the built binary is published as a workflow artifact, and each pull
-  # request gets the report as a sticky comment — the one place advisory
-  # findings (escapes, skipped tests) stay in front of reviewers, since they
-  # never fail the run.
+  # The tiger repository dogfoods itself: the custom rules run over the tree
+  # against the committed tiger.budget.yaml, the built binary is published as
+  # a workflow artifact, and each pull request gets the report as a sticky
+  # comment.
   dogfood:
     runs-on: ubuntu-latest
     permissions:
@@ -135,6 +134,9 @@ jobs:
   # whole-program rules TS-A07, TS-A09, and TS-X01: the plugin runs no
   # finish step (ADR-0010). The fixture fires all three under `tiger
   # check`, which a CLI test asserts, so the silence here is meaningful.
+  # The plugin also installs the module's tiger.yaml: a participle.allow
+  # entry scoped to ./scoped silences TS-N14 there and leaves the same
+  # identifier firing in ./outside.
   plugin-smoke:
     runs-on: ubuntu-latest
     steps:
@@ -164,3 +166,5 @@ jobs:
           ! grep -q "TS-A07" findings.txt
           ! grep -q "TS-A09" findings.txt
           ! grep -q "TS-X01" findings.txt
+          grep -q "outside/outside.go.*TS-N14" findings.txt
+          ! grep -q "scoped/scoped.go" findings.txt

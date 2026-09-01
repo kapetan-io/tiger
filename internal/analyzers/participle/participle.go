@@ -10,6 +10,7 @@ import (
 	"golang.org/x/tools/go/analysis"
 
 	"github.com/kapetan-io/tiger/internal/analyzers/internal/words"
+	"github.com/kapetan-io/tiger/internal/config"
 )
 
 // Analyzer enforces TS-N14: exported identifiers do not end in a present participle.
@@ -24,7 +25,8 @@ func newAnalyzer() *analysis.Analyzer {
 		Run:  run,
 	}
 	built.Flags.StringVar(&allowFlag, "allow", "",
-		"comma-separated lowercase tokens extending the default noun allowlist")
+		"comma-separated lowercase tokens extending the default noun allowlist "+
+			"(or participle.allow entries in tiger.yaml)")
 	return built
 }
 
@@ -47,7 +49,7 @@ var nounAllowlist = map[string]bool{
 }
 
 func run(pass *analysis.Pass) (any, error) {
-	allowed := allowlist()
+	allowed := allowlist(pass)
 	for _, file := range pass.Files {
 		for _, decl := range file.Decls {
 			checkDecl(pass, decl, allowed)
@@ -56,11 +58,16 @@ func run(pass *analysis.Pass) (any, error) {
 	return nil, nil
 }
 
-// allowlist parses the -allow flag into a set of lowercase tokens that
-// extend nounAllowlist.
-func allowlist() map[string]bool {
+// allowlist unions the -allow flag with the tiger.yaml participle.allow
+// entries that apply to the analyzed package, as a set of lowercase tokens
+// that extend nounAllowlist.
+func allowlist(pass *analysis.Pass) map[string]bool {
 	extra := map[string]bool{}
-	for _, token := range strings.Split(allowFlag, ",") {
+	tokens := strings.Split(allowFlag, ",")
+	tokens = append(tokens, config.Values(
+		pass.Pkg.Path(), config.Key{Analyzer: "participle", Flag: "allow"},
+	)...)
+	for _, token := range tokens {
 		token = strings.ToLower(strings.TrimSpace(token))
 		if token != "" {
 			extra[token] = true

@@ -6,6 +6,7 @@ import (
 	"go/types"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/analysis/passes/buildssa"
@@ -94,11 +95,13 @@ func wantFindings() []driver.Finding {
 			Position: token.Position{Filename: "app/app.go", Line: 1, Column: 1},
 			Category: "probe",
 			Message:  "probe: fixture.example/probe/app",
+			Package:  "fixture.example/probe/app",
 		},
 		{
 			Position: token.Position{Filename: "dep/dep.go", Line: 1, Column: 1},
 			Category: "probe",
 			Message:  "probe: fixture.example/probe/dep",
+			Package:  "fixture.example/probe/dep",
 		},
 	}
 }
@@ -130,4 +133,11 @@ func TestCheckPlumbsDependenciesFactsAndOrder(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, wantOrder, order2)
 	require.Equal(t, findings1, findings2)
+
+	report, err := driver.Run(
+		root, []string{"./..."}, []*analysis.Analyzer{newProbe(t, &order2)}, nil,
+	)
+	require.NoError(t, err)
+	assert.Equal(t, wantOrder, report.Packages)
+	assert.Equal(t, findings1, report.Findings)
 }

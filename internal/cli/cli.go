@@ -3,9 +3,10 @@
 // testable (surface-testing).
 //
 // All run-level policy lives here: the registry's severity is applied to
-// findings, blocking findings fail the run, and operational failures exit
-// with a code distinct from findings so a partial run is never mistaken for
-// a clean one.
+// findings, blocking findings fail the run, advisory findings are counted
+// against tiger.budget.yaml and fail the run on overrun, and operational
+// failures exit with a code distinct from findings so a partial run is
+// never mistaken for a clean one.
 package cli
 
 import (
@@ -22,11 +23,15 @@ const (
 
 const usage = `usage:
   tiger check [-C dir] [--show-facts] [analyzer flags] [packages]
-      run the registered analyzers; exit 0 clean, 1 findings,
-      2 operational failure
-  tiger golangci [-C dir] [--init]
+      run the registered analyzers and compare counted findings to
+      tiger.budget.yaml; exit 0 clean, 1 findings, 2 operational failure
+  tiger budget [-C dir] [--write] [packages]
+      report packages over their tiger.budget.yaml rows; --write lowers
+      rows to the current counts (never raises); exit 0 within budget,
+      1 overrun, 2 operational failure
+  tiger golangci [-C dir] [--init | --print]
       audit the project golangci-lint config against the auto-rule baseline,
-      or generate it with --init
+      generate it with --init, or write it to stdout with --print
   tiger pin [-C dir] [--dry-run] <Name> [<Name>...] [packages]
       freeze each named function's computed facts into //tiger: pins
       written at their targets; exit 0 written or already satisfied,
@@ -49,6 +54,8 @@ func Run(args []string, streams Streams) int {
 	switch args[0] {
 	case "check":
 		return runCheck(args[1:], streams)
+	case "budget":
+		return runBudget(args[1:], streams)
 	case "golangci":
 		return runGolangci(args[1:], streams)
 	case "pin":

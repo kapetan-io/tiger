@@ -62,10 +62,11 @@ type Severity int
 const (
 	// SeverityBlocking findings fail the run: exit code 1.
 	SeverityBlocking Severity = iota
-	// SeverityAdvisory findings print, marked as advisory, and are counted;
-	// they never affect the exit code. Reserved for the standing notices
-	// the specification defines (escapes, skipped tests) and ADR-0006's
-	// advisory trial.
+	// SeverityAdvisory findings are counted per package against
+	// tiger.budget.yaml by the CLI driver: under budget they never print,
+	// and on overrun they print as blocking lines under a TS-D06 line.
+	// Reserved for the standing notices the specification defines
+	// (escapes, skipped tests) and ADR-0006's advisory trial.
 	SeverityAdvisory
 )
 
@@ -84,6 +85,8 @@ type Fact struct {
 // CustomRule binds one diagnostic category to the rule it enforces, the
 // analyzer that emits it, and its severity. A rule with split severity
 // (TS-L09, TS-L10) registers each half as its own category at its own level.
+// A driver-enforced rule (TS-D06) has no analyzer and no corpus: the CLI
+// produces its lines itself.
 type CustomRule struct {
 	// Category is the analysis.Diagnostic category analyzers tag findings
 	// with; the driver resolves severity through it.
@@ -91,7 +94,8 @@ type CustomRule struct {
 	// RuleID is the specification rule, TS-*. Every diagnostic message
 	// starts with this ID.
 	RuleID string
-	// Analyzer is the pass that enforces the rule.
+	// Analyzer is the pass that enforces the rule; nil for a rule the
+	// driver enforces.
 	Analyzer *analysis.Analyzer
 	// Severity is the run-level consequence the driver applies.
 	Severity Severity
@@ -101,6 +105,18 @@ type CustomRule struct {
 	// across packages (ADR-0010): the driver calls it once after every
 	// package has been visited. Nil for every per-package rule.
 	Finish finish.Func
+	// Counted is the plural noun phrase a TS-D06 line uses for an advisory
+	// rule's findings ("skipped tests"); empty on every other severity.
+	Counted string
+}
+
+// CountedNoun renders the rule's counted noun phrase for n findings:
+// plural, or singular when n is 1.
+func (r CustomRule) CountedNoun(n int) string {
+	if n == 1 {
+		return strings.TrimSuffix(r.Counted, "s")
+	}
+	return r.Counted
 }
 
 // customRules is the dialect: the wave-1 rules, the SSA wave's, then the
@@ -179,12 +195,19 @@ var customRules = []CustomRule{
 	{
 		Category: "TS-L09-escape", RuleID: "TS-L09", Analyzer: directives.Analyzer,
 		Severity: SeverityAdvisory,
-		Title:    "every escape directive surfaces on every run",
+		Title:    "every escape directive is counted against the package budget",
+		Counted:  "escape directives",
 	},
 	{
 		Category: "TS-D07", RuleID: "TS-D07", Analyzer: skipcheck.Analyzer,
 		Severity: SeverityAdvisory,
-		Title:    "skipped tests are reported on every run",
+		Title:    "skipped tests are counted against the package budget",
+		Counted:  "skipped tests",
+	},
+	{
+		Category: "TS-D06", RuleID: "TS-D06",
+		Severity: SeverityBlocking,
+		Title:    "per-package budgets may only decrease",
 	},
 	{
 		Category: "TS-T10", RuleID: "TS-T10", Analyzer: tablename.Analyzer,
@@ -230,6 +253,7 @@ var customRules = []CustomRule{
 		Category: "TS-L10-distance", RuleID: "TS-L10", Analyzer: deferdistance.Analyzer,
 		Severity: SeverityAdvisory,
 		Title:    "a defer stays next to its acquisition",
+		Counted:  "defers away from their acquisitions",
 	},
 	{
 		Category: "TS-M10", RuleID: "TS-M10", Analyzer: ioinloop.Analyzer,
@@ -240,6 +264,7 @@ var customRules = []CustomRule{
 		Category: "TS-L05", RuleID: "TS-L05", Analyzer: declorder.Analyzer,
 		Severity: SeverityAdvisory,
 		Title:    "struct order is fields, nested types, constructor, methods",
+		Counted:  "misordered struct declarations",
 	},
 	{
 		Category: "TS-S01", RuleID: "TS-S01", Analyzer: norecursion.Analyzer,
@@ -375,6 +400,9 @@ func ByCategory(category string) (CustomRule, bool) {
 func Analyzers() []*analysis.Analyzer {
 	byName := map[string]*analysis.Analyzer{}
 	for _, rule := range customRules {
+		if rule.Analyzer == nil {
+			continue
+		}
 		byName[rule.Analyzer.Name] = rule.Analyzer
 	}
 	names := slices.Sorted(maps.Keys(byName))
@@ -411,26 +439,39 @@ func Finishers() []finish.Finisher {
 // run over.
 func WholeProgram(analyzerName string) bool {
 	for _, rule := range customRules {
-		if rule.Analyzer.Name == analyzerName && rule.Finish != nil {
+		if rule.Analyzer != nil && rule.Analyzer.Name == analyzerName && rule.Finish != nil {
 			return true
 		}
 	}
 	return false
 }
 
-// RuleIDs returns the distinct custom rule IDs, sorted. The corpus meta-test
-// walks these: every rule needs its failure-mode and compliant cases.
+// RuleIDs returns the distinct analyzer-enforced rule IDs, sorted. The
+// corpus meta-test walks these: every rule needs its failure-mode and
+// compliant cases.
 func RuleIDs() []string {
 	seen := map[string]bool{}
 	ids := make([]string, 0, len(customRules))
 	for _, rule := range customRules {
-		if !seen[rule.RuleID] {
+		if rule.Analyzer != nil && !seen[rule.RuleID] {
 			seen[rule.RuleID] = true
 			ids = append(ids, rule.RuleID)
 		}
 	}
 	sort.Strings(ids)
 	return ids
+}
+
+// CountedCodes returns the rule codes registered at advisory severity —
+// the codes a budget row may name — mapped to true.
+func CountedCodes() map[string]bool {
+	codes := map[string]bool{}
+	for _, rule := range customRules {
+		if rule.Severity == SeverityAdvisory {
+			codes[rule.RuleID] = true
+		}
+	}
+	return codes
 }
 
 // CorpusDir names the analysistest corpus package for a rule: the rule ID

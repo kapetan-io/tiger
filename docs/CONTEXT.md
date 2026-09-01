@@ -46,8 +46,8 @@ A directive loosening one rule at one site, always carrying a reason; admitted o
 in-subset code shape can accomplish the task — still, through wave 1.5, `//tiger:batched
 <reason>` alone. Wave 1 validated and surfaced it with nothing consuming it; wave 1.5 consumes it
 in `ioinloop` (TS-M10) and, on the cursor shape only, in `boundedloop` (TS-S02 — see Cursor
-shape). Shape is machine-checked, truth is human-reviewed, and every escape surfaces as a
-standing advisory finding regardless of which rule it waives.
+shape). Shape is machine-checked, truth is human-reviewed, and every escape is counted against
+its package's budget on every run regardless of which rule it waives.
 _Avoid_: suppression, nolint (the golangci mechanism, not ours)
 
 **Severity**:
@@ -174,8 +174,8 @@ checked.
 **Diagnostic prefix**:
 The `path:line:col: TS-XXX:` head of a finding line — position rendered by the CLI, rule code
 written first by the analyzer. A parsing contract: tooling keys on it and wording changes never
-touch it. The CLI's ` [advisory]` marker is a separate print-time annotation inserted after the
-code on advisory lines, not part of the prefix.
+touch it. A `TS-D06` line is positioned at `tiger.budget.yaml:<line>` (the row) or
+`tiger.budget.yaml` alone (no row); the counted findings under it carry their own prefixes.
 _Avoid_: header, tag
 
 **Message body**:
@@ -233,8 +233,8 @@ in the budget file's diff, lowered by `tiger budget --write`.
 > explicit cap and assert on exhaustion, or use the event-loop shape TS-S03 describes. The only
 > escape in the dialect is `//tiger:batched`, because a provider without a bulk endpoint is a fact
 > of the world the code can't restructure away — and unless your loop is a **cursor shape**, it
-> waives nothing here either. It still stays visible as an **advisory** finding on every run,
-> whether it waives anything or not. If you think the finding itself is wrong, that's a false
+> waives nothing here either. It still counts against the package's **budget** on every run,
+> whether it waives anything or not, and prints as a blocking finding once the package is over. If you think the finding itself is wrong, that's a false
 > positive on a **blocking** rule, which is a bug in the analyzer: file it, and the case lands in
 > the **corpus** so it can't regress."
 

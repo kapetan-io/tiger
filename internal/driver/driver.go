@@ -60,6 +60,18 @@ type Finding struct {
 	Position token.Position
 	Category string
 	Message  string
+	// Package is the import path of the package the finding was found in;
+	// a test variant reports the package under test's path, an external
+	// test package its own _test path.
+	Package string
+}
+
+// Report is one Check's complete result: the findings and the import path
+// of every package analyzed, so a caller can tell a package with zero
+// findings from one outside the run.
+type Report struct {
+	Findings []Finding
+	Packages []string
 }
 
 // Check loads the packages matched by patterns under root and runs every
@@ -81,15 +93,32 @@ func Check(
 	analyzers []*analysis.Analyzer,
 	finishers []finish.Finisher,
 ) ([]Finding, error) {
-	loaded, err := load(root, patterns)
+	report, err := Run(root, patterns, analyzers, finishers)
 	if err != nil {
 		return nil, err
+	}
+	return report.Findings, nil
+}
+
+// Run is Check plus the list of analyzed package paths, in the order they
+// were visited.
+func Run(
+	root string,
+	patterns []string,
+	analyzers []*analysis.Analyzer,
+	finishers []finish.Finisher,
+) (Report, error) {
+	loaded, err := load(root, patterns)
+	if err != nil {
+		return Report{}, err
 	}
 	scheduled := analyzerOrder(analyzerClosure(analyzers))
 	store := newFactsStore()
 	findings := []Finding{}
 	ordered := packageOrder(loaded)
+	visited := []string{}
 	for _, pkg := range ordered {
+		visited = append(visited, pkg.PkgPath)
 		run := &packageRun{
 			pkg:       pkg,
 			generated: generatedFiles(pkg),
@@ -98,7 +127,7 @@ func Check(
 		for _, pass := range scheduled {
 			collected, err := runPass(pass, run, store)
 			if err != nil {
-				return nil, err
+				return Report{}, err
 			}
 			findings = append(findings, collected...)
 		}
@@ -106,7 +135,7 @@ func Check(
 	for _, finisher := range finishers {
 		collected, err := runFinish(finisher, ordered, store)
 		if err != nil {
-			return nil, err
+			return Report{}, err
 		}
 		findings = append(findings, collected...)
 	}
@@ -114,7 +143,7 @@ func Check(
 	sort.Slice(findings, func(i, j int) bool {
 		return findings[i].before(findings[j])
 	})
-	return findings, nil
+	return Report{Findings: findings, Packages: visited}, nil
 }
 
 // analyzerClosure computes the transitive closure of requested over
@@ -363,6 +392,7 @@ func runPass(
 				Position: position,
 				Category: diagnostic.Category,
 				Message:  diagnostic.Message,
+				Package:  run.pkg.PkgPath,
 			})
 		},
 		ImportObjectFact:  store.importSymbol(pass),
