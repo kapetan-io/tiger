@@ -37,13 +37,23 @@ func runCheck(args []string, streams Streams) int {
 		patterns = []string{"./..."}
 	}
 
-	findings, err := driver.Check(*chdir, patterns, analyzers)
+	findings, err := driver.Check(*chdir, patterns, analyzers, rules.Finishers())
 	if err != nil {
 		fmt.Fprintf(streams.Stderr, "tiger check: %v\n", err)
 		return ExitOperational
 	}
 	blocking, advisory := 0, 0
 	for _, finding := range findings {
+		if _, isFact := rules.ByFact(finding.Category); isFact {
+			// Facts are collected like every other diagnostic but never
+			// counted and never printed unless the caller asked to see
+			// them: a tree whose only output is computed facts must exit 0
+			// and, without --show-facts, print nothing.
+			if *showFacts {
+				fmt.Fprintf(streams.Stdout, "%s: %s\n", finding.Position, finding.Message)
+			}
+			continue
+		}
 		entry, known := rules.ByCategory(finding.Category)
 		if !known {
 			fmt.Fprintf(
@@ -66,15 +76,6 @@ func runCheck(args []string, streams Streams) int {
 				finding.Position,
 				markAdvisory(finding, entry.RuleID),
 			)
-		case rules.SeverityReported:
-			// Reported findings are collected like every other finding but
-			// never counted and never printed unless the caller asked to
-			// see them: a fixture with only unpinned facts and no
-			// violations must exit 0 and, without --show-facts, produce
-			// byte-identical output to a wave-1 run over the same tree.
-			if *showFacts {
-				fmt.Fprintf(streams.Stdout, "%s: %s\n", finding.Position, finding.Message)
-			}
 		default:
 			assert.Unreachable("severity outside the registry's closed set")
 		}

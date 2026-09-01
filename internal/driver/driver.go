@@ -10,7 +10,11 @@
 // analyzer `Requires` (buildssa and its own dependencies) and propagating
 // `go/analysis` facts across packages in a stable, module-local order — so
 // fact content, like findings, never depends on map iteration or
-// scheduling.
+// scheduling. The cross-package wave adds the finish step (ADR-0010): after
+// every package has been visited, each registered finish function reads
+// every fact its analyzer exported and reports on the whole module — the
+// one place a whole-program rule can see both the declaring package and
+// the packages that reference it.
 package driver
 
 import (
@@ -31,6 +35,7 @@ import (
 	"golang.org/x/tools/go/types/objectpath"
 
 	"github.com/kapetan-io/tiger/assert"
+	"github.com/kapetan-io/tiger/internal/finish"
 )
 
 // loadMode requests what every analyzer needs, single-package or SSA:
@@ -63,11 +68,19 @@ type Finding struct {
 // topological order (dependencies before dependents) so an analyzer's
 // exported facts are available by the time a dependent package is
 // analyzed; buildssa's SSA build runs once per package and is shared by
-// every analyzer requiring it there. Findings come back sorted by
-// position, with filenames relative to root so no absolute path reaches
-// any output. A load error, a type error, or an analyzer failure returns
-// an error: partial results are never presented as a complete run.
-func Check(root string, patterns []string, analyzers []*analysis.Analyzer) ([]Finding, error) {
+// every analyzer requiring it there. Once every package has been visited
+// and every pass succeeded, each finisher runs once over the whole loaded
+// set with the facts its analyzer exported (ADR-0010). Findings come back
+// sorted by position, with filenames relative to root so no absolute path
+// reaches any output. A load error, a type error, an analyzer failure, or
+// a finish-step failure returns an error: partial results are never
+// presented as a complete run.
+func Check(
+	root string,
+	patterns []string,
+	analyzers []*analysis.Analyzer,
+	finishers []finish.Finisher,
+) ([]Finding, error) {
 	loaded, err := load(root, patterns)
 	if err != nil {
 		return nil, err
@@ -75,7 +88,8 @@ func Check(root string, patterns []string, analyzers []*analysis.Analyzer) ([]Fi
 	scheduled := analyzerOrder(analyzerClosure(analyzers))
 	store := newFactsStore()
 	findings := []Finding{}
-	for _, pkg := range packageOrder(loaded) {
+	ordered := packageOrder(loaded)
+	for _, pkg := range ordered {
 		run := &packageRun{
 			pkg:       pkg,
 			generated: generatedFiles(pkg),
@@ -88,6 +102,13 @@ func Check(root string, patterns []string, analyzers []*analysis.Analyzer) ([]Fi
 			}
 			findings = append(findings, collected...)
 		}
+	}
+	for _, finisher := range finishers {
+		collected, err := runFinish(finisher, ordered, store)
+		if err != nil {
+			return nil, err
+		}
+		findings = append(findings, collected...)
 	}
 	relativize(findings, root)
 	sort.Slice(findings, func(i, j int) bool {
@@ -331,6 +352,7 @@ func runPass(
 		Pkg:        run.pkg.Types,
 		TypesInfo:  run.pkg.TypesInfo,
 		TypesSizes: run.pkg.TypesSizes,
+		Module:     moduleOf(run.pkg),
 		ResultOf:   resultOf,
 		Report: func(diagnostic analysis.Diagnostic) {
 			position := run.pkg.Fset.Position(diagnostic.Pos)
@@ -356,6 +378,75 @@ func runPass(
 	}
 	run.results[pass] = result
 	return findings, nil
+}
+
+// runFinish runs one finish function over every loaded package with the
+// facts its analyzer exported, converting a panic or error into the run's
+// error and rejecting any diagnostic positioned outside the loaded
+// packages (state invariant 1) before it becomes a finding.
+func runFinish(
+	finisher finish.Finisher,
+	ordered []*packages.Package,
+	store *factsStore,
+) (findings []Finding, err error) {
+	name := finisher.Analyzer.Name
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			findings = nil
+			err = fmt.Errorf("finish step %s panicked: %v", name, recovered)
+		}
+	}()
+	program := &finish.Program{
+		Fset:         ordered[0].Fset,
+		Packages:     make([]finish.Package, 0, len(ordered)),
+		PackageFacts: store.allPackages(finisher.Analyzer)(),
+		ObjectFacts:  store.allSymbols(finisher.Analyzer)(),
+	}
+	loadedFiles := map[string]bool{}
+	generated := map[string]bool{}
+	for _, pkg := range ordered {
+		program.Packages = append(program.Packages, finish.Package{
+			Pkg: pkg.Types, TypesInfo: pkg.TypesInfo, Syntax: pkg.Syntax,
+		})
+		for _, file := range pkg.CompiledGoFiles {
+			loadedFiles[file] = true
+		}
+		maps.Copy(generated, generatedFiles(pkg))
+	}
+	diagnostics, runErr := finisher.Run(program)
+	if runErr != nil {
+		return nil, fmt.Errorf("finish step %s failed: %w", name, runErr)
+	}
+	for _, diagnostic := range diagnostics {
+		position := program.Fset.Position(diagnostic.Pos)
+		if !loadedFiles[position.Filename] {
+			return nil, fmt.Errorf(
+				"finish step %s reported a finding outside the loaded packages: %s",
+				name, diagnostic.Message,
+			)
+		}
+		if generated[position.Filename] {
+			continue
+		}
+		findings = append(findings, Finding{
+			Position: position,
+			Category: diagnostic.Category,
+			Message:  diagnostic.Message,
+		})
+	}
+	return findings, nil
+}
+
+// moduleOf describes the package's enclosing module for analyzers that
+// resolve module-relative paths (the restrict directive's imports axis);
+// nil outside a module, as under other drivers.
+func moduleOf(pkg *packages.Package) *analysis.Module {
+	if pkg.Module == nil {
+		return nil
+	}
+	return &analysis.Module{
+		Path: pkg.Module.Path, Version: pkg.Module.Version, GoVersion: pkg.Module.GoVersion,
+	}
 }
 
 // factsStore is the driver's in-memory, module-local implementation of the

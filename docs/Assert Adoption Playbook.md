@@ -72,7 +72,7 @@ should round-trip it).
 This step is the one with no mechanical trigger — there is no analyzer finding that forces it, because
 until `inv` exists there is nothing for `TS-A07`–`TS-A09` to check. It is deliberate design work, and
 it is also the step that turns steps 1–3 from "stopped panicking incorrectly" into "assertions that
-compound": `TS-A07` (every invariant referenced from at least two functions) and `TS-A08` (symmetric
+compound": `TS-A07` (every invariant asserted in at least one function outside test files) and `TS-A08` (symmetric
 boundary functions assert the same set) both need named invariants with real references before they
 can report anything but "zero declared, zero to check."
 

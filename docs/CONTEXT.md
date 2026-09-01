@@ -51,10 +51,16 @@ standing advisory finding regardless of which rule it waives.
 _Avoid_: suppression, nolint (the golangci mechanism, not ours)
 
 **Severity**:
-A rule's run-level consequence — **blocking** (fails the run), **advisory** (printed and counted,
-does not fail), or **reported** (printed only under `--show-facts`, never affects the exit code).
-Defined once per rule in the registry, never inside an analyzer. The reported level activates in
-the SSA wave as the computed-facts channel.
+A rule's run-level consequence — **blocking** (fails the run) or **advisory** (printed and
+counted, does not fail; reserved for the standing notices the specification names and ADR-0006's
+trial). There is no third level: a rule either blocks or it is not a rule (ADR-0012). Defined once
+per rule in the registry, never inside an analyzer.
+_Avoid_: reported (the removed tier; computed facts are not rules and carry no severity)
+
+**Fact (computed)**:
+The current value of something a pin can freeze — an effect set, a frame, a synthesized loop
+variant. Not a rule: registered in the facts table, printed only under `--show-facts` in pin
+syntax, never counted, and what `tiger pin` freezes.
 
 **Effect set**:
 The analyzer-computed summary of what a function does, over the closed lattice `alloc`, `io(q)`,
@@ -131,6 +137,38 @@ miss — and governs only the custom default-arm check; the `exhaustive` auto ru
 The one-line registry severity edit moving a tuned advisory rule to blocking, backed by trial
 evidence on at least two real codebases; demotion is the same edit in reverse.
 
+**Whole-program rule**:
+A custom rule whose finding cannot be decided inside any one package because its evidence is
+spread across packages that do not import each other (TS-A07, TS-A09, TS-X01). Its analyzer's
+per-package pass exports a package fact describing what the package contributes; the finish
+step reads every such fact and reports. Runs only under the tiger CLI.
+_Avoid_: cross-package rule (facts already cross packages; the distinguishing property is the
+finish step)
+
+**Per-package rule**:
+A custom rule decided entirely inside one `go/analysis` pass over one package, reading facts its
+dependencies exported. Every rule before ENG-152, plus `restrictions` and `closedworld`.
+
+**Finish step**:
+The driver's call, once after every package has been visited, to each registered finish
+function with every loaded package and every fact its analyzer exported. Driver policy, not
+analyzer code: golangci-lint and `analysistest` have no equivalent.
+_Avoid_: post-pass, module pass
+
+**Invariant const**:
+A package-level const of a named string type that some `assert.Invariant` or `assert.Violates`
+call in the module takes as its ID. Defined by use, not by living in a package named `inv`; a
+const of that type never passed anywhere is still one (and fails TS-A07 with zero references).
+
+**Test double (TS-X01)**:
+A type declared in a `_test.go` file. It never counts as an implementation for `singleimpl`; a
+fake that must count lives in a non-test package.
+
+**Restriction set**:
+The parsed `//tiger:restrict` declaration of a package: the `closed-dispatch`, `no-reflect`, and
+`imports(...)` axes. Absent directive or axis means the axis takes its stated default and is not
+checked.
+
 **Diagnostic prefix**:
 The `path:line:col: TS-XXX:` head of a finding line — position rendered by the CLI, rule code
 written first by the analyzer. A parsing contract: tooling keys on it and wording changes never
@@ -151,6 +189,8 @@ _Avoid_: description, explanation
 - An **Analyzer** enforces one or more **Rules** and owns one **Corpus** per rule.
 - The **Registry** binds each **Custom rule** to its **Analyzer** and **Severity**.
 - A **Driver** runs **Analyzers**; only the driver applies **Severity**.
+- A **Whole-program rule** has a per-package pass and a **Finish step**; a **Per-package rule** has
+  only the pass. Only the tiger CLI runs finish steps.
 - A **Pin**, an **Intent declaration**, and an **Escape hatch** are the three kinds of
   **Directive**, distinguished by lifecycle.
 - **Placement** binds every **Directive** to a node; `tiger pin` writes a **Pin** at that

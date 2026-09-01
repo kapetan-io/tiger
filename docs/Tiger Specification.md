@@ -268,7 +268,13 @@ layering defaults to the `TS-X03` layer file, referenced rather than duplicated.
 packages (`foo_test`) need no declaration and make no claim; nothing imports them, so they never
 enter a bound.
 
-The form is a directive in the package doc comment, at most one per package:
+The form is a directive in the package doc comment, at most one per package. Its grammar is a
+comma-separated list of axes, each `closed-dispatch`, `no-reflect`, or
+`imports(<path>[, <path>...])`; paths are module-relative, optionally ending in `/...` to match
+the subtree, and the standard library is always allowed (the `TS-D01` baseline the axis extends).
+Canonical form lists the axes in that order with paths sorted. A malformed argument — an unknown
+axis, an empty `imports()`, unbalanced parentheses — is a `TS-L09` finding, never a silently
+meaningless claim:
 
 ```go
 // Package ledger applies entries to the account state machine.
@@ -287,8 +293,11 @@ standard library does not degrade the bound: the analyzer carries a curated fact
 same table the built-in `io` qualifiers come from), so stdlib internals are semantic ground rather
 than an unknown. A third-party dependency with no declaration counts as weakest on every axis,
 which is honest and points the incentive the same direction `TS-D01` already does.
-Enforce. `restrictions` (custom). Reported, not blocking. The number belongs on the dashboard — and
-a drop in the bound's value additionally appears in the release surface diff, per `TS-P03`.
+Enforce. `restrictions` (custom). Blocking: a package that claims an axis its transitive imports do
+not support has made a claim the code contradicts, and the finding names the edit — declare the axis
+on the dependency, or drop the claim. Each weakened axis is one finding at the package clause naming
+the first dependency that weakens it. A drop in the bound additionally appears in the release
+surface diff, per `TS-P03`.
 
 **`TS-P03` Weakening a package's restriction set requires a directive and appears in the surface diff.**
 Why. Erosion happens one convenient exception at a time. Making each one visible in the release
@@ -434,14 +443,19 @@ Enforcement levels: **auto** (off-the-shelf linter), **custom** (an analyzer you
 in Part V), **partial** (heuristic, expect false positives), **runtime** (test or CI gate), **review**
 (human or AI judgment, and the reason is always that the declaration is a claim about the world).
 
-Severity is one of three words, used precisely:
+Severity is one of two words, used precisely (ADR-0012: a rule either blocks or it is not a rule;
+warnings are golangci-lint's job):
 
 - **Blocking.** The CI check fails on the pull request. The default unless stated.
-- **Advisory.** Reported and counted against the per-package ratchet (`TS-D06`); does not fail the
-  check. The on-ramp for structural rules on a legacy codebase: start advisory, ratchet per package.
-- **Reported.** A PR annotation and a dashboard number only. Used where the fact is computed and no
-  one made a choice a directive could justify: unpinned effect changes (`TS-F01`), the transitive
-  precision bound (`TS-P02`).
+- **Advisory.** Printed and counted against the per-package ratchet (`TS-D06`); does not fail the
+  check. Reserved for the standing notices this specification names (every escape directive,
+  every skipped test) and for the time-boxed trial of a heuristic rule (ADR-0006): start
+  advisory, ratchet per package, then promote or remove.
+
+Computed facts — an unpinned function's effect set (`TS-F01`), its frame (`TS-F07`), a synthesized
+loop variant (`TS-V01`) — are not rules and carry no severity. They print only under
+`tiger check --show-facts`, in pin syntax, and are what `tiger pin` freezes; a pin turns the fact
+into a blocking contract.
 
 **Promotion.** An advisory rule moves to blocking, and a blocking rule moves back to advisory, by a
 one-line severity edit in the registry (`internal/rules/rules.go`) — never inside the analyzer, which
@@ -706,10 +720,15 @@ failure message names the invariant with no generated code, and the assert packa
 `~string` ID via generics — coupled by shape, not by import — so `assert` keeps zero dependencies
 and `inv` stays project-owned.
 
-**`TS-A07` Every declared invariant is asserted in at least two distinct functions.**
-Why. Pair assertion, restated as something countable. An invariant asserted once is either misfiled or
-under-defended, and both are worth knowing.
-Enforce. `invariantrefs` (custom). Also fails on a declared invariant with zero references.
+**`TS-A07` Every declared invariant is asserted in at least one function outside test files.**
+Why. A declared invariant nobody asserts is a design document that lies. Whether it is asserted on
+both sides of a boundary is `TS-A08`'s question; whether a test can make it fail is `TS-A09`'s. A
+property with one production site (a sequence number checked only where it is appended) is still an
+invariant, and keeps its violating test.
+Enforce. `invariantrefs` (custom). Functions in `_test.go` files do not count. A whole-program rule:
+the const is declared in one package and asserted from the packages importing it, so the finding is
+decided in the finish step only `tiger check` runs (ADR-0010); the golangci-lint plugin never
+reports it.
 
 **`TS-A08` Symmetric boundary functions assert the same invariant set.**
 Why. Once invariants are named, "the same property on both sides" is set equality.
@@ -719,12 +738,13 @@ Enforce. `invariantsymmetry` (custom). Pairs by naming convention (`encodeX`/`de
 **`TS-A09` Every invariant has a test that violates it.**
 Why. The negative space made concrete. If no test can make the invariant fail, either the invariant is
 unreachable or the assertion is wrong, and you want to know which.
-Enforce. `invariantnegative` (custom). Requires `assert.Violates(inv.X, func(){...})`.
+Enforce. `invariantnegative` (custom). Requires `assert.Violates(inv.X, func(){...})` in a
+`_test.go` file. A whole-program rule, reported only by `tiger check` (ADR-0010).
 
 Three things fall out that the string version never gave you. Grep an invariant and get every site
 defending it. The invariant list becomes a design document that cannot go stale, because a deleted
-assertion fails `TS-A07`. And a fake invariant costs a declaration, two call sites, a symmetric
-counterpart, and a negative test, which is more work than thinking of a real one.
+assertion fails `TS-A07`. And a fake invariant costs a declaration, a call site, a symmetric
+counterpart where a boundary exists, and a negative test, which is more work than thinking of a real one.
 
 ## Quantities and types
 
@@ -1165,7 +1185,11 @@ Why. Abstractions are never zero cost and every one adds a leak risk. An interfa
 implementation has paid the cost and bought nothing, and it is the exact fingerprint of speculative
 abstraction. Whole-program implementation counting is a solved analysis. Surface implementations under
 `TS-I03` are exempt by construction, because they have two.
-Enforce. `singleimpl` (custom, `types` plus `packages`, test doubles excluded).
+Enforce. `singleimpl` (custom, `types` plus `packages`). A test double is a type declared in a
+`_test.go` file; it never counts as an implementation, so an interface whose second implementation
+is a test fake still fails. Zero implementations is not a finding — that is a contract with no
+implementer yet, not speculative indirection. A whole-program rule, reported only by `tiger check`
+(ADR-0010).
 
 **`TS-X02` No pass-through methods.**
 Why. A method whose body is one forwarding call with unchanged arguments is indirection that exists to
@@ -1537,7 +1561,7 @@ that cannot fill the third column does not go in.
 | TS-A04 | Assert the negative space | B5 | Sub |
 | TS-A05 | Assertions never have side effects | B4, B2 | Sub |
 | TS-A06 | Distinguish index, count, and size | B2 | Sub |
-| TS-A07 | Every declared invariant is asserted in at least two di... | B2, B5, B7 | Sub |
+| TS-A07 | Every declared invariant is asserted in at least one fu... | B2, B5, B7 | Sub |
 | TS-A08 | Symmetric boundary functions assert the same invariant set | B2 | Sub |
 | TS-A09 | Every invariant has a test that violates it | B5 | Sub |
 | TS-Q01 | Domain quantities are named types. Conversions live in... | B2, B7 | Sub |

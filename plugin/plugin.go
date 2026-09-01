@@ -4,13 +4,18 @@
 // The analyzer set comes from the rule registry — the only path into any
 // driver — and the analyzers themselves cannot tell which driver runs them
 // (ADR-0002). The one piece of logic here is exactly the piece ADR-0002
-// assigns to a driver: severity policy. Reported findings are computed
-// facts, printed only under tiger check --show-facts; golangci-lint has no
-// such channel and treats every diagnostic as an issue (and keeps at most
-// one issue per line), so surfacing facts here would both spam adopters and
-// crowd real findings off their lines. The plugin therefore drops
-// reported-severity diagnostics, the same decision tiger check makes when
-// the flag is absent.
+// assigns to a driver: output policy. Computed facts are not rules; they
+// print only under tiger check --show-facts. golangci-lint has no such
+// channel and treats every diagnostic as an issue (and keeps at most one
+// issue per line), so surfacing facts here would both spam adopters and
+// crowd real findings off their lines. The plugin therefore drops fact
+// diagnostics, the same decision tiger check makes when the flag is absent.
+//
+// Whole-program rules (ADR-0010) — TS-A07, TS-A09, and TS-X01 — decide
+// their findings in a finish step only the tiger CLI runs. Under this
+// plugin their per-package halves still run and export their facts, so
+// nothing breaks, but those three rule codes never appear in a
+// golangci-lint run; only `tiger check` reports them.
 //
 // Build it with golangci-lint's module plugin mechanism: see .custom-gcl.yml
 // at the repository root and run `golangci-lint custom`.
@@ -35,8 +40,9 @@ func newPlugin(conf any) (register.LinterPlugin, error) {
 	return tiger{}, nil
 }
 
-// BuildAnalyzers returns every registered analyzer, with reported-severity
-// diagnostics filtered out (the golangci driver's severity policy).
+// BuildAnalyzers returns every registered analyzer, with fact diagnostics
+// filtered out (the golangci driver's output policy). Finish functions are
+// never consulted: golangci-lint has no end-of-module hook.
 func (tiger) BuildAnalyzers() ([]*analysis.Analyzer, error) {
 	analyzers := rules.Analyzers()
 	built := make([]*analysis.Analyzer, 0, len(analyzers))
@@ -46,13 +52,13 @@ func (tiger) BuildAnalyzers() ([]*analysis.Analyzer, error) {
 	return built, nil
 }
 
-// quietFacts returns the analyzer as-is when none of its categories is
-// reported, else a shallow clone whose Run drops reported-severity
-// diagnostics before they reach golangci-lint. The clone's Requires still
+// quietFacts returns the analyzer as-is when it emits no fact category,
+// else a shallow clone whose Run drops fact diagnostics before they reach
+// golangci-lint. The clone's Requires still
 // name the original dependency analyzers, so golangci's own resolution and
 // facts plumbing are untouched.
 func quietFacts(registered *analysis.Analyzer) *analysis.Analyzer {
-	if !anyReported(registered) {
+	if !emitsFacts(registered) {
 		return registered
 	}
 	inner := registered.Run
@@ -60,11 +66,8 @@ func quietFacts(registered *analysis.Analyzer) *analysis.Analyzer {
 	clone.Run = func(pass *analysis.Pass) (any, error) {
 		report := pass.Report
 		pass.Report = func(diagnostic analysis.Diagnostic) {
-			entry, known := rules.ByCategory(diagnostic.Category)
-			if known {
-				if entry.Severity == rules.SeverityReported {
-					return
-				}
+			if _, isFact := rules.ByFact(diagnostic.Category); isFact {
+				return
 			}
 			report(diagnostic)
 		}
@@ -73,14 +76,10 @@ func quietFacts(registered *analysis.Analyzer) *analysis.Analyzer {
 	return &clone
 }
 
-// anyReported reports whether the analyzer owns a reported-severity
-// category.
-func anyReported(registered *analysis.Analyzer) bool {
-	for _, rule := range rules.CustomRules() {
-		if rule.Analyzer != registered {
-			continue
-		}
-		if rule.Severity == rules.SeverityReported {
+// emitsFacts reports whether the analyzer owns a fact category.
+func emitsFacts(registered *analysis.Analyzer) bool {
+	for _, fact := range rules.Facts() {
+		if fact.Analyzer == registered {
 			return true
 		}
 	}

@@ -128,10 +128,13 @@ jobs:
           test -s first.txt
 
   # The golangci-lint module plugin registers every analyzer, SSA ones
-  # included; a known AST finding and a known SSA finding must surface
-  # through a golangci-lint run, and reported facts must not — the plugin
-  # applies the reported-severity policy, since golangci has no
-  # --show-facts channel.
+  # included; a known AST finding, a known SSA finding, a TS-P01 finding,
+  # and a TS-F02 finding that can only fire if the effects fact crossed
+  # the import must surface through a golangci-lint run. Computed facts
+  # must not (golangci has no --show-facts channel), and neither may the
+  # whole-program rules TS-A07, TS-A09, and TS-X01: the plugin runs no
+  # finish step (ADR-0010). The fixture fires all three under `tiger
+  # check`, which a CLI test asserts, so the silence here is meaningful.
   plugin-smoke:
     runs-on: ubuntu-latest
     steps:
@@ -153,4 +156,11 @@ jobs:
           grep -q "TS-S09" findings.txt
           grep -q "TS-M10" findings.txt
           grep -q "TS-S01" findings.txt
-          ! grep -q "TS-F0" findings.txt
+          grep -q "TS-P01" findings.txt
+          grep -q "TS-F02" findings.txt
+          ! grep -q "TS-F01" findings.txt
+          ! grep -q "TS-F07" findings.txt
+          ! grep -q "TS-V01" findings.txt
+          ! grep -q "TS-A07" findings.txt
+          ! grep -q "TS-A09" findings.txt
+          ! grep -q "TS-X01" findings.txt

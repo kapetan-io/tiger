@@ -6,7 +6,7 @@
 // effect set is computed unconditionally — its own instructions, its
 // static calls, the stdlib effects table — with no annotation required.
 // An unpinned exported function's computed set is printed as a TS-F01-facts
-// diagnostic (findings.Reported severity, visible only under --show-facts):
+// diagnostic (a fact, not a rule — visible only under --show-facts):
 // this is the "reported" stage, exact pin syntax so a later wave (ENG-151,
 // tiger pin) can freeze it by pasting it as-is. A pin turns a reported fact
 // into a contract: TS-F01 compares the pin against the computed set in

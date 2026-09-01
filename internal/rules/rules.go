@@ -19,6 +19,7 @@ import (
 
 	"github.com/kapetan-io/tiger/internal/analyzers/boundedloop"
 	"github.com/kapetan-io/tiger/internal/analyzers/chandecl"
+	"github.com/kapetan-io/tiger/internal/analyzers/closedworld"
 	"github.com/kapetan-io/tiger/internal/analyzers/compoundcond"
 	"github.com/kapetan-io/tiger/internal/analyzers/contracts"
 	"github.com/kapetan-io/tiger/internal/analyzers/declorder"
@@ -28,6 +29,8 @@ import (
 	"github.com/kapetan-io/tiger/internal/analyzers/effects"
 	"github.com/kapetan-io/tiger/internal/analyzers/errignore"
 	"github.com/kapetan-io/tiger/internal/analyzers/frames"
+	"github.com/kapetan-io/tiger/internal/analyzers/invariantnegative"
+	"github.com/kapetan-io/tiger/internal/analyzers/invariantrefs"
 	"github.com/kapetan-io/tiger/internal/analyzers/ioinloop"
 	"github.com/kapetan-io/tiger/internal/analyzers/limitrelate"
 	"github.com/kapetan-io/tiger/internal/analyzers/maporder"
@@ -37,29 +40,46 @@ import (
 	"github.com/kapetan-io/tiger/internal/analyzers/paniccheck"
 	"github.com/kapetan-io/tiger/internal/analyzers/participle"
 	"github.com/kapetan-io/tiger/internal/analyzers/poolzero"
+	"github.com/kapetan-io/tiger/internal/analyzers/restrictions"
 	"github.com/kapetan-io/tiger/internal/analyzers/returnarity"
 	"github.com/kapetan-io/tiger/internal/analyzers/sametypeparams"
 	"github.com/kapetan-io/tiger/internal/analyzers/selectctx"
+	"github.com/kapetan-io/tiger/internal/analyzers/singleimpl"
 	"github.com/kapetan-io/tiger/internal/analyzers/skipcheck"
 	"github.com/kapetan-io/tiger/internal/analyzers/tablename"
 	"github.com/kapetan-io/tiger/internal/analyzers/testdoc"
 	"github.com/kapetan-io/tiger/internal/analyzers/variant"
+	"github.com/kapetan-io/tiger/internal/finish"
 )
 
 // Severity is a rule's run-level consequence, defined once per rule here and
-// never inside an analyzer (ADR-0002).
+// never inside an analyzer (ADR-0002). There are exactly two: a rule either
+// blocks or it is not a rule (ADR-0012). Computed facts — the --show-facts
+// channel tiger pin freezes from — are not rules and carry no severity; they
+// live in the separate Facts table.
 type Severity int
 
 const (
 	// SeverityBlocking findings fail the run: exit code 1.
 	SeverityBlocking Severity = iota
 	// SeverityAdvisory findings print, marked as advisory, and are counted;
-	// they never affect the exit code.
+	// they never affect the exit code. Reserved for the standing notices
+	// the specification defines (escapes, skipped tests) and ADR-0006's
+	// advisory trial.
 	SeverityAdvisory
-	// SeverityReported findings are computed facts: collected on every run,
-	// printed only under --show-facts, never counted toward the exit code.
-	SeverityReported
 )
+
+// Fact binds one computed-fact category to the analyzer that emits it. A
+// fact is not a rule: it is the current value of something a pin can
+// freeze (an effect set, a frame, a loop variant), printed only under
+// --show-facts, never counted, never a verdict. Its RuleID names the rule
+// whose pin the fact feeds.
+type Fact struct {
+	Category string
+	RuleID   string
+	Analyzer *analysis.Analyzer
+	Title    string
+}
 
 // CustomRule binds one diagnostic category to the rule it enforces, the
 // analyzer that emits it, and its severity. A rule with split severity
@@ -77,10 +97,14 @@ type CustomRule struct {
 	Severity Severity
 	// Title is the rule, one short sentence.
 	Title string
+	// Finish is the whole-program half of a rule whose evidence is spread
+	// across packages (ADR-0010): the driver calls it once after every
+	// package has been visited. Nil for every per-package rule.
+	Finish finish.Func
 }
 
-// customRules is the dialect: the wave-1 rules followed by the SSA wave's.
-// Order groups rules by analyzer.
+// customRules is the dialect: the wave-1 rules, the SSA wave's, then the
+// cross-package wave's. Order groups rules by analyzer.
 var customRules = []CustomRule{
 	{
 		Category: "TS-S09", RuleID: "TS-S09", Analyzer: nogoto.Analyzer,
@@ -238,11 +262,6 @@ var customRules = []CustomRule{
 		Title:    "an effects pin is an exact, bidirectional contract",
 	},
 	{
-		Category: "TS-F01-facts", RuleID: "TS-F01", Analyzer: effects.Analyzer,
-		Severity: SeverityReported,
-		Title:    "computed effect sets print in pin syntax under --show-facts",
-	},
-	{
 		Category: "TS-F02", RuleID: "TS-F02", Analyzer: effects.Analyzer,
 		Severity: SeverityBlocking,
 		Title:    "a pin bounds the entire subtree beneath it",
@@ -253,25 +272,82 @@ var customRules = []CustomRule{
 		Title:    "writes outside a pinned frame fail, bidirectionally",
 	},
 	{
-		Category: "TS-F07-facts", RuleID: "TS-F07", Analyzer: frames.Analyzer,
-		Severity: SeverityReported,
-		Title:    "computed frames print in pin syntax under --show-facts",
-	},
-	{
 		Category: "TS-V01", RuleID: "TS-V01", Analyzer: variant.Analyzer,
 		Severity: SeverityBlocking,
 		Title:    "every unbounded loop has a verified variant",
-	},
-	{
-		Category: "TS-V01-facts", RuleID: "TS-V01", Analyzer: variant.Analyzer,
-		Severity: SeverityReported,
-		Title:    "synthesized variants print in pin syntax under --show-facts",
 	},
 	{
 		Category: "TS-V03", RuleID: "TS-V03", Analyzer: contracts.Analyzer,
 		Severity: SeverityBlocking,
 		Title:    "preconditions are declared and discharged at call sites",
 	},
+	{
+		Category: "TS-P01", RuleID: "TS-P01", Analyzer: restrictions.Analyzer,
+		Severity: SeverityBlocking,
+		Title:    "declared package restrictions hold against the package's own imports",
+	},
+	{
+		Category: "TS-P02", RuleID: "TS-P02", Analyzer: restrictions.Analyzer,
+		Severity: SeverityBlocking,
+		Title:    "every transitive dependency supports each restriction axis a package claims",
+	},
+	{
+		Category: "TS-K03", RuleID: "TS-K03", Analyzer: closedworld.Analyzer,
+		Severity: SeverityBlocking,
+		Title:    "no dynamic dispatch in a package that declares closed-dispatch",
+	},
+	{
+		Category: "TS-A07", RuleID: "TS-A07", Analyzer: invariantrefs.Analyzer,
+		Severity: SeverityBlocking,
+		Title:    "every invariant is asserted in a function outside _test.go files",
+		Finish:   invariantrefs.Finish,
+	},
+	{
+		Category: "TS-A09", RuleID: "TS-A09", Analyzer: invariantnegative.Analyzer,
+		Severity: SeverityBlocking,
+		Title:    "every invariant has a test that violates it",
+		Finish:   invariantnegative.Finish,
+	},
+	{
+		Category: "TS-X01", RuleID: "TS-X01", Analyzer: singleimpl.Analyzer,
+		Severity: SeverityBlocking,
+		Title:    "no interface with exactly one implementation outside _test.go files",
+		Finish:   singleimpl.Finish,
+	},
+}
+
+// facts is the computed-facts channel: one category per pinnable fact.
+var facts = []Fact{
+	{
+		Category: "TS-F01-facts", RuleID: "TS-F01", Analyzer: effects.Analyzer,
+		Title: "computed effect sets print in pin syntax under --show-facts",
+	},
+	{
+		Category: "TS-F07-facts", RuleID: "TS-F07", Analyzer: frames.Analyzer,
+		Title: "computed frames print in pin syntax under --show-facts",
+	},
+	{
+		Category: "TS-V01-facts", RuleID: "TS-V01", Analyzer: variant.Analyzer,
+		Title: "synthesized variants print in pin syntax under --show-facts",
+	},
+}
+
+// Facts returns every registered fact category.
+func Facts() []Fact {
+	listed := make([]Fact, len(facts))
+	copy(listed, facts)
+	return listed
+}
+
+// ByFact resolves a diagnostic category to its fact entry, when the
+// category is a computed fact rather than a rule.
+func ByFact(category string) (Fact, bool) {
+	for _, fact := range facts {
+		if fact.Category == category {
+			return fact, true
+		}
+	}
+	return Fact{}, false
 }
 
 // CustomRules returns every registered custom-rule category.
@@ -281,8 +357,9 @@ func CustomRules() []CustomRule {
 	return listed
 }
 
-// ByCategory resolves a diagnostic category to its registry entry. Every
-// diagnostic a wave-1 analyzer emits must resolve here (constraint 1).
+// ByCategory resolves a diagnostic category to its rule entry. Every
+// diagnostic an analyzer emits must resolve here or in ByFact (constraint
+// 1).
 func ByCategory(category string) (CustomRule, bool) {
 	for _, rule := range customRules {
 		if rule.Category == category {
@@ -306,6 +383,39 @@ func Analyzers() []*analysis.Analyzer {
 		listed = append(listed, byName[name])
 	}
 	return listed
+}
+
+// Finishers returns every registered finish function paired with its
+// analyzer, one per analyzer, sorted by analyzer name. Only the tiger CLI
+// calls them; the plugin and analysistest see Analyzers() alone.
+func Finishers() []finish.Finisher {
+	byName := map[string]finish.Finisher{}
+	for _, rule := range customRules {
+		if rule.Finish == nil {
+			continue
+		}
+		if _, seen := byName[rule.Analyzer.Name]; seen {
+			continue
+		}
+		byName[rule.Analyzer.Name] = finish.Finisher{Analyzer: rule.Analyzer, Run: rule.Finish}
+	}
+	listed := make([]finish.Finisher, 0, len(byName))
+	for _, name := range slices.Sorted(maps.Keys(byName)) {
+		listed = append(listed, byName[name])
+	}
+	return listed
+}
+
+// WholeProgram reports whether the named analyzer registers a finish
+// function, so its corpus lives in the module layout the finish step can
+// run over.
+func WholeProgram(analyzerName string) bool {
+	for _, rule := range customRules {
+		if rule.Analyzer.Name == analyzerName && rule.Finish != nil {
+			return true
+		}
+	}
+	return false
 }
 
 // RuleIDs returns the distinct custom rule IDs, sorted. The corpus meta-test
