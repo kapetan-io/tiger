@@ -137,16 +137,75 @@ hand you a function that loops forever on hostile input. Somebody has to hold th
 and doing it by human review means re-arguing the same points on every pull request.</p>
 
 <p>Tiger holds the line mechanically. It restricts Go the way TigerStyle and NASA's
-Power of Ten rules restrict C for mission-critical software. Every loop provably ends.
-Every error is handled or its discard is justified. Every goroutine has a shutdown path.
-An AI-written change either conforms, or <code>tiger check</code> fails the build with
-findings the agent must fix. The cheapest path to a green build is the compliant rewrite,
-so that is the path the agent takes.</p>
+Power of Ten rules restrict C for mission-critical software. Those rules earned their
+place the hard way. NASA's list bans recursion, demands a fixed upper bound on every
+loop, and requires every return value checked, because flight software that spins
+forever or ignores an error does not get a second deploy. TigerBeetle's TigerStyle
+carries the same discipline into a modern database, with assertions running in
+production and an explicit limit on everything that can grow.</p>
+
+<p>Both traditions rest on one insight. A rule a machine cannot check is a suggestion,
+and suggestions decay under deadline pressure. So tiger encodes the discipline as
+enforced rules, one analyzer per rule, and the lineage is direct.</p>
+
+<ul>
+  <li>Power of Ten bans goto and recursion. Tiger enforces both, <code>TS-S09</code>
+  and <code>TS-S01</code>, and the recursion check covers cycles anywhere in the
+  static call graph, not just a function calling itself.</li>
+  <li>Power of Ten demands a fixed bound on every loop. <code>TS-S02</code> proves the
+  bound, and a loop that is legitimately unbounded needs a verified variant instead,
+  a value <code>TS-V01</code> confirms shrinks toward an exit on every iteration.</li>
+  <li>Power of Ten demands every return value checked. Under <code>TS-E02</code>,
+  discarding a result without a written justification is a red build.</li>
+  <li>TigerStyle demands assertions in production, not just in tests. Tiger goes
+  further. Every named invariant must be asserted in production code
+  (<code>TS-A07</code>) and must have a test that violates it (<code>TS-A09</code>),
+  so the assertion is proven to actually fire.</li>
+  <li>TigerStyle demands explicit limits. Tiger makes each limit constant state its
+  derivation (<code>TS-S22</code>) and relate to the limits it must fit inside
+  (<code>TS-S21</code>), enforced with compile-time guards that break when someone
+  bends a number.</li>
+</ul>
+
+<p>Then tiger extends the discipline to hazards C never had. Every goroutine starts
+through a supervisor with a shutdown path (<code>TS-C02</code>), every blocking send
+or receive can be cancelled (<code>TS-C05</code>), and map iteration order never
+leaks into an output (<code>TS-T02</code>).</p>
+
+<p>The reason to do this now is who writes the code. Power of Ten held because JPL
+reviewers enforced it, and TigerStyle holds because TigerBeetle's team lives it. That
+kind of culture does not transfer to an AI agent that never sat in your design
+reviews. A checker transfers perfectly. An AI-written change either conforms, or
+<code>tiger check</code> fails the build with findings the agent must fix. The
+cheapest path to a green build is the compliant rewrite, so that is the path the
+agent takes.</p>
 
 <p>The second job is change detection. You can freeze a fact about your code (this
 function does no network IO, this loop ends because this value shrinks) into a comment
 called a pin. From then on, a change that silently breaks the promise fails the build.
-An agent cannot drift your assertions and claims without you seeing it in review.</p>
+An agent cannot drift a pinned fact without you seeing it in review.</p>
+
+<h3>What it buys</h3>
+
+<ul>
+  <li><strong>Failures you can reproduce.</strong> Time and randomness are injected,
+  never called in place. <code>TS-T01</code> bans <code>time.Now</code> outright, with
+  the finding telling you to inject a clock so the code can be replayed. A failure you
+  can reproduce on demand is a bug, one you cannot is a rumour, and a bug found once
+  stays found.</li>
+  <li><strong>Detection moved up the ladder.</strong> A compile error beats an
+  assertion, an assertion beats a test, a test beats production. Limit constants carry
+  compile-time guards that break when a number bends (<code>TS-S21</code>,
+  <code>TS-S22</code>), and a declared effect set catches a <code>time.Now()</code>
+  three call frames down, which a package-level import ban never sees.</li>
+  <li><strong>Whole-program properties, not local ones.</strong> An effect is
+  transitive by construction, so it cannot be laundered through an indirection.
+  Pinning a function as doing no IO is a claim about everything beneath it, checked at
+  every call edge, across package boundaries.</li>
+  <li><strong>One gate for generated and hand-written code.</strong> Trust attaches to
+  what the code provably satisfies, not to who or what produced it. This matters more
+  each month.</li>
+</ul>
 
 <h3>What it caught before you met it</h3>
 
@@ -195,6 +254,15 @@ Every tiger rule is exact within its stated scope, and every finding is a verdic
 opinion. If tiger prints a finding, the build is red and the finding names the edit that
 fixes it. If tiger is wrong, that is a bug in tiger, you file it, and the fix lands with
 a regression test. Warnings about <em>possible</em> issues remain golangci-lint's job.</p>
+
+<p>The dialect's restrictions are chosen for decidability, not taste. Each one exists
+to make some analysis possible. A bounded loop makes termination checkable, a
+supervised goroutine makes shutdown traceable, and a package that declares
+<code>no-reflect</code> or <code>closed-dispatch</code> in its restrictions shrinks
+the space the effect and frame analyzers must reason about. The restrictions compound.
+No single one is worth much on its own, and completing a chain of them turns an
+analysis that is intractable on ordinary Go into a cheap one tiger runs on every
+commit.</p>
 
 <div class="boundary">
   <div class="cap">What you touch</div>
@@ -342,6 +410,39 @@ path to green will take it, so the only paths are the compliant rewrite or a cou
 human-reviewed escape.</p>
 
 <!-- ============================================================= -->
+<h2 id="review">How review divides</h2>
+
+<p>Once the declarations exist, review splits into two jobs that get different
+treatment.</p>
+
+<div class="grid2">
+  <div class="card">
+    <h4>Machines check the correspondence</h4>
+    <p class="muted">Does the code satisfy the invariant it names, stay inside its
+    pinned frame, terminate, cover every case, match its declared effect set, respect
+    its package restrictions. All of it mechanical, all of it on every commit.</p>
+  </div>
+  <div class="card">
+    <h4>Humans and AI review the declarations</h4>
+    <p class="muted">Is this the invariant the protocol actually needs. Should this
+    function be permitted to touch the disk at all. Is this limit true of the hardware
+    you deploy on. Questions no analyzer can answer, and the only ones left.</p>
+  </div>
+</div>
+
+<p>The declarations are a layer, not a region. They cut across every file, so there is
+no "reviewed part" of the tree and no boundary to erode. Which checks apply to a
+function follows from its computed effect set, not from where someone filed it.</p>
+
+<p>The economics are the argument. Declarations run a few percent of your lines and
+change an order of magnitude less often than the code around them, so review attention
+concentrates where being wrong is most expensive. The policy that falls out is simple.
+A change that touches no declaration and passes CI is a candidate to merge without a
+human reading it. A change that touches a declaration goes to someone who knows the
+domain, and nothing else about it needs discussing, because everything else has
+already been checked.</p>
+
+<!-- ============================================================= -->
 <h2 id="adopt">What adoption actually looks like</h2>
 
 <p>Honest numbers, from the trials. The queue's first run produced 1,023 blocking
@@ -398,6 +499,12 @@ people learn to scroll past.</p>
 
 <p>Tiger also does not replace golangci-lint, it configures it. Style opinions,
 probable-bug heuristics, and the rest of the linting world stay where they are.</p>
+
+<p>And one limit is structural. Tiger can prove the code satisfies the declarations,
+nothing can prove the declarations match the world. Whether the invariant is the right
+one, whether the limit is true of your hardware, whether this function should be
+allowed to touch the disk at all, those questions live outside the code. That is
+exactly why the declarations are the part humans still review.</p>
 
 <!-- ============================================================= -->
 <h2 id="next">Where to go next</h2>
