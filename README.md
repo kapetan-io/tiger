@@ -6,8 +6,18 @@ restricted so that **the specification lives in the source and a machine checks
 the code against it**. Declarations are reviewed by humans; code is checked by
 the `tiger` analyzer, deterministically, with no LLM and no network.
 
-The specification (145 rules, Parts I–V, IDs `TS-*`) currently lives in the
-design vault and governs everything in this repository.
+## Documentation
+
+- [Tiger Explainer](docs/Tiger%20Explainer.html) — start here if you are new:
+  what tiger is for, the real bugs it caught in trials, and the concepts
+  (verdicts, budgets, directives, pins) taught from scratch.
+- [Tiger Rule Reference](docs/Tiger%20Rule%20Reference.md) — one entry per
+  enforced rule: what it requires and why, a firing example, the compliant
+  rewrite, severity, and directive interactions. A doc meta-test in
+  `internal/rules` keeps it in lockstep with the registry.
+- [Tiger Specification](docs/Tiger%20Specification.md) — the normative
+  document (Parts I–V, IDs `TS-*`) that governs everything in this
+  repository.
 
 ## The tiger tool
 

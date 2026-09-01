@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tiger — Explainer</title>
+<style>
+  /* ── Design tokens — canonical source: docs/design.md ───────────────── */
+  :root {
+    --bg: #0d1117;          /* page canvas              (colors.background)    */
+    --panel: #161b22;       /* cards, callouts          (colors.surface)       */
+    --panel-2: #1c2230;     /* raised: table headers    (colors.surfaceRaised) */
+    --border: #30363d;      /* hairline borders         (colors.border)        */
+    --text: #e6edf3;        /* body text                (colors.onBackground)  */
+    --muted: #9da7b3;       /* supporting text          (colors.onBackgroundMuted) */
+    --accent: #58a6ff;      /* links, emphasis (blue)   (colors.primary)       */
+    --accent-2: #7ee787;    /* headings, CLI (green)    (colors.secondary)     */
+    --warn: #f0883e;        /* caution                  (colors.warning)       */
+    --danger: #ff7b72;      /* danger                   (colors.error)         */
+    --code-bg: #0b0f14;     /* code surface             (colors.codeSurface)   */
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    font-size: 16px;
+    line-height: 1.65;
+  }
+  /* Single centred reading column — NO sidebar. */
+  .layout { max-width: 880px; margin: 0 auto; }
+  main { padding: 3rem 2rem 6rem; }
+  h1 { font-size: 2.1rem; line-height: 1.2; margin: 0 0 .4rem; }
+  h2 { font-size: 1.5rem; margin: 3rem 0 1rem; padding-bottom: .4rem; border-bottom: 1px solid var(--border); }
+  h3 { font-size: 1.18rem; margin: 2rem 0 .6rem; color: var(--accent-2); }
+  h4 { font-size: 1rem; margin: 1.4rem 0 .4rem; color: var(--text); }
+  p, li { color: var(--text); }
+  a { color: var(--accent); }
+  code {
+    font-family: var(--mono); font-size: .86em;
+    background: var(--code-bg); border: 1px solid var(--border);
+    border-radius: 5px; padding: .1em .4em;
+  }
+  pre {
+    background: var(--code-bg); border: 1px solid var(--border);
+    border-radius: 8px; padding: 1rem 1.1rem; overflow-x: auto;
+    font-size: .85rem; line-height: 1.55;
+  }
+  pre code { background: none; border: none; padding: 0; font-size: inherit; }
+  .lead {
+    font-size: 1.15rem; color: var(--muted);
+    border-left: 3px solid var(--accent); padding-left: 1rem; margin: 1.5rem 0 2rem;
+  }
+  table { width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: .9rem; }
+  th, td { text-align: left; padding: .55rem .7rem; border: 1px solid var(--border); vertical-align: top; }
+  th { background: var(--panel-2); color: var(--text); font-weight: 600; }
+  tr:nth-child(even) td { background: rgba(255,255,255,.015); }
+  /* Callouts — tip / warn / danger encode intent via left border + eyebrow colour */
+  .callout { border-radius: 8px; padding: .9rem 1.1rem; margin: 1.2rem 0; border: 1px solid var(--border); background: var(--panel); }
+  .callout.tip    { border-left: 4px solid var(--accent-2); }
+  .callout.warn   { border-left: 4px solid var(--warn); }
+  .callout.danger { border-left: 4px solid var(--danger); }
+  .callout .label { font-weight: 700; font-size: .72rem; letter-spacing: .1em; text-transform: uppercase; display: block; margin-bottom: .3rem; }
+  .callout.tip .label    { color: var(--accent-2); }
+  .callout.warn .label   { color: var(--warn); }
+  .callout.danger .label { color: var(--danger); }
+  /* Pills / tags */
+  .pill { display: inline-block; font-size: .68rem; letter-spacing: .06em; text-transform: uppercase; font-weight: 700; padding: .12rem .55rem; border-radius: 999px; border: 1px solid var(--border); color: var(--muted); vertical-align: middle; }
+  /* Tinted pill variants — duplicate this pattern with your own accent + 55/12 alpha suffixes */
+  .pill.a { color: var(--accent);   border-color: #58a6ff55; background:#58a6ff12; }
+  .pill.b { color: var(--accent-2); border-color: #7ee78755; background:#7ee78712; }
+  .pill.c { color: #b48ead;         border-color: #b48ead55; background:#b48ead12; }
+  /* Numbered layer/step diagram */
+  .layers { margin: 1.5rem 0; }
+  .layer { display: flex; align-items: stretch; border: 1px solid var(--border); border-radius: 8px; margin-bottom: .6rem; overflow: hidden; background: var(--panel); }
+  .layer .num { flex: 0 0 56px; display: flex; align-items: center; justify-content: center; font-size: 1.4rem; font-weight: 700; background: var(--panel-2); color: var(--accent); }
+  .layer .body { padding: .7rem 1rem; flex: 1; }
+  .layer .body .t { font-weight: 600; }
+  .layer .body .d { color: var(--muted); font-size: .9rem; }
+  .layer .owner { flex: 0 0 130px; display:flex; align-items:center; justify-content:center; font-size: .72rem; text-align:center; border-left: 1px solid var(--border); }
+  /* Card grid */
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+  .card { border: 1px solid var(--border); border-radius: 8px; padding: 1rem 1.1rem; background: var(--panel); }
+  .card h4 { margin-top: 0; }
+  .muted { color: var(--muted); }
+  .cmd { color: var(--accent-2); }   /* CLI/command text inside <pre> */
+  hr { border: none; border-top: 1px solid var(--border); margin: 2.5rem 0; }
+  footer { color: var(--muted); font-size: .85rem; margin-top: 4rem; border-top: 1px solid var(--border); padding-top: 1.2rem; }
+  @media (max-width: 900px) {
+    main { padding: 2rem 1.2rem 4rem; }
+    .grid2 { grid-template-columns: 1fr; }
+  }
+  /* ── Explainer diagrams ─────────────────────────────────────────────── */
+  /* Flow: boxes joined by arrows. Add .vert for top-to-bottom. */
+  .flow { display: flex; align-items: stretch; gap: 0; flex-wrap: wrap; margin: 1.5rem 0; }
+  .flow.vert { flex-direction: column; align-items: flex-start; }
+  .flow .node {
+    border: 1px solid var(--border); border-radius: 8px; background: var(--panel);
+    padding: .7rem 1rem; min-width: 120px; text-align: center;
+  }
+  .flow .node .t { font-weight: 600; font-size: .95rem; }
+  .flow .node .d { color: var(--muted); font-size: .82rem; }
+  .flow .node.surface { border-color: #58a6ff55; background: #58a6ff12; }  /* caller-facing */
+  .flow .node.inside  { border-color: var(--border); background: var(--panel-2); }  /* internal */
+  .flow .arrow { display: flex; align-items: center; justify-content: center; padding: 0 .7rem; color: var(--accent); font-size: 1.3rem; }
+  .flow.vert .arrow { padding: .35rem 0 .35rem 2.2rem; }
+  .flow .arrow .lbl { color: var(--muted); font-size: .72rem; margin-left: .35rem; }
+
+  /* Boundary: the surface (highlighted) wrapping the internals (dimmed). */
+  .boundary { border: 1px solid #58a6ff55; border-radius: 10px; background: #58a6ff0a; padding: 1rem; margin: 1.5rem 0; }
+  .boundary > .cap { font-size: .72rem; letter-spacing: .08em; text-transform: uppercase; color: var(--accent); font-weight: 700; margin-bottom: .6rem; }
+  .boundary .inner { border: 1px dashed var(--border); border-radius: 8px; background: var(--panel); padding: .9rem; }
+  .boundary .inner > .cap { font-size: .72rem; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); font-weight: 700; margin-bottom: .5rem; }
+</style>
+</head>
+<body>
+<div class="layout">
+<main>
+
+<h1>Tiger, explained</h1>
+<p class="lead">
+  Tiger defines a restricted dialect of Go and checks that your code stays inside it.
+  You run one command and get a verdict. The code conforms, or you get a list of exact
+  edits to make. No warnings, no judgment calls, nothing to argue about in review.
+</p>
+
+<p><span class="pill a">tiger check</span> <span class="pill b">binary verdict</span> <span class="pill c">change detection</span></p>
+
+<!-- ============================================================= -->
+<h2 id="why">Why this tool exists</h2>
+
+<p>AI agents write more and more of our code. An agent is fast, tireless, and happy to
+hand you a function that loops forever on hostile input. Somebody has to hold the line,
+and doing it by human review means re-arguing the same points on every pull request.</p>
+
+<p>Tiger holds the line mechanically. It restricts Go the way TigerStyle and NASA's
+Power of Ten rules restrict C for mission-critical software. Every loop provably ends.
+Every error is handled or its discard is justified. Every goroutine has a shutdown path.
+An AI-written change either conforms, or <code>tiger check</code> fails the build with
+findings the agent must fix. The cheapest path to a green build is the compliant rewrite,
+so that is the path the agent takes.</p>
+
+<p>The second job is change detection. You can freeze a fact about your code (this
+function does no network IO, this loop ends because this value shrinks) into a comment
+called a pin. From then on, a change that silently breaks the promise fails the build.
+An agent cannot drift your assertions and claims without you seeing it in review.</p>
+
+<h3>What it caught before you met it</h3>
+
+<p>Tiger was trialed on two real codebases before its rules settled. A distributed queue
+(about 42,000 lines of hand-written Go) and a git server (about 17,000). The rules found
+ten real bugs between them. The worst one was remotely triggerable, a denial of service
+in the git server. A client could push two tags whose headers point at each other, then
+ask the server to resolve one. The resolving loop had no depth cap and no cycle check, so
+one request would spin a goroutine at 100% CPU forever. The loop-bound rule flagged it
+as an unbounded loop, which is exactly what it was.</p>
+
+<table>
+  <thead><tr><th>Rule</th><th>Real bugs found</th></tr></thead>
+  <tbody>
+    <tr><td><code>TS-S02</code> every loop has an upper bound</td><td>5, including the DoS and a pause/shutdown deadlock</td></tr>
+    <tr><td><code>TS-S08</code> a switch over a fixed set handles every case</td><td>3, all silently dropping data on unexpected values</td></tr>
+    <tr><td><code>TS-C05</code> blocking waits are cancellable</td><td>1, client waits that could never be cancelled</td></tr>
+    <tr><td><code>TS-C02</code> goroutines start through a supervisor</td><td>1, shutdown returning before its goroutines exited</td></tr>
+    <tr><td><code>TS-E02</code> discarding a result needs a justification</td><td>1, a discarded validation error set to corrupt IDs later</td></tr>
+  </tbody>
+</table>
+
+<p>Every one of these passed the race detector, the test suite, and human review before
+tiger saw the code. And in both trials, a false positive on a blocking rule was treated
+as a bug in tiger. It got fixed in the analyzer with a regression test, never suppressed
+in the target code. Zero suppressions across both trials.</p>
+
+<!-- ============================================================= -->
+<h2 id="linter">What a linter is, and why tiger is not one</h2>
+
+<p>If you have never used a static-analysis tool, here is the whole idea. A program can
+read your source code without running it. Not as text (that would miss too much) but as
+the same structure the compiler builds, a tree where a loop is a loop node and a function
+call is a call node, whatever the whitespace looks like. Compiler folks call this tree an
+AST, short for abstract syntax tree. A tool that walks this tree can answer questions
+like "does this loop's condition ever change?" precisely, the way a text search never
+could.</p>
+
+<p>A <strong>linter</strong> is such a tool that looks for <em>likely</em> problems and
+prints warnings. Warnings pile up, people learn to ignore them, and every team ends up
+arguing about which ones matter. golangci-lint, the standard Go linter runner, is good at
+this job, and tiger leans on it for the rules it already enforces well.</p>
+
+<p>Tiger itself does something narrower and harder. It checks membership in a dialect.
+Every tiger rule is exact within its stated scope, and every finding is a verdict, not an
+opinion. If tiger prints a finding, the build is red and the finding names the edit that
+fixes it. If tiger is wrong, that is a bug in tiger, you file it, and the fix lands with
+a regression test. Warnings about <em>possible</em> issues remain golangci-lint's job.</p>
+
+<div class="boundary">
+  <div class="cap">What you touch</div>
+  <p class="muted">One command in CI and locally. Four subcommands total
+  (<code>check</code>, <code>budget</code>, <code>golangci</code>, <code>pin</code>).
+  Two committed YAML files. A handful of <code>//tiger:</code> comments in your source.</p>
+  <div class="inner">
+    <div class="cap">Inside (not your concern)</div>
+    <p class="muted">Thirty-plus analyzers walking your code's structure, computing what each
+    function does, what it writes, and why each loop ends, then comparing all of it
+    against the rules and your declarations.</p>
+  </div>
+</div>
+
+<!-- ============================================================= -->
+<h2 id="day">A day in Tiger Go</h2>
+
+<p>The whole workflow is four moves. Write code, read the verdict, fix or declare, and
+pin what matters.</p>
+
+<div class="flow">
+  <div class="node surface"><div class="t">You write code</div><div class="d">plain Go, no comments required</div></div>
+  <div class="arrow">→</div>
+  <div class="node surface"><div class="t">tiger check</div><div class="d">verdict, exit 0 or 1</div></div>
+  <div class="arrow">→</div>
+  <div class="node surface"><div class="t">You fix the findings</div><div class="d">each names its edit</div></div>
+  <div class="arrow">→</div>
+  <div class="node surface"><div class="t">You pin what matters</div><div class="d">drift now blocks</div></div>
+</div>
+
+<h3>1. Run the check</h3>
+
+<p>Say you write this. It compiles, it is idiomatic Go, and reviewers wave it through
+every day.</p>
+
+<pre><code>// Drain consumes entries until none remain.
+func Drain(entries &lt;-chan uint32) uint32 {
+    var total uint32
+    for entry := range entries {
+        total += entry
+    }
+    return total
+}</code></pre>
+
+<pre><code><span class="cmd">$ tiger check ./...</span>
+drain.go:6:2: TS-S02: this loop ranges over a channel, so it ends only when some other goroutine closes the channel — add a counter cap that fails when the cap is hit, or make it an event loop that selects on ctx.Done()
+tiger: 1 blocking</code></pre>
+
+<p>That is a real transcript. Notice what the finding line does. It names the rule
+(<code>TS-S02</code>), says what the code actually does, and names two concrete edits
+that fix it. You never need tiger vocabulary to act on a finding. When you want the
+reasoning behind a rule, you look its code up in the
+<a href="Tiger%20Rule%20Reference.md">rule reference</a>.</p>
+
+<p>A clean run prints nothing and exits 0. Output is a verdict, so silence is the good
+news, and two runs on the same code produce byte-identical output.</p>
+
+<h3>2. Pin what matters</h3>
+
+<p>While checking, tiger also computes facts about your functions. What effects they have
+(allocate, do IO, block, panic, read time or randomness, mutate, spawn), and what they
+write through their parameters. Facts are not findings. They print only when you ask.</p>
+
+<pre><code><span class="cmd">$ tiger check --show-facts ./...</span>
+header.go:34:1: TS-F01: EncodeHeader's effects are alloc — nothing to fix; to make tiger fail the build if they change, add //tiger:effects alloc</code></pre>
+
+<p>The fact prints as the exact comment you would paste. Freezing it is called
+<strong>pinning</strong>, and <code>tiger pin</code> writes the comment for you.</p>
+
+<pre><code><span class="cmd">$ tiger pin EncodeHeader</span>
+header.go:35: //tiger:effects alloc
+header.go:36: //tiger:frame none</code></pre>
+
+<p>A pin changes nothing at run time. It changes what CI enforces. Suppose someone (or
+some agent) later makes the pinned function block on a channel. The next check fails.</p>
+
+<pre><code>drain.go:5:1: TS-F01: this function blocks (channel receive at drain.go:8:2) but its //tiger:effects comment doesn't list block — add block to the comment, or remove that code</code></pre>
+
+<p>There are two honest exits. Change the code back, or change the pin. A pin edit is
+visible in the diff, so the reviewer rules on the new promise. A pin can never go stale,
+because a wrong pin is a failed check, not a lie in a comment.</p>
+
+<table>
+  <thead><tr><th>Condition</th><th>What tiger does</th><th>Merge</th></tr></thead>
+  <tbody>
+    <tr><td>No pin; the function's behavior changes</td><td>Nothing (the fact just has a new value)</td><td>Continues</td></tr>
+    <tr><td>Pin; pin and code agree</td><td>Silence</td><td>Continues</td></tr>
+    <tr><td>Pin; pin and code disagree</td><td>Blocking finding with the reason</td><td><strong>Stops</strong></td></tr>
+    <tr><td>You edit a pin</td><td>Nothing; the edit is visible in the diff</td><td>Continues, after review</td></tr>
+  </tbody>
+</table>
+
+<!-- ============================================================= -->
+<h2 id="concepts">The concepts, in order</h2>
+
+<h3>Rules and the two severities</h3>
+
+<p>Every rule has a code like <code>TS-S02</code> and exactly one of two severities.
+<strong>Blocking</strong> findings fail the run. <strong>Advisory</strong> findings are
+counted, not printed. There is no warning tier, on purpose. A rule either blocks or it
+is not a rule, so nothing tiger prints can be weighed and set aside.</p>
+
+<p>Advisory exists for exactly two standing facts of real code, an escape directive and
+a skipped test. Both are legitimate, both are worth bounding, so tiger counts them
+against a per-package budget instead of pretending they are errors.</p>
+
+<h3>The budget and the ratchet</h3>
+
+<p><code>tiger.budget.yaml</code> is a committed file with one number per package per
+advisory rule, the count that package is allowed to carry. Under budget, nothing prints.
+Over budget, the run fails and the counted findings print. <code>tiger budget --write</code>
+records current counts, and it can only <em>lower</em> numbers. Raising one is a hand
+edit that a reviewer sees in the diff. Debt shrinks automatically and grows only over
+somebody's signature. Tiger calls this the ratchet.</p>
+
+<h3>Directives</h3>
+
+<p>A directive is a <code>//tiger:</code> comment on the line above the thing it
+describes. The vocabulary is closed and a typo is a blocking finding, so a directive
+cannot silently do nothing. There are three kinds.</p>
+
+<div class="layers">
+  <div class="layer">
+    <div class="num">1</div>
+    <div class="body"><div class="t">Pins</div><div class="d">Freeze a computed fact into a contract. <code>//tiger:effects</code>, <code>//tiger:frame</code>, <code>//tiger:variant</code>. Optional, and written for you by <code>tiger pin</code>.</div></div>
+    <div class="owner"><span class="pill b">freeze</span></div>
+  </div>
+  <div class="layer">
+    <div class="num">2</div>
+    <div class="body"><div class="t">Intent declarations</div><div class="d">State something no analyzer can compute, and the code is held to the statement. <code>//tiger:restrict</code>, <code>//tiger:openenum</code>.</div></div>
+    <div class="owner"><span class="pill a">declare</span></div>
+  </div>
+  <div class="layer">
+    <div class="num">3</div>
+    <div class="body"><div class="t">Escape hatches</div><div class="d">Loosen one rule at one site, with a mandatory reason. There is exactly one, <code>//tiger:batched</code>, and every use is counted against the budget on every run.</div></div>
+    <div class="owner"><span class="pill c">counted</span></div>
+  </div>
+</div>
+
+<p>Why only one escape hatch? An escape is admitted only when reality, not convenience,
+demands it. Some external systems accept one item at a time, and no rewrite of your code
+changes that, so <code>//tiger:batched &lt;reason&gt;</code> exists. A general "ignore
+this rule here" directive does not exist and will not. An agent offered a comment-shaped
+path to green will take it, so the only paths are the compliant rewrite or a counted,
+human-reviewed escape.</p>
+
+<!-- ============================================================= -->
+<h2 id="adopt">What adoption actually looks like</h2>
+
+<p>Honest numbers, from the trials. The queue's first run produced 1,023 blocking
+findings. The git server's produced 712. That is what pointing a strict dialect at good,
+existing, hand-written Go looks like, and it is why adoption is a decision about a
+codebase's future, not an afternoon's chore. On a fresh codebase where the code is
+AI-written against the rules from day one, the count starts at zero and stays there.</p>
+
+<div class="layers">
+  <div class="layer">
+    <div class="num">1</div>
+    <div class="body"><div class="t">Wire up the auto rules</div><div class="d"><code>tiger golangci --init</code> generates the golangci-lint config for the rules tiger delegates. <code>tiger golangci</code> audits an existing config against that baseline.</div></div>
+    <div class="owner"><span class="pill a">one command</span></div>
+  </div>
+  <div class="layer">
+    <div class="num">2</div>
+    <div class="body"><div class="t">Run the check, fix what it finds</div><div class="d"><code>tiger check ./...</code>. Real bugs first (the trials found ten). For loops an external system forces on you, declare <code>//tiger:batched</code> with the reason.</div></div>
+    <div class="owner"><span class="pill b">the real work</span></div>
+  </div>
+  <div class="layer">
+    <div class="num">3</div>
+    <div class="body"><div class="t">Record the budgets</div><div class="d"><code>tiger budget --write</code> records each package's current advisory counts. Expect the first check to fail until this runs once; a package with findings and no budget row has a budget of zero.</div></div>
+    <div class="owner"><span class="pill a">one command</span></div>
+  </div>
+  <div class="layer">
+    <div class="num">4</div>
+    <div class="body"><div class="t">Pin as you go</div><div class="d"><code>tiger pin</code> on the functions whose behavior matters most. Sparse pins are fine, a pin covers everything the pinned function calls.</div></div>
+    <div class="owner"><span class="pill b">ongoing</span></div>
+  </div>
+</div>
+
+<p>The escape hatch earned its keep in the trials. The queue had 24 loops that drain a
+database cursor, a shape only the backing store bounds. Each got
+<code>//tiger:batched</code> with its reason. The loop-bound rule went from 37 findings
+to 11, every waiver became a counted, reviewable line in the budget, and the one real
+deadlock among those findings kept firing. That is the design working, silence for the
+declared facts of the world, noise for the bug.</p>
+
+<div class="callout warn"><span class="label">Plugin caveats</span>
+Tiger also runs inside golangci-lint as a plugin, but two things need the real CLI.
+Budgets (the plugin has no end-of-run step to count against them, so it reports every
+counted finding as an issue) and the three whole-program rules that need evidence from
+every package at once. Run <code>tiger check</code> in CI; use the plugin for editor
+integration.</div>
+
+<!-- ============================================================= -->
+<h2 id="wont">What tiger will not do</h2>
+
+<p>No warnings. No per-site suppression comments. No "informational" output on a normal
+run. If a rule's findings turned out to be noise on real code, the rule was removed from
+tiger entirely rather than demoted to a warning; three naming rules died exactly that
+way during the trials. A smaller set of rules people actually fix beats a large set
+people learn to scroll past.</p>
+
+<p>Tiger also does not replace golangci-lint, it configures it. Style opinions,
+probable-bug heuristics, and the rest of the linting world stay where they are.</p>
+
+<!-- ============================================================= -->
+<h2 id="next">Where to go next</h2>
+
+<p>When a finding names a rule you want the reasoning for, the
+<a href="Tiger%20Rule%20Reference.md">rule reference</a> has one entry per rule, with a
+firing example and the compliant rewrite. When you want the full normative detail, the
+<a href="Tiger%20Specification.md">specification</a> is the authority the reference is
+drawn from.</p>
+
+<footer>
+  Generated for ENG-154 from the tiger registry, the ENG-148 and ENG-159 trial reports,
+  and live <code>tiger check</code> transcripts against <code>examples/ledger</code>.
+</footer>
+
+</main>
+</div>
+</body>
+</html>
