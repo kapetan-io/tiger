@@ -1,9 +1,12 @@
 package rules_test
 
 import (
+	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -13,6 +16,8 @@ import (
 	"golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/analysis/analysistest"
 
+	"github.com/kapetan-io/tiger/internal/driver/drivertest"
+	"github.com/kapetan-io/tiger/internal/finish"
 	"github.com/kapetan-io/tiger/internal/rules"
 )
 
@@ -60,34 +65,137 @@ func testdataPath(t *testing.T, analyzerName string) string {
 	return absolute
 }
 
+// emitted is one diagnostic a corpus replay produced, in the shape both
+// replay paths share.
+type emitted struct {
+	category string
+	message  string
+}
+
+// bound is a diagnostic resolved through the registry: the analyzer and
+// rule ID its category binds to.
+type bound struct {
+	analyzer string
+	ruleID   string
+	message  string
+}
+
+// replay runs an analyzer's whole corpus through the driver its layout
+// needs: analysistest over testdata/src for a per-package rule, the tiger
+// driver's finish step over testdata/module for a whole-program rule
+// (ADR-0010). Either way every emitted diagnostic comes back for the
+// registry and style checks.
+func replay(t *testing.T, analyzer *analysis.Analyzer, dirs []string) []emitted {
+	t.Helper()
+	collected := []emitted{}
+	if rules.WholeProgram(analyzer.Name) {
+		var finisher finish.Finisher
+		for _, candidate := range rules.Finishers() {
+			if candidate.Analyzer == analyzer {
+				finisher = candidate
+			}
+		}
+		require.NotNil(t, finisher.Run)
+		root := filepath.Join(testdataPath(t, analyzer.Name), "module")
+		for _, finding := range drivertest.Run(quietRun{}, root, finisher) {
+			collected = append(collected, emitted{
+				category: finding.Category, message: finding.Message,
+			})
+		}
+		return collected
+	}
+	results := analysistest.Run(quietRun{}, testdataPath(t, analyzer.Name), analyzer, dirs...)
+	for _, result := range results {
+		for _, diagnostic := range result.Diagnostics {
+			collected = append(collected, emitted{
+				category: diagnostic.Category, message: diagnostic.Message,
+			})
+		}
+	}
+	return collected
+}
+
+// resolve maps an emitted diagnostic to the analyzer and rule ID the
+// registry binds its category to, through the rules table or the facts
+// table.
+func resolve(diagnostic emitted) (bound, bool) {
+	if rule, known := rules.ByCategory(diagnostic.category); known {
+		return bound{
+			analyzer: rule.Analyzer.Name, ruleID: rule.RuleID, message: diagnostic.message,
+		}, true
+	}
+	if fact, known := rules.ByFact(diagnostic.category); known {
+		return bound{
+			analyzer: fact.Analyzer.Name, ruleID: fact.RuleID, message: diagnostic.message,
+		}, true
+	}
+	return bound{}, false
+}
+
+// corpusFiles lists the source files a corpus is judged by: the rule-id
+// directory for a per-package rule, every Go file in the module for a
+// whole-program rule.
+func corpusFiles(t *testing.T, corpus corpusFor) map[string]string {
+	t.Helper()
+	files := map[string]string{}
+	if rules.WholeProgram(corpus.analyzerName) {
+		root := filepath.Join(testdataPath(t, corpus.analyzerName), "module")
+		err := filepath.WalkDir(root, func(path string, entry os.DirEntry, walkErr error) error {
+			if walkErr != nil || entry.IsDir() || !strings.HasSuffix(path, ".go") {
+				return walkErr
+			}
+			files[entry.Name()] = readCorpusFile(t, path)
+			return nil
+		})
+		require.NoError(t, err)
+		return files
+	}
+	root := filepath.Join(testdataPath(t, corpus.analyzerName), "src", corpus.dir)
+	entries, err := os.ReadDir(root)
+	require.NoError(t, err)
+	for _, entry := range entries {
+		files[entry.Name()] = readCorpusFile(t, filepath.Join(root, entry.Name()))
+	}
+	return files
+}
+
 // TestEveryRegisteredRuleHasCorpus enforces correctness constraint 3
 // mechanically: every registered analyzer has, per rule it enforces, a
 // failure-mode case that fires and a compliant rewrite that stays silent.
-// Known misses are optional but must be marked when present.
+// Known misses are optional but must be marked when present. A
+// whole-program rule's corpus is a module under testdata/module instead of
+// a rule-id directory under testdata/src; the file-name convention is the
+// same.
 //
 // Goal: a rule cannot be registered without its executable specification —
 // an analyzer without its corpus does not merge.
 func TestEveryRegisteredRuleHasCorpus(t *testing.T) {
 	for _, corpus := range corpora(t) {
 		t.Run(corpus.analyzerName+"/"+corpus.dir, func(t *testing.T) {
-			root := filepath.Join(testdataPath(t, corpus.analyzerName), "src", corpus.dir)
-			entries, err := os.ReadDir(root)
-			require.NoError(t, err)
-
-			failures, compliants := 0, 0
-			for _, entry := range entries {
-				name := entry.Name()
-				source := readCorpusFile(t, filepath.Join(root, name))
+			// In the module layout the finding lands on the declaration
+			// (the invariant const, the interface), which may sit in a
+			// different package from the failure-shaped code that leaves it
+			// undefended; the module as a whole must carry the expectation.
+			wholeProgram := rules.WholeProgram(corpus.analyzerName)
+			failures, compliants, wants := 0, 0, 0
+			files := corpusFiles(t, corpus)
+			for _, name := range slices.Sorted(maps.Keys(files)) {
+				source := files[name]
+				if strings.Contains(source, "want") {
+					wants++
+				}
 				switch {
 				case strings.HasPrefix(name, "failure"):
 					failures++
-					assert.Contains(
-						t,
-						source,
-						"want",
-						"failure case %s must assert a firing diagnostic",
-						name,
-					)
+					if !wholeProgram {
+						assert.Contains(
+							t,
+							source,
+							"want",
+							"failure case %s must assert a firing diagnostic",
+							name,
+						)
+					}
 				case strings.HasPrefix(name, "compliant"):
 					compliants++
 				case strings.HasPrefix(name, "knownmiss"):
@@ -109,17 +217,20 @@ func TestEveryRegisteredRuleHasCorpus(t *testing.T) {
 				"rule %s needs a compliant rewrite that stays silent",
 				corpus.ruleID,
 			)
+			assert.Positive(t, wants, "rule %s's corpus asserts no firing diagnostic",
+				corpus.ruleID)
 		})
 	}
 }
 
 // TestEveryCorpusDiagnosticResolvesInRegistry enforces correctness
 // constraint 1: no orphan diagnostics. It replays every corpus through the
-// analysistest driver and checks each emitted diagnostic against the
+// driver its layout needs and checks each emitted diagnostic against the
 // registry.
 //
 // Goal: every diagnostic carries a category registered to the analyzer that
-// emitted it, and its message leads with the registered rule ID.
+// emitted it — as a rule or as a fact — and its message leads with the
+// registered rule ID.
 func TestEveryCorpusDiagnosticResolvesInRegistry(t *testing.T) {
 	byAnalyzer := map[string][]corpusFor{}
 	for _, corpus := range corpora(t) {
@@ -133,24 +244,16 @@ func TestEveryCorpusDiagnosticResolvesInRegistry(t *testing.T) {
 			for _, corpus := range owned {
 				dirs = append(dirs, corpus.dir)
 			}
-			results := analysistest.Run(
-				quietRun{},
-				testdataPath(t, analyzer.Name),
-				analyzer,
-				dirs...)
-			emitted := 0
-			for _, result := range results {
-				for _, diagnostic := range result.Diagnostics {
-					emitted++
-					entry, known := rules.ByCategory(diagnostic.Category)
-					require.True(t, known,
-						"diagnostic category %q is not in the registry", diagnostic.Category)
-					assert.Equal(t, analyzer.Name, entry.Analyzer.Name)
-					assert.True(t, strings.HasPrefix(diagnostic.Message, entry.RuleID+":"),
-						"message %q must lead with %s:", diagnostic.Message, entry.RuleID)
-				}
+			replayed := replay(t, analyzer, dirs)
+			for _, diagnostic := range replayed {
+				resolved, known := resolve(diagnostic)
+				require.True(t, known,
+					"diagnostic category %q is not in the registry", diagnostic.category)
+				assert.Equal(t, analyzer.Name, resolved.analyzer)
+				assert.True(t, strings.HasPrefix(resolved.message, resolved.ruleID+":"),
+					"message %q must lead with %s:", resolved.message, resolved.ruleID)
 			}
-			assert.Positive(t, emitted, "analyzer %s's corpus fired nothing", analyzer.Name)
+			assert.NotEmpty(t, replayed, "analyzer %s's corpus fired nothing", analyzer.Name)
 		})
 	}
 }
@@ -186,6 +289,52 @@ func TestRegistryIsCoherent(t *testing.T) {
 	}
 	assert.Len(t, names, len(referenced))
 	assert.IsIncreasing(t, names)
+
+	// A whole-program rule's finish function is one per analyzer: every
+	// entry of that analyzer that sets Finish sets the same one.
+	finishOf := map[string]string{}
+	for _, rule := range rules.CustomRules() {
+		if rule.Finish == nil {
+			continue
+		}
+		name := rule.Analyzer.Name
+		id := fmt.Sprintf("%p", rule.Finish)
+		if seen, found := finishOf[name]; found {
+			assert.Equal(t, seen, id, "analyzer %s registers two finish functions", name)
+		}
+		finishOf[name] = id
+	}
+	assert.Len(t, rules.Finishers(), len(finishOf))
+}
+
+// TestFactsTableIsCoherent checks the computed-facts channel against the
+// rules table.
+//
+// Goal: a fact category is never also a rule category (ADR-0012: facts
+// are not rules and carry no severity), every fact's analyzer is
+// registered, and its RuleID names a registered rule whose pin it feeds.
+func TestFactsTableIsCoherent(t *testing.T) {
+	ruleIDs := map[string]bool{}
+	for _, id := range rules.RuleIDs() {
+		ruleIDs[id] = true
+	}
+	analyzers := map[string]bool{}
+	for _, analyzer := range rules.Analyzers() {
+		analyzers[analyzer.Name] = true
+	}
+	categories := map[string]bool{}
+	for _, fact := range rules.Facts() {
+		_, isRule := rules.ByCategory(fact.Category)
+		assert.False(t, isRule, "fact category %s is also a rule", fact.Category)
+		assert.False(t, categories[fact.Category], "fact %s registered twice", fact.Category)
+		categories[fact.Category] = true
+		assert.True(t, strings.HasSuffix(fact.Category, "-facts"),
+			"fact category %s must end in -facts", fact.Category)
+		assert.True(t, ruleIDs[fact.RuleID], "fact %s feeds unregistered rule %s",
+			fact.Category, fact.RuleID)
+		assert.True(t, analyzers[fact.Analyzer.Name])
+		assert.NotEmpty(t, fact.Title)
+	}
 }
 
 // bannedWords is the vocabulary a message body may not use: tiger-internal
@@ -205,7 +354,8 @@ const (
 
 var (
 	ruleCodePattern = regexp.MustCompile(`TS-[A-Z]+[0-9]+`)
-	directiveVerbs  = regexp.MustCompile(`\b(effects|frame|variant|requires|ensures|batched)\b`)
+	directiveVerbs  = regexp.MustCompile(
+		`\b(effects|frame|variant|requires|ensures|batched|restrict)\b`)
 )
 
 // bannedPattern matches word as a whole word, case-insensitively.
@@ -214,11 +364,11 @@ func bannedPattern(word string) *regexp.Regexp {
 }
 
 // checkStyle applies invariants I1–I6 of the diagnostic style guide to one
-// diagnostic against the registry entry it resolved to, naming the
+// diagnostic against the analyzer and rule it resolved to, naming the
 // analyzer, the message, and the invariant in every failure.
-func checkStyle(t *testing.T, entry rules.CustomRule, diagnostic analysis.Diagnostic) {
+func checkStyle(t *testing.T, resolved bound) {
 	t.Helper()
-	analyzerName, ruleID, message := entry.Analyzer.Name, entry.RuleID, diagnostic.Message
+	analyzerName, ruleID, message := resolved.analyzer, resolved.ruleID, resolved.message
 	body, found := strings.CutPrefix(message, ruleID+": ")
 	require.True(t, found, "I1: %s: %q must lead with %s: ", analyzerName, message, ruleID)
 	assert.NotRegexp(t, ruleCodePattern, body,
@@ -257,14 +407,10 @@ func TestEveryCorpusMessageFollowsTheStyleGuide(t *testing.T) {
 			for _, corpus := range byAnalyzer[analyzer.Name] {
 				dirs = append(dirs, corpus.dir)
 			}
-			results := analysistest.Run(
-				quietRun{}, testdataPath(t, analyzer.Name), analyzer, dirs...)
-			for _, result := range results {
-				for _, diagnostic := range result.Diagnostics {
-					entry, known := rules.ByCategory(diagnostic.Category)
-					require.True(t, known)
-					checkStyle(t, entry, diagnostic)
-				}
+			for _, diagnostic := range replay(t, analyzer, dirs) {
+				resolved, known := resolve(diagnostic)
+				require.True(t, known)
+				checkStyle(t, resolved)
 			}
 		})
 	}

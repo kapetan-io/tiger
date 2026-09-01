@@ -59,9 +59,12 @@ rule's findings are absent, and the plugin documentation names the three rule co
 ## Core Design Principles
 
 1. **Exact rules only.** Every finding in this wave names a concrete edit and is decidable from
-   syntax, types, and SSA. Nothing here enters the ADR-0006 advisory trial. All five rules
-   register blocking except the TS-P02 precision bound, which is reported (a number, not a
-   finding).
+   syntax, types, and SSA. Nothing here enters the ADR-0006 advisory trial. All five rules and
+   all six categories register blocking — including TS-P02, which a mid-build ruling (ADR-0012)
+   moved from a reported number to a contract violation: a package that claims an axis its
+   dependencies do not support fails until it declares the axis on the dependency or drops the
+   claim. The same ruling removed the reported severity tier from the registry entirely; computed
+   facts (effect sets, frames, variants) are now a separate non-rule table.
 2. **Absence of a declaration is never a finding.** A package with no `//tiger:restrict` makes
    no claim: `restrictions` checks nothing in it, `closedworld` is silent in it. Mirrors the pin
    model one level up (TS-P01).
@@ -130,9 +133,10 @@ constraint 1.
 4. A fixture package declaring `closed-dispatch` with an interface method call whose receiver is
    a parameter exits 1 with TS-K03 at the call; the same call after the receiver is built from a
    single concrete value in the same function exits 0.
-5. `tiger check --show-facts` prints one TS-P02 line per (package, weakened axis) — a package
-   weakened on two axes by two different dependencies prints two lines — each naming the
-   weakest transitive dependency on that axis; a second run prints identical bytes.
+5. `tiger check` on a package weakened on two axes by two different dependencies exits 1 with
+   one TS-P02 finding per (package, weakened axis) — two lines — each naming the first transitive
+   dependency that weakens that axis and the edit that fixes it; a second run prints identical
+   bytes.
 6. `TestEveryRegisteredRuleHasCorpus` and `TestEveryCorpusMessageFollowsTheStyleGuide` pass with
    the five new analyzers registered; the corpus for each whole-program rule runs through the
    finish step, not `analysistest` alone.
@@ -151,8 +155,11 @@ constraint 1.
 
 ### In Scope
 
-- Analyzers `invariantrefs` (TS-A07), `invariantnegative` (TS-A09), `restrictions` (TS-P01
-  blocking, TS-P02 reported), `closedworld` (TS-K03), `singleimpl` (TS-X01), each with a corpus.
+- Analyzers `invariantrefs` (TS-A07), `invariantnegative` (TS-A09), `restrictions` (TS-P01,
+  TS-P02), `closedworld` (TS-K03), `singleimpl` (TS-X01), each with a corpus, all blocking.
+- Removal of the reported severity tier (ADR-0012): the registry keeps blocking and advisory;
+  computed facts move to `rules.Facts`, still printed under `--show-facts` and still fed to
+  `tiger pin`.
 - The finish step in `internal/driver`, its registry field, its corpus harness, and its
   determinism and panic-containment tests.
 - The `restrict` argument grammar in `internal/directive`, with malformed arguments reported as
@@ -160,6 +167,8 @@ constraint 1.
 - Two-package plugin smoke fixture and CI assertions.
 - Plugin and CLI documentation naming the CLI-only rule codes.
 - ADR-0010: the finish step as a driver-side extension (written with this blueprint).
+- ADR-0012: a rule either blocks or does not exist (written during the build, from the ruling
+  that moved TS-P02 to blocking and removed the reported tier).
 - Specification amendments: TS-A07 threshold (one production function, not two), TS-X01 test-double
   definition, TS-P01 grammar, the "CLI-only" enforcement note on the three whole-program rules.
 
@@ -228,17 +237,20 @@ the axes and check each declared one against the package's own file set:
 One finding per offending import spec. A second `//tiger:restrict` in the same package is a
 TS-P01 finding at the second directive. Absent directive, absent axis: no finding.
 
-**TS-P02 (`restrictions`, reported).** Each package with a declaration exports a package fact
+**TS-P02 (`restrictions`, blocking).** Each package with a declaration exports a package fact
 carrying its declared axes. A package's bound on each axis is the weakest value among its own
 declaration and every transitively imported module package's declaration (missing declaration is
 weakest: open dispatch, stdlib-only baseline unclaimed, reflect permitted). Each axis is a
 boolean, claimed or unclaimed; two present `imports(...)` declarations with different patterns
 are both "claimed" and never compared against each other. Stdlib packages are ground and never
-weaken. Each weakened axis is reported as its own TS-P02 line at the `package` clause under
-`--show-facts`, naming the first dependency (in stable order) that sets it; lines for one package
-are ordered closed-dispatch, no-reflect, imports. An axis that is not weakened prints nothing.
-One axis per line keeps every line inside the 160-character preference regardless of how many
-dependencies weaken the package.
+weaken. Each weakened axis is its own blocking TS-P02 finding at the `package` clause, naming the
+first dependency (lexicographically by import path) that weakens it and the edit: declare the
+axis on that dependency, or drop the claim; findings for one package are ordered
+closed-dispatch, no-reflect, imports. An axis that is not weakened fires nothing. One axis per
+finding keeps every line inside the 160-character preference regardless of how many dependencies
+weaken the package. A third-party import declares nothing and is weakest on every axis, so a
+package that claims any axis and imports outside the module fails until it drops the claim —
+the incentive TS-D01 already sets.
 
 **TS-K03 (`closedworld`).** In a package declaring `closed-dispatch`, every SSA call through an
 interface (`CallCommon.IsInvoke()`) must have a receiver that resolves, walking backward through
@@ -266,7 +278,7 @@ TS-A09: no test violates invariant inv.HeaderSize — add a _test.go function th
 TS-P01: package ledger imports github.com/acme/x, which its //tiger:restrict imports(...) list does not allow — remove the import or add the path to imports(...)
 TS-P01: package ledger declares //tiger:restrict no-reflect but imports reflect — remove the reflect import or drop no-reflect from the directive
 TS-P01: package ledger has two //tiger:restrict directives — keep one, merging the axes into a single comma-separated list
-TS-P02: package ledger is checked with open dispatch because it imports pkg/store, which declares nothing — nothing to fix; add //tiger:restrict closed-dispatch to pkg/store to tighten it
+TS-P02: package ledger claims closed-dispatch but imports pkg/store, which declares nothing — add //tiger:restrict closed-dispatch to pkg/store, or drop closed-dispatch from ledger's declaration
 TS-K03: s.Write is called through interface Storage in a package that declares //tiger:restrict closed-dispatch — call the concrete type's method, or drop closed-dispatch
 TS-X01: interface Storage has one implementation, diskStorage — use diskStorage directly and delete the interface, or add a second implementation outside _test.go files
 ```
@@ -282,7 +294,7 @@ verbs.
 | `TS-A07` | TS-A07 | `invariantrefs` | blocking (whole-program) |
 | `TS-A09` | TS-A09 | `invariantnegative` | blocking (whole-program) |
 | `TS-P01` | TS-P01 | `restrictions` | blocking |
-| `TS-P02-facts` | TS-P02 | `restrictions` | reported |
+| `TS-P02` | TS-P02 | `restrictions` | blocking |
 | `TS-K03` | TS-K03 | `closedworld` | blocking |
 | `TS-X01` | TS-X01 | `singleimpl` | blocking (whole-program) |
 
@@ -332,7 +344,8 @@ plumbing for three rules. The optional-field shape adds one field and one access
   loaded `types.Package`s rather than serialized signatures.
 - `restrictions`: a package fact with the parsed declaration (axes, patterns). TS-P02 is computed
   forward in the pass from imported packages' facts — a per-package rule that needs no finish
-  step.
+  step. The driver sets `pass.Module` so the `imports(...)` axis can resolve module-relative
+  patterns; under `analysistest` (no module) patterns are compared against the bare import path.
 - `closedworld`: no facts. `Requires: buildssa`, reads the restrict declaration by parsing the
   package doc comment through `internal/directive` (the same parse `restrictions` does; a shared
   helper in the internal library returns the parsed declaration or nothing).
@@ -409,7 +422,7 @@ Key surfaces:
   packages and facts handed to the finish step, panic containment (exit 2, no findings),
   position validation, and merged sorting. Extends `TestCheckPlumbsDependenciesFactsAndOrder`.
 - **CLI**: `cli.Run` on `internal/cli/testdata/fixtures/` modules for acceptance criteria 1–5,
-  including the `--show-facts` TS-P02 lines and the double-run determinism test.
+  including the two-line TS-P02 run and the double-run determinism test.
 - **Plugin**: `plugin_test.go` asserts `BuildAnalyzers()` returns no finish behavior and the
   per-package halves export facts; CI `plugin-smoke` runs the real binary on the two-package
   fixture (criterion 7).

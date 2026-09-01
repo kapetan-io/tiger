@@ -22,8 +22,8 @@ import (
 	"github.com/kapetan-io/tiger/internal/rules"
 )
 
-// The reported categories pin consumes, and the rules whose blocking
-// findings mean an existing pin disagrees with the code.
+// The fact categories pin consumes, and the rules whose blocking findings
+// mean an existing pin disagrees with the code.
 const (
 	catEffects = "TS-F01-facts"
 	catFrames  = "TS-F07-facts"
@@ -69,7 +69,7 @@ func runPin(args []string, streams Streams) int {
 		return ExitOperational
 	}
 
-	findings, err := driver.Check(*chdir, patterns, rules.Analyzers())
+	findings, err := driver.Check(*chdir, patterns, rules.Analyzers(), nil)
 	if err != nil {
 		fmt.Fprintf(streams.Stderr, "tiger pin: %v\n", err)
 		return ExitOperational
@@ -381,13 +381,13 @@ func plan(root string, targets []resolved, found []driver.Finding) (planned, err
 			)})
 			continue
 		}
-		if blocking := onTarget(target, relFile, found, blockingOnly); len(blocking) > 0 {
+		if blocking := onTarget(target, relFile, found, isBlocking); len(blocking) > 0 {
 			refused = append(refused, refusal{
 				target: target, block: refusalBlock(target, relFile, blocking),
 			})
 			continue
 		}
-		found, err := targetWrites(target, relFile, onTarget(target, relFile, found, factsOnly))
+		found, err := targetWrites(target, relFile, onTarget(target, relFile, found, isFact))
 		if err != nil {
 			return planned{}, err
 		}
@@ -419,18 +419,20 @@ func (r *resolved) span() lineSpan {
 	}
 }
 
-func blockingOnly(entry rules.CustomRule) bool {
-	return entry.Severity == rules.SeverityBlocking
+func isBlocking(category string) bool {
+	entry, known := rules.ByCategory(category)
+	return known && entry.Severity == rules.SeverityBlocking
 }
 
-func factsOnly(entry rules.CustomRule) bool {
-	return entry.Severity == rules.SeverityReported
+func isFact(category string) bool {
+	_, known := rules.ByFact(category)
+	return known
 }
 
 // onTarget filters the run's findings to those positioned on target and
 // passing keep.
 func onTarget(
-	target *resolved, relFile string, found []driver.Finding, keep func(rules.CustomRule) bool,
+	target *resolved, relFile string, found []driver.Finding, keep func(string) bool,
 ) []driver.Finding {
 	span := target.span()
 	matched := []driver.Finding{}
@@ -441,8 +443,7 @@ func onTarget(
 		if finding.Position.Line < span.first || finding.Position.Line > span.last {
 			continue
 		}
-		entry, known := rules.ByCategory(finding.Category)
-		if !known || !keep(entry) {
+		if !keep(finding.Category) {
 			continue
 		}
 		matched = append(matched, finding)

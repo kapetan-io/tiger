@@ -51,10 +51,16 @@ standing advisory finding regardless of which rule it waives.
 _Avoid_: suppression, nolint (the golangci mechanism, not ours)
 
 **Severity**:
-A rule's run-level consequence — **blocking** (fails the run), **advisory** (printed and counted,
-does not fail), or **reported** (printed only under `--show-facts`, never affects the exit code).
-Defined once per rule in the registry, never inside an analyzer. The reported level activates in
-the SSA wave as the computed-facts channel.
+A rule's run-level consequence — **blocking** (fails the run) or **advisory** (printed and
+counted, does not fail; reserved for the standing notices the specification names and ADR-0006's
+trial). There is no third level: a rule either blocks or it is not a rule (ADR-0012). Defined once
+per rule in the registry, never inside an analyzer.
+_Avoid_: reported (the removed tier; computed facts are not rules and carry no severity)
+
+**Fact (computed)**:
+The current value of something a pin can freeze — an effect set, a frame, a synthesized loop
+variant. Not a rule: registered in the facts table, printed only under `--show-facts` in pin
+syntax, never counted, and what `tiger pin` freezes.
 
 **Effect set**:
 The analyzer-computed summary of what a function does, over the closed lattice `alloc`, `io(q)`,

@@ -18,14 +18,13 @@ type quietRun struct{}
 
 func (quietRun) Errorf(format string, args ...any) {}
 
-// TestPluginDropsReportedFacts covers the golangci driver's severity
-// policy.
+// TestPluginDropsFacts covers the golangci driver's output policy.
 //
-// Goal: the analyzers the plugin hands golangci-lint never emit a
-// reported-severity diagnostic — golangci has no --show-facts channel and
-// keeps one issue per line, so a surfaced fact would crowd a real finding
-// off its line — while blocking diagnostics still fire.
-func TestPluginDropsReportedFacts(t *testing.T) {
+// Goal: the analyzers the plugin hands golangci-lint never emit a fact
+// diagnostic — golangci has no --show-facts channel and keeps one issue
+// per line, so a surfaced fact would crowd a real finding off its line —
+// while blocking diagnostics still fire.
+func TestPluginDropsFacts(t *testing.T) {
 	build, err := register.GetPlugin("tiger")
 	require.NoError(t, err)
 	built, err := build(nil)
@@ -45,9 +44,10 @@ func TestPluginDropsReportedFacts(t *testing.T) {
 		}
 		for _, result := range analysistest.Run(quietRun{}, testdata, analyzer, "ts-f01") {
 			for _, diagnostic := range result.Diagnostics {
+				_, isFact := rules.ByFact(diagnostic.Category)
+				assert.False(t, isFact)
 				entry, known := rules.ByCategory(diagnostic.Category)
 				require.True(t, known)
-				assert.NotEqual(t, rules.SeverityReported, entry.Severity)
 				effects++
 				if entry.Severity == rules.SeverityBlocking {
 					blocking++

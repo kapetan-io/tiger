@@ -117,7 +117,7 @@ func TestCheckPlumbsDependenciesFactsAndOrder(t *testing.T) {
 
 	var order1 []string
 	findings1, err := driver.Check(
-		root, []string{"./..."}, []*analysis.Analyzer{newProbe(t, &order1)},
+		root, []string{"./..."}, []*analysis.Analyzer{newProbe(t, &order1)}, nil,
 	)
 	require.NoError(t, err)
 	require.Equal(t, wantOrder, order1)
@@ -125,7 +125,7 @@ func TestCheckPlumbsDependenciesFactsAndOrder(t *testing.T) {
 
 	var order2 []string
 	findings2, err := driver.Check(
-		root, []string{"./..."}, []*analysis.Analyzer{newProbe(t, &order2)},
+		root, []string{"./..."}, []*analysis.Analyzer{newProbe(t, &order2)}, nil,
 	)
 	require.NoError(t, err)
 	require.Equal(t, wantOrder, order2)
