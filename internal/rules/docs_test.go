@@ -14,7 +14,7 @@ import (
 
 const (
 	referenceDoc = "Tiger Rule Reference.md"
-	explainerDoc = "Tiger Explainer.html"
+	explainerDoc = "Tiger Explainer.md"
 )
 
 // blockingMarker and advisoryMarker are the severity lines every reference

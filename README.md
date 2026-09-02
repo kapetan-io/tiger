@@ -8,9 +8,10 @@ the `tiger` analyzer, deterministically, with no LLM and no network.
 
 ## Documentation
 
-- [Tiger Explainer](docs/Tiger%20Explainer.html) — start here if you are new:
-  what tiger is for, the real bugs it caught in trials, and the concepts
-  (verdicts, budgets, directives, pins) taught from scratch.
+- [Tiger Explainer](docs/Tiger%20Explainer.md) — start here: why tiger
+  exists, the real bugs it caught in trials, how it differs from a linter,
+  and the concepts (verdicts, budgets, directives, pins) you'll meet in a
+  day's work.
 - [Tiger Rule Reference](docs/Tiger%20Rule%20Reference.md) — one entry per
   enforced rule: what it requires and why, a firing example, the compliant
   rewrite, severity, and directive interactions. A doc meta-test in
