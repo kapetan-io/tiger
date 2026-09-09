@@ -10,18 +10,18 @@
 
 **This page describes tiger as it is meant to be when it is finished.** Most of what it
 says is built, and every transcript on the page is real `tiger check` output. The
-exception is the set of checks on surfaces, which are specified and not enforced.
-Tiger does not yet check that every nondeterministic call goes through a declared
-surface, that each surface has a simulated twin passing the same conformance suite as
-the real one, that the interface can express every fault the real one produces, or that
-adapters contain no logic. Those checks are described as settled in the Benefits bullet
-"You test the failures you can't provoke" and under "Where each benefit comes from". The
-rule reference lists what tiger enforces today, and the specification marks each rule
-that is not yet built.
+exception is the discipline for code that touches the outside world: the clock, the
+network, the disk, a store. Tiger does not yet check that such code goes through an
+interface, that the interface has a test double covered by the same tests as the real
+thing, that the interface can express every way the real thing fails, or that the code
+wrapping the real thing holds no logic of its own. Those checks are described as
+settled in the Benefits bullet "You test the failures you can't provoke" and under
+"Where each benefit comes from". The rule reference lists what tiger enforces today, and
+the specification marks each rule that is not yet built.
 
 ## Your agent writes faster than you can read
 
-Your coding agents produce diffs faster than you can read them. Tiger holds the code written by AI to a strict set of proven restrictions, restrictions that make the code deterministic and shut off whole classes of bugs and security holes.
+Your coding agents produce diffs faster than you can read them. Tiger holds the code written by AI to a strict set of proven restrictions, restrictions that make the code deterministic and shut off whole classes of bugs, including denial of service.
 
 The restrictions come from NASA's Power of Ten, the rules JPL uses for flight software, and from TigerBeetle's TigerStyle, which tiger is named for.
 
@@ -55,7 +55,7 @@ Tiger's second job is change detection. While it checks, tiger computes each fun
 **Tiger restricts the language**
 
 - **Whole bug classes can't be written.** Unbounded loops, leaked goroutines,
-  dropped switch cases, uncancellable waits. Not caught, excluded.
+  dropped switch cases, uncancellable waits, all excluded.
 
 **Tiger lets you declare effects**
 
@@ -217,13 +217,17 @@ Tiger checks what crosses each edge. On the inbound edge it computes every expor
 function's effects and, once you pin them, holds the function to the pin. On the
 outbound edge it checks that time, randomness, and IO arrive only through a declared
 interface, and that the interface has a simulated twin held to the same tests as the
-real one. The adapters that implement the outbound surface are production code and
-get a rule of their own. A pin on the inbound edge is therefore a claim that reaches
+real one. The adapters that implement the outbound surface are production code, and we
+give them a rule of their own. A pin on the inbound edge is therefore a claim that reaches
 all the way down to the outbound one.
 
 ### Nondeterminism enters only through a surface
 
-TS-T01 says time, randomness, and IDs are injected, and TS-I01 says how. Any function
+Nondeterminism is any input a function reads that its caller did not pass in: the
+clock, a random number, a fresh ID, the network, and the order Go walks a map. A run
+that reads one of those cannot be repeated exactly, so a failure it produced cannot be
+reproduced. Our rule is that every such input arrives through a surface. TS-T01 says
+time, randomness, and IDs are injected, and TS-I01 says how. Any function
 whose effect set contains `io`, `rand`, or `time` has to obtain it from a surface it
 was handed as a parameter, so no function reaches for `time.Now()` on its own. The
 one source of nondeterminism Go injects for you, map iteration order, is stopped by
@@ -249,7 +253,7 @@ suite proves the twin and the real adapter agree everywhere else.
 None of this comes from Power of Ten, which has no determinism rule. It is
 TigerBeetle's discipline. TigerBeetle found the bugs that made it worth imitating by
 running its whole system inside a deterministic simulator, and that only works if
-every source of nondeterminism is behind an interface the simulator controls. Tiger's
+every source of nondeterminism is behind an interface the simulator controls. Our
 contribution is to make the discipline checkable rather than cultural. A clock read
 outside a surface isn't a review comment. It's a blocking finding that names the
 call.
@@ -258,13 +262,13 @@ call.
 
 An invariant is a property of the data that must hold every time the code reaches a
 particular point, such as a header being exactly twelve bytes long or its checksum
-matching its payload, and in tiger each one is declared once, by name, so that the
-analyzer can count where it is checked. The checking itself is done by assertions. An
+matching its payload, and we require each one to be declared once, by name, so that
+the analyzer can count where it is checked. The checking itself is done by assertions. An
 assertion is not an error. An error is an operating condition the caller has to handle,
 like a file that does not exist, while an assertion failure means the code itself is
 wrong, and the only safe response to wrong code is to stop before it corrupts anything.
-Go has no assert statement, so tiger ships a small assert package with no dependencies,
-meant to be copied into the project, and its assertions stay enabled in production,
+Go has no assert statement, so we ship a small assert package with no dependencies,
+meant to be copied into the project, and we keep its assertions enabled in production,
 because an assertion that runs only under test guards nothing else.
 
 A project declares its invariants as constants of a string type, one constant per
@@ -289,7 +293,7 @@ nothing more than name the invariant in the failure message. Its work is done be
 then, because a named constant is something the analyzer can find every reference to,
 and a string inside an assertion message is not.
 
-Two rules follow from that. The first is that production code has to assert every
+We derive two rules from that. The first is that production code has to assert every
 invariant the project declares, somewhere, because a declaration that nothing asserts
 describes a guarantee the code does not enforce. One assertion site is enough, and only
 sites outside the test files count. A declaration with none fails the build with a
@@ -313,7 +317,7 @@ examples/ledger/inv/inv.go:13:2: TS-A09: no test violates invariant inv.HeaderSi
 tiger: 1 blocking
 ```
 
-The reason for the second rule is that an invariant no test can violate is one of two
+We require the violating test because an invariant no test can violate is one of two
 things, a property the code can never actually reach or an assertion written wrong, and
 either way the project wants to know which. Both rules need to see the constant in `inv`
 and the assertions and tests in the packages that import it at the same time, which is
@@ -332,7 +336,7 @@ An effect set is tiger's list of the kinds of things a function does besides com
 its result, and it exists so that a claim like "this function never touches the disk"
 can be checked by a machine instead of trusted from a comment. Tiger builds the list by
 reading the function's body together with every function it calls, and the entries come
-from a fixed vocabulary: allocating memory, doing IO, blocking, panicking, reading the
+from a vocabulary we fixed: allocating memory, doing IO, blocking, panicking, reading the
 clock, reading randomness, mutating a named value, and spawning a goroutine. IO comes
 with a qualifier naming which kind, such as `io(disk)` or `io(net)`, and a project can
 add qualifiers of its own by attaching one to a surface, so that every function reaching
@@ -350,7 +354,7 @@ the author wrote down, at run time whenever the suite runs, so it covers exactly
 cases someone thought of and no others. An assertion is the third. It settles whether some
 property holds at one point in the code, at run time, for whatever input actually
 arrived, in production as much as under test, which is why Go's lack of an assert
-statement matters enough that tiger ships an assert package and writes its assertion
+statement matters enough that we ship an assert package and write our assertion
 rules against it. None of the three can say what a function is allowed to do. The
 compiler sees no difference between a function that reads a file and one that adds two
 integers, as long as both type-check, and neither a test nor an assertion can see a
@@ -367,7 +371,7 @@ prints unless the facts are asked for. Unpinned is not a claim of purity or of a
 else. Purity is a positive claim, and it is written `//tiger:effects none`.
 
 One thing the effect oracle leaves alone is whether the effects are appropriate. Tiger
-can prove that a function blocks, and it has no opinion on whether a function in that
+can prove that a function blocks. We give it no opinion on whether a function in that
 position ought to block, or touch the disk, or spawn anything. That judgment belongs to
 whoever reviews the diff, and a pin puts it in one visible place, on the line where the
 effect set is written down.
@@ -413,19 +417,18 @@ which here is `dial`. If `Serve` called a helper named `prepare` and `prepare` c
 `dial`, the finding would name `prepare` instead, because `prepare` is the call in
 `Serve` that the effect comes through, and the path to the cause continues from there.
 The fix is one of the two the finding offers: remove the network call, or change the pin
-to `//tiger:effects io(net)`. A pin edit shows up in the diff, so a reviewer rules on the
-new promise.
+to `//tiger:effects io(net)`. As before, the pin edit is what the reviewer rules on.
 
 The check is exact in both directions. If a later change removes the network call, an
 `io(net)` pin fails the same way the `none` pin did, because the code no longer does
 what the pin says. A pin cannot describe more than the code does without the check
 failing, so it never drifts into a superset that means nothing.
 
-This is why pins attach to exported functions only. Private helpers are the code that
+This is why we attach pins to exported functions only. Private helpers are the code that
 gets split, merged, and renamed during a refactor, and a pin on each of them would have
 to be edited along with every reshaping. Nothing is lost by leaving them unpinned,
 because every helper is already inside the subtree of the exported function that calls
-it, which is what the specification means when it says sparse pins give dense
+it, which is what we mean in the specification by sparse pins giving dense
 enforcement.
 
 The subtree does not stop at the package boundary. A pinned function that calls into
@@ -435,14 +438,67 @@ pinned, tiger reads the callee's pin instead of walking its body again, because 
 callee's own check already proves that pin accurate, so checking stays modular exactly
 where pins are dense.
 
+### A frame is where a function writes
+
+A function's frame is the set of locations it writes through its receiver and its
+parameters, counting the writes made by anything it calls. Tiger computes the frame for
+every function with no annotation, alongside the effect set, and the two answer
+different questions. The effect set says what kinds of thing a function does, such as
+allocate or read the clock. The frame says which state it changes. The frame is what
+turns a bad value into a short investigation. When a field holds something it should
+not, the functions that could have put it there are the ones whose frame includes that
+field, and a function whose frame leaves it out could not have, no matter how much of
+the program that function touches. Nobody reads the program to find the writer; the
+computed frames already say who is a candidate.
+
+A frame pin is held exact in both directions, the same as an effects pin. Here `Apply`
+is pinned to `r.log` and calls a helper that also advances the checkpoint.
+
+```go
+//tiger:frame r.log
+func (r *Replica) Apply(entries []string) {
+	for i := 0; i < len(entries); i++ {
+		r.log = append(r.log, entries[i])
+	}
+	r.advance(len(entries))
+}
+
+func (r *Replica) advance(n int) {
+	r.checkpoint += n
+}
+```
+
+```
+$ tiger check ./frame/...
+frame/replica.go:9:1: TS-F07: this function writes r.checkpoint (at replica.go:14:11) but its //tiger:frame comment doesn't list it — add r.checkpoint to the comment (//tiger:frame r.checkpoint, r.log), or remove the write
+tiger: 1 blocking
+```
+
+The finding is reported at the pinned function, and the position it names is the call
+to `advance` in `Apply`'s own body, the same convention the effects check uses. The
+other direction fails the same way. Listing `r.pending`, a field `Apply` never touches,
+produces a finding that reads "this function never writes r.pending, yet its
+//tiger:frame comment lists it" and prints the corrected comment. As with effects, a pin
+goes only on an exported function or method, and an exported function without one has
+its frame printed under `--show-facts` as the comment that would freeze it. `tiger pin`
+writes that comment, which is why the `EncodeHeader` run earlier on this page produced a
+`//tiger:frame none` line next to the effects line.
+
+Tiger follows a write back to a receiver or parameter through field selections, element
+addresses, and pointer dereferences, and no further. A helper that hands back a pointer
+into the receiver, or code that copies part of it into a package variable, breaks that
+trail. A write made through either one stays out of the computed frame, and because
+tiger does not report what it cannot trace, no finding says so. A frame pin proves what
+tiger can trace, and we record this in the rule reference as a known miss under `TS-F07`.
+
 ### Whole bug classes are excluded, not caught
 
 The benefits list says four kinds of bug are excluded rather than caught, and the
 difference is where the check is applied. A linter looks at code for the pattern of a
 known bug, and so it finds the instances that match its pattern and misses the rest.
-Tiger instead requires a particular shape of every loop, every switch over a fixed set
-of values, every `go` statement, and every blocking `select`, and the shapes it allows
-are ones in which the bug cannot occur. The question it asks is never
+We instead require a particular shape of every loop, every switch over a fixed set
+of values, every `go` statement, and every blocking `select`, and the shapes we allow
+are ones in which the bug cannot occur. The question tiger asks is never
 whether this loop happens to hang, only whether this loop is in an allowed shape, and
 that question has an answer for every loop. Four small files, each written the way a
 Go programmer would write it without thinking, produce one finding apiece.
@@ -456,7 +512,7 @@ bugs/worker.go:4:2: TS-C02: this go statement starts a goroutine nobody owns: no
 tiger: 4 blocking
 ```
 
-The allowed shape for a loop starts with a stated bound, meaning a condition built
+The shape we allow for a loop starts with a stated bound, meaning a condition built
 from a constant, a length, or a counter, and the `Drain` transcript earlier in this
 document is a loop that fails on that requirement alone. A stated bound is only a
 promise that the loop could end, though. A loop can test `len(pending) > 0` and never
@@ -475,18 +531,18 @@ compiler cannot check that such a switch is complete, because an integer constan
 only a number to it, and a value that arrived off the wire and was never in the set
 must land somewhere that crashes rather than fall out the bottom of the switch. Once
 every switch has that arm, adding a constant breaks each switch that has not
-considered it, which is the outcome the rule exists for. A type whose set of values is
+considered it, which is the outcome we want from the rule. A type whose set of values is
 meant to grow is marked `//tiger:openenum`, and a switch over it keeps a `default` arm
-as a legitimate catch-all rather than a crash. In the trial runs this rule found three
+as a legitimate catch-all rather than a crash. In our trials this rule found three
 real bugs, two of them storage backends dropping an action in silence.
 
-For goroutines, the allowed shape is that each one starts through a supervisor, such as
+For goroutines, the shape we allow is that each one starts through a supervisor, such as
 `errgroup.Group.Go`, that ties it to a context and to code that waits for it to finish.
 A bare `go` statement in the middle of a function is a finding, because nothing in it
 says when the goroutine exits or what stops it. Starting a goroutine also puts `spawn`
 in the function's effect set, so a function several calls up whose pin does not include
 `spawn` fails the check on the commit that added the goroutine, however deep it was
-added. The trials found a daemon whose `sync.WaitGroup` was never waited on, so its
+added. Our trials found a daemon whose `sync.WaitGroup` was never waited on, so its
 `Shutdown` method could return while its HTTP goroutines were still running.
 
 The last shape is the wait. A `select` that blocks must have a case that ends the wait
@@ -494,7 +550,7 @@ on shutdown, either `ctx.Done()` or a channel that is recognisably a shutdown si
 and a loop that runs forever must have the same case in its `select` so that the loop
 can end. Without that case, a shutdown request has no effect on the wait, so the process
 stays up until something kills it, and a process that dies partway through a write
-loses the write. The trials found a queue whose
+loses the write. Our trials found a queue whose
 Produce, Complete, and Retry waits could not be cancelled, while its documentation
 said they could.
 
@@ -534,8 +590,8 @@ do nothing. There are three kinds.
    reason. There is exactly one, `//tiger:batched`, and every use is counted against
    the budget on every run.
 
-Why only one escape hatch? Because an agent will use any comment that gets it past
-a failing check. An escape is admitted only when reality, not convenience,
+The dialect allows exactly one escape hatch, because an agent will use any comment
+that gets it past a failing check. An escape is admitted only when reality, not convenience,
 demands it. Some external systems accept one item at a time, and no rewrite of your
 code changes that, so `//tiger:batched <reason>` exists. A general "ignore this rule
 here" directive doesn't exist and won't. The only paths are the compliant rewrite or
@@ -567,41 +623,6 @@ without a human reading it. A change that touches a declaration goes to someone 
 knows the domain, and nothing else about it needs discussing, because the mechanical
 questions have already been answered.
 
-## What adoption looks like
-
-The queue's first trial run produced 1,023 blocking findings, and the git server's
-produced 712. That's what pointing a strict dialect at
-good, existing, hand-written Go looks like, and it's why adoption is a decision about
-a codebase's future, not an afternoon's chore. On a fresh codebase where the code is
-AI-written against the rules from day one, the count starts at zero and there's
-nothing to retrofit.
-
-1. **Wire up the auto rules** (one command). `tiger golangci --init` generates the
-   golangci-lint config for the rules tiger delegates. `tiger golangci` audits an
-   existing config against that baseline.
-2. **Run the check, fix what it finds** (the real work). `tiger check ./...`. Real
-   bugs first (our trials found ten). For loops an external system forces on you,
-   declare `//tiger:batched` with the reason.
-3. **Record the budgets** (one command). `tiger budget --write` records each
-   package's current advisory counts. Expect the first check to fail until this runs
-   once; a package with findings and no budget row has a budget of zero.
-4. **Pin as you go** (ongoing). `tiger pin` on the functions whose behavior matters
-   most. Sparse pins are fine, a pin covers everything the pinned function calls.
-
-The escape hatch earned its keep in our trials. The queue had 24 loops that drain a
-database cursor, a shape only the backing store bounds. Each got `//tiger:batched`
-with its reason. The loop-bound rule went from 37 findings to 11, every waiver became
-a counted, reviewable line in the budget, and the one real deadlock among those
-findings kept firing.
-
-> **Plugin caveats.** Tiger also runs inside golangci-lint as a plugin, but two
-> things need the real CLI. Budgets, because the plugin has no end-of-run step to
-> count against them, so it reports every counted finding as an issue. And the three
-> whole-program rules that need evidence from every package at once (is each
-> invariant asserted somewhere, does a test violate it, does an interface have a
-> second implementation). Run `tiger check` in CI; use the plugin for editor
-> integration.
-
 ## What tiger will not do
 
 No warnings. No per-site suppression comments. No "informational" output on a normal
@@ -625,11 +646,11 @@ $ go install github.com/kapetan-io/tiger/cmd/tiger@latest
 $ tiger check ./...
 ```
 
-Expect findings. Remember our numbers, 1,023 on the 42,000-line queue we knew and
-trusted. A wall of findings isn't tiger telling you your code is bad, it's the
-measured distance between idiomatic Go and the dialect. Read ten of them. If most
-name a hazard you'd want fixed, work the adoption steps above. If they don't, no tool
-should talk you into it.
+Expect findings. Our first run on the 42,000-line queue we knew and trusted produced
+1,023. A wall of findings isn't tiger telling you your code is bad, it's the measured
+distance between idiomatic Go and the dialect. Read ten of them. If most name a hazard
+you'd want fixed, gate CI on `tiger check` and work through them. If they don't, no
+tool should talk you into it.
 
 To see code that already lives inside the dialect, read
 [examples/ledger](../examples/ledger) in the repository. When a finding names a rule
@@ -641,8 +662,10 @@ authority the reference is drawn from.
 ---
 
 The trial numbers come from tiger's runs on two real codebases before the rules
-settled. Every transcript on this page is live `tiger check` output. The runs under "A
-day in Tiger Go" are against `examples/ledger`. The `Serve` and `dial` run and the
-four-file `bugs` run are against a scratch module, since the ledger has no function with
-helpers beneath it and no loop, switch, goroutine, or wait written in the shapes tiger
-rejects. The `Clock` and `Expire` snippet is illustrative and is not in the ledger.
+settled. Every transcript on this page is live `tiger check` output. The `EncodeHeader` runs
+and the invariant run are against `examples/ledger`. The two `Drain` runs, the `Serve`
+and `dial` run, the `Apply` and `advance` run, and the four-file `bugs` run are against
+scratch packages, since the ledger has no function with helpers beneath it and no loop,
+switch, goroutine, or wait written in the shapes tiger rejects. The pinned `Drain` line
+is the first of that run's two findings; the second is `TS-C05` on the same receive. The
+`Clock` and `Expire` snippet is illustrative and is not in the ledger.
