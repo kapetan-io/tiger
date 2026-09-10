@@ -39,7 +39,7 @@ const usage = `usage:
 `
 
 // Streams carries a command's output writers — an options struct, per the
-// dialect's own TS-N07.
+// tiger's own TS-N07.
 type Streams struct {
 	Stdout io.Writer
 	Stderr io.Writer

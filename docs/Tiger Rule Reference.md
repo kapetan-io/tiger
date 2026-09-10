@@ -1904,7 +1904,7 @@ receiver's static type is the wrapping struct.
 ## Auto rules
 
 Tiger does not reimplement what an off-the-shelf linter already enforces well. These rules
-are the auto half of the dialect. Each one is delegated to a golangci-lint linter, and
+are the auto half of the rule set. Each one is delegated to a golangci-lint linter, and
 `tiger golangci` audits your golangci-lint config against this exact baseline (generate it
 with `tiger golangci --init`, print it with `--print`). Every auto rule blocks, because
 golangci-lint findings fail its run.

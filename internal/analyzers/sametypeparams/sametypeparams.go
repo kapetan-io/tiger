@@ -3,7 +3,7 @@
 // (a plain bool parameter needs a named type).
 //
 // The spec's own assert package — Ok(cond bool, ...), Equal(got, want T) —
-// is dialect infrastructure whose API the spec itself fixes, so the assert
+// is tiger infrastructure whose API the spec itself fixes, so the assert
 // package and its external test package are exempt from both rules. Every
 // other declared function signature in the package is covered: func
 // declarations and interface methods. Function literals are exempt — their

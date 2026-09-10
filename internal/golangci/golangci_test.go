@@ -14,7 +14,7 @@ import (
 )
 
 // bannedWords is the vocabulary a finding body may not use: tiger-internal
-// terms a reader new to the dialect has never met. It mirrors the list in
+// terms a reader new to tiger has never met. It mirrors the list in
 // the specification's Diagnostics section and internal/rules/meta_test.go.
 var bannedWords = []string{
 	"pin", "pinned", "computed", "fact", "facts", "effect set", "frame condition",

@@ -356,7 +356,7 @@ func TestFactsTableIsCoherent(t *testing.T) {
 }
 
 // bannedWords is the vocabulary a message body may not use: tiger-internal
-// terms a reader new to the dialect has never met. The specification's
+// terms a reader new to tiger has never met. The specification's
 // Diagnostics section is this list's human-readable twin; the two change
 // together.
 var bannedWords = []string{

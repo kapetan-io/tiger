@@ -1,10 +1,16 @@
 # Tiger Go
 
-A verified Go dialect adapted from TigerBeetle's
-[TIGER_STYLE](https://github.com/tigerbeetle/tigerbeetle/blob/main/docs/TIGER_STYLE.md),
-restricted so that **the specification lives in the source and a machine checks
-the code against it**. Declarations are reviewed by humans; code is checked by
-the `tiger` analyzer, deterministically, with no LLM and no network.
+Tiger deterministically forces AI agents to write Go that is testable and free of
+whole classes of production bugs. It holds the code to the restrictions NASA's
+Power of Ten and TigerBeetle's
+[TigerStyle](https://github.com/tigerbeetle/tigerbeetle/blob/main/docs/TIGER_STYLE.md)
+put on flight and database software: every loop has a bound, every goroutine has
+an owner, and every clock, random source, and IO call is passed in, so any
+function can be tested in isolation when you need to. Tiger has no warnings: the
+code passes static analysis, or the agent must rewrite the code. No LLM is
+involved in the analysis. **The specification lives in the source and a machine
+checks the code against it.** Declarations are reviewed by humans; code is
+checked by the `tiger` analyzer, with no network.
 
 ## Documentation
 
@@ -82,7 +88,7 @@ internal/store:
   TS-D07: 3
 ```
 
-Two engines enforce the dialect:
+Two engines enforce the rules:
 
 - **Auto rules** are enforced by off-the-shelf golangci-lint linters.
   `tiger golangci` audits that a project's config actually enforces the
@@ -123,7 +129,7 @@ never a finding, a declaration its own imports or dispatch contradict is.
 | Path | What it is |
 | --- | --- |
 | `cmd/tiger/` | The CLI: a thin `main` over a testable run function. |
-| `internal/rules/` | The rule registry — the single source of the dialect. The binary's analyzer set, the finish functions, the corpus meta-tests, severity, the computed-facts table, and the `tiger golangci` audit are all derived from it. |
+| `internal/rules/` | The rule registry — the single source of the rule set. The binary's analyzer set, the finish functions, the corpus meta-tests, severity, the computed-facts table, and the `tiger golangci` audit are all derived from it. |
 | `internal/analyzers/` | The 33 analyzers, one package per analyzer, each with its corpus (failure-mode fires, compliant rewrite silent, known misses marked): an `analysistest` corpus for a per-package rule, a small module under `testdata/module/` run through the tiger driver for a whole-program rule. The shared internals live under `internal/analyzers/internal/`: `words` (identifier tokenization), `ssalib` (the effect lattice plumbing over `go/ssa`, including the curated stdlib effects table), `restrict` (the package restriction declaration), and `invariants` (invariant const and assert-call collection). |
 | `internal/directive/` | The `//tiger:` grammar: closed verb vocabulary, per-verb pin argument grammars (the effect lattice, frame lists, variant expressions, contract predicates), canonical printing, and the round-trip contract `Parse(Format(d)) == d`. |
 | `plugin/` + `.custom-gcl.yml` | The golangci-lint module plugin: the same analyzers under `golangci-lint run`, minus the finish step — TS-A07, TS-A09, and TS-X01 are `tiger check`-only. See "Running under golangci-lint" below. |

@@ -74,7 +74,7 @@ func TestReferenceCoversEveryAutoRule(t *testing.T) {
 }
 
 // TestDocsCarryNoRemovedVocabulary verifies neither end-user document names
-// a rule removed from the dialect (ENG-161) or the retired output marker.
+// a rule removed from the rule set (ENG-161) or the retired output marker.
 func TestDocsCarryNoRemovedVocabulary(t *testing.T) {
 	for _, name := range []string{referenceDoc, explainerDoc} {
 		content := docContent(t, name)
