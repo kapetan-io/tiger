@@ -1,7 +1,7 @@
 # Tiger Go
 
-**A Go dialect where the specification lives in the source and a machine checks that the code matches
-it.**
+**Tiger deterministically forces AI agents to write Go that is testable and free of whole classes of
+production bugs. The specification lives in the source and a machine checks that the code matches it.**
 
 Adapted from [TigerStyle](https://github.com/tigerbeetle/tigerbeetle/blob/main/docs/TIGER_STYLE.md).
 Tiger Go is not a style guide. It is a restriction of Go chosen so that questions a reviewer normally
@@ -329,9 +329,10 @@ day one. The declaration for such a fact is therefore optional, and its meaning 
 
 The lifecycle:
 
-1. **Unpinned.** When a pull request changes a computed fact, the analyzer reports it in the PR —
-   printed in pin syntax, the exact line you would paste above the function — and the merge
-   continues. Report output and pin are one format; adopting a pin is a paste.
+1. **Unpinned.** The analyzer computes the fact on every run and prints nothing for it; a
+   plain `tiger check` is silent about unpinned functions and the merge continues.
+   `tiger check --show-facts` prints the fact in pin syntax, the exact line you would paste
+   above the function. Fact output and pin are one format; adopting a pin is a paste.
 2. **Pinned.** The analyzer compares pin and code on every pull request. Agreement is silence.
    Disagreement fails the CI check before merge, showing the pin and the computed line in the same
    format. The two exits are to change the code or change the pin, and a pin edit is visible in
@@ -340,7 +341,7 @@ The lifecycle:
 
 Four rules govern pins:
 
-- **Function-scoped pins attach to exported functions and methods only.** Unexported helpers are
+- **Function-scoped pins attach to exported functions and methods only, the inbound surface.** Unexported helpers are
   exactly the region mechanical refactoring (`TS-R01`) must be free to reshape; a pin there fights
   the prover and invites keeping dead code alive to keep CI quiet. Nothing is lost, because of the
   next rule. (`main` has almost no exports; `main` itself is pinnable. Loop variants are the
@@ -422,11 +423,11 @@ hatches** (loosen one rule at one site, always with a reason, counted by `TS-D06
 | Deviation | `//tiger:<rule-id> <reason>` | escape (gated, does not ship before the first heuristic rules + TS-D06 ratchet) | TS-L09 |
 
 > **Status: amended 2026-08-12.** Escape hatches are gated by an **admission test**: a per-site
-> escape exists only where the restricted dialect eliminates something reality requires — where
-> no in-dialect rewrite can comply. Inconvenience never qualifies, because the primary consumer
+> escape exists only where the rules eliminate something reality requires — where
+> no compliant rewrite exists. Inconvenience never qualifies, because the primary consumer
 > is an AI agent, and an agent offered a cheaper path than conforming will take it. A directive's
 > reason is shape-checkable (verb known, reason present) but never truth-checkable, so an escape
-> whose legitimate cases have in-dialect rewrites is a suppression in costume.
+> whose legitimate cases have compliant rewrites is a suppression in costume.
 > `//tiger:bounded` fails the test and is withdrawn (see `TS-S02`): every terminating loop can
 > state an explicit cap and assert on exhaustion, and forever-loops have the `TS-S03` shape.
 > `//tiger:batched` passes: an external system that only accepts per-item IO is a fact of the
@@ -482,7 +483,7 @@ input will always be well-formed. Bound it and an infinite hang becomes a fast, 
 boundary. See `TS-V01` for the stronger form.
 Enforce. `boundedloop` (custom). A `for` with no condition, or a condition not derived from a constant,
 a `len`, or a counter, is a finding; no directive waives it, with one shape-gated exception below. The
-compliant forms are in-dialect: an explicit iteration cap with an assert on exhaustion, the `TS-S03`
+compliant forms are: an explicit iteration cap with an assert on exhaustion, the `TS-S03`
 event-loop shape, or — for a cursor-shaped loop only — a reasoned `//tiger:batched` escape.
 *(Amended 2026-08-12: the `//tiger:bounded <reason>` escape is withdrawn — it fails the escape
 admission test, since a reason is shape-checkable but not truth-checkable and every terminating
@@ -732,8 +733,11 @@ decided in the finish step only `tiger check` runs (ADR-0010); the golangci-lint
 reports it.
 
 **`TS-A08` Symmetric boundary functions assert the same invariant set.**
+Status. **Unimplemented.** No `invariantsymmetry` analyzer exists and nothing enforces this rule;
+removing one side's assertion passes `tiger check`. Kept for review under ENG-182, which decides
+whether naming-convention pairing is worth building or the id is retired like `TS-F06`.
 Why. Once invariants are named, "the same property on both sides" is set equality.
-Enforce. `invariantsymmetry` (custom). Pairs by naming convention (`encodeX`/`decodeX`,
+Enforce. `invariantsymmetry` (custom, not built). Pairs by naming convention (`encodeX`/`decodeX`,
 `marshalX`/`unmarshalX`, `writeX`/`readX`, `putX`/`getX`).
 
 **`TS-A09` Every invariant has a test that violates it.**
@@ -943,15 +947,16 @@ restriction (`TS-P01`), and the two are designed to be used together.
 Why. `TS-C08` bans `time.Sleep` by name, which catches the direct call and misses the helper three
 frames down. An effect is transitive by construction, so a ban expressed as an effect cannot be
 laundered through indirection. This is the difference between a rule about syntax and a rule about
-behaviour. The analyzer computes the set for every function with no annotation required; changes to
-unpinned sets are reported in the pull request, printed in pin syntax. A pin — permitted on
+behaviour. The analyzer computes the set for every function with no annotation required; an unpinned
+set prints only under `tiger check --show-facts`, in pin syntax, and blocks nothing. A pin — permitted on
 exported functions and methods only, spelled `//tiger:effects ...`, with `none` for purity — is
 exact and blocking, and is required on every exported function of a closed-dispatch package
 (`TS-K03`). *Which* effect sets are acceptable for a given function is a declaration, and therefore
 `review`. See Part II, "Pins".
 Enforce. `effects` (custom, `buildssa`). On a pinned function, undeclared effects fail and so do
 declared-but-absent effects, which is what stops a pin drifting into a defensive superset that
-means nothing. Unpinned changes are reported, not blocking.
+means nothing. An unpinned function's set is a fact, printed only under `--show-facts`, never
+blocking.
 
 **`TS-F02` A pin bounds the entire subtree beneath it.**
 Why. Effects propagate upward, so a pinned function's computed set is a true summary of everything
@@ -1010,7 +1015,7 @@ required to strictly decrease on every back edge and be bounded below, which is 
 termination argument. Variants follow the pin lifecycle with one asymmetry: an effect set always
 exists to be computed, but a variant must be *found*. Where the analyzer synthesizes one — linear
 integer expressions over locals, which covers nearly every real loop — the loop is proven with no
-annotation, the synthesized variant is reported like any computed fact, and pinning it is a paste;
+annotation, the synthesized variant prints under `--show-facts` like any computed fact, and pinning it is a paste;
 the pin attaches to the loop, wherever the loop lives. Where synthesis fails, the termination
 argument exists only in the author's head, so the pin is required: mandatory because the fact is
 missing, not because precision is claimed. This is the artifact-of-the-thinking technique — the
@@ -1029,6 +1034,9 @@ Enforce. `variant` (custom, `buildssa`). Synthesis and verification are feasible
 expressions over locals. Blocking when a loop has neither a synthesized nor a pinned variant, and
 when a pinned variant fails to decrease. A ranking beyond the analyzer's predicate language needs a
 deviation with a reason (`TS-L09`).
+*(Open, ENG-183: `//tiger:batched` waives `TS-S02` on a cursor-shaped loop (ADR-0004) but this
+rule still fires on the same loop, because `variant` does not recognize the escape. The admitted
+escape therefore does not yet clear the loop it was admitted for.)*
 
 **`TS-V02` Functions are total.**
 Why. Total means it returns for all inputs satisfying its preconditions. With `TS-S01`, `TS-V01`, and
@@ -1055,6 +1063,11 @@ on the analyzer's incompleteness.
 
 ## Surfaces and injectability
 
+A surface is where the code meets something it doesn't control, and there are two. The inbound surface is the exported
+functions and methods a caller reaches, and pins attach there. The outbound surface is the set of
+interfaces the domain calls to reach the world, the store, the clock, the network, and the rules in
+this section govern it. Unqualified, "surface" in this section means the outbound one.
+
 Co-equal with the rule catalogue, not a testing detail. The rules above make properties checkable;
 these make the checked properties describe the running system rather than a model of it.
 
@@ -1064,12 +1077,19 @@ still contains `io`, and every test needs a fake whose fidelity you must also be
 Description means the code returns commands as values and something else interprets them. Prefer
 description where the shape allows it. Require injection everywhere else.
 
-**`TS-I01` Every nondeterministic effect reaches the system through a declared surface.**
+**`TS-I01` Every nondeterministic input is injectable.**
+Status. **Enforced through effects pins**, on pinned functions only. A call through an interface
+contributes nothing to the effect set (the callee is not statically known), while a direct call
+contributes `time`, `rand`, or `io`. A pinned function whose set lists none of those therefore
+receives every nondeterministic input by injection, and a commit that adds a direct read beneath it
+fails at the pin (`TS-F02`). Unpinned functions are not checked. No `surfaces` analyzer exists and
+none is planned; the earlier form of this rule, which required a declared surface, is withdrawn.
 Why. Time, randomness, IO, scheduling, and identity are the inputs that make a run unrepeatable. A
-function calling `time.Now()` cannot be replayed, and a system with one such call cannot be simulated.
-The effect set names them; this rule says where they must go.
-Enforce. `effects` plus `surfaces` (custom). Any function with `io`, `rand`, or `time` in its effect
-set must obtain it from a declared surface parameter.
+function that reads them directly cannot be handed a substitute, so no test can control the run.
+Injectability is the requirement; whether a given test substitutes the dependency or uses the real
+one is the coder's judgment per test, and tiger does not make it. Tiger does not require a fake,
+mock, or simulation to exist.
+Enforce. `effects` (custom): pin an exported function without `time`, `rand`, or `io`.
 
 **`TS-I02` Every surface has a production implementation and a simulated one.**
 Status. **Deleted.** Fails the five-question test: its failure mode (a surface with one
@@ -1079,12 +1099,13 @@ marginal cost is zero — every cost it has is `TS-I03`'s cost. Two IDs, one che
 requirement is folded into `TS-I03`; the default-fidelity claim moved to `TS-I07`. ID retired, not
 reused.
 
-**`TS-I03` Every surface has a production and a simulated implementation, and both pass one conformance suite.**
-Why. A surface with one implementation is a surface in name only. If the fake and the real diverge,
-you have verified a world that does not exist. One suite run against both is the only mechanism that
-keeps them interchangeable.
-Enforce. `surfaces` (custom) requires both implementations and the suite; CI runs the suite against
-both (runtime).
+**`TS-I03` Where a surface has a simulated implementation, both implementations pass one conformance suite.**
+Status. **Not enforced by tiger.** A simulated implementation is optional (ENG-154 decision, see
+`TS-I01`); this rule applies only where the coder chose to write one. No `surfaces` analyzer exists.
+Why. If the fake and the real diverge, you have verified a world that does not exist. One suite run
+against both is the only mechanism that keeps them interchangeable.
+Enforce. `review`, plus CI running the suite against both implementations where both exist
+(runtime).
 
 **`TS-I04` The simulated implementation is at least as adversarial as the specification permits.**
 Why. A fake that behaves better than reality hides the bugs you built the simulator to find. Inject
@@ -1093,25 +1114,29 @@ Enforce. `review` of the fault set, plus a CI check that every fault case in the
 by the suite (runtime).
 
 **`TS-I05` A surface interface must be able to express every fault its specification permits.**
+Status. **Not enforced by tiger.** A design discipline for the interface, decided in review. No
+`surfaces` analyzer exists.
 Why. **This is the rule that decides whether any of the rest is worth anything.** If a real disk can
 produce a torn write, a misdirected write, or an `fsync` that lies, and your `Storage` interface cannot
 represent those, the simulator is structurally blind to an entire bug class and will run green
 forever. Interfaces get designed around their failure modes rather than their happy-path ergonomics,
 which makes them uglier and is the point. Whether the fault set matches reality is irreducibly
 `review`.
-Enforce. `surfaces` (custom) checks every declared fault has a case in the interface and a test.
+Enforce. `review`.
 
 **`TS-I06` Adapters contain no logic.**
-Why. The adapter is the one place determinism is unobtainable, so it must be the one place nothing
-interesting happens. A branch in an adapter is a decision the simulator never sees.
-Enforce. `adapters` (custom). Cyclomatic complexity of 1 beyond error mapping.
+Status. **Deleted.** Tiger cannot tell an adapter from any other implementation without a surface
+declaration, which does not exist, and "no logic beyond error mapping" is a design judgment: a retry
+or a reconnect inside a wrapper is logic, and whether it belongs there is the coder's call. ID
+retired, not reused.
 
 **`TS-I07` Fidelity is configuration, not code.**
-Why. The same suite must run fully simulated, partially simulated, and fully real, with the difference
-being injection config. The default configuration is fully simulated. This is what turns fidelity
-into a dial and stops the simulated and real paths diverging into two test suites that check
-different things.
-Enforce. `surfaces` (custom). Test code may not reference concrete surface implementation types.
+Status. **Not enforced by tiger.** No default configuration is mandated; which implementation a test
+receives is the coder's choice per test (ENG-154 decision). No `surfaces` analyzer exists.
+Why. Where both a simulated and a real implementation exist, the same suite runs against either with
+the difference being injection config. This is what stops the simulated and real paths diverging into
+two test suites that check different things.
+Enforce. `review`.
 
 ## Memory and performance
 
@@ -1184,11 +1209,13 @@ Enforce. `effects` (custom) plus profile gate (runtime).
 **`TS-X01` No interface with exactly one implementation.**
 Why. Abstractions are never zero cost and every one adds a leak risk. An interface with one
 implementation has paid the cost and bought nothing, and it is the exact fingerprint of speculative
-abstraction. Whole-program implementation counting is a solved analysis. Surface implementations under
-`TS-I03` are exempt by construction, because they have two.
-Enforce. `singleimpl` (custom, `types` plus `packages`). A test double is a type declared in a
-`_test.go` file; it never counts as an implementation, so an interface whose second implementation
-is a test fake still fails. Zero implementations is not a finding — that is a contract with no
+abstraction. Whole-program implementation counting is a solved analysis. An injected dependency with
+one real implementation earns its interface by being substituted somewhere, and a test double is
+that substitution.
+Enforce. `singleimpl` (custom, `types` plus `packages`). Today a type declared in a `_test.go` file
+never counts as an implementation, so an interface whose second implementation is a test fake fails;
+ENG-185 changes this so a test double counts as a substitution and the finding's fix text names that
+route. Zero implementations is not a finding — that is a contract with no
 implementer yet, not speculative indirection. A whole-program rule, reported only by `tiger check`
 (ADR-0010).
 
@@ -1266,7 +1293,7 @@ Enforce. `surfacediff` (custom, checked-in surface file, CI diff).
 
 **`TS-R03` Generated and hand-written code are indistinguishable and interchangeable.**
 Why. The property that matters most in the near future, and the one a conventional style guide never
-has to think about. If the dialect is canonical, effect-checked, and contract-checked, a
+has to think about. If the code is canonical, effect-checked, and contract-checked, a
 machine-generated diff faces exactly the same gate as a human one, and "who wrote this" stops being
 the basis on which trust is assigned. Trust attaches to what the artifact provably satisfies.
 Enforce. Follows from `TS-K01` through `TS-K06`, plus a CI check that generated files carry no
@@ -1447,7 +1474,7 @@ Why. What a zero-technical-debt policy looks like on a codebase that already has
 of numbers per package: total complexity, directive count, skipped tests, assertion density,
 allocation counts on hot benchmarks. A global threshold gets raised at 2am before a release; a ratchet
 cannot be raised without a commit that says so. **Track the directive count as a first-class metric**,
-because forced directives are how a dialect degrades into a style guide with extra steps.
+because forced directives are how a rule set degrades into a style guide with extra steps.
 Enforce. `tiger check` compares each package's advisory counts to its rows in `tiger.budget.yaml`
 and fails on overrun; `tiger budget --write` lowers rows to the current counts and never raises
 one; the budget file is raised only by a hand edit in review (custom, driver-enforced).
@@ -1602,12 +1629,12 @@ that cannot fill the third column does not go in.
 | TS-V01 | Every unbounded loop has a verified variant: synthesize... | B1 | Sub |
 | TS-V02 | Functions are total | B1, B6 | Sub |
 | TS-V03 | Preconditions are declared and discharged at call sites | B2, B3 | Sub |
-| TS-I01 | Every nondeterministic effect reaches the system throug... | B4, B5 | Sub |
+| TS-I01 | Every nondeterministic input is injectable | B4, B5 | Sub |
 | TS-I02 | Deleted, folded into TS-I03 | — | Deleted |
-| TS-I03 | Every surface has a production and a simulated implemen... | B4, B2 | Sub |
+| TS-I03 | Where a surface has a simulated implementation, both pas... | B4, B2 | Sub |
 | TS-I04 | The simulated implementation is at least as adversarial... | B5 | Sub |
 | TS-I05 | A surface interface must be able to express every fault... | B5, B4 | Sub |
-| TS-I06 | Adapters contain no logic | B4, B3 | Sub |
+| TS-I06 | Deleted, not decidable without a surface declaration | — | Deleted |
 | TS-I07 | Fidelity is configuration, not code | B4, B7 | Sub |
 | TS-M01 | Preallocate with a known capacity | B6 | Sub |
 | TS-M02 | Hot paths allocate zero times | B6 | Sub |
@@ -1752,11 +1779,11 @@ analyzer without its corpus does not merge, no matter how plausible its implemen
 
 | Analyzer | Rules | Approach |
 | --- | --- | --- |
-| `effects` | TS-F01–F05, F08, A05, C06, C08, T01 | `buildssa`, compute effect sets over the callgraph, report unpinned changes in pin syntax, enforce each pin over its callee subtree |
+| `effects` | TS-F01–F05, F08, A05, C06, C08, T01 | `buildssa`, compute effect sets over the callgraph, print unpinned sets in pin syntax under `--show-facts`, enforce each pin over its callee subtree |
 | `frames` | TS-F07 | `buildssa` points-to over the restricted fragment |
 | `contracts` | TS-V03 | Abstract interpretation over nil-ness, integer ranges, length relations, invariant IDs |
 | `variant` | TS-V01, V02 | `buildssa`; synthesizes candidate variants for linear loops, verifies pinned ones at loop head and back edges |
-| `surfaces` | TS-I01, I03, I05, I07 | `types` plus `packages`; surface declarations, implementation counting, conformance suite presence |
+| `surfaces` | TS-I01, I03, I05, I07 | Not built and not planned. TS-I01 is enforced by `effects` pins; I03, I05, I07 are review |
 | `closedworld` | TS-K03 | `types` plus `packages`; devirtualization check |
 | `canonical` | TS-K01, K02, K04, K05 | AST, with auto-fix |
 | `refactor` | TS-R01 | Not a linter. A transform tool that emits a proof obligation CI re-checks |
@@ -1764,7 +1791,7 @@ analyzer without its corpus does not merge, no matter how plausible its implemen
 | `restrictions` | TS-P01–P03 | Per-package restriction declarations, transitive precision bound |
 | `derivation` | TS-S22 | Parse a trailing `Name = expr` comment, evaluate against package constants, compare |
 | `invariantrefs` | TS-A07 | Group `assert.Invariant` calls by constant, count referencing functions |
-| `invariantsymmetry` | TS-A08 | Pair functions by naming convention, compare invariant sets |
+| `invariantsymmetry` | TS-A08 | Not built (ENG-182). Pair functions by naming convention, compare invariant sets |
 | `invariantnegative` | TS-A09 | Require `assert.Violates` per declared invariant |
 | `norecursion` | TS-S01 | `buildssa`, CHA callgraph, report any cycle |
 | `boundedloop` | TS-S02, S03 | AST, classify every loop; unclassifiable loops are findings — no directive waives TS-S02 |
@@ -1791,7 +1818,7 @@ analyzer without its corpus does not merge, no matter how plausible its implemen
 | `limitrelate` | TS-S21 | AST, every Max/Min constant appears in a relational assertion |
 | `singleimpl` | TS-X01 | `types` plus `packages`, whole-module implementation counting |
 | `passthrough` | TS-X02 | AST, body is a single forwarding call |
-| `adapters` | TS-I06 | AST, complexity of 1 beyond error mapping |
+| `adapters` | TS-I06 | Deleted with TS-I06 |
 | `errignore` | TS-E02 | AST plus `types`, `_ =` on error requires a comment |
 | `returnarity` | TS-E06 | `types`, result count and composition |
 | `paniccheck` | TS-S18 | AST, panic outside the assert package |
@@ -1863,7 +1890,7 @@ optimized. The defence is the proxy test from Part I plus one genuine external o
 that oracle.
 
 **False positives are the real failure mode.** An analyzer wrong two percent of the time on a blocking
-rule, across a thousand merges, is twenty forced directives, and directives are how a dialect degrades
+rule, across a thousand merges, is twenty forced directives, and directives are how a rule set degrades
 into a style guide with extra steps. `TS-D06` tracks the count; treat every one as a bug report
 against the analyzer rather than a resolved issue.
 

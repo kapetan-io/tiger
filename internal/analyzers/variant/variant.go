@@ -37,13 +37,13 @@
 // A loop with neither a synthesized nor a verified pinned variant is
 // blocking, and the finding always names the same rewrite: an explicit
 // iteration cap whose own counter is itself a synthesizable variant, with
-// an assert on exhaustion. That rewrite is always available in-dialect, so
+// an assert on exhaustion. That rewrite is always available under the rules, so
 // unlike the specification's note that a ranking beyond the predicate
 // language "needs a deviation with a reason," this analyzer implements no
 // //tiger:variant deviation escape — correctness constraint 7 requires
 // every blocking finding to name a code change, never a directive, and the
 // counter-cap form is always that change (ADR-0003's escape admission
-// test: an escape earns its existence only where no in-dialect rewrite
+// test: an escape earns its existence only where no compliant rewrite
 // exists, and one always exists here).
 //
 // Scope is AST and go/types only, mirroring boundedloop's structural

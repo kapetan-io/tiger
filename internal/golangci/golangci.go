@@ -1,4 +1,4 @@
-// Package golangci audits the other half of the dialect: the auto rules
+// Package golangci audits the other half of the rule set: the auto rules
 // delegated to golangci-lint. Verify checks a project's configuration
 // against the registry's auto-rule baseline; Generate and Init derive that
 // baseline config from the registry, so a rule cannot be registered without

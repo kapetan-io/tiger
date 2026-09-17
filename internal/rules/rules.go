@@ -1,5 +1,5 @@
-// Package rules is the registry: the closed set of every rule in the
-// dialect, and the single source of rule identity.
+// Package rules is the registry: the closed set of every rule,
+// and the single source of rule identity.
 //
 // Custom rules bind a diagnostic category to the analyzer that enforces it
 // and its severity; auto rules (auto.go) bind a rule to the golangci-lint
@@ -119,7 +119,7 @@ func (r CustomRule) CountedNoun(n int) string {
 	return r.Counted
 }
 
-// customRules is the dialect: the wave-1 rules, the SSA wave's, then the
+// customRules is the custom half of the rule set: the wave-1 rules, the SSA wave's, then the
 // cross-package wave's. Order groups rules by analyzer.
 var customRules = []CustomRule{
 	{

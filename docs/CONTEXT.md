@@ -1,7 +1,8 @@
 # Tiger Go
 
-Domain language for the Tiger Go project: a restricted Go dialect whose specification lives in
-the source, checked by the `tiger` analyzer. Terms here come from the Tiger Go Specification and
+Domain language for the Tiger Go project: a tool that deterministically forces AI agents to write Go that
+is testable and free of whole classes of production bugs, with the specification in the source
+and checked by the `tiger` analyzer. Terms here come from the Tiger Go Specification and
 the tiger-check blueprints; use them exactly.
 
 ## Language
@@ -90,7 +91,7 @@ The curated, committed mapping from standard-library functions to their effects 
 known-misses.
 
 **Registry**:
-The closed set of every rule in the dialect — custom rules bound to their analyzer and severity,
+The closed set of every rule — custom rules bound to their analyzer and severity,
 auto rules bound to their golangci-lint linter and baseline settings — from which the binary,
 docs, meta-tests, and the `tiger golangci` audit are derived; the single source of rule identity.
 
@@ -231,7 +232,7 @@ in the budget file's diff, lowered by `tiger budget --write`.
 > waives it?"
 > **Domain expert:** "No — there is no `bounded` **escape hatch** in the tool. Give the loop an
 > explicit cap and assert on exhaustion, or use the event-loop shape TS-S03 describes. The only
-> escape in the dialect is `//tiger:batched`, because a provider without a bulk endpoint is a fact
+> escape tiger has is `//tiger:batched`, because a provider without a bulk endpoint is a fact
 > of the world the code can't restructure away — and unless your loop is a **cursor shape**, it
 > waives nothing here either. It still counts against the package's **budget** on every run,
 > whether it waives anything or not, and prints as a blocking finding once the package is over. If you think the finding itself is wrong, that's a false

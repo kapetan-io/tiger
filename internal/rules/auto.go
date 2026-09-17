@@ -1,4 +1,4 @@
-// Auto rules: the half of the dialect enforced by off-the-shelf
+// Auto rules: the half of the rule set enforced by off-the-shelf
 // golangci-lint linters. Tiger never reimplements one — it audits the
 // delegation. The tiger golangci verification and the --init generator are
 // both derived from this table, so the generated baseline passes
@@ -51,7 +51,7 @@ type AutoRule struct {
 	Settings []Setting
 }
 
-// autoRules is the auto half of the dialect, in specification order.
+// autoRules is the auto half of the rule set, in specification order.
 // Baseline values mirror config/golangci.yml, the Stage 0 template.
 var autoRules = []AutoRule{
 	{

@@ -1,13 +1,30 @@
 # Tiger Go
 
-A verified Go dialect adapted from TigerBeetle's
-[TIGER_STYLE](https://github.com/tigerbeetle/tigerbeetle/blob/main/docs/TIGER_STYLE.md),
-restricted so that **the specification lives in the source and a machine checks
-the code against it**. Declarations are reviewed by humans; code is checked by
-the `tiger` analyzer, deterministically, with no LLM and no network.
+Tiger is a static analyzer for Go, built for code that AI agents write. It holds
+that code to the restrictions NASA's
+[Power of Ten](https://spinroot.com/gerard/pdf/P10.pdf) and TigerBeetle's
+[TigerStyle](https://github.com/tigerbeetle/tigerbeetle/blob/main/docs/TIGER_STYLE.md)
+put on flight and database software, so the result is testable and free of
+whole classes of production bugs. Every loop has a bound, every goroutine has an
+owner, and every clock, random source, and IO call is passed in, so any function
+can be tested in isolation. A run either passes or fails. Tiger has no warnings
+and no suppression comment, so code that fails the check is rewritten until it
+passes. The analysis is deterministic static analysis and never a language
+model, with no network. **The specification lives in the source and a machine
+checks the code against it.**
 
-The specification (145 rules, Parts I–V, IDs `TS-*`) currently lives in the
-design vault and governs everything in this repository.
+## Documentation
+
+- [Tiger Explainer](docs/Tiger%20Explainer.md) — start here: what tiger is
+  for and why, the concepts (surfaces, pins, effects, frames, invariants,
+  budgets, directives), and the real bugs its rules caught in trials.
+- [Tiger Rule Reference](docs/Tiger%20Rule%20Reference.md) — one entry per
+  enforced rule: what it requires and why, a firing example, the compliant
+  rewrite, severity, and directive interactions. A doc meta-test in
+  `internal/rules` keeps it in lockstep with the registry.
+- [Tiger Specification](docs/Tiger%20Specification.md) — the normative
+  document (Parts I–V, IDs `TS-*`) that governs everything in this
+  repository.
 
 ## The tiger tool
 
@@ -71,7 +88,7 @@ internal/store:
   TS-D07: 3
 ```
 
-Two engines enforce the dialect:
+Two engines enforce the rules:
 
 - **Auto rules** are enforced by off-the-shelf golangci-lint linters.
   `tiger golangci` audits that a project's config actually enforces the
@@ -112,7 +129,7 @@ never a finding, a declaration its own imports or dispatch contradict is.
 | Path | What it is |
 | --- | --- |
 | `cmd/tiger/` | The CLI: a thin `main` over a testable run function. |
-| `internal/rules/` | The rule registry — the single source of the dialect. The binary's analyzer set, the finish functions, the corpus meta-tests, severity, the computed-facts table, and the `tiger golangci` audit are all derived from it. |
+| `internal/rules/` | The rule registry — the single source of the rule set. The binary's analyzer set, the finish functions, the corpus meta-tests, severity, the computed-facts table, and the `tiger golangci` audit are all derived from it. |
 | `internal/analyzers/` | The 33 analyzers, one package per analyzer, each with its corpus (failure-mode fires, compliant rewrite silent, known misses marked): an `analysistest` corpus for a per-package rule, a small module under `testdata/module/` run through the tiger driver for a whole-program rule. The shared internals live under `internal/analyzers/internal/`: `words` (identifier tokenization), `ssalib` (the effect lattice plumbing over `go/ssa`, including the curated stdlib effects table), `restrict` (the package restriction declaration), and `invariants` (invariant const and assert-call collection). |
 | `internal/directive/` | The `//tiger:` grammar: closed verb vocabulary, per-verb pin argument grammars (the effect lattice, frame lists, variant expressions, contract predicates), canonical printing, and the round-trip contract `Parse(Format(d)) == d`. |
 | `plugin/` + `.custom-gcl.yml` | The golangci-lint module plugin: the same analyzers under `golangci-lint run`, minus the finish step — TS-A07, TS-A09, and TS-X01 are `tiger check`-only. See "Running under golangci-lint" below. |

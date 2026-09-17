@@ -1,5 +1,5 @@
 // Package assert is a corpus miniature of the spec's canonical assert
-// package. Its API — Ok(cond bool, ...) and Equal(got, want T) — is dialect
+// package. Its API — Ok(cond bool, ...) and Equal(got, want T) — is tiger
 // infrastructure that the specification itself fixes, so sametypeparams
 // treats this package (and its external test package) as exempt.
 package assert
