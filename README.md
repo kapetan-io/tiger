@@ -1,23 +1,23 @@
 # Tiger Go
 
-Tiger deterministically forces AI agents to write Go that is testable and free of
-whole classes of production bugs. It holds the code to the restrictions NASA's
-Power of Ten and TigerBeetle's
+Tiger is a static analyzer for Go, built for code that AI agents write. It holds
+that code to the restrictions NASA's
+[Power of Ten](https://spinroot.com/gerard/pdf/P10.pdf) and TigerBeetle's
 [TigerStyle](https://github.com/tigerbeetle/tigerbeetle/blob/main/docs/TIGER_STYLE.md)
-put on flight and database software: every loop has a bound, every goroutine has
-an owner, and every clock, random source, and IO call is passed in, so any
-function can be tested in isolation when you need to. Tiger has no warnings: the
-code passes static analysis, or the agent must rewrite the code. No LLM is
-involved in the analysis. **The specification lives in the source and a machine
-checks the code against it.** Declarations are reviewed by humans; code is
-checked by the `tiger` analyzer, with no network.
+put on flight and database software, so the result is testable and free of
+whole classes of production bugs. Every loop has a bound, every goroutine has an
+owner, and every clock, random source, and IO call is passed in, so any function
+can be tested in isolation. A run either passes or fails. Tiger has no warnings
+and no suppression comment, so code that fails the check is rewritten until it
+passes. The analysis is deterministic static analysis and never a language
+model, with no network. **The specification lives in the source and a machine
+checks the code against it.**
 
 ## Documentation
 
-- [Tiger Explainer](docs/Tiger%20Explainer.md) — start here: why tiger
-  exists, the real bugs it caught in trials, how it differs from a linter,
-  and the concepts (verdicts, budgets, directives, pins) you'll meet in a
-  day's work.
+- [Tiger Explainer](docs/Tiger%20Explainer.md) — start here: what tiger is
+  for and why, the concepts (surfaces, pins, effects, frames, invariants,
+  budgets, directives), and the real bugs its rules caught in trials.
 - [Tiger Rule Reference](docs/Tiger%20Rule%20Reference.md) — one entry per
   enforced rule: what it requires and why, a firing example, the compliant
   rewrite, severity, and directive interactions. A doc meta-test in
