@@ -1,295 +1,773 @@
-# ENG-191 — Decision: what tiger's static analysis can hold, and the rule set that follows
+# ENG-191 Decision: what tiger's static analysis can hold, and the rule set that follows
 
-Date: 2026-09-17
+Date: 2026-09-24
 
-## Decision
+Tiger's goal is AI-written Go that either conforms to a strict dialect or produces a blocking
+finding the agent must fix. This document answers the four questions ENG-191 asks, in the order
+it asks them, and ends each answer with the calls a reviewer has to ratify or veto. Every call
+states what the rule checks, shows it firing on real code from the two trial codebases with the
+exact text tiger prints, shows what the decision changes, and says what a veto costs.
 
-Rule-based static analysis, as tiger practices it, gets the project its stated goal for one class
-of rule and fails it for two others. The class it holds is the exact structural rule over a
-restricted language, plus the opt-in pin checked in both directions. Every real bug either trial
-found came from that class, and that class has no false positive by construction. The two classes
-it fails are judgment rules (naming, distance, style), which the project already removed and
-should not revisit, and termination proofs beyond the bound shape, which TS-V01 attempts with a
-grammar too small to verify real loops and which this decision folds into the pin model. What
-static analysis cannot decide at all is whether a declaration is true, and the design already
-places that with review. Tiger's job there is to keep the review surface small and impossible to
-silence, not to judge the claim, and not to embed a language model to judge it.
+A rule code like TS-S02 is a label. The sentence next to it says what the rule checks.
 
-The rule set that follows keeps 35 of the 40 registered custom rule codes as they are, changes the
-mechanism of three, converts one to a pinned fact, demotes one to an advisory trial, and adds no
-new rule. The largest single change is a fix rather than a rule. Four blocking rules recognize
-compliance by an identifier's name where the behavior is computable, and an agent satisfies each
-by renaming. The three explainer
-disagreements resolve as one wrong claim (`//nolint`), one product call this document makes
-(`//tiger:restrict` stays, opt-in), and one place where the explainer and the code agree and the
-specification is stale (map order).
+## The calls in brief
 
-## Evidence base
-
-Three sources, none of them the specification's own claims about itself.
-
-**The two trials and their reruns.** ENG-148 (querator, ~36k lines) and ENG-159 (git-server,
-~17k lines) ran wave-1 tiger; ENG-149 and ENG-162 reran both pins after the wave-1.5 tuning and
-the advisory audit. Together they found ten real defects, all from blocking rules of the
-structural class.
-
-| Rule | Real bugs | What it caught |
-|---|---:|---|
-| TS-S02 loop bound | 5 | a pause/shutdown deadlock; a remotely triggerable CPU-spin DoS through an uncapped tag peel chain; two uncapped pkt-line command loops; an uncapped ref-update accumulation |
-| TS-S08 closed switch | 3 | two storage backends dropping an action with no default and no log; a diff writer that silently emits nothing for a future op tag; a pack writer returning an invalid type code |
-| TS-C05 blocking op | 1 | three client waits with no cancellation that the doc comment claimed |
-| TS-C02 goroutine owner | 1 | an unwaited `WaitGroup` letting `Shutdown` return early |
-| TS-E02 discard | 1 | a hash-format validation error discarded, a latent corrupted object id |
-
-**A fresh run of today's tiger against the querator pin.** Built from `main` at `5126797`, run
-against querator at `1fd1bb2`, the same pin ENG-148 used. This is what a new adopter sees now,
-after every removal and tuning to date.
-
-| Rule | Findings | Verdict on the code |
-|---|---:|---|
-| TS-E02 discard needs comment | 86 | true by spec; about half are deferred `Close`/`Rollback`/`Shutdown` cleanup where the only remedy is a boilerplate comment |
-| TS-N07 same-type params, max 4 | 45 | ~30 genuine swap hazards; ~15 are the `t, ctx, client` test-helper prefix burning the cap by convention |
-| TS-T06 test has doc comment | 40 | all genuinely undocumented tests (the `Goal:` token requirement is gone) |
-| TS-V01 loop variant | 37 | 30 are the cursor loops TS-S02 waives; 7 are provably terminating loops the synthesizer cannot see; none is a bug |
-| TS-S09 no labeled continue | 35 | 30 copies of one `continue nextBatch` idiom across four mirrored backends; zero gotos |
-| TS-S02 loop bound | 35 | 30 cursor drains, waivable with `//tiger:batched`; the pause/shutdown deadlock still fires |
-| TS-S18 naked panic | 15 | true; blocked on adopting an assert package |
-| TS-S08 closed switch | 15 | true; same prerequisite; three sites would change behavior if fixed mechanically |
-| TS-C02 goroutine owner | 14 | 4 real; 10 are complete `wg.Add`/`wg.Wait` supervision the rule has no vocabulary for |
-| TS-C05 blocking op | 13 | the real missing-cancellation waits still fire |
-| TS-C09 reactive spawn | 12 | 12 of 12 in `_test.go`, the bounded fan-out-then-`Wait` test idiom; zero production hits |
-| TS-T02 map order | 11 | sampled 4: one real order leak into logs, three order-insensitive bodies the allowlist cannot prove (append followed by a sort, nested deletes on a second map, a map write under `if`/`else`) |
-| TS-E06 return arity | 11 | 10 idiomatic multi-value helpers, 1 pinned by a third-party interface |
-| TS-X01 single-impl interface | 9 | 9 of 9 are role interfaces over one `service.Service`, the segregation idiom; the named remedy widens every consumer's dependency to the whole service |
-| TS-N08 bool param | 5 | 1 strong, 4 weak |
-| TS-T10, TS-C12, TS-S06, TS-S01, TS-M10 | 4, 3, 2, 2, 2 | true by spec; TS-S01 names two real call cycles through the request loop |
-| **Total blocking** | **401** | ENG-161 predicted ~350 for this pin after the naming removals; the difference is TS-V01 |
-
-Advisory output after budgets is 2 skipped tests and 1 misordered struct. The channel is what
-ADR-0006 said it should be.
-
-**Two fixture probes** run against the same binary, checking a claim the run raised. A cursor
-loop carrying `//tiger:batched`, a two-pointer reversal with `i, j = i+1, j-1`, and a
-`for n > 0 { n /= 62 }` loop all fire TS-V01. Pinning `//tiger:variant j - i` on the reversal
-and `//tiger:variant n` on the division is rejected as unverifiable. The only exit the rule
-offers is an artificial iteration cap, which ADR-0004 rejected for cursor loops as "either a
-magic number or a restatement of however big the store is."
-
-## Where the line falls
-
-The specification's own framing survives contact with the evidence. "Machines check the
-correspondence; humans and AI review the declarations" is the right split, and every place tiger
-has gone wrong is a place it crossed that line in one direction or the other.
-
-**Sufficient: exact structural rules over the restricted language.** TS-S02, S03, S08, S09, C02,
-C05, C12, E02, E06, M10, N07, N08, N14, T06, T10, L09, L10, M05, S01, S21, S22, T02, and the
-cross-package invariant rules classify every instance of a construct as an allowed shape or a
-finding. Whether a loop has a stated bound has an answer for every loop; whether it halts does
-not. This class found all ten bugs, produces byte-identical output across runs, and cannot fire on
-compliant code except where its shape grammar is narrower than the language, which is the known
-miss discipline the corpus already enforces. The wave-1 correctness constraint that a false
-positive on a blocking rule is an analyzer bug, never a suppression, held on both codebases (seven
-analyzer defects fixed on querator, one on git-server, zero suppressions).
-
-**Sufficient: opt-in pins checked bidirectionally.** Effects, frames, and restriction axes are
-computed for every function and package and fire nothing until someone freezes one. Absence of a
-declaration is never a finding. This is the model that lets a whole-program analysis ship with
-zero noise on a codebase that has not adopted it, and it is the model TS-V01 should have used.
-
-**Not sufficient, already resolved: judgment rules.** Naming dictionaries (N12, N13, N15),
-single-caller prefixes (N06), and declaration distance (S13) were removed after trials showed
-their output dominated by domain vocabulary and by shapes the metric cannot distinguish from
-misplacement. ENG-161 and ENG-162 got this right and ADR-0006 recorded it. The specification keeps
-the maxims with review as enforcement. Nothing in this investigation argues for reviving them, and
-the config file's package scoping does not change the verdict, because the failure was never
-scoping. A rule whose best-case yield across two codebases is `itemPtr` and `srcSize` does not
-earn a blocking slot.
-
-**Not sufficient, unresolved until now: termination proofs beyond the shape.** TS-V01 is a
-ranking-function prover with a closed grammar (`len(s) > c`, `i < n`, `low < high` against
-`i++`, `s = s[1:]`, `high--`). On querator it fires 37 times, catches nothing TS-S02 does not,
-misses the one real termination bug (a `for { select }` loop, by design outside its scope), and
-rejects a correct pin on a loop TS-S02's wave-1.5 grammar already accepts as bounded. Two rules
-apply two different termination grammars to the same loop, and the stricter one has no escape.
-The explainer's claim that synthesis "covers nearly every real loop" is false on the only real
-codebase it was measured against. This is not a tuning problem. A prover small enough to be exact
-is too small to verify the loops people write, and growing it is the "exponential in the tail"
-cost the specification's honest-limits section names.
-
-The fix is to apply tiger's own pin model. Variant synthesis stays as a computed fact, printed
-under `--show-facts` and frozen by `tiger pin`. A pinned variant is verified bidirectionally,
-exactly as now. An unpinned loop that TS-S02 accepts is not a finding. The loop-bound rule remains
-the blocking rule for termination, and it already carries the reviewed cursor waiver ADR-0004
-admitted. This removes 37 findings from querator, restores the waiver, and keeps every guarantee a
-pin gives.
-
-**Not static at all, by design: the truth of a declaration.** Whether a `//tiger:batched` reason
-is true, whether a type is genuinely an open enum, whether a package should claim closed dispatch,
-whether the comment above `_ = f.Close()` is honest, whether `SequenceMonotonic` is the invariant
-the protocol needs. The specification's "what no amount of tooling fixes" table is correct that
-these are the same thing, and the ticket's question about LLM-judged review lands here. The answer
-is that this review already exists and its reviewer may be a human or an AI agent reading the pull
-request. What tiger owes that reviewer is a surface that is small, visible on every run, and
-impossible to shrink without a diff. The standing advisories, the budget file, and the directive
-lines are that surface. Tiger should not judge the claims itself. The README's "never a language
-model" holds, because a model inside the gate would make the verdict nondeterministic and would
-turn the one thing agents cannot fake, a green run, into something they can argue with.
-
-**Runtime checks stay where the specification put them.** TS-T11's double-run diff, `goleak`,
-`-race`, and the mutation score are the backstop for what static rules approximate. TS-T02 is the
-example. The analyzer bans a shape and the double run proves the output. Neither replaces the other.
-
-**One gap that is neither decidability nor judgment: recognition by name.** Four blocking rules
-decide compliance from an identifier's name where the behavior is computable. `Done()` matches
-any method named `Done` with no receiver check. A channel named `shutdown`, `stop`, `quit`, or
-`done` satisfies TS-S03 and TS-C05 with no `close` or send anywhere. Any method named `Reset`
-satisfies TS-M05, including an empty one. Every `go` statement inside a function the config names
-as a supervisor is exempt, or was until ENG-153 removed the flag, leaving `errgroup` as the only
-compliant path and ten correct `WaitGroup` supervisions on querator with no way to pass. The
-canceled ticket ENG-177 describes each fix. These are the holes an agent optimizing for green
-finds first, and they are the strongest argument in this investigation that the current
-implementation falls short of its own exactness claim. They are analyzer work, not a change of
-direction.
-
-## The rule set
-
-Every shipped custom rule code, with its disposition. "Keep" means blocking, unchanged. Auto rules
-delegated to golangci-lint are out of scope here; the `tiger golangci` audit governs them and
-neither trial found a problem with that split.
-
-| Rule | Disposition | Reason |
+| # | Call | Changes |
 |---|---|---|
-| TS-S02, S03 | keep | 5 real bugs; cursor waiver in place; wave-1.5 grammar widenings held under adversarial review |
-| TS-S08 | keep | 3 real bugs; `//tiger:openenum` covers the open-vocabulary case |
-| TS-C05 | keep | real bugs still fire after the shutdown-shape tuning |
-| TS-C02 | keep, and revive ENG-177 item 1 | 4 real; 10 of 14 are correct `wg.Add`/`wg.Wait` supervision the rule must learn to compute |
-| TS-E02 | keep, exempt one shape | the discarded result of a call inside a `defer` statement is the boilerplate-comment case both trials named; the rule caught one real bug outside that shape. ADR-0006 admits tuning when the misfires form a bounded shape that can be named |
-| TS-N07 | keep, exempt one shape | do not count a `testing.TB` or `context.Context` leading parameter toward the cap of four; the adjacent-same-type check is untouched and is where the ~30 real hazards live |
-| TS-C09 | keep, scope to non-test files | 12 of 12 querator findings are the fan-out-then-`Wait` test idiom; zero production hits on either codebase |
-| TS-T02 | keep; grow the allowlist by corpus | inverted rule is exact over its allowlist; 3 of 4 sampled findings are order-insensitive shapes it cannot prove (append-then-sort, nested map deletes, conditional map writes). Extending the allowlist is the blueprint's stated mechanism |
-| TS-V01 | convert to pin-only fact | see above; synthesis and pin verification stay, the unpinned-loop finding goes |
-| TS-X01 | demote to advisory trial (ADR-0005/0006) | shipped blocking in ENG-152 after both trials; 9 of 9 querator findings are the role-interface idiom and the named remedy is a design regression; needs the git-server rerun before a verdict |
-| TS-S09, S06, S07, S18, S21, S22, T06, T10, E06, M10, M05, S01, C12, N08, N14, L09, L10 | keep | true by spec on real code; volume where it exists (S09's 30 copies of one idiom) counts one decision many times, not many wrong decisions |
-| TS-F01, F02, F07, V03, P01, P02, K03, A07, A09 | keep | opt-in; fire nothing until declared; zero noise on both codebases |
-| TS-L05, L10-distance, D07, L09-escape | keep advisory | the accounting channel; 17 findings across three codebases after ENG-162 |
-| TS-D06 | keep | the ratchet is the mechanism that makes every escape honest |
+| 1 | No language model inside the pass/fail verdict | nothing, ratifies the current design |
+| 2 | The loop-termination proof (TS-V01) stops blocking unpinned loops | 62 findings gone across both codebases |
+| 3 | The single-implementation interface rule (TS-X01) is removed | 24 findings gone; every one would break the code if fixed |
+| 4 | Discarded errors in cleanup code need no comment (TS-E02) | 47 findings gone |
+| 5 | A leading `t` or `ctx` does not count toward the four-parameter cap (TS-N07) | 21 findings gone |
+| 6 | The goroutine-per-item rule (TS-C09) stops checking `_test.go` files | 12 findings gone |
+| 7 | Four rules stop accepting a compliant-sounding name as proof of compliance | closes four holes an agent can pass by renaming |
+| 8 | The map-order rule (TS-T02) learns the collect-then-sort shape | 3 querator findings in the sample gone |
+| 9 | No baseline file that grandfathers blocking findings in an existing codebase | nothing, records the cost |
+| 10 | `//nolint` naming a tiger rule becomes a blocking finding; `//nolint` for other linters is counted | closes one silent channel under each driver |
+| 11 | `//tiger:restrict` stays opt-in and returns to the explainer | reverses one explainer edit |
+| 12 | The specification's map-order line is stale; the explainer drops "heuristic" | doc fixes only |
 
-Nothing new enters as a rule. The additions are analyzer fixes (ENG-177's four items), one
-silencing-channel closure (below), and the spec and explainer reconciliation.
+## The evidence this rests on
 
-**What does not ship, and why.** No generic `//tiger:<rule-id>` deviation directive. ADR-0003's
-admission test still holds and nothing in either trial produced a finding that a compliant rewrite
-could not clear, except the cursor loops ADR-0004 already covers. No per-site config exemption for
-signatures pinned by third-party interfaces (ENG-175); the one case on record is a single func
-literal in one repo, and an adapter function is the compliant shape. No blocking-finding baseline
-for brownfield adoption; a first run against 36k lines produces around 400 findings and the tool
-offers no ratchet for blocking rules, which is consistent with the stated goal of AI-written code
-and is a real cost for adopting an existing tree. This decision records that cost rather than
-adding a baseline, because a baseline is the mechanism ADR-0011 refused for advisories and the
-argument is the same.
+Every number below comes from building `tiger` at `5126797` (current `main`; this branch changes
+only documents) and running `tiger check ./...` against the two trial pins.
 
-## The three explainer disagreements
+- **querator** at `1fd1bb2`, the pin ENG-148 used. About 36k lines, a queue service with four
+  storage backends.
+- **git-server** at `321da03` in the mono-repo, the pin ENG-159 used, after `task duh-gen` and
+  `task proto-gen` generate its protobuf code. About 17k lines, a git smart-HTTP server.
 
-**`//nolint`.** Three documents say three things. The specification allows `//nolint` with a
-reason, enforced by `nolintlint` under TS-L09. The explainer says tiger bans it outright and
-"flags any `//nolint` as a finding." The code does neither: `tiger check` does not read `//nolint`
-at all, and under the golangci-lint plugin a `//nolint:tiger` silences a tiger rule with no
-advisory and no count (ENG-178 item 2). The explainer's claim is false about the tool as shipped.
+querator prints `tiger: 401 blocking` and git-server prints `tiger: 339 blocking`. Five of
+querator's lines and 16 of git-server's are accounting findings (skipped tests, a misordered
+declaration, and the missing budget rows for them), which print as blocking only because neither
+repo has a `tiger.budget.yaml` yet. One `tiger budget --write` clears them. That leaves 396 and 323
+rule findings.
 
-The resolution follows the escape admission test rather than either document. Tiger's own rules
-accept no suppression under any driver. The `directives` analyzer already walks every comment; a
-bare `//nolint` or one naming `tiger` becomes a blocking TS-L09 finding reported at the file's
-`package` clause, where the comment on the original line cannot cover it. That makes the
-explainer's sentence true for tiger's rules. For auto rules the golangci-lint linters enforce, a
-`//nolint:<linter> // reason` stays permitted, because several of those linters are heuristics
-with genuine false positives and ADR-0003 already concedes that door is outside tiger's control.
-What changes is that it is no longer uncounted. Each such comment is an escape in the
-specification's own words for TS-L09, and the `directives` analyzer counts it as `TS-L09-escape`
-against the package budget, the same standing advisory a `//tiger:batched` raises. No uncounted
-silence, and no ban on a suppression the third-party linter may actually need.
+Two fixture modules were also run against the same binary, to test claims the trials could not
+answer on their own. They are reproduced inline where they matter.
 
-**`//tiger:restrict`.** The explainer's commit `b452818` removed every mention of the directive
-and the "How review divides" section built on it, and ENG-188 asserted that `no-reflect` and
-`closed-dispatch` "are not opt-in." The specification, the rule reference, and the code all treat
-the restriction set as an opt-in intent declaration enforced by TS-P01, TS-P02, and TS-K03, with
-absence never a finding.
+---
 
-Keep the shipped design. Three reasons. Closed dispatch as a global default fails on every real
-codebase tiger has run against; querator's four storage backends behind one interface are the
-architecture, not a violation. The precision bound in TS-P02 only means anything as a claim a
-package makes and its dependencies must support; with no claim there is no bound to compute. And
-the directive is consumed, by two analyzers with corpora, which is the test ENG-178 applied when it
-proposed dropping `hot`, `wire`, and `owner`. The explainer was half right about one axis:
-reflection is already banned by default through the auto rule for TS-S12, and `no-reflect` on the
-directive only scopes that. The explainer should say so and should restore the paragraph that
-introduces the directive, because a reader who meets TS-P01 in the rule reference with no
-explainer entry has no way to learn what a restriction set is.
+## 1. Is static analysis enough for tiger's goal?
 
-**Map order.** The explainer says `maporder` bans every map range except a fixed set of safe body
-shapes and calls the check "a heuristic rather than a proof." The specification's TS-T02
-enforcement line says "range over a map whose body appends or writes. Heuristic." The code does
-what the explainer says. The ENG-150 blueprint made that inversion deliberately, called it exact,
-and flagged the specification line for amendment. The amendment never landed.
+For most of it, yes. Static analysis gets tiger's goal where the rule checks a shape the code
+either has or lacks. It fails where the rule has to prove something about runtime behavior with a
+grammar smaller than the code people write, and where the rule is really a judgment about naming
+or design. The truth of what a developer declares (why this loop is safe, why this error can be
+dropped) is not a static question. Review already owns it.
 
-This is not a disagreement about the product. The explainer and the analyzer agree; the
-specification is stale, and this ticket's follow-up fixes the enforcement line and the Part V
-analyzer table. One wording correction goes the other way. The check is not a heuristic. It bans a
-shape and is exact over its allowlist. What it is not is a proof that order never reaches an
-output, because the known miss (collect keys, then range the slice) escapes it. The explainer
-should say "exact over a conservative allowlist, backstopped by TS-T11" and drop "heuristic." The
-querator sample shows the allowlist needs to grow, and the blueprint already says growth is an
-analyzer change with a corpus case, never a knob.
+**Shape rules work.** A shape rule classifies every instance of a construct as allowed or not. "Does
+this loop state a bound?" has an answer for every loop. "Does this loop halt?" does not. Every one
+of the ten real bugs both trials found came from a shape rule (the table in section 2). Shape rules
+print byte-identical output on every run, and when one misfires the fix goes in the analyzer.
+Adopters never suppress. On both trials that held, with eight analyzer defects fixed and zero
+suppressions.
 
-## The canceled tickets
+**Opt-in pins work.** Tiger computes some facts for every function and package without being
+asked. Effects are which kinds of IO a function performs. Frames are which state it writes.
+Restriction axes are what a package promises not to do. None of these produce a finding until
+someone freezes one with a pin comment like `//tiger:effects`. After that, tiger checks the pin
+against the code in both directions. It fires when the code does more than the pin says, and when
+the pin claims more than the code does. A codebase that never pins anything gets zero noise, which
+is how a whole-program analysis ships without flooding an adopter.
 
-Eleven tickets were canceled on the assumption the direction might change. It does not, so most of
-them describe work this decision still wants. The disposition, ticket by ticket. Reviving is a
-human's call after this document is ratified; nothing here re-opens one.
+**Judgment rules do not work, and are already gone.** Rules that judged names against a dictionary
+(TS-N12, N13, N15), flagged helpers with one caller (TS-N06), or measured distance between a
+declaration and its use (TS-S13) were removed after both trials showed their output was mostly
+domain vocabulary and shapes the metric could not tell from real mistakes. ADR-0006 records the
+removal. The specification keeps those maxims and names review as their enforcement. Nothing here
+argues for bringing them back.
+
+**Termination proofs beyond the shape do not work as blocking rules.** TS-V01 tries to prove every
+loop ends by finding a value that shrinks on every pass. Its grammar recognizes a handful of forms
+(`i < n` with `i++`, `len(s) > 0` with `s = s[1:]`, and a few more). Real loops outgrow it
+immediately. Section 3, call 2 has the evidence and the fix.
+
+**Whether a declaration is true is not static at all.** Whether a `//tiger:batched` reason is
+honest, whether a type really is an open enum, whether the comment beside `_ = f.Close()` is
+correct. The specification's "what no amount of tooling fixes" table puts these with review, and
+that is right. Tiger's job is to keep them visible on every run and impossible to add without a
+diff. It should not judge them.
+
+**Runtime checks back up the static rules.** The spec's double-run test (TS-T11 runs each test
+twice and diffs the output), `goleak`, `-race`, and mutation score all catch what a static shape
+only approximates. Map order is the example. TS-T02 bans the shape, and the double run proves the
+output never varied.
+
+### Call 1: no language model inside the pass/fail verdict
+
+**What it governs.** ENG-191 asks whether some goals need LLM-judged review. The place a model
+would plug in is the declarations above, the free-text reasons tiger can shape-check but never
+truth-check.
+
+**Where it bites today.** A cursor loop in querator's Postgres backend, written the way ADR-0004
+allows (the probe from section 3, call 2):
+
+```go
+//tiger:batched rows arrive from a Postgres cursor; the table size is the bound
+for rows.Next() {
+```
+
+Tiger checks that the reason exists and that the loop is cursor-shaped. It cannot check that the
+table is finite, and a model could read the reason and agree or disagree.
+
+**What the decision changes.** Nothing. The reason stays a claim a reviewer reads, human or AI, on
+the pull request. Tiger surfaces it as a standing advisory on every run and counts it against the
+package budget.
+
+**If vetoed.** A model inside the gate makes the verdict nondeterministic. The same commit could
+pass on one run and fail on the next, and an agent could rephrase a reason until the model agrees.
+A green run is the one thing an agent cannot currently argue with. A model in the gate would turn
+it into something the agent can negotiate. A model reviewing the pull request, outside the gate,
+gets every benefit with none of that cost.
+
+---
+
+## 2. What the trial evidence says
+
+### What found real bugs
+
+Across ENG-148 (querator), ENG-159 (git-server), and their reruns in ENG-149 and ENG-162, tiger
+found ten real defects. All ten came from five blocking shape rules.
+
+| Rule, in plain words | Bugs | What it caught |
+|---|---:|---|
+| TS-S02, every loop states a bound tiger can see (a constant, a `len`, or a counter) | 5 | a pause/shutdown deadlock; a remotely triggerable CPU spin through an uncapped annotated-tag peel chain; two uncapped pkt-line command loops; an uncapped ref-update accumulation |
+| TS-S08, a switch over an enum handles every value or ends in `assert.Unreachable` | 3 | two storage backends silently dropping an unknown action; a diff writer that emits nothing for a future op tag; a pack writer returning an invalid type code |
+| TS-C05, every blocking channel wait can be cancelled | 1 | three client waits with no cancellation, where the doc comment claimed there was |
+| TS-C02, every goroutine is started by something that waits for it | 1 | an unwaited `WaitGroup` letting `Shutdown` return before its goroutines exited |
+| TS-E02, a discarded error (`_ =`) needs a comment saying why | 1 | a hash-format validation error discarded, which would have produced corrupt object ids the day a second hash format shipped |
+
+### What today's tiger prints
+
+Counts per rule on each pin. The last column says what reading the findings showed.
+
+| Rule | querator | git-server | What the findings are |
+|---|---:|---:|---|
+| TS-N07 parameters | 45 | 112 | mostly adjacent `string` params, a real swap hazard; see call 5 for the cap half |
+| TS-E02 discarded error | 86 | 42 | 47 are cleanup inside `defer` or `t.Cleanup`; see call 4 |
+| TS-E06 at most two return values, the second an `error` or `bool` | 11 | 39 | true by spec |
+| TS-V01 loop proof | 37 | 25 | no bugs; see call 2 |
+| TS-S02 loop bound | 35 | 23 | 30 querator cursor drains, which `//tiger:batched` waives; the deadlock bug still fires |
+| TS-T06 test has a doc comment | 40 | 2 | true |
+| TS-S09 no labeled `continue`/`break` | 35 | 0 | 30 copies of one `continue nextBatch` idiom across four mirrored backends |
+| TS-T02 map order | 11 | 17 | mixed; see call 8 |
+| TS-X01 single-impl interface | 9 | 15 | 24 of 24 are deliberate seams; see call 3 |
+| TS-S08 closed switch | 15 | 14 | true; needs an assert package |
+| TS-S18 no bare `panic` outside the assert package | 15 | 4 | true; needs an assert package |
+| TS-C02 goroutine owner | 14 | 1 | 10 querator hits are correct `WaitGroup` supervision; see call 7 |
+| TS-C05 cancellable wait | 13 | 0 | the real missing-cancellation waits still fire |
+| TS-C09 goroutine per item | 12 | 0 | all in `_test.go`; see call 6 |
+| TS-N08 no `bool` parameter | 5 | 12 | mixed, mostly true |
+| TS-S06, S01, M10, T10, C12, N14 | 13 | 17 | true by spec; querator's two TS-S01 hits are real recursion through the request loop |
+
+### What a static rule could never catch
+
+The trial reports and this rerun agree on three things tiger cannot see:
+
+- Whether a waiver's reason is true. A `//tiger:batched` on an infinite generator shaped like a
+  cursor passes, as ADR-0004 says.
+- Whether an interface is the right seam. git-server's `RefReader` exists to make ref mutation
+  impossible from the graph API. No shape rule can tell that interface from a speculative one
+  (call 3).
+- Order leaking through a path the allowlist does not model, such as collecting map keys into a
+  slice and never sorting it. The double-run test catches that one.
+
+### The largest gap: rules that trust names
+
+Four blocking rules decide compliance from an identifier's name where the behavior is computable.
+A fixture run against today's binary shows it. This code passes `tiger check` with exit 0:
+
+```go
+type Latch struct{}
+
+func (Latch) Done() <-chan bool { return nil } // never fires
+
+func DrainFake(l Latch, work <-chan int) int {
+	var total int
+	for {
+		select {
+		case <-l.Done():
+			return total
+		case n := <-work:
+			total += n
+		}
+	}
+}
+
+type Worker struct {
+	shutdown chan bool // nothing ever closes or sends on this
+	work     chan int
+}
+
+func (w *Worker) Run() int { /* same loop, selecting on w.shutdown */ }
+
+func (b *Buf) Reset() {} // clears nothing
+
+func Use(p []byte) int {
+	b, ok := pool.Get().(*Buf)
+	...
+	b.Reset()
+	pool.Put(b)
+	return n
+}
+```
+
+Rename `Done` to `Fired`, `shutdown` to `events`, and drop the empty `Reset` call, and the same
+code fails:
+
+```
+probe.go:16:3: TS-C05: this select blocks with no case that ends the wait on shutdown — add case <-ctx.Done(): return ctx.Err()
+probe.go:16:3: TS-S03: this event loop's select has no case that stops the loop — add case <-ctx.Done(): return, or a case on a shutdown channel (struct{}-typed or named like one), so the loop can end
+probe.go:35:3: TS-C05: this select blocks with no case that ends the wait on shutdown — add case <-ctx.Done(): return ctx.Err()
+probe.go:35:3: TS-S03: this event loop's select has no case that stops the loop — add case <-ctx.Done(): return, or a case on a shutdown channel (struct{}-typed or named like one), so the loop can end
+probe.go:63:10: TS-M05: this Put is not preceded by a Reset (or a zeroing) of the same value on every path to it — call Reset() or zero the value before every Put, so pooled data can't leak to the next user
+tiger: 5 blocking
+```
+
+An agent optimizing for a green run finds these holes first. They do not show that the approach
+is wrong. They show where the analyzers fall short of the exactness the approach promises. Call 7
+closes them.
+
+---
+
+## 3. The rule set tiger should ship
+
+Ten rules change, one is removed, and the rest stay as they are. Nothing
+new enters as a rule. The auto rules tiger delegates to golangci-lint are out of scope. The
+`tiger golangci` audit governs them, and neither trial found a problem with that split.
+
+### Call 2: the loop-termination proof stops blocking unpinned loops
+
+**What the rule enforces.** TS-V01 requires every loop to carry a proof that it ends. Tiger looks
+for a value that shrinks on every pass and has a floor, and fires when it cannot find one. A
+developer can supply the value with `//tiger:variant <expr>`, and tiger checks it. This is
+separate from TS-S02, which only asks that a loop state a bound (a constant, a `len`, or a
+counter) without proving the bound is reached.
+
+**Where it fires today.** git-server's sideband writer. The loop ends because `chunk` is never
+empty while `data` is non-empty, so `data` shrinks by at least one byte every pass. TS-S02 accepts
+it (the condition is a `len`). TS-V01 does not:
+
+```go
+func writeSideband(buf *bytes.Buffer, channel byte, data []byte) {
+	for len(data) > 0 {
+		chunk := data
+		if len(chunk) > maxSideband {
+			chunk = chunk[:maxSideband]
+		}
+		fmt.Fprintf(buf, "%04x", len(chunk)+5)
+		buf.WriteByte(channel)
+		buf.Write(chunk)
+		data = data[len(chunk):]
+	}
+}
+```
+
+```
+services/git-server/internal/negotiate/pktline.go:36:2: TS-V01: tiger can't prove this loop ends: nothing in its condition shrinks on every pass — add a cap (for tries := 0; tries < max; tries++ { if done { break } ... }) that fails when the cap is hit, or say what shrinks with //tiger:variant <expr>
+```
+
+Adding the correct pin does not help:
+
+```
+services/git-server/internal/negotiate/pktline.go:37:2: TS-V01: //tiger:variant len(data) doesn't provably shrink on every pass (len(data) cannot be shown to move consistently) — add a cap (for tries := 0; tries < max; tries++) that fails when hit, or name an expression that does shrink
+```
+
+The same happens on querator's cursor loops. ADR-0004 admitted `//tiger:batched` to waive TS-S02
+on a database cursor, because the only honest bound is the size of the table. With the waiver in
+place, TS-S02 goes quiet and TS-V01 still blocks:
+
+```go
+//tiger:batched rows arrive from a Postgres cursor; the table size is the bound
+for rows.Next() {
+```
+
+```
+internal/store/postgres.go:400:2: TS-V01: tiger can't prove this loop ends: nothing in its condition shrinks on every pass — add a cap (for tries := 0; tries < max; tries++ { if done { break } ... }) that fails when the cap is hit, or say what shrinks with //tiger:variant <expr>
+```
+
+TS-V01 fires 37 times on querator and 25 on git-server. On querator, 30 of the 37 are loops
+TS-S02 also flags, all cursor drains. On git-server, 21 of 25 are loops TS-S02 already accepts,
+so TS-V01 is the only rule blocking them. I read all 21. Every one terminates. They are
+slice-consuming parsers, `for size > 0 { size >>= 7 }` varint encoders, Myers diff index walks
+(`for x > 0 && y > 0 { x--; y-- }`), worklists guarded by a visited set, and a delta resolver that
+returns an error when a pass makes no progress. Across both codebases TS-V01 caught nothing TS-S02
+did not. It also misses the one real termination bug in the trials, a `for { select }` loop, which
+is outside its scope by design.
+
+**What the decision changes.** Variant synthesis becomes a computed fact, the same treatment
+ADR-0012 already gives effects and frames. It prints under `--show-facts`, `tiger pin` can freeze
+it, and a written `//tiger:variant` is still verified in both directions. An unpinned loop that
+TS-S02 accepts is no longer a finding. TS-S02 stays the blocking rule for termination, with its
+ADR-0004 cursor waiver intact.
+
+Before, on the sideband writer: one blocking finding, and no compliant exit except an artificial
+cap. After: no finding. A developer who wants the proof on record writes a pin tiger can verify,
+and if tiger cannot verify it, that pin is still a finding.
+
+**If vetoed.** 62 blocking findings across the two codebases stay, none of them a bug. The only
+exit the rule offers is an iteration cap like `for tries := 0; tries < max; tries++`. For cursor
+loops, ADR-0004 rejected that cap as "either a magic number or a restatement of however big the
+store is". For parsers and encoders it is a number nobody can justify. The `//tiger:batched`
+waiver ADR-0004 admitted stays half-broken, clearing one rule and leaving the loop blocked by
+another. The explainer's claim that synthesis "covers nearly every real loop" stays false on both
+codebases it has been measured against.
+
+### Call 3: the single-implementation interface rule is removed
+
+**What the rule enforces.** TS-X01 fires on any interface that has exactly one implementation
+outside `_test.go` files, on the theory that such an interface is abstraction added just in case.
+Its message tells the developer to delete the interface and use the concrete type.
+
+**Where it fires today.** git-server's graph API reads refs through a deliberately narrow
+interface:
+
+```go
+// RefReader is the ref half of the seam graphapi consumes: listing and resolution
+// only. It is deliberately narrower than storage.RefStore — CompareAndSwap is not
+// in the surface, so a graph query structurally cannot mutate refs (I2).
+type RefReader interface {
+	List(ctx context.Context, prefixes []string) ([]storage.Ref, error)
+	Resolve(ctx context.Context, name string) (oid storage.OID, ok bool, err error)
+}
+```
+
+```
+services/git-server/internal/graphapi/graphapi.go:32:6: TS-X01: interface RefReader has one implementation, memory.refStore — use memory.refStore directly and delete the interface, or add a second implementation outside _test.go files
+```
+
+Following that message gives the graph API a type with `CompareAndSwap` on it, which breaks
+invariant I2. The other 14 git-server hits are the storage ports (`Backend`, `RefStore`,
+`ObjectStore`, `PackEngine`, `GraphIndex`) that a cross-adapter conformance suite exists to test,
+plus the event `Emitter` seam and the `Repos` and `RepoPolicy` seams between packages. querator's
+9 hits are role interfaces like `QueueAdmin` and `UsersAdmin` over one `service.Service`, where
+the fix widens every consumer's dependency to the whole service. That is 24 findings, all of them
+deliberate seams, and following the rule's own suggested fix would make every one of them worse.
+
+**What the decision changes.** ADR-0006 removes a rule "whose output on real codebases is
+dominated by findings a reader would decline to act on, including any finding whose named remedy
+would break the code". TS-X01 meets that on both codebases. Removal is end to end, meaning the
+analyzer, its test corpus, its registry entry, and the specification's enforcement line. The
+maxim stays in the specification with review as its enforcement.
+
+The first pass of this document proposed an advisory trial instead, pending a git-server rerun.
+That rerun is above, and it answered the question the trial would have asked.
+
+**If vetoed.** 24 blocking findings stay whose named fix is a design regression, including one
+that would delete a structural safety guarantee. An agent told to reach green follows the message.
+
+### Call 4: discarded errors in cleanup code need no comment
+
+**What the rule enforces.** TS-E02 fires on `_ = f()` and `x, _ := f()` when the discarded value
+is an error, unless a comment on that line or the line above explains why.
+
+**Where it fires today.** querator's benchmarks and git-server's tests:
+
+```go
+defer func() { _ = d.Shutdown(ctx) }()
+```
+
+```
+benchmarks/benchmark_main_test.go:37:19: TS-E02: this error is discarded with _, so a failure here goes unnoticed — handle the error, or say in a comment on this line or the line above why ignoring it is safe
+```
+
+```go
+t.Cleanup(func() { _ = client.Close(context.Background()) })
+```
+
+That cleanup shape is 36 of querator's 86 TS-E02 findings and 11 of git-server's 42. The
+compliant fix is always the same comment, something like `// best-effort cleanup`. The rule
+checks only that a comment exists, never what it says. A fixture confirms that `// x` satisfies
+it, and so does a bare `//nolint` (see call 10).
+
+**What the decision changes.** A discard inside a `defer` statement's call, or inside a function
+literal passed to `t.Cleanup`, is not a finding. Every other discard still fires, including the
+hash-validation discard that was the rule's one real bug, and non-deferred cleanup like
+`_ = resp.Body.Close()`.
+
+Before:
+
+```go
+defer func() { _ = d.Shutdown(ctx) }() // best-effort cleanup
+```
+
+After:
+
+```go
+defer func() { _ = d.Shutdown(ctx) }()
+```
+
+ADR-0006 allows tuning when the misfires form a bounded shape that can be named and excluded.
+"Inside `defer` or `t.Cleanup`" is that kind of shape.
+
+The exemption has a cost. `defer func() { _ = f.Close() }()` on a file opened for writing drops
+the write error, and that is a real bug class. The rule does not catch it today either. It asks
+for a comment, and the comment can say anything.
+
+**If vetoed.** 47 boilerplate comments across two codebases, and the rule keeps teaching agents
+that any comment clears it.
+
+### Call 5: a leading `t` or `ctx` does not count toward the four-parameter cap
+
+**What the rule enforces.** TS-N07 has two halves. It fires when two adjacent parameters share a
+type, because Go has no named arguments and a caller can swap them. It also fires when a function
+takes more than four parameters.
+
+**Where it fires today.** querator's test helpers:
+
+```go
+func assertPartition(t *testing.T, ctx context.Context, c *querator.Client, name string, expected Partition) {
+```
+
+```
+service/partition_test.go:503:1: TS-N07: this function takes 5 parameters — group the related ones into an options struct
+```
+
+The two leading parameters are Go convention and cannot be swapped with anything after them. They
+use up half the cap before the helper does anything.
+
+**What the decision changes.** A leading `testing.TB` (or `*testing.T` or `*testing.B`) and a
+`context.Context` that comes first or right after it do not count toward the cap. The
+adjacent-same-type half is untouched, and that half carries the swap hazards, like the 67
+adjacent-`string` findings on git-server.
+
+Before, `assertPartition` counts 5 and fires. After, it counts 3 and passes. Across the two
+codebases, 9 of querator's 10 cap findings and 12 of git-server's 21 clear. The ones that remain
+are real, like an eight-parameter `Finalize` in querator's benchmarks and an eight-parameter diff
+helper in git-server.
+
+**If vetoed.** 21 findings whose fix is an options struct wrapping `name` and `expected`, in helpers
+where nobody would swap them. Agents learn to thread `t` through a struct field, which reads worse.
+
+### Call 6: the goroutine-per-item rule stops checking test files
+
+**What the rule enforces.** TS-C09 fires on a loop that starts one goroutine per item, because in
+production that lets outside traffic set the concurrency level. Its fix is a bounded queue drained
+by one worker.
+
+**Where it fires today.** Only in tests. Every one of querator's 12 findings is the fan-out-then-wait
+idiom a concurrency test uses on purpose:
+
+```go
+var wg sync.WaitGroup
+wg.Add(len(requests))
+
+for i := range requests {
+	go func(idx int) {
+		defer wg.Done()
+		if err := c.QueueLease(ctx, requests[idx], responses[idx]); err != nil {
+			...
+		}
+	}(i)
+}
+```
+
+```
+service/common_test.go:626:3: TS-C09: this loop starts a goroutine per item, so the goroutines react to each item instead of working at their own pace — append the items to a bounded queue and drain it from one supervisor goroutine
+```
+
+The test exists to put N concurrent requests on the server at once. A single-worker queue would
+serialize them and defeat the test.
+
+**What the decision changes.** TS-C09 skips `_test.go` files. Production fan-out still fires.
+There were zero production hits on either codebase, so the production behavior is unchanged.
+
+**If vetoed.** 12 findings whose fix breaks the tests they fire in.
+
+### Call 7: four rules stop trusting names
+
+**What the rules enforce, and where each trusts a name.**
+
+- **TS-C02**: every `go` statement starts through a supervisor, meaning something that waits for
+  the goroutine and ties it to a context. Today the only recognized supervisor is
+  `errgroup.Group.Go`, since ENG-153 removed the config flag that named supervisor functions.
+- **TS-S03**: a loop that runs forever selects on a case that can stop it. **TS-C05**: a blocking
+  channel wait has a case that can cancel it. Both accept `<-x.Done()` for any `x` with a method
+  named `Done`, and any channel whose name contains `shutdown`, `stop`, `quit`, or `done`.
+- **TS-M05**: a value put back in a `sync.Pool` is reset first. It accepts any method named
+  `Reset`, including an empty one.
+
+**Where they fire, or fail to.** The fixture in section 2 shows the three name holes passing. For
+TS-C02 the problem runs the other way. querator's daemon supervises its server goroutine
+correctly, and the rule cannot see it:
+
+```go
+d.wg.Add(1)
+go func() {
+	defer d.wg.Done()
+	...
+	if err := srv.ServeTLS(d.Listener, "", ""); err != nil {
+```
+
+```
+daemon/daemon.go:175:2: TS-C02: this go statement starts a goroutine nobody owns: nothing says when it exits or ties it to a context — start it through errgroup.Group.Go
+```
+
+Ten of querator's 14 TS-C02 findings are this shape. The other four are real, and one of them is
+the trial's unwaited-`WaitGroup` bug.
+
+**What the decision changes.** ENG-177 comes back as written. Each rule recognizes behavior tiger
+can already compute:
+
+| Rule | Today accepts | After, accepts |
+|---|---|---|
+| TS-C02 | only `errgroup.Group.Go` | also `wg.Add` before the `go` with `wg.Wait` in the same function or in the owning type's `Close`/`Shutdown` |
+| TS-S03, TS-C05 | any `.Done()` | `.Done()` only on a `context.Context` |
+| TS-S03, TS-C05 | any channel named like `shutdown` | a channel the package closes or sends on somewhere |
+| TS-M05 | any method named `Reset` | a `Reset` that writes the receiver |
+
+The fixture's `DrainFake`, `Worker.Run`, and `Use` would each fire. `daemon.go:175` would pass.
+
+**If vetoed.** An agent gets past three blocking rules by naming a channel `done` or writing
+`func (b *Buf) Reset() {}`. Ten correct supervisions on querator have no compliant path except a
+rewrite to `errgroup`. This is the largest gap between the promise that blocking rules are exact
+and what tiger actually ships.
+
+### Call 8: the map-order rule learns collect-then-sort
+
+**What the rule enforces.** TS-T02 bans ranging over a map unless the loop body matches an
+allowlist of order-insensitive shapes (summing, counting, writing into another map). Go randomizes
+map order on every run, and the rule keeps that randomness out of anything the program emits.
+
+**Where it fires today.** querator's in-memory user store collects ids and sorts them before use:
+
+```go
+ids := make([]string, 0, len(m.users))
+for id := range m.users {
+	ids = append(ids, id)
+}
+sort.Strings(ids)
+```
+
+```
+internal/store/memory.go:1054:2: TS-T02: this loop appends to a slice while ranging over a map, and Go visits map entries in a different order every run, so the slice's order varies — range over the sorted keys instead: for _, k := range slices.Sorted(maps.Keys(m))
+```
+
+I sampled four of querator's 11. One is a real order leak into logs. Three are order-insensitive
+shapes the allowlist does not model: this append followed by a sort, nested deletes on a second
+map, and a map write under `if`/`else`.
+
+**What the decision changes.** The analyzer extends its allowlist with those shapes, each backed
+by a test corpus case. The ENG-150 blueprint already says the allowlist grows this way, as an
+analyzer change and never a config knob. The first shape to add is an append into a local slice
+that is sorted before any other use.
+
+Before, the snippet above fires. After, it passes, and the same loop without the `sort.Strings`
+still fires.
+
+**If vetoed.** Developers rewrite correct code into the `slices.Sorted(maps.Keys(m))` form. That
+is harmless but pure churn. The rule is not wrong. It is narrower than it needs to be.
+
+### Call 9: no baseline for blocking findings in an existing codebase
+
+**What it governs.** Some linters let an adopter record today's findings in a file and fail only
+on new ones. Tiger has no such file for blocking rules.
+
+**Where it bites.** A first run prints 396 rule findings on querator and 323 on git-server. An
+existing codebase cannot adopt tiger incrementally. It has to fix everything or disable
+analyzers.
+
+**What the decision changes.** Nothing. This records the cost instead of paying it with a
+mechanism. ADR-0011 refused the same mechanism for advisory findings, because a file that raises
+a limit is the cheapest path to green an agent can find. The argument is the same for blocking
+findings. Tiger's stated target is new AI-written code, where this cost does not arise.
+
+**If vetoed.** A baseline lets brownfield teams adopt tiger in a day. It also gives an agent a
+command that turns any regression green. If the project wants brownfield adoption, that deserves
+its own ADR with a lowering-only design like ADR-0011's.
+
+### Rules that stay as they are
+
+These stay blocking with no change. Each was true on real code in both trials. Where the volume is
+high, it counts one decision made many times, not many wrong decisions.
+
+| Rule | What it checks | querator / git-server |
+|---|---|---:|
+| TS-S02 | every loop states a bound: a constant, a `len`, or a counter; `for {}` needs a `select` on `ctx.Done()` | 35 / 23 |
+| TS-S03 | a loop that runs forever has a case that stops it | 0 / 0 |
+| TS-S08 | a switch over an enum ends in `assert.Unreachable`, or the type is marked `//tiger:openenum` | 15 / 14 |
+| TS-S09 | no labeled `break` or `continue`; move the inner loop into a function | 35 / 0 |
+| TS-S18 | no bare `panic` outside the assert package | 15 / 4 |
+| TS-S01 | no recursion; a cycle in the call graph is a finding | 2 / 3 |
+| TS-S06, S07 | one logical operator per condition; split compound assertions | 2 / 6 |
+| TS-S21, S22 | every limit constant is asserted against, and its stated derivation evaluates to its value | 0 / 0 |
+| TS-C05 | every blocking channel wait can be cancelled | 13 / 0 |
+| TS-C12 | channel types are declared in one file per package | 3 / 0 |
+| TS-M05 | a pooled value is reset before `Put` (gets call 7's fix) | 0 / 0 |
+| TS-M10 | no IO inside a loop body, unless `//tiger:batched` | 2 / 6 |
+| TS-E06 | at most two return values, the second an `error` or `bool` | 11 / 39 |
+| TS-N08 | no `bool` parameters; use a named type | 5 / 12 |
+| TS-N14 | exported names do not end in a present participle | 0 / 1 |
+| TS-T06, T10 | tests have a doc comment; table tests have a `name` field | 44 / 3 |
+| TS-L09 | every directive is well formed and carries a reason | 0 / 0 |
+| TS-F01, F02, F07, V03, P01, P02, K03, A07, A09 | opt-in pins (effects, frames, preconditions, invariants) and restrictions; silent until declared | 0 / 0 |
+
+The accounting findings stay as they are. TS-D07 is a skipped test, TS-L05 a misordered
+declaration, TS-L09-escape an escape directive in use, and TS-D06 the budget that counts them.
+Together they printed 21 lines across the two codebases before `tiger budget --write`, and they are
+the surface a reviewer checks.
+
+---
+
+## 4. The three explainer disagreements
+
+Writing the ENG-154 explainer asserted three product decisions that the spec, code, and ADRs do not
+reflect. Each resolves below as part of the rule set above, not as a separate patch.
+
+### Call 10: `//nolint` naming a tiger rule becomes a blocking finding
+
+**What the three sources say.** The specification allows `//nolint` with a reason, enforced by
+golangci-lint's `nolintlint` under TS-L09. The explainer says tiger "flags any `//nolint` as a
+finding". The code does neither.
+
+**What the code does.** Under `tiger check`, `//nolint` is not read at all, so it silences nothing
+by itself. It does satisfy any rule that asks for a comment. A fixture shows it on TS-E02:
+
+```go
+_ = os.Remove(path)
+```
+
+```
+probe.go:8:2: TS-E02: this error is discarded with _, so a failure here goes unnoticed — handle the error, or say in a comment on this line or the line above why ignoring it is safe
+tiger: 1 blocking
+```
+
+```go
+_ = os.Remove(path) //nolint
+```
+
+That exits 0. Under the golangci-lint plugin, `//nolint:tiger` silences any tiger rule on that line
+with no advisory and no count (ENG-178, item 2). The explainer's sentence is false about the tool
+as shipped.
+
+**What the decision changes.** Tiger's own rules accept no suppression under either driver. The
+`directives` analyzer already reads every comment. A bare `//nolint`, or one that names `tiger`,
+becomes a blocking TS-L09 finding. The finding is reported at the file's `package` line, where
+the `//nolint` on the original line cannot cover it.
+
+```
+probe.go:1:1: TS-L09: //nolint at probe.go:8 would silence tiger's rules — fix the finding it hides; tiger's rules take no suppression
+```
+
+(The message wording is illustrative. ADR-0009 governs the final text.)
+
+For the golangci-lint linters tiger enables as auto rules, `//nolint:<linter> // reason` stays
+allowed. Several of those linters (`gocritic`, `gosec`, `mnd`) are heuristics with documented
+false positives the project does not own, and ADR-0003 already concedes that door is outside
+tiger's control. What changes is that it is counted. Each one is an escape, raised as a
+`TS-L09-escape` standing advisory and counted against the package budget like a
+`//tiger:batched`.
+
+After this, the explainer's sentence becomes true for tiger's rules, and it gains a clause for the
+auto rules.
+
+**If vetoed.** Under the plugin, one comment silences any blocking rule with no trace. Under the
+CLI, a `//nolint` clears any comment-gated rule by accident. The explainer keeps promising a ban
+that does not exist. The alternative, banning `//nolint` for every enabled linter, is defensible
+and simpler to explain. It was not chosen because it forces adopters to turn off whole linters
+over one false positive, which is louder but loses more signal than a counted escape does.
+
+### Call 11: `//tiger:restrict` stays opt-in and returns to the explainer
+
+**What the rule enforces.** A package can declare restrictions in its doc comment, such as
+`//tiger:restrict closed-dispatch` (every method call resolves to one concrete type, never through
+an interface) or `no-reflect`. TS-P01 checks the package's own imports against the declaration.
+TS-P02 checks that every dependency declares at least as much. TS-K03 flags interface calls in a
+closed-dispatch package. A package that declares nothing gets no finding.
+
+**What changed in the explainer.** Commit `b452818` removed every mention of the directive, and
+ENG-188 asserted that `no-reflect` and `closed-dispatch` "are not opt-in", which implies they are
+on for every package.
+
+**What closed dispatch by default would cost.** Declaring it on querator's `internal` package
+alone produces 68 blocking findings:
+
+```
+internal/auth_backend.go:104:37: TS-K03: a.roleBindings.ListByUser is called through interface RoleBindings in a package that declares //tiger:restrict closed-dispatch — call the concrete type's method, or drop closed-dispatch
+internal/auth_backend.go:4:1: TS-P02: package internal claims closed-dispatch but imports github.com/cespare/xxhash/v2, which declares nothing — add //tiger:restrict closed-dispatch to github.com/cespare/xxhash/v2, or drop closed-dispatch from internal's declaration
+```
+
+26 are calls through `Partition`, the interface querator's four storage backends implement. That
+interface is the architecture. Twelve are calls on `context.Context`, including `ctx.Done()`,
+which TS-S03 and TS-C05 require. And TS-P02 fires on every third-party import, since third-party
+code declares nothing. A default-on closed-dispatch rule contradicts tiger's own cancellation
+rules and cannot be satisfied by any codebase that imports a library.
+
+**What the decision changes.** The shipped design stays. The restriction set is an opt-in claim a
+package makes, and absence is never a finding. The explainer restores the paragraph that
+introduces the directive. Without it, a reader who meets TS-P01 in the rule reference has no way
+to learn what a restriction set is. The explainer was half right about one axis. Reflection is
+already banned everywhere by the auto rule behind TS-S12, and `no-reflect` on the directive only
+makes that claim checkable by dependents. The explainer should say so.
+
+**If vetoed.** Either the rule reference documents three blocking rules the explainer never
+mentions, or restriction becomes default-on and every adopter meets findings like the 68 above on
+day one.
+
+### Call 12: map order, where the specification is the stale document
+
+**What the three sources say.** The explainer says the map-order check bans every map range except
+a fixed set of safe body shapes, and calls it "a heuristic rather than a proof". The
+specification's analyzer table says the analyzer flags a "range over a map whose body appends or
+writes. Heuristic". The code does what the explainer describes, the allowlist inversion shown in
+call 8. The ENG-150 blueprint made that inversion on purpose, called it exact, and flagged the
+specification line for amendment. The amendment never landed.
+
+**What the decision changes.** Nothing in the product changes. This is a disagreement between documents only.
+
+- The specification's TS-T02 enforcement line and its Part V analyzer table change to describe
+  the allowlist.
+- The explainer drops "heuristic". The check bans a shape and is exact over its allowlist. It is
+  not a proof that order never reaches an output, because the known miss (collect the keys into a
+  slice, never sort, then range the slice) escapes it. The replacement wording is "exact over a
+  conservative allowlist, backstopped by the double-run test (TS-T11)".
+
+**If vetoed.** The specification keeps describing an analyzer tiger does not ship, and the
+explainer keeps calling an exact rule a heuristic, which invites readers to treat its findings as
+optional.
+
+---
+
+## What happens next
+
+### The canceled tickets
+
+Eleven backlog tickets were canceled while this question was open. The direction holds, so most of
+them describe work this decision still wants. Reopening is for whoever ratifies this. Nothing here
+reopens a ticket.
 
 | Ticket | Disposition |
 |---|---|
-| ENG-177 recognize behavior, not names | revive as written. The highest-value analyzer work in the backlog |
-| ENG-178 close uncounted silencing channels | revive items 2, 3, 4 (`//nolint` under the plugin, `package assert` by import path, drop the three dead intent verbs). Drop item 1; a generated-file header is a bounded shape, and an advisory per generated file is noise of the kind ADR-0006 removes |
-| ENG-179 trusted declarations get the escape treatment | revive item 1 (`//tiger:openenum` counted as an escape with a reason). Drop item 2; the TS-E02 shape exemption above replaces the `//tiger:discard` directive, and a new escape verb for the boilerplate case fails the admission test |
-| ENG-176 revive naming rules on the config file | leave canceled. Scoping was not the failure |
-| ENG-175 interface-pinned signature exemptions | leave canceled. One site, one repo, an adapter is the compliant shape |
-| ENG-188 reconcile spec with explainer | superseded by this document and its follow-ups |
-| ENG-181 specification gaps | fold into the specification follow-up below |
-| ENG-174 JSON output | revive when convenient; tooling, not direction. Both trial reports asked for it |
-| ENG-171, 172, 173 auto-fix, editor, dashboards | leave canceled until the rule set above has settled |
+| ENG-177, recognize behavior, not names | revive as written (call 7) |
+| ENG-178, close uncounted silencing channels | revive items 2, 3, 4: `//nolint` under the plugin (call 10), recognize `package assert` by import path, drop the unread `hot`/`wire`/`owner` verbs. Drop item 1; one advisory per generated file is noise of the kind ADR-0006 removes |
+| ENG-179, trusted declarations get the escape treatment | revive item 1 (`//tiger:openenum` counted as an escape with a reason). Drop item 2; call 4's cleanup exemption replaces the proposed `//tiger:discard` directive |
+| ENG-176, revive naming rules on the config file | leave canceled; scoping was never the failure |
+| ENG-175, exemptions for signatures pinned by third-party interfaces | leave canceled; one site in one repo, and an adapter function is the compliant shape |
+| ENG-188, reconcile spec with explainer | superseded by this document and its follow-ups |
+| ENG-181, specification gaps | fold into the specification follow-up below |
+| ENG-174, JSON output | revive when convenient; both trial reports asked for it |
+| ENG-171, 172, 173, auto-fix, editor, dashboards | leave canceled until the rule set above settles |
 
-## Follow-ups, in order
+### Follow-ups, in order
 
-1. **TS-V01 to pin-only.** Registry and analyzer change; the corpus's unpinned-loop failure cases
-   become compliant cases; the specification's TS-V01 line and the explainer's synthesis claim move
-   with it. Rerun the querator pin and record the count.
-2. **ENG-177, all four items.** Corpus cases for each recognized shape plus known-miss files for
-   shapes deliberately not recognized. Rerun both pins.
-3. **Shape exemptions for TS-E02, TS-N07, TS-C09**, each with a corpus case naming the excluded
-   shape.
-4. **Silencing channels.** ENG-178 items 2, 3, 4 and ENG-179 item 1, plus counting
+1. **TS-V01 to pin-only** (call 2). Move the unpinned-loop failures in the corpus to compliant
+   cases, then rerun both pins and record the counts.
+2. **ENG-177, all four items** (call 7). A corpus case per recognized shape and a known-miss file
+   per shape deliberately not recognized. Rerun both pins.
+3. **Remove TS-X01** (call 3), end to end per ADR-0006.
+4. **Shape exemptions for TS-E02, TS-N07, TS-C09** (calls 4, 5, 6), each with a corpus case naming
+   the excluded shape.
+5. **Silencing channels** (call 10). ENG-178 items 2 to 4, ENG-179 item 1, and counting
    `//nolint:<linter>` as `TS-L09-escape`.
-5. **TS-X01 to advisory**, one registry line, and the git-server rerun that decides it.
-6. **TS-T02 allowlist growth** from the querator sample, by corpus case.
-7. **Specification reconciliation**, one ticket. TS-T02 enforcement line and the Part V table,
-   TS-V01, TS-L09's `//nolint` wording, the restriction-set defaults, TS-X01's severity, and the
-   ENG-181 gaps (`tiger.yaml`, `tiger golangci --print`, the rule count).
+6. **TS-T02 allowlist growth** (call 8), starting with collect-then-sort.
+7. **Specification reconciliation**, one ticket. Covers the TS-T02 line and Part V table, TS-V01,
+   TS-X01's removal, TS-L09's `//nolint` wording, the restriction-set defaults, and the ENG-181
+   gaps (`tiger.yaml`, `tiger golangci --print`, the rule count).
 8. **Explainer reconciliation**, one ticket. Restore the `//tiger:restrict` paragraph, split the
-   `//nolint` sentence into the custom-rule ban and the counted auto-rule escape, replace
-   "heuristic" on map order, remove "covers nearly every real loop," and restore the fuller
+   `//nolint` sentence into the tiger-rule ban and the counted auto-rule escape, replace
+   "heuristic" on map order, remove "covers nearly every real loop", and restore the fuller
    built-versus-described disclaimer that `b452818` shortened.
-9. **An ADR** recording the pin-model rule for provers, which is that a rule needing a proof the
-   analyzer cannot always construct ships as a computed fact, never as an unpinned finding. This
-   document is the context and the ADR is the binding record.
-
-## What the reviewer should ratify or veto
-
-- TS-V01 becomes a pinned fact rather than a blocking rule. The evidence is one codebase plus two
-  fixtures; the git-server pin was not rerun for this ticket.
-- `//tiger:restrict` stays opt-in and returns to the explainer. This reverses a call made in the
-  explainer commit.
-- `//nolint` on auto rules is counted rather than banned. The alternative, banning it for every
-  golangci-lint linter tiger enables, is defensible and cheaper to explain; it was not chosen
-  because `gocritic`, `gosec`, and `mnd` have documented false positives the project does not own.
-- No brownfield baseline for blocking findings. Recorded as a cost, not addressed.
-- The canceled tickets are not re-opened by this document.
+9. **An ADR** recording the rule behind call 2. When a rule needs a proof the analyzer cannot
+   always construct, it ships as a computed fact a pin can freeze, never as a finding on unpinned
+   code. This document is the context and the ADR is the binding record.
