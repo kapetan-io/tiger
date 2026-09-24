@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ENG-191 — What Tiger's Static Analysis Can Hold</title>
+<title>Tiger Rule Set Decision</title>
 <style>
   /* ── Design tokens — canonical source: docs/design.md ───────────────── */
   :root {
@@ -69,12 +69,9 @@
   .callout.danger .label { color: var(--danger); }
   /* Pills / tags */
   .pill { display: inline-block; font-size: .68rem; letter-spacing: .06em; text-transform: uppercase; font-weight: 700; padding: .12rem .55rem; border-radius: 999px; border: 1px solid var(--border); color: var(--muted); vertical-align: middle; }
-  /* Tinted pill variants — duplicate this pattern with your own accent + 55/12 alpha suffixes */
   .pill.a { color: var(--accent);   border-color: #58a6ff55; background:#58a6ff12; }
   .pill.b { color: var(--accent-2); border-color: #7ee78755; background:#7ee78712; }
   .pill.c { color: #b48ead;         border-color: #b48ead55; background:#b48ead12; }
-  .pill.w { color: var(--warn);     border-color: #f0883e55; background:#f0883e12; }
-  .pill.d { color: var(--danger);   border-color: #ff7b7255; background:#ff7b7212; }
   /* Numbered layer/step diagram */
   .layers { margin: 1.5rem 0; }
   .layer { display: flex; align-items: stretch; border: 1px solid var(--border); border-radius: 8px; margin-bottom: .6rem; overflow: hidden; background: var(--panel); }
@@ -89,428 +86,374 @@
   .card h4 { margin-top: 0; }
   .muted { color: var(--muted); }
   .cmd { color: var(--accent-2); }   /* CLI/command text inside <pre> */
+  /* Mermaid diagrams — see diagrams.md for the flowchart/state/sequence patterns */
+  .mermaid { margin: 1.5rem 0; text-align: center; }
+  .mermaid svg { max-width: 100%; height: auto; }
   hr { border: none; border-top: 1px solid var(--border); margin: 2.5rem 0; }
   footer { color: var(--muted); font-size: .85rem; margin-top: 4rem; border-top: 1px solid var(--border); padding-top: 1.2rem; }
   @media (max-width: 900px) {
     main { padding: 2rem 1.2rem 4rem; }
     .grid2 { grid-template-columns: 1fr; }
   }
-  /* ── Explainer diagrams ─────────────────────────────────────────────── */
-  .flow { display: flex; align-items: stretch; gap: 0; flex-wrap: wrap; margin: 1.5rem 0; }
-  .flow.vert { flex-direction: column; align-items: flex-start; }
-  .flow .node {
-    border: 1px solid var(--border); border-radius: 8px; background: var(--panel);
-    padding: .7rem 1rem; min-width: 120px; text-align: center;
-  }
-  .flow .node .t { font-weight: 600; font-size: .95rem; }
-  .flow .node .d { color: var(--muted); font-size: .82rem; }
-  .flow .node.surface { border-color: #58a6ff55; background: #58a6ff12; }
-  .flow .node.inside  { border-color: var(--border); background: var(--panel-2); }
-  .flow .arrow { display: flex; align-items: center; justify-content: center; padding: 0 .7rem; color: var(--accent); font-size: 1.3rem; }
-  .flow.vert .arrow { padding: .35rem 0 .35rem 2.2rem; }
-  .flow .arrow .lbl { color: var(--muted); font-size: .72rem; margin-left: .35rem; }
+  /* Boundary pattern — additive, from diagrams.md */
   .boundary { border: 1px solid #58a6ff55; border-radius: 10px; background: #58a6ff0a; padding: 1rem; margin: 1.5rem 0; }
   .boundary > .cap { font-size: .72rem; letter-spacing: .08em; text-transform: uppercase; color: var(--accent); font-weight: 700; margin-bottom: .6rem; }
   .boundary .inner { border: 1px dashed var(--border); border-radius: 8px; background: var(--panel); padding: .9rem; }
   .boundary .inner > .cap { font-size: .72rem; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); font-weight: 700; margin-bottom: .5rem; }
-  .diagram { width: 100%; margin: 1.5rem 0; }
-  .diagram text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; fill: var(--text); }
-  .diagram .node-box { fill: var(--panel); stroke: var(--border); }
-  .diagram .node-box.surface { fill: #58a6ff12; stroke: #58a6ff88; }
-  .diagram .node-box.review { fill: #7ee78712; stroke: #7ee78788; }
-  .diagram .node-box.cut { fill: #ff7b7212; stroke: #ff7b7288; }
-  .diagram .edge { stroke: var(--accent); stroke-width: 1.5; fill: none; }
-  .diagram .edge-lbl { fill: var(--muted); font-size: 12px; }
-  .diagram .muted { fill: var(--muted); }
-  .diagram .small { font-size: 12px; }
-  /* Verdict cards: tint by outcome */
-  .card.keep   { border-left: 4px solid var(--accent); }
-  .card.review { border-left: 4px solid var(--accent-2); }
-  .card.cut    { border-left: 4px solid var(--danger); }
-  .card.change { border-left: 4px solid var(--warn); }
-  td.num, th.num { text-align: right; white-space: nowrap; }
 </style>
 </head>
 <body>
 <div class="layout">
 <main>
 
-<h1>What tiger's static analysis can hold</h1>
+<h1>Tiger Rule Set Decision</h1>
 <p class="lead">
-  You are the reviewer ratifying ENG-191. This page walks the five calls you need to make, the
-  evidence each one rests on, and what changes for every registered rule if you say yes. Read the
-  first two sections and you have enough to decide; the rest is the reasoning you can check.
+  This document asks you, the reviewer of the pull request, to ratify or veto a short list of
+  specific calls about tiger's rule-based static analysis. It also assigns a stated
+  disposition to every registered custom rule tiger ships. Ratifying it changes what a few
+  rules check, retires one rule as a blocking check, and demotes one rule to advisory, while
+  leaving the rest exactly as they run today.
+</p>
+
+<!-- ============================================================= -->
+<h2 id="boundary">What you touch versus what the decision computed to get here</h2>
+<p>
+  The pull request under review is the decision document itself plus the rule-set table it
+  produces. You do not need to rerun the trials, replay the fixture probes, or re-derive the
+  sufficient/insufficient argument to cast a vote. Those are the working parts behind the
+  claims, not the claims themselves.
 </p>
 
 <div class="boundary">
-  <div class="cap">What lands on your desk</div>
-  <p class="muted">One answer to "does rule-based static analysis get tiger its goal," five calls to
-  ratify or veto, a disposition for each of the 40 registered rule codes, and a resolution of the
-  three explainer disagreements. No rule, analyzer, or spec text changes in this PR.</p>
+  <div class="cap">What you decide on the PR</div>
+  <p class="muted">
+    Five explicit calls, and a disposition for all forty registered rule codes. Your vote is
+    ratify or veto on the document as a whole, or on any one of the five calls it names.
+  </p>
   <div class="inner">
-    <div class="cap">What produced it</div>
-    <p class="muted">Both trial reports and their reruns, a fresh run of today's <code>tiger</code>
-    against the querator pin, two fixture probes against the same binary, the twelve ADRs, the spec's
-    own limits section, and the eleven canceled tickets.</p>
+    <div class="cap">What produced these claims</div>
+    <p class="muted">
+      Two independent trial codebases and their reruns, a fresh run against the same pin
+      used in the first trial, two synthetic fixture probes, and the specification's own
+      "machines check correspondence, humans review declarations" split applied to every
+      rule in the registry.
+    </p>
   </div>
 </div>
 
 <!-- ============================================================= -->
-<h2 id="answer">The answer, in one picture</h2>
-<p>The question underneath the ticket is whether static analysis, as tiger practices it, produces
-AI-written Go that either conforms or produces a blocking finding the agent must fix. The evidence
-sorts tiger's rules into four classes, and the answer differs for each.</p>
-
-<svg class="diagram" viewBox="0 0 860 300" role="img" aria-label="four classes of rule and their verdicts">
-  <defs>
-    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-      <path d="M0 0 L10 5 L0 10 z" fill="var(--accent)"/>
-    </marker>
-  </defs>
-  <rect class="node-box surface" x="20" y="20" rx="8" width="200" height="56"/>
-  <text x="120" y="43" text-anchor="middle">Exact shape rules</text>
-  <text x="120" y="63" text-anchor="middle" class="muted small">S02, S08, C05, C02, E02 …</text>
-  <path class="edge" d="M220 48 H330" marker-end="url(#arrow)"/>
-  <rect class="node-box surface" x="330" y="20" rx="8" width="200" height="56"/>
-  <text x="430" y="43" text-anchor="middle">Sufficient</text>
-  <text x="430" y="63" text-anchor="middle" class="muted small">all 10 real bugs, 0 false positives</text>
-
-  <rect class="node-box surface" x="20" y="92" rx="8" width="200" height="56"/>
-  <text x="120" y="115" text-anchor="middle">Opt-in pins</text>
-  <text x="120" y="135" text-anchor="middle" class="muted small">effects, frames, restrict</text>
-  <path class="edge" d="M220 120 H330" marker-end="url(#arrow)"/>
-  <rect class="node-box surface" x="330" y="92" rx="8" width="200" height="56"/>
-  <text x="430" y="115" text-anchor="middle">Sufficient</text>
-  <text x="430" y="135" text-anchor="middle" class="muted small">absence is never a finding</text>
-
-  <rect class="node-box cut" x="20" y="164" rx="8" width="200" height="56"/>
-  <text x="120" y="187" text-anchor="middle">Judgment rules</text>
-  <text x="120" y="207" text-anchor="middle" class="muted small">naming, distance, style</text>
-  <path class="edge" d="M220 192 H330" marker-end="url(#arrow)"/>
-  <rect class="node-box cut" x="330" y="164" rx="8" width="200" height="56"/>
-  <text x="430" y="187" text-anchor="middle">Not sufficient, already removed</text>
-  <text x="430" y="207" text-anchor="middle" class="muted small">review enforces the maxim</text>
-
-  <rect class="node-box cut" x="20" y="236" rx="8" width="200" height="56"/>
-  <text x="120" y="259" text-anchor="middle">Termination prover</text>
-  <text x="120" y="279" text-anchor="middle" class="muted small">TS-V01</text>
-  <path class="edge" d="M220 264 H330" marker-end="url(#arrow)"/>
-  <rect class="node-box cut" x="330" y="236" rx="8" width="200" height="56"/>
-  <text x="430" y="259" text-anchor="middle">Not sufficient, fold into pins</text>
-  <text x="430" y="279" text-anchor="middle" class="muted small">the one change this doc makes</text>
-
-  <rect class="node-box review" x="600" y="92" rx="8" width="240" height="128"/>
-  <text x="720" y="122" text-anchor="middle">Truth of a declaration</text>
-  <text x="720" y="146" text-anchor="middle" class="muted small">is the batched reason honest?</text>
-  <text x="720" y="164" text-anchor="middle" class="muted small">is this the right invariant?</text>
-  <text x="720" y="192" text-anchor="middle">Review, human or AI agent</text>
-  <text x="720" y="210" text-anchor="middle" class="muted small">never inside tiger</text>
-</svg>
-
-<p><span class="pill a">blue</span> what the machine settles. <span class="pill b">green</span> what
-review settles, by design. <span class="pill d">red</span> where the tool crossed the line and has
-to come back.</p>
-
-<div class="callout tip"><span class="label">The line</span>
-The spec's own framing survives contact with the evidence. Machines check the correspondence
-between code and declaration. Humans and AI agents review whether the declaration is right.
-Every place tiger went wrong is a place it crossed that line, in one direction or the other.</div>
-
-<!-- ============================================================= -->
-<h2 id="calls">The five calls you are making</h2>
-<p>Each is listed at the end of the decision document and under Assumptions in the PR body. Saying
-nothing ratifies none of them; the follow-up tickets wait on an explicit yes.</p>
-
-<div class="layers">
-  <div class="layer">
-    <div class="num">1</div>
-    <div class="body"><div class="t">TS-V01 becomes a pinned fact, not a blocking rule</div>
-      <div class="d">Synthesis and pin verification stay. The unpinned-loop finding goes. TS-S02 remains
-      the blocking termination rule. Evidence is one codebase plus two fixtures; the git-server pin was
-      not rerun.</div></div>
-    <div class="owner"><span class="pill w">change</span></div>
-  </div>
-  <div class="layer">
-    <div class="num">2</div>
-    <div class="body"><div class="t"><code>//tiger:restrict</code> stays opt-in and returns to the explainer</div>
-      <div class="d">Reverses the explainer commit that dropped it. Closed dispatch as a global default
-      fails on every real codebase tiger has run against.</div></div>
-    <div class="owner"><span class="pill a">keep</span></div>
-  </div>
-  <div class="layer">
-    <div class="num">3</div>
-    <div class="body"><div class="t"><code>//nolint</code> on tiger's rules blocks; on auto rules it is counted</div>
-      <div class="d">The explainer's "tiger flags any <code>//nolint</code>" is false of the code today.
-      The alternative, a blanket ban across every golangci-lint linter, is cheaper to explain and was
-      not chosen because <code>gocritic</code>, <code>gosec</code>, and <code>mnd</code> have false
-      positives the project does not own.</div></div>
-    <div class="owner"><span class="pill w">change</span></div>
-  </div>
-  <div class="layer">
-    <div class="num">4</div>
-    <div class="body"><div class="t">No brownfield baseline for blocking findings</div>
-      <div class="d">Around 400 findings on a first run over 36k lines, and no ratchet for blocking rules.
-      Recorded as a cost of the stated AI-greenfield goal, not addressed.</div></div>
-    <div class="owner"><span class="pill">recorded</span></div>
-  </div>
-  <div class="layer">
-    <div class="num">5</div>
-    <div class="body"><div class="t">The canceled tickets stay canceled until you say otherwise</div>
-      <div class="d">The document names which to revive. Nothing was re-opened and no follow-up was filed.</div></div>
-    <div class="owner"><span class="pill">your move</span></div>
-  </div>
-</div>
-
-<!-- ============================================================= -->
-<h2 id="evidence">What the evidence hands you</h2>
-
-<h3>Ten real bugs, all from exact shape rules</h3>
-<p>Across querator and git-server, every genuine defect a blocking rule found came from a rule that
-classifies a construct as an allowed shape or a finding. Zero suppressions were written to get there;
-the eight analyzer defects the trials exposed were fixed in the analyzer with corpus cases.</p>
+<h2 id="ratify-veto">The five calls to ratify or veto</h2>
+<p>
+  Each row is a separate decision. A veto on one does not require vetoing the others, but a
+  veto on the pin-model call also unwinds the TS-V01 disposition in the rule-set table below,
+  since that table assumes the call goes through.
+</p>
 
 <table>
-  <thead><tr><th>Rule</th><th class="num">Bugs</th><th>What it caught</th></tr></thead>
+  <thead><tr><th>Call</th><th>What it changes</th><th>Evidence basis</th></tr></thead>
   <tbody>
-    <tr><td><code>TS-S02</code> loop bound</td><td class="num">5</td><td>a pause/shutdown deadlock; a remotely triggerable CPU-spin DoS through an uncapped tag peel chain; two uncapped pkt-line command loops; an uncapped ref-update accumulation</td></tr>
-    <tr><td><code>TS-S08</code> closed switch</td><td class="num">3</td><td>two storage backends dropping an action with no default and no log; a diff writer that silently emits nothing for a future op tag; a pack writer returning an invalid type code</td></tr>
-    <tr><td><code>TS-C05</code> blocking op</td><td class="num">1</td><td>three client waits with no cancellation that the doc comment claimed</td></tr>
-    <tr><td><code>TS-C02</code> goroutine owner</td><td class="num">1</td><td>an unwaited <code>WaitGroup</code> letting <code>Shutdown</code> return early</td></tr>
-    <tr><td><code>TS-E02</code> discard</td><td class="num">1</td><td>a hash-format validation error discarded, a latent corrupted object id</td></tr>
-  </tbody>
-</table>
-
-<h3>What a new adopter sees today</h3>
-<p>Today's <code>tiger</code> built from <code>main</code> at <code>5126797</code>, run against
-querator at <code>1fd1bb2</code>, the same pin ENG-148 used. Every removal and tuning to date is in
-this number.</p>
-
-<pre><code><span class="cmd">tiger check</span> ./...          <span class="muted"># querator @ 1fd1bb2, tiger @ 5126797</span>
-…
-tiger: 401 blocking
-<span class="muted"># advisory after budgets: 2 skipped tests, 1 misordered struct</span></code></pre>
-
-<table>
-  <thead><tr><th>Rule</th><th class="num">Count</th><th>Verdict on the code</th></tr></thead>
-  <tbody>
-    <tr><td><code>TS-E02</code></td><td class="num">86</td><td>true by spec; about half are deferred <code>Close</code>/<code>Rollback</code> cleanup where the only remedy is a boilerplate comment</td></tr>
-    <tr><td><code>TS-N07</code></td><td class="num">45</td><td>~30 genuine swap hazards; ~15 are the <code>t, ctx, client</code> test-helper prefix burning the cap by convention</td></tr>
-    <tr><td><code>TS-T06</code></td><td class="num">40</td><td>all genuinely undocumented tests</td></tr>
-    <tr><td><code>TS-V01</code></td><td class="num">37</td><td>30 are the cursor loops TS-S02 waives; 7 are provably terminating loops the synthesizer cannot see; none is a bug</td></tr>
-    <tr><td><code>TS-S09</code></td><td class="num">35</td><td>30 copies of one <code>continue nextBatch</code> idiom across four mirrored backends</td></tr>
-    <tr><td><code>TS-S02</code></td><td class="num">35</td><td>30 cursor drains, waivable; the pause/shutdown deadlock still fires</td></tr>
-    <tr><td><code>TS-S18</code>, <code>TS-S08</code></td><td class="num">15, 15</td><td>true; blocked on adopting an assert package</td></tr>
-    <tr><td><code>TS-C02</code></td><td class="num">14</td><td>4 real; 10 are complete <code>wg.Add</code>/<code>wg.Wait</code> supervision the rule has no vocabulary for</td></tr>
-    <tr><td><code>TS-C05</code></td><td class="num">13</td><td>the real missing-cancellation waits still fire</td></tr>
-    <tr><td><code>TS-C09</code></td><td class="num">12</td><td>12 of 12 in <code>_test.go</code>; zero production hits</td></tr>
-    <tr><td><code>TS-T02</code></td><td class="num">11</td><td>sampled 4: one real order leak into logs, three order-insensitive bodies the allowlist cannot prove</td></tr>
-    <tr><td><code>TS-E06</code></td><td class="num">11</td><td>10 idiomatic multi-value helpers, 1 pinned by a third-party interface</td></tr>
-    <tr><td><code>TS-X01</code></td><td class="num">9</td><td>9 of 9 are role interfaces over one <code>service.Service</code>; the named remedy widens every consumer's dependency</td></tr>
-    <tr><td>others</td><td class="num">18</td><td>N08 5, T10 4, C12 3, S06 2, S01 2, M10 2; true by spec</td></tr>
-  </tbody>
-</table>
-
-<div class="callout warn"><span class="label">Note</span>
-ENG-161 predicted about 350 blocking findings for this pin after the naming removals. The
-difference to 401 is TS-V01, which shipped after that prediction.</div>
-
-<!-- ============================================================= -->
-<h2 id="v01">The worked example: TS-V01</h2>
-<p>This is the one rule the decision changes, so here is the whole case as the tool shows it. Three
-loops in one fixture package, run against the same binary as the querator numbers above.</p>
-
-<pre><code><span class="muted">// a cursor drain carrying the escape ADR-0004 admitted for exactly this shape</span>
-//tiger:batched store exposes only a per-item cursor
-for it.Valid() { keys = append(keys, it.Key()); it.Next() }
-
-<span class="muted">// a two-pointer reversal; TS-S02's wave-1.5 grammar accepts this as bounded</span>
-//tiger:variant j - i
-for i, j := 0, len(b)-1; i &lt; j; i, j = i+1, j-1 { b[i], b[j] = b[j], b[i] }
-
-<span class="muted">// integer division toward zero</span>
-//tiger:variant n
-for n &gt; 0 { n /= 62; count++ }</code></pre>
-
-<pre><code><span class="cmd">tiger check</span> ./...
-cursor.go:14:2: TS-V01: tiger can't prove this loop ends: nothing in its condition shrinks on every pass — add a cap …
-cursor.go:24:2: TS-V01: //tiger:variant j - i doesn't provably shrink on every pass (no term in the expression provably decreases) — add a cap …
-cursor.go:32:2: TS-V01: //tiger:variant n doesn't provably shrink on every pass (n cannot be shown to move consistently) — add a cap …
-tiger: 5 blocking</code></pre>
-
-<div class="grid2">
-  <div class="card cut"><h4>Today</h4>
-    <p class="muted">The <code>//tiger:batched</code> waiver clears TS-S02 and the loop stays blocked under
-    TS-V01. Two correct variant pins are rejected. The only exit the rule offers is an artificial
-    iteration cap, the "magic number or restatement of however big the store is" that ADR-0004
-    refused for cursor loops.</p>
-    <p class="muted">On querator: 37 findings, 30 of them the loops TS-S02 already handles, 0 bugs.
-    The one real termination bug, a <code>for { select }</code>, is outside V01's scope by design.</p>
-  </div>
-  <div class="card keep"><h4>After the decision</h4>
-    <p class="muted">Variant synthesis is a computed fact, printed under <code>--show-facts</code> and
-    frozen by <code>tiger pin</code>. A pinned variant is verified in both directions exactly as now.
-    An unpinned loop that TS-S02 accepts is not a finding.</p>
-    <p class="muted">Same model as effects and frames: absence of a pin is never a finding. Removes 37
-    findings from querator, restores the waiver, keeps every guarantee a pin gives.</p>
-  </div>
-</div>
-
-<div class="callout danger"><span class="label">Why this is not a tuning problem</span>
-A prover small enough to be exact is too small to verify the loops people write, and growing it is
-the "exponential in the tail" cost the spec's own honest-limits section names. Two rules currently
-apply two different termination grammars to the same loop, and the stricter one has no escape.</div>
-
-<!-- ============================================================= -->
-<h2 id="names">The largest gap is a fix, not a rule</h2>
-<p>Four blocking rules decide compliance from an identifier's name where the behavior is computable.
-An agent optimizing for a green run finds these first. They are analyzer work, described item by item
-in the canceled ticket ENG-177, and they are the strongest argument in the investigation that the
-shipped tool falls short of its own exactness claim.</p>
-
-<div class="flow">
-  <div class="node surface"><div class="t">agent writes</div><div class="d">code that fails a rule</div></div>
-  <div class="arrow">→<span class="lbl">cheapest path</span></div>
-  <div class="node inside"><div class="t">rename</div><div class="d">channel to <code>done</code></div></div>
-  <div class="arrow">→</div>
-  <div class="node inside"><div class="t">or add</div><div class="d">an empty <code>Reset()</code></div></div>
-  <div class="arrow">→<span class="lbl">green</span></div>
-  <div class="node surface"><div class="t">nothing enforced</div><div class="d">the bug is still there</div></div>
-</div>
-
-<table>
-  <thead><tr><th>Rule</th><th>Trusts today</th><th>Should compute</th></tr></thead>
-  <tbody>
-    <tr><td><code>TS-S03</code>, <code>TS-C05</code></td><td>any method named <code>Done</code>, no receiver check</td><td>receiver is <code>context.Context</code></td></tr>
-    <tr><td><code>TS-S03</code>, <code>TS-C05</code></td><td>a channel named <code>shutdown</code>, <code>stop</code>, <code>quit</code>, or <code>done</code></td><td>at least one <code>close</code> or send on it somewhere in the package</td></tr>
-    <tr><td><code>TS-M05</code></td><td>any method named <code>Reset</code> before <code>Put</code></td><td><code>Reset</code> writes the receiver</td></tr>
-    <tr><td><code>TS-C02</code></td><td>only <code>errgroup</code> since the supervisor flag was removed</td><td><code>wg.Add</code> before the <code>go</code> and <code>wg.Wait</code> in the same function or the owner's <code>Close</code></td></tr>
+    <tr>
+      <td><strong>TS-V01 becomes a pinned fact</strong>, not a blocking rule</td>
+      <td>Loop-variant synthesis keeps running and stays pinnable with <code>tiger pin</code>,
+        but an unpinned loop that TS-S02 already accepts stops being a finding on its own</td>
+      <td>The querator pin plus two fixture probes; the git-server pin was not rerun for
+        this ticket</td>
+    </tr>
+    <tr>
+      <td><strong><code>//tiger:restrict</code> stays opt-in</strong> and returns to the
+        explainer document</td>
+      <td>Reverses the explainer commit that removed the directive and the section built on
+        it; <code>closed-dispatch</code> and <code>no-reflect</code> remain declarations a
+        package opts into, not defaults every package is checked against</td>
+      <td>Querator's four storage backends behind one interface, which a default closed-world
+        rule would flag as a violation rather than the intended architecture</td>
+    </tr>
+    <tr>
+      <td><strong><code>//nolint</code> on auto rules is counted, not banned</strong></td>
+      <td>A bare <code>//nolint</code> or one naming <code>tiger</code> becomes a blocking
+        TS-L09 finding; a <code>//nolint:&lt;linter&gt; // reason</code> targeting a
+        golangci-lint linter stays permitted but is now counted as a
+        <code>TS-L09-escape</code> against the package budget</td>
+      <td>The escape-admission test applied to what the <code>directives</code> analyzer
+        already walks; the alternative of banning every golangci-lint linter's
+        <code>//nolint</code> was rejected because <code>gocritic</code>, <code>gosec</code>,
+        and <code>mnd</code> carry documented false positives the project does not own</td>
+    </tr>
+    <tr>
+      <td><strong>No brownfield baseline</strong> for blocking findings</td>
+      <td>A first run against an unadopted codebase still produces its full blocking count
+        with no ratchet to bring it down gradually; this decision records that cost rather
+        than adding a baseline mechanism</td>
+      <td>A baseline is the same mechanism ADR-0011 already refused for advisories, and the
+        argument against it does not change for blocking rules</td>
+    </tr>
+    <tr>
+      <td><strong>The eleven canceled tickets stay canceled</strong> by this document</td>
+      <td>This document restates which of them are still wanted work, but reviving any of
+        them is a separate human decision made after this document is ratified</td>
+      <td>Listed with a disposition per ticket further down this page</td>
+    </tr>
   </tbody>
 </table>
 
 <!-- ============================================================= -->
-<h2 id="disagreements">The three explainer disagreements</h2>
-<p>These triggered the ticket. Each resolves as part of the larger answer rather than as a patch.</p>
+<h2 id="rule-set">What changes across all forty rule codes</h2>
+<p>
+  Most of the registry is untouched. The decision keeps the majority of rules exactly as they
+  run, changes what a handful check, retires one rule from blocking status, and demotes one
+  to a trial.
+</p>
 
-<div class="grid2">
-  <div class="card change"><h4><code>//nolint</code></h4>
-    <p class="muted"><b>Spec:</b> allowed with a reason via <code>nolintlint</code>.<br>
-    <b>Explainer:</b> banned outright, "tiger flags any <code>//nolint</code>."<br>
-    <b>Code:</b> <code>tiger check</code> ignores it; under the golangci plugin
-    <code>//nolint:tiger</code> silences a rule with no count.</p>
-    <p><b>Resolution.</b> Tiger's own rules accept no suppression under any driver; a bare
-    <code>//nolint</code> or one naming <code>tiger</code> is a blocking TS-L09 finding at the
-    <code>package</code> clause. On auto rules, <code>//nolint:&lt;linter&gt; // reason</code> stays
-    permitted and is counted as <code>TS-L09-escape</code> against the budget. No uncounted silence.</p>
-  </div>
-  <div class="card keep"><h4><code>//tiger:restrict</code></h4>
-    <p class="muted"><b>Spec, reference, code:</b> opt-in intent declaration; TS-P01, P02, K03; absence never a finding.<br>
-    <b>Explainer:</b> removed in commit <code>b452818</code>, with the "How review divides" section built on it.</p>
-    <p><b>Resolution.</b> Keep the shipped design. Closed dispatch as a default fails on querator's four
-    backends behind one interface. The TS-P02 precision bound only means anything as a claim. The
-    directive is consumed by two analyzers with corpora. The explainer restores the paragraph.
-    The one half-right point: reflection is already banned by default through TS-S12's auto rule.</p>
-  </div>
-  <div class="card keep"><h4>Map order</h4>
-    <p class="muted"><b>Explainer and code:</b> ban every map range unless the body matches a closed
-    allowlist of order-insensitive shapes.<br>
-    <b>Spec:</b> "range over a map whose body appends or writes. Heuristic."</p>
-    <p><b>Resolution.</b> Not a product disagreement. The ENG-150 blueprint made the inversion on purpose
-    and flagged the spec line for amendment; the amendment never landed. Fix the spec. One wording
-    correction goes the other way: the check is exact over its allowlist, not a heuristic, and the
-    explainer should say so and keep the TS-T11 double-run backstop.</p>
-  </div>
-  <div class="card review"><h4>Where an LLM belongs</h4>
-    <p class="muted">The ticket asked whether some goals need LLM-judged review.</p>
-    <p><b>Resolution.</b> Whether a declaration is true is already assigned to review, and the reviewer
-    may be a human or an AI agent reading the pull request. Tiger owes that reviewer a surface that is
-    small, visible on every run, and impossible to shrink without a diff. It should not judge the
-    claims itself; a model inside the gate makes the verdict nondeterministic and turns the one thing
-    agents cannot fake, a green run, into something they can argue with.</p>
-  </div>
+<table>
+  <thead><tr><th>Disposition</th><th>Count</th><th>What it means for a rule in this group</th></tr></thead>
+  <tbody>
+    <tr><td>Keep, unchanged</td><td>35</td><td>Blocking today, blocking after ratification, same mechanism</td></tr>
+    <tr><td>Keep, mechanism changed</td><td>3</td><td>Still blocking, but the analyzer learns to recognize a shape it currently misses or over-flags</td></tr>
+    <tr><td>Converted to pin-only fact</td><td>1</td><td>TS-V01; stops being an unpinned blocking finding, stays verifiable once pinned</td></tr>
+    <tr><td>Demoted to advisory trial</td><td>1</td><td>TS-X01; moves from blocking to counted-against-budget pending a git-server rerun</td></tr>
+    <tr><td>New rules added</td><td>0</td><td>Not applicable</td></tr>
+  </tbody>
+</table>
+
+<div class="mermaid">
+flowchart LR
+  R["40 registered<br/>custom rule codes"]:::surface --> K["35 keep, unchanged"]:::inside
+  R --> M["3 keep,<br/>mechanism changed"]:::inside
+  R --> P["1 converted to<br/>pin-only fact (TS-V01)"]:::inside
+  R --> A["1 demoted to<br/>advisory trial (TS-X01)"]:::inside
+
+  classDef surface fill:#58a6ff12,stroke:#58a6ff,color:var(--text);
+  classDef inside fill:var(--panel-2),stroke:var(--border),color:var(--muted);
 </div>
 
-<!-- ============================================================= -->
-<h2 id="rules">What happens to each rule</h2>
-<p>All 40 registered custom rule codes. Auto rules delegated to golangci-lint are out of scope; the
-<code>tiger golangci</code> audit governs them and neither trial found a problem with that split.</p>
-
-<p><span class="pill a">keep</span> 35 rules, blocking, unchanged. <span class="pill w">change</span>
-mechanism of 3, conversion of 1. <span class="pill b">trial</span> demotion of 1. No new rule.</p>
+<h3>The full disposition table</h3>
+<p>
+  This is the table the pull request ships. "Keep" means the rule stays blocking with no
+  mechanism change. Auto rules delegated to golangci-lint are governed by the separate
+  <code>tiger golangci</code> audit and are not repeated here.
+</p>
 
 <table>
   <thead><tr><th>Rule</th><th>Disposition</th><th>Reason</th></tr></thead>
   <tbody>
-    <tr><td><code>S02</code>, <code>S03</code></td><td><span class="pill a">keep</span></td><td>5 real bugs; cursor waiver in place; wave-1.5 widenings held under adversarial review</td></tr>
-    <tr><td><code>S08</code></td><td><span class="pill a">keep</span></td><td>3 real bugs; <code>//tiger:openenum</code> covers the open-vocabulary case</td></tr>
-    <tr><td><code>C05</code></td><td><span class="pill a">keep</span></td><td>real bugs still fire after the shutdown-shape tuning</td></tr>
-    <tr><td><code>C02</code></td><td><span class="pill a">keep</span> + ENG-177</td><td>4 real; 10 of 14 are correct <code>WaitGroup</code> supervision the rule must learn to compute</td></tr>
-    <tr><td><code>E02</code></td><td><span class="pill w">change</span></td><td>exempt the discarded result of a call inside a <code>defer</code>; the boilerplate-comment case both trials named. The one real bug was outside that shape</td></tr>
-    <tr><td><code>N07</code></td><td><span class="pill w">change</span></td><td>do not count a leading <code>testing.TB</code> or <code>context.Context</code> toward the cap of four; the adjacent-same-type check, where the real hazards live, is untouched</td></tr>
-    <tr><td><code>C09</code></td><td><span class="pill w">change</span></td><td>scope to non-test files; 12 of 12 findings are the fan-out-then-<code>Wait</code> test idiom</td></tr>
-    <tr><td><code>T02</code></td><td><span class="pill a">keep</span>, grow allowlist</td><td>exact over its allowlist; 3 of 4 sampled findings are shapes it cannot yet prove. Growth is by corpus case, never a knob</td></tr>
-    <tr><td><code>V01</code></td><td><span class="pill w">convert</span></td><td>pin-only fact; see the worked example</td></tr>
-    <tr><td><code>X01</code></td><td><span class="pill b">trial</span></td><td>advisory per ADR-0005/0006; shipped blocking after both trials; 9 of 9 findings are the role-interface idiom. The git-server rerun decides it</td></tr>
-    <tr><td><code>S09 S06 S07 S18 S21 S22 T06 T10 E06 M10 M05 S01 C12 N08 N14 L09 L10</code></td><td><span class="pill a">keep</span></td><td>true by spec on real code; S09's 30 copies of one idiom count one decision many times</td></tr>
-    <tr><td><code>F01 F02 F07 V03 P01 P02 K03 A07 A09</code></td><td><span class="pill a">keep</span></td><td>opt-in; fire nothing until declared; zero noise on both codebases</td></tr>
-    <tr><td><code>L05</code>, <code>L10-distance</code>, <code>D07</code>, <code>L09-escape</code></td><td><span class="pill a">keep</span> advisory</td><td>the accounting channel; 17 findings across three codebases after ENG-162</td></tr>
-    <tr><td><code>D06</code></td><td><span class="pill a">keep</span></td><td>the ratchet is what makes every escape honest</td></tr>
+    <tr><td>TS-S02, S03</td><td>keep</td><td>5 real bugs; cursor waiver in place; wave-1.5 grammar widenings held under adversarial review</td></tr>
+    <tr><td>TS-S08</td><td>keep</td><td>3 real bugs; <code>//tiger:openenum</code> covers the open-vocabulary case</td></tr>
+    <tr><td>TS-C05</td><td>keep</td><td>Real bugs still fire after the shutdown-shape tuning</td></tr>
+    <tr><td>TS-C02</td><td>keep, revive ENG-177 item 1</td><td>4 real findings; 10 of 14 are correct <code>wg.Add</code>/<code>wg.Wait</code> supervision the rule must learn to compute</td></tr>
+    <tr><td>TS-E02</td><td>keep, exempt one shape</td><td>The discarded result of a call inside a <code>defer</code> statement is the boilerplate-comment case both trials named; the rule caught one real bug outside that shape</td></tr>
+    <tr><td>TS-N07</td><td>keep, exempt one shape</td><td>Do not count a <code>testing.TB</code> or <code>context.Context</code> leading parameter toward the cap of four; the adjacent-same-type check stays untouched</td></tr>
+    <tr><td>TS-C09</td><td>keep, scope to non-test files</td><td>12 of 12 querator findings are the fan-out-then-<code>Wait</code> test idiom; zero production hits on either codebase</td></tr>
+    <tr><td>TS-T02</td><td>keep, grow the allowlist by corpus</td><td>The inverted rule is exact over its allowlist; the sampled misses are order-insensitive shapes the allowlist does not yet cover</td></tr>
+    <tr><td>TS-V01</td><td>convert to pin-only fact</td><td>Synthesis and pin verification stay; the unpinned-loop finding goes</td></tr>
+    <tr><td>TS-X01</td><td>demote to advisory trial</td><td>9 of 9 querator findings are the role-interface idiom, and the named remedy widens every consumer's dependency; needs the git-server rerun before a verdict</td></tr>
+    <tr><td>TS-S09, S06, S07, S18, S21, S22, T06, T10, E06, M10, M05, S01, C12, N08, N14, L09, L10</td><td>keep</td><td>True by spec on real code; repeated volume where it exists counts one decision many times, not many wrong decisions</td></tr>
+    <tr><td>TS-F01, F02, F07, V03, P01, P02, K03, A07, A09</td><td>keep</td><td>Opt-in; fire nothing until declared; zero noise on both codebases</td></tr>
+    <tr><td>TS-L05, L10-distance, D07, L09-escape</td><td>keep, advisory</td><td>The accounting channel</td></tr>
+    <tr><td>TS-D06</td><td>keep</td><td>The ratchet is the mechanism that makes every escape honest</td></tr>
   </tbody>
 </table>
 
-<h3>What does not ship</h3>
-<ul>
-  <li>No generic <code>//tiger:&lt;rule-id&gt;</code> deviation directive. ADR-0003's admission test
-  holds; nothing in either trial produced a finding a compliant rewrite could not clear, except the
-  cursor loops ADR-0004 already covers.</li>
-  <li>No per-site config exemption for signatures pinned by third-party interfaces. One func literal
-  in one repo; an adapter function is the compliant shape.</li>
-  <li>No blocking-finding baseline for brownfield adoption. A baseline is the mechanism ADR-0011 refused
-  for advisories, and the argument is the same.</li>
-</ul>
+<!-- ============================================================= -->
+<h2 id="disagreements">The three documentation disagreements this decision resolves</h2>
+<p>
+  Three source documents made three different claims about the same behavior. Two of the
+  three feed directly into the calls above; the third is a wording fix with no behavior
+  change attached.
+</p>
+
+<h3><code>//nolint</code></h3>
+<p>
+  The specification allows <code>//nolint</code> with a reason, enforced by
+  <code>nolintlint</code> under TS-L09. The explainer said tiger bans it outright and flags
+  any <code>//nolint</code> as a finding. Neither matched the shipped code, which does not
+  read <code>//nolint</code> at all under <code>tiger check</code>, and under the
+  golangci-lint plugin lets a <code>//nolint:tiger</code> comment silence a tiger rule with
+  no advisory and no count. The resolution above makes the explainer's sentence true for
+  tiger's own rules and closes the uncounted gap for auto rules.
+</p>
+
+<h3><code>//tiger:restrict</code></h3>
+<p>
+  An earlier explainer commit removed every mention of the directive and asserted that its
+  two axes are not opt-in. The specification, the rule reference, and the shipped code all
+  treat the restriction set as an opt-in declaration where absence is never a finding. This
+  decision keeps the shipped design and asks the explainer to restore the paragraph a reader
+  needs in order to understand TS-P01 in the rule reference.
+</p>
+
+<h3>Map order</h3>
+<p>
+  The explainer described <code>maporder</code> as a heuristic that bans every map range
+  except a fixed set of safe body shapes. The specification's TS-T02 line calls the same
+  check a heuristic too. The shipped code does what the explainer says, exactly. This is not
+  a product disagreement between the three documents; the specification's wording is stale
+  and the fix is to correct that line rather than the explainer or the code.
+</p>
 
 <!-- ============================================================= -->
-<h2 id="tickets">The eleven canceled tickets</h2>
-<p>Most describe work this decision still wants. Reviving any is your call after ratification.</p>
+<h2 id="evidence">The evidence behind these calls</h2>
+<p>
+  The decision applies one dividing line to every rule in the registry, taken from the
+  specification's own framing that machines check correspondence between code and a stated
+  shape while humans and AI review whether a declaration is true. Every place tiger has gone
+  wrong is a place a rule crossed that line in one direction or the other.
+</p>
+
+<div class="mermaid">
+flowchart TD
+  Q{"Does the rule check an exact<br/>structural shape or a checked pin?"}
+  Q -->|"Yes, structural"| S["Sufficient:<br/>structural rules (S02, S08, C05, C02, E02...)"]:::surface
+  Q -->|"Yes, opt-in pin, checked both ways"| P["Sufficient:<br/>pins (effects, frames, TS-V01 after conversion)"]:::surface
+  Q -->|"No, needs naming or style judgment"| J["Not sufficient:<br/>judgment rules, already removed"]:::inside
+  Q -->|"No, needs a termination proof<br/>beyond the bound shape"| T["Not sufficient:<br/>TS-V01 as a blocking rule, folded into the pin model"]:::inside
+  Q -->|"No, needs to know if a claim is true"| D["Not static at all:<br/>left to human or AI review on the pull request"]:::inside
+
+  classDef surface fill:#58a6ff12,stroke:#58a6ff,color:var(--text);
+  classDef inside fill:var(--panel-2),stroke:var(--border),color:var(--muted);
+</div>
+
+<h3>The two trials and their reruns</h3>
+<p>
+  ENG-148 (querator) and ENG-159 (git-server) ran wave-1 tiger; ENG-149 and ENG-162 reran
+  both pins after the wave-1.5 tuning and the advisory audit. Together they found ten real
+  defects, all from blocking rules of the structural class.
+</p>
+
+<table>
+  <thead><tr><th>Rule</th><th>Real bugs</th><th>What it caught</th></tr></thead>
+  <tbody>
+    <tr><td>TS-S02 loop bound</td><td>5</td><td>A pause/shutdown deadlock; a remotely triggerable CPU-spin DoS through an uncapped tag peel chain; two uncapped pkt-line command loops; an uncapped ref-update accumulation</td></tr>
+    <tr><td>TS-S08 closed switch</td><td>3</td><td>Two storage backends dropping an action with no default and no log; a diff writer that silently emits nothing for a future op tag; a pack writer returning an invalid type code</td></tr>
+    <tr><td>TS-C05 blocking op</td><td>1</td><td>Three client waits with no cancellation that the doc comment claimed</td></tr>
+    <tr><td>TS-C02 goroutine owner</td><td>1</td><td>An unwaited <code>WaitGroup</code> letting <code>Shutdown</code> return early</td></tr>
+    <tr><td>TS-E02 discard</td><td>1</td><td>A hash-format validation error discarded, a latent corrupted object id</td></tr>
+  </tbody>
+</table>
+
+<h3>A fresh run against the querator pin ENG-148 used</h3>
+<p>
+  Built from <code>main</code> at <code>5126797</code>, run against querator at
+  <code>1fd1bb2</code>. This is what a new adopter sees today, after every removal and
+  tuning to date.
+</p>
+
+<table>
+  <thead><tr><th>Rule</th><th>Findings</th><th>Verdict on the code</th></tr></thead>
+  <tbody>
+    <tr><td>TS-E02 discard needs comment</td><td>86</td><td>True by spec; about half are deferred <code>Close</code>/<code>Rollback</code>/<code>Shutdown</code> cleanup where the only remedy is a boilerplate comment</td></tr>
+    <tr><td>TS-N07 same-type params, max 4</td><td>45</td><td>Roughly 30 genuine swap hazards; roughly 15 are the <code>t, ctx, client</code> test-helper prefix burning the cap by convention</td></tr>
+    <tr><td>TS-T06 test has doc comment</td><td>40</td><td>All genuinely undocumented tests</td></tr>
+    <tr><td>TS-V01 loop variant</td><td>37</td><td>30 are the cursor loops TS-S02 waives; 7 are provably terminating loops the synthesizer cannot see; none is a bug</td></tr>
+    <tr><td>TS-S09 no labeled continue</td><td>35</td><td>30 copies of one <code>continue nextBatch</code> idiom across four mirrored backends; zero gotos</td></tr>
+    <tr><td>TS-S02 loop bound</td><td>35</td><td>30 cursor drains, waivable with <code>//tiger:batched</code>; the pause/shutdown deadlock still fires</td></tr>
+    <tr><td>TS-S18 naked panic</td><td>15</td><td>True; blocked on adopting an assert package</td></tr>
+    <tr><td>TS-S08 closed switch</td><td>15</td><td>True; same prerequisite; three sites would change behavior if fixed mechanically</td></tr>
+    <tr><td>TS-C02 goroutine owner</td><td>14</td><td>4 real; 10 are complete <code>wg.Add</code>/<code>wg.Wait</code> supervision the rule has no vocabulary for</td></tr>
+    <tr><td>TS-C05 blocking op</td><td>13</td><td>The real missing-cancellation waits still fire</td></tr>
+    <tr><td>TS-C09 reactive spawn</td><td>12</td><td>12 of 12 in <code>_test.go</code>, the bounded fan-out-then-<code>Wait</code> test idiom; zero production hits</td></tr>
+    <tr><td>TS-T02 map order</td><td>11</td><td>Sampled 4: one real order leak into logs, three order-insensitive bodies the allowlist cannot prove</td></tr>
+    <tr><td>TS-E06 return arity</td><td>11</td><td>10 idiomatic multi-value helpers, 1 pinned by a third-party interface</td></tr>
+    <tr><td>TS-X01 single-impl interface</td><td>9</td><td>9 of 9 are role interfaces over one <code>service.Service</code>, the segregation idiom</td></tr>
+    <tr><td>TS-N08 bool param</td><td>5</td><td>1 strong, 4 weak</td></tr>
+    <tr><td>TS-T10, TS-C12, TS-S06, TS-S01, TS-M10</td><td>4, 3, 2, 2, 2</td><td>True by spec; TS-S01 names two real call cycles through the request loop</td></tr>
+    <tr><td><strong>Total blocking</strong></td><td><strong>401</strong></td><td>ENG-161 predicted roughly 350 for this pin after the naming removals; the difference is TS-V01</td></tr>
+    <tr><td>Advisory, skipped test</td><td>2</td><td>Under budget; prints as blocking only on a <code>TS-D06</code> overrun</td></tr>
+    <tr><td>Advisory, misordered struct</td><td>1</td><td>Under budget</td></tr>
+  </tbody>
+</table>
+<p>
+  All advisory output stays under its package budget on this run, which is the channel
+  ADR-0006 described.
+</p>
+
+<h3>Two fixture probes</h3>
+<p>
+  Run against the same binary, the probes check a claim the fresh run raised. A cursor loop
+  carrying <code>//tiger:batched</code>, a two-pointer reversal with <code>i, j = i+1, j-1</code>,
+  and a <code>for n &gt; 0 { n /= 62 }</code> loop all fire TS-V01. Pinning
+  <code>//tiger:variant j - i</code> on the reversal and <code>//tiger:variant n</code> on the
+  division is rejected as unverifiable. The only exit the rule offers is an artificial
+  iteration cap, the same shape ADR-0004 already rejected for cursor loops as either a magic
+  number or a restatement of however big the store is.
+</p>
+
+<!-- ============================================================= -->
+<h2 id="canceled">The canceled tickets and the follow-up work</h2>
+<p>
+  Eleven tickets were canceled on the assumption the project's direction on static analysis
+  might change. It did not, so this decision restates which of them are still wanted.
+  Reviving any one of them is a separate call made after this document is ratified; nothing
+  in this document reopens one on its own.
+</p>
 
 <table>
   <thead><tr><th>Ticket</th><th>Disposition</th></tr></thead>
   <tbody>
-    <tr><td><code>ENG-177</code> recognize behavior, not names</td><td><span class="pill b">revive</span> as written; the highest-value analyzer work in the backlog</td></tr>
-    <tr><td><code>ENG-178</code> close uncounted silencing channels</td><td><span class="pill b">revive</span> items 2, 3, 4. Drop item 1; an advisory per generated file is the noise ADR-0006 removes</td></tr>
-    <tr><td><code>ENG-179</code> trusted declarations get the escape treatment</td><td><span class="pill b">revive</span> item 1 (<code>openenum</code> counted). Drop item 2; the E02 shape exemption replaces a new <code>//tiger:discard</code> verb</td></tr>
-    <tr><td><code>ENG-174</code> JSON output</td><td><span class="pill b">revive</span> when convenient; both trial reports asked for it</td></tr>
-    <tr><td><code>ENG-176</code> naming rules on the config file</td><td><span class="pill d">leave</span>; scoping was not the failure</td></tr>
-    <tr><td><code>ENG-175</code> interface-pinned exemptions</td><td><span class="pill d">leave</span>; one site, one repo</td></tr>
-    <tr><td><code>ENG-188</code> reconcile spec with explainer</td><td><span class="pill">superseded</span> by the decision and its follow-ups</td></tr>
-    <tr><td><code>ENG-181</code> specification gaps</td><td><span class="pill">folded</span> into the spec follow-up</td></tr>
-    <tr><td><code>ENG-171</code>, <code>172</code>, <code>173</code> auto-fix, editor, dashboards</td><td><span class="pill d">leave</span> until the rule set settles</td></tr>
+    <tr><td>ENG-177 recognize behavior, not names</td><td>Revive as written; the highest-value analyzer work in the backlog</td></tr>
+    <tr><td>ENG-178 close uncounted silencing channels</td><td>Revive items 2, 3, 4; drop item 1 (a generated-file header is a bounded shape and an advisory per generated file is noise)</td></tr>
+    <tr><td>ENG-179 trusted declarations get the escape treatment</td><td>Revive item 1; drop item 2 (the TS-E02 shape exemption replaces it)</td></tr>
+    <tr><td>ENG-176 revive naming rules on the config file</td><td>Leave canceled; scoping was not the failure</td></tr>
+    <tr><td>ENG-175 interface-pinned signature exemptions</td><td>Leave canceled; one site, one repo, an adapter is the compliant shape</td></tr>
+    <tr><td>ENG-188 reconcile spec with explainer</td><td>Superseded by this document and its follow-ups</td></tr>
+    <tr><td>ENG-181 specification gaps</td><td>Folded into the specification follow-up below</td></tr>
+    <tr><td>ENG-174 JSON output</td><td>Revive when convenient; tooling, not direction</td></tr>
+    <tr><td>ENG-171, 172, 173 auto-fix, editor, dashboards</td><td>Leave canceled until the rule set above has settled</td></tr>
   </tbody>
 </table>
 
-<!-- ============================================================= -->
-<h2 id="followups">Follow-ups, in order</h2>
-
-<div class="layers">
-  <div class="layer"><div class="num">1</div><div class="body"><div class="t">TS-V01 to pin-only</div><div class="d">Registry and analyzer; unpinned-loop failure cases become compliant cases; spec line and explainer claim move with it. Rerun querator.</div></div><div class="owner"><span class="pill w">analyzer</span></div></div>
-  <div class="layer"><div class="num">2</div><div class="body"><div class="t">ENG-177, all four items</div><div class="d">Corpus cases per recognized shape plus known-miss files. Rerun both pins.</div></div><div class="owner"><span class="pill w">analyzer</span></div></div>
-  <div class="layer"><div class="num">3</div><div class="body"><div class="t">Shape exemptions for E02, N07, C09</div><div class="d">Each with a corpus case naming the excluded shape.</div></div><div class="owner"><span class="pill w">analyzer</span></div></div>
-  <div class="layer"><div class="num">4</div><div class="body"><div class="t">Silencing channels</div><div class="d">ENG-178 items 2, 3, 4; ENG-179 item 1; count <code>//nolint:&lt;linter&gt;</code> as <code>TS-L09-escape</code>.</div></div><div class="owner"><span class="pill w">analyzer</span></div></div>
-  <div class="layer"><div class="num">5</div><div class="body"><div class="t">TS-X01 to advisory</div><div class="d">One registry line, and the git-server rerun that decides it.</div></div><div class="owner"><span class="pill b">trial</span></div></div>
-  <div class="layer"><div class="num">6</div><div class="body"><div class="t">TS-T02 allowlist growth</div><div class="d">From the querator sample, by corpus case.</div></div><div class="owner"><span class="pill w">analyzer</span></div></div>
-  <div class="layer"><div class="num">7</div><div class="body"><div class="t">Specification reconciliation</div><div class="d">T02 enforcement line and Part V table, V01, L09's <code>//nolint</code> wording, restriction defaults, X01 severity, the ENG-181 gaps.</div></div><div class="owner"><span class="pill c">docs</span></div></div>
-  <div class="layer"><div class="num">8</div><div class="body"><div class="t">Explainer reconciliation</div><div class="d">Restore <code>//tiger:restrict</code>, split the <code>//nolint</code> sentence, replace "heuristic" on map order, remove "covers nearly every real loop", restore the fuller built-versus-described disclaimer.</div></div><div class="owner"><span class="pill c">docs</span></div></div>
-  <div class="layer"><div class="num">9</div><div class="body"><div class="t">An ADR for provers</div><div class="d">A rule needing a proof the analyzer cannot always construct ships as a computed fact, never as an unpinned finding.</div></div><div class="owner"><span class="pill c">docs</span></div></div>
-</div>
+<h3>Follow-ups, in order</h3>
+<ol>
+  <li><strong>TS-V01 to pin-only.</strong> Registry and analyzer change; rerun the querator pin and record the count.</li>
+  <li><strong>ENG-177, all four items.</strong> Corpus cases for each recognized shape plus known-miss files for shapes deliberately not recognized; rerun both pins.</li>
+  <li><strong>Shape exemptions for TS-E02, TS-N07, TS-C09</strong>, each with a corpus case naming the excluded shape.</li>
+  <li><strong>Silencing channels.</strong> ENG-178 items 2, 3, 4 and ENG-179 item 1, plus counting <code>//nolint:&lt;linter&gt;</code> as <code>TS-L09-escape</code>.</li>
+  <li><strong>TS-X01 to advisory</strong>, one registry line, and the git-server rerun that decides it.</li>
+  <li><strong>TS-T02 allowlist growth</strong> from the querator sample, by corpus case.</li>
+  <li><strong>Specification reconciliation</strong>, one ticket, covering the TS-T02 enforcement line, TS-V01, TS-L09's <code>//nolint</code> wording, the restriction-set defaults, TS-X01's severity, and the ENG-181 gaps.</li>
+  <li><strong>Explainer reconciliation</strong>, one ticket, restoring the <code>//tiger:restrict</code> paragraph, splitting the <code>//nolint</code> sentence, replacing "heuristic" on map order, and removing the "covers nearly every real loop" claim.</li>
+  <li><strong>An ADR</strong> recording the pin-model rule for provers, that a rule needing a proof the analyzer cannot always construct ships as a computed fact, never as an unpinned finding.</li>
+</ol>
 
 <footer>
-  Generated from <code>docs/features/ENG-191-due-diligence-validate-tigers-approach/decision.md</code>
-  on 2026-09-18. Querator numbers are a run of tiger at <code>5126797</code> against querator at
-  <code>1fd1bb2</code>; the fixture transcript is real <code>tiger check</code> output against a
-  three-function scratch package. Styling follows the bundled explainer template used by
-  <code>docs/features/ENG-147-tiger-check-wave-1/directives-explainer.html</code>.
+  Generated from <code>docs/features/ENG-191-due-diligence-validate-tigers-approach/decision.md</code>.
 </footer>
 
 </main>
 </div>
+<script type="module">
+  import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: "base",
+    themeVariables: {
+      background: "var(--bg)",
+      fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif",
+      primaryColor: "var(--panel)",
+      primaryTextColor: "var(--text)",
+      primaryBorderColor: "var(--border)",
+      secondaryColor: "var(--panel-2)",
+      tertiaryColor: "var(--panel-2)",
+      lineColor: "var(--accent)",
+      textColor: "var(--text)",
+      mainBkg: "var(--panel)",
+      nodeBorder: "var(--border)",
+      clusterBkg: "var(--panel-2)",
+      clusterBorder: "var(--border)",
+      edgeLabelBackground: "var(--bg)",
+      actorBkg: "var(--panel)",
+      actorBorder: "var(--border)",
+      actorTextColor: "var(--text)",
+      signalColor: "var(--accent)",
+      signalTextColor: "var(--text)",
+      labelBoxBkgColor: "var(--panel)",
+      labelBoxBorderColor: "var(--border)",
+      labelTextColor: "var(--text)",
+      loopTextColor: "var(--muted)",
+      noteBkgColor: "var(--panel-2)",
+      noteTextColor: "var(--muted)",
+      noteBorderColor: "var(--border)"
+    }
+  });
+</script>
 </body>
 </html>
