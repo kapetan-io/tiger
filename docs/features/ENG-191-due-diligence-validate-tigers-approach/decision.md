@@ -59,9 +59,9 @@ dropped) is not a static question. Review already owns it.
 **Shape rules work.** A shape rule classifies every instance of a construct as allowed or not. "Does
 this loop state a bound?" has an answer for every loop. "Does this loop halt?" does not. Every one
 of the ten real bugs both trials found came from a shape rule (the table in section 2). Shape rules
-print byte-identical output on every run, and when one misfires the fix goes in the analyzer.
-Adopters never suppress. On both trials that held, with eight analyzer defects fixed and zero
-suppressions.
+print byte-identical output on every run. A false positive on a blocking rule counts as a bug in
+tiger's analyzer. Tiger fixes the analyzer, and no one adds a comment to silence the finding. On
+both trials that held, with eight analyzer defects fixed and zero suppressions.
 
 **Opt-in pins work.** Tiger computes some facts for every function and package without being
 asked. Effects are which kinds of IO a function performs. Frames are which state it writes.
