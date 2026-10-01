@@ -93,5 +93,6 @@ the test stops waiting after 300 ms.
 | `GotoLoop` | loops with `goto` | TS-S09 only (style) | runs forever |
 | `WalkCapped` | call 2's proposed capped worklist | TS-S21 on the cap constant | stops at 101 nodes on a cycle with no error |
 | `WalkRange` | ranges over a worklist it appends to | no finding | visits only the root |
+| `WalkReported` | call 2's compliant worklist: capped, returns an error when the cap is hit | no finding | walks a tree; returns an error on a cycle |
 | `RunTicker`, `RunFlat` | `select` on `ctx.Done()` | no finding | stops on cancel |
 | `RunUntilCancelled` | `for ctx.Err() == nil` | TS-S02 and TS-V01 block | stops on cancel; runs forever on `context.Background()` |

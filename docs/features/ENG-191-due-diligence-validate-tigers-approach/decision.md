@@ -24,7 +24,7 @@ tiger checks loop bounds. That changed call 2 and added calls 13 and 14, all in 
 | # | Proposal | Recommendation | If you ratify | If you veto |
 |---|---|---|---|---|
 | 1 | Add a language model to judge waiver reasons | Reject | tiger stays deterministic; nothing changes | a model judges reasons inside `tiger check` |
-| 2 | Keep requiring proof that a loop ends, and teach tiger more proofs (TS-V01) | Change | the proof rule keeps blocking; tiger proves more loops; a proven loop satisfies the bound rule; a counter chasing a growing slice stops counting as bounded | 62 findings on correct code stay, and loops that run forever keep passing |
+| 2 | Keep requiring proof that a loop ends, and make both loop rules sound (TS-V01, TS-S02) | Change | the proof rule keeps blocking and proves more; the 20 holes in `experiments/gaps` close; a constant cap reports when hit | 62 findings on correct code stay, and loops that run forever keep passing |
 | 3 | Remove the single-implementation interface rule (TS-X01) | Remove | the rule is deleted | 24 findings stay, each with a fix that worsens the design |
 | 4 | Stop requiring a comment on dropped errors in cleanup code (TS-E02) | Change | 47 findings go away | a comment is still required there |
 | 5 | Don't count a leading `t` or `ctx` toward the four-parameter limit (TS-N07) | Change | 21 findings go away | the limit counts them as today |
@@ -266,26 +266,28 @@ Ten rules change, one is removed, and the rest stay as they are. Nothing
 new enters as a rule. The golangci-lint linters tiger turns on are out of scope. The
 `tiger golangci` audit governs them, and neither trial found a problem with that split.
 
-### Call 2: keep requiring proof that a loop ends, and teach tiger more proofs (TS-V01)
+### Call 2: keep requiring proof that a loop ends, and make both loop rules sound (TS-V01, TS-S02)
 
 **Recommendation: Change.** If you ratify, a loop still fails the build when tiger cannot prove it
-ends, and tiger learns enough new proofs to clear most of the 62 findings on correct code. A loop
-tiger proves ends also satisfies the bound rule, and a loop whose limit grows inside its own body no
-longer counts as bounded. If you veto, both loop rules stay as they are, including 62 findings that
-are not bugs and loops that run forever yet pass.
+ends. Tiger learns enough new proofs to clear most of the 62 findings on correct code. Both loop
+rules stop accepting the loops in `experiments/gaps` that run forever, and a cap that stands in for
+a proof has to report when it is hit. If you veto, both loop rules stay as they are, including 62
+findings that are not bugs and 20 loops tiger accepts that run forever, cut work short, or skip it.
 
 An earlier version of this call recommended the opposite: stop blocking, and show the proof only as
 information. The experiments in section 5 changed that. With only the bound rule blocking, loops that
-run forever pass, so the proof rule stays blocking and the work goes into making it prove more.
+run forever pass, so the proof rule stays blocking and the work goes into making it prove more. A
+review of the rewritten call (three reviewers, each testing claims with probes) then found the holes
+listed below, and every one now has a test.
 
 **What the rule enforces.** TS-V01 requires every loop to carry a proof that it ends. Tiger looks
 for a value that shrinks on every pass and has a floor, and fires when it cannot find one. A
 developer can supply the value with `//tiger:variant <expr>`. That is a small arithmetic
 expression (numbers, variables, and `len(...)`), not free text, and tiger checks it by the same
 fixed rules it uses to find one itself (section 5 shows how). TS-S02 is the weaker rule. It asks
-only that a loop's header state a bound (a constant, a `len`, or a counter), without checking that
-the body ever reaches it. A loop with a counter in its header is out of TS-V01's scope, so a
-counter cap is always a way to pass both rules.
+only that a loop's header state a bound (a constant, a `len`, or a counter). A loop with a counter
+in its header is out of TS-V01's scope, so a counter cap is the way out when tiger cannot find a
+proof. That makes the counter check as important as the proof itself.
 
 **Where it fires today.** git-server's sideband writer. The loop ends because `chunk` is never
 empty while `data` is non-empty, so `data` shrinks by at least one byte every pass. TS-S02 accepts
@@ -367,7 +369,7 @@ reports nothing, because TS-S02 sees a counter and TS-V01 skips counter loops.
 [`experiments/gaps`](experiments/gaps/) holds this loop and a test that shows it running forever
 on a two-node cycle ([test](experiments/gaps/gaps_test.go), [test output](experiments/gaps/test.out),
 [tiger output](experiments/gaps/tiger.out)). It also holds the `ctx.Err() == nil` game loop from
-change 4, which stops on cancel exactly like the `select` loops tiger accepts. git-server's tag-peel
+change 6, which stops on cancel exactly like the `select` loops tiger accepts. git-server's tag-peel
 denial of service was this kind of walk.
 
 TS-V01 fires 37 times on querator and 25 on git-server. On querator, 30 of the 37 are store and
@@ -379,34 +381,88 @@ returns an error when a pass makes no progress. Across both codebases TS-V01 cau
 did not. It also misses the one real termination bug in the trials, a `for { select }` loop, which
 is outside its scope by design.
 
-**What ratifying changes.** TS-V01 keeps blocking, and a written `//tiger:variant` is still
-checked in both directions. Five changes cut the findings on correct code and close the holes
-above.
+**What the review found.** Both rules accept loops that never end. TS-S02 trusts any counter whose
+name appears in the condition. TS-V01 matches variables by name and looks only inside the loop
+body. A cap is accepted at any size and stops without telling anyone. Each loop below is in
+[`experiments/gaps`](experiments/gaps/), with a test that runs it
+([tests](experiments/gaps/holes_test.go), [more tests](experiments/gaps/holes2_test.go),
+[test output](experiments/gaps/test.out), [tiger output](experiments/gaps/tiger.out)).
 
-1. **Tiger learns four more ways a value shrinks.** Each one comes from a loop the trials or the
-   variants experiment showed tiger rejecting although it ends.
-   - A shift or division by a positive constant under a `> 0` condition: `for size > 0 { size >>= 7 }`.
-   - Slicing a slice by the length of a part tiger can show is not empty:
-     `data = data[len(chunk):]`, when `chunk` is `data` or `data[:max]` with `max > 0`.
-   - A struct field in the condition, such as `len(q.Items) > 0`, when nothing else in the body can
-     write that field.
-   - A condition joined with `&&`, where any one part shrinking is enough, as in Myers diff's
-     `for x > 0 && y > 0 { x--; y-- }`.
-2. **TS-S02 accepts a loop whose variant tiger verified,** whether tiger found it or a developer
-   wrote it. A proven variant is a bound, so the two-pointer and index-by-2 loops stop getting a
-   TS-S02 finding.
-3. **A counter only counts as a bound when its limit cannot grow inside the loop.** TS-S02 rejects
-   `i < len(stack)` when the body appends to `stack`, using the same append check TS-V01 already
-   runs. The TS-S01 worklist then needs a cap, and its rule reference changes to show one:
-   `for i := 0; i < len(stack) && i < nodesMax; i++`.
-4. **`for ctx.Err() == nil { ... }` counts as a forever loop,** the same as a `select` on
-   `ctx.Done()`. Today both rules block it, though its only exit is the same cancellation.
-5. **Rerun both trials and record what is left.** Every remaining finding gets the cap rewrite. Most
-   will be worklists guarded by a visited set, whose honest limit is the number of objects in the
-   store. B1 asks for that number to be declared, and the missing cap on such a walk was
-   git-server's tag-peel bug.
+| Hole | Loops | Tiger today | At runtime |
+|---|---|---|---|
+| TS-S02 trusts any counter | `i < 10 \|\| !done()`; `i = 0` or `i--` in the body; `n++` on the limit; `r.i < 10` with a local `i`; `i != 7` stepping by 2; `uint8` counted to `<= 255`; a counter moving away from its limit | no finding | run forever |
+| TS-V01 matches by name, inside the body only | a shadowing copy shrinks instead; growth through a pointer or a closure made before the loop | no finding | run forever |
+| TS-V01 ignores wraparound | `i <= math.MaxInt` with `i++` | TS-S02 only; TS-V01 verifies it | runs forever |
+| A growing limit is invisible | TS-S01's worklist; growth through a helper, a method, or `len(map)` | no finding | run forever |
+| A cap passes at any size | `i < math.MaxInt && !done()` | no finding | runs forever |
+| A cap stops silently | `i < len(stack) && i < nodesMax` on a cycle | TS-S21 on the constant only | returns 101 nodes as if complete |
+| Range dodges both rules | `for _, n := range stack` while appending to `stack` | no finding | visits only the root |
+| Iterators are trusted | `for x := range forever()` | no finding | runs forever |
+| `ctx.Err()` without a cancel | `for ctx.Err() == nil` on `context.Background()` | blocked today; change 4 as first drafted would pass it | runs forever |
 
-Before and after, on the loops above:
+`goto` loops and `continue outer` from an inner loop also skip a shrink, but TS-S09 already blocks
+both, so the loop rules do not need to handle them.
+
+Two measurements shaped the plan. The growing-limit check (change 3) hits 0 loops in querator and 0
+in git-server, whose worklists all pop with `for len(queue) > 0`. It hits 14 loops in tiger's own
+code, all correct walks over syntax trees, plus TS-S01's compliant test fixture. And change 2 makes
+TS-S02 trust whatever TS-V01 proves, so a hole in TS-V01 would clear both rules at once.
+
+**What ratifying changes.** TS-V01 keeps blocking, and a written `//tiger:variant` is still checked
+in both directions. All of the following ship in one release, with the soundness fixes in place
+before TS-S02 starts trusting a proof.
+
+1. **TS-V01's proof becomes sound.** It matches variables by identity, not name. Growth through a
+   pointer or closure made before the loop defeats a proof. A bound at the counter type's maximum
+   (`i <= math.MaxInt`) defeats it too.
+2. **Tiger learns four more ways a value shrinks,** each from a loop the trials showed tiger
+   rejecting although it ends:
+   - Division by a constant greater than 1, or a shift by a constant of at least 1, under a strict
+     `> 0` condition: `for size > 0 { size >>= 7 }`.
+   - Slicing by the length of a part tiger can show is not empty: `data = data[len(chunk):]`, where
+     `chunk` is `data` or `data[:max]` with `max` a constant above 0, and `chunk` is not reassigned
+     before the slice.
+   - A struct field in the condition, such as `len(q.Items) > 0`, when no call in the body receives
+     `q` or a pointer to it.
+   - A condition joined with `&&`, where one part shrinking is enough, as in Myers diff's
+     `for x > 0 && y > 0 { x--; y-- }`. A negated condition does not count.
+3. **A counter counts as a bound only when it is sound.** The comparison is a top-level `&&` part of
+   the condition, not inside `||` or `!`. It pairs `<` or `<=` with `++` or `+=`, or `>` or `>=`
+   with `--`, never `!=`. Nothing in the body writes the counter or its limit, including through a
+   helper, a method, a pointer, or a map insert when the limit is `len(m)`. The limit sits below the
+   counter type's maximum.
+4. **TS-S02 accepts a loop whose variant tiger verified,** whether tiger found it or a developer
+   wrote it. That clears the two-pointer and index-by-2 loops.
+5. **A cap that stands in for a proof reports when it is hit.** When a loop's only bound is a counter
+   against a constant, the code after the loop asserts or returns an error if the counter reached
+   the constant. A limit that comes from a parameter or a field, such as a page size, needs no
+   report, as call 14 says. The capped worklist becomes the following, which tiger accepts today
+   and whose tests show it walking a tree and returning an error on a cycle
+   ([`rewrites.go`](experiments/gaps/rewrites.go), [test](experiments/gaps/rewrites_test.go)):
+
+   ```go
+   stack := []*Node{root}
+   i := 0
+   for ; i < len(stack) && i < nodesMax; i++ {
+   	stack = append(stack, stack[i].Next...)
+   }
+   if i == nodesMax {
+   	return nil, errWalkTooLarge
+   }
+   ```
+
+6. **`for ctx.Err() == nil { ... }` counts as a forever loop** when `ctx` is a `context.Context`
+   parameter, the same as a `select` on `ctx.Done()`. A context from `context.Background()` or
+   `context.TODO()` is never cancelled, so it does not count.
+7. **Ranging over an iterator counts as bounded only for the standard library's iterators,** such as
+   `slices.All` and `maps.Keys`. Ranging over any other iterator is a TS-S02 finding, like ranging
+   over a channel.
+8. **Tiger fixes its own 14 loops and TS-S01's documentation in the same change,** using the capped
+   form above. The TS-S01 rule reference and its compliant fixture show the capped worklist.
+9. **Every loop in `experiments/gaps` becomes a test case in the analyzers,** failing where it runs
+   forever and passing once rewritten. Then rerun both trials and record what is left.
+
+Before and after:
 
 | Loop | Today | After |
 |---|---|---|
@@ -414,14 +470,26 @@ Before and after, on the loops above:
 | Varint, `size >>= 7` | TS-V01 blocks | passes |
 | Two pointers, `high - low` verified | TS-S02 blocks | passes |
 | Refill loop, `len(pending)` with an append | TS-V01 blocks | TS-V01 blocks |
-| TS-S01 worklist on a cyclic graph | passes, runs forever | TS-S02 blocks until it has a cap |
-| `for ctx.Err() == nil { frame() }` | both block | passes |
+| TS-S01 worklist on a cycle | passes, runs forever | TS-S02 blocks until capped with a report |
+| Capped worklist with no report | passes, truncates silently | blocks until it asserts or returns an error |
+| The 7 unsound counter loops | pass, run forever | TS-S02 blocks |
+| Shadow, pointer, closure growth | pass, run forever | TS-V01 blocks |
+| `i < math.MaxInt && !done()` | passes, runs forever | blocks until it reports the cap |
+| Range over a non-standard iterator | passes | TS-S02 blocks |
+| `for ctx.Err() == nil` on a parameter | both block | passes |
+| `for ctx.Err() == nil` on `context.Background()` | both block | both block |
 
-**What a veto costs.** The 62 findings on correct code stay, and each one clears only with a counter
-cap like `for budget := len(data); budget > 0 && len(data) > 0; budget-- {`. The two rules keep
-disagreeing about loops tiger has proven. The worklist that TS-S01 tells developers to write keeps
-passing while it can run forever. The explainer's claim that synthesis "covers nearly every real
-loop" stays false on both codebases it has been measured against.
+**What remains open.** A cap moved into a parameter escapes the report rule: a caller can pass
+`math.MaxInt` as `limit`, and tiger sees a declared limit. Closing that means following arguments
+across calls, which adds analyzer work and false findings on real page-size constants. It is
+recorded as a known miss. Ranging over a worklist while appending to it (`WalkRange`) stays a
+silent bug no loop rule catches; it ends, so it is a correctness bug for tests.
+
+**What a veto costs.** The 62 findings on correct code stay, and each clears only with a counter cap
+like `for budget := len(data); budget > 0 && len(data) > 0; budget-- {`. The 20 loops in
+`experiments/gaps` keep passing tiger, and most of them never end. The worklist TS-S01 tells
+developers to write keeps running forever on a cycle. The explainer's claim that synthesis "covers
+nearly every real loop" stays false on both codebases it has been measured against.
 
 ### Call 3: remove the single-implementation interface rule (TS-X01)
 
@@ -1157,11 +1225,13 @@ reopens a ticket.
 
 ### Follow-ups, in order
 
-1. **Teach TS-V01 more proofs and close TS-S02's growing-limit hole** (call 2). Add the four
-   shrink forms, have TS-S02 accept a verified variant and `for ctx.Err() == nil`, and reject a
-   counter whose limit grows in the body. Each gets a passing and a failing test case taken from
-   `experiments/variants` and `experiments/annotations`. Update TS-S01's rule reference to a capped
-   worklist. Rerun both codebases and record what is left.
+1. **Make both loop rules sound, then teach TS-V01 more proofs** (call 2), in one release. Fix
+   TS-V01's name matching, outside-the-body growth and wraparound; tighten TS-S02's counter check;
+   require a constant cap to report when hit; accept a verified variant, a `ctx.Err()` loop on a
+   context parameter, and standard-library iterators; add the four shrink forms. Every loop in
+   `experiments/gaps`, `experiments/variants` and `experiments/annotations` becomes an analyzer test
+   case. Fix tiger's own 14 worklist loops and TS-S01's rule reference and fixture. Rerun both
+   codebases and record what is left.
 2. **ENG-177, all four items** (call 7). A test case per recognized shape, and a test showing each
    shape the rule deliberately ignores. Rerun both codebases.
 3. **Remove TS-X01** (call 3), end to end per ADR-0006.
@@ -1179,9 +1249,10 @@ reopens a ticket.
    built-versus-described disclaimer that `b452818` shortened.
 9. **An ADR** recording the rule behind call 2. Tiger blocks a loop it cannot prove ends, because
    a bound in a loop's header is a claim and the experiments show such claims passing on loops that
-   run forever. A counter cap is always available, so no escape directive is needed. False findings
-   on correct code are fixed by teaching tiger more proofs, never by stopping the block. This
-   document is the context and the ADR is the binding record.
+   run forever. The way out is a counter cap, so the counter check must be sound and a constant cap
+   that stands in for a proof must report when it is hit. False findings on correct code are fixed
+   by teaching tiger more proofs, never by stopping the block. This document is the context and the
+   ADR is the binding record.
 10. **Stop using `//tiger:batched` for loop bounds** (call 13). Write the ADR that replaces
     ADR-0004's loop-bound half and closes ENG-183. Show the restated-limit form in the rule
     reference.
