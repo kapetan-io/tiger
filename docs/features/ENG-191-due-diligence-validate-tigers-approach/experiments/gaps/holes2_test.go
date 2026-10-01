@@ -2,6 +2,7 @@ package gaps_test
 
 import (
 	"context"
+	"math"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -21,6 +22,7 @@ func TestCounterLoopsTigerAcceptsRunForever(t *testing.T) {
 		{name: "StepsPastLimit", loop: gaps.StepsPastLimit},
 		{name: "ByteWraps", loop: gaps.ByteWraps},
 		{name: "SpinCapped", loop: func() { gaps.SpinCapped(func() bool { return false }) }},
+		{name: "SpinLimited", loop: func() { gaps.SpinLimited(func() bool { return false }, math.MaxInt) }},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			assert.False(t, finishes(test.loop))

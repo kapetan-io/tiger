@@ -89,6 +89,7 @@ the test stops waiting after 300 ms.
 | `StepsPastLimit` | `i != 7` stepping by 2 | no finding | runs forever |
 | `ByteWraps` | `uint8` counter `<= 255` wraps | no finding | runs forever |
 | `SpinCapped` | unprovable condition behind `i < math.MaxInt` | no finding | runs forever |
+| `SpinLimited` | the same cap taken as a parameter; caller passes `math.MaxInt` | no finding | runs forever |
 | `RangeNaturals` | ranges over an iterator that never ends | no finding | runs forever |
 | `GotoLoop` | loops with `goto` | TS-S09 only (style) | runs forever |
 | `WalkCapped` | call 2's proposed capped worklist | TS-S21 on the cap constant | stops at 101 nodes on a cycle with no error |

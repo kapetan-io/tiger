@@ -32,3 +32,11 @@ func WalkRange(root *Node) int {
 	}
 	return visited
 }
+
+// SpinLimited takes its cap as a parameter. Under call 2's change 5 a limit
+// from a parameter counts as declared and needs no report, so a caller that
+// passes math.MaxInt gets SpinCapped's endless loop with nothing to report.
+func SpinLimited(done func() bool, limit int) {
+	for i := 0; i < limit && !done(); i++ {
+	}
+}
