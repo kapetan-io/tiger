@@ -1,6 +1,6 @@
 # ENG-191 experiments
 
-Four small Go modules back the loop-bound calls in `../decision.md`. Each holds
+Five small Go modules back the loop-bound calls in `../decision.md`. Each holds
 its own `go.mod`, so the repo's `go test ./...` and `tiger check ./...` skip
 them. Each directory also commits the output of both commands, captured with
 tiger built from `main` at `5126797`.
@@ -132,3 +132,29 @@ just like config or a request.
 | `CreateClamped`, partitions clamped in a helper | passes; the helper's result carries the bound | stops at 256 |
 | `CreateRaw`, partitions reached through a returned slice (ENG-195) | flagged | runs forever |
 | `SpinThroughValue`, the loop called through a function value | **known miss** | runs forever |
+
+## limitfacts
+
+A prototype of call 2's change 6, kept as the starting point for building it
+into tiger. It is a `go/analysis` analyzer that exports a fact on every
+parameter and struct field that bounds a counter loop, and flags any value
+written into one that is not a constant, a length, another bounded limit, or
+clamped against a declared maximum. Its `analysistest` run covers a config
+value clamped and raw, a request limit clamped and raw through an interface, a
+forwarded parameter, a computed `len(x)*2`, a pack header count with and
+without a guard, and the deliberate misses (a clamp in another function, a call
+through a function value, a limit reached through a slice).
+
+`cmd/limitfacts` runs it standalone: `go run ./cmd/limitfacts ./...`. On the
+trial pins it reported 9 querator sites (6 real, filed as ENG-194, and 3 where
+the clamp sits in another function) and 1 git-server site (ENG-193).
+
+What production needs that the prototype lacks:
+
+- The bounded-result refinement: a function that returns a clamped value
+  carries the bound to its callers. That clears the clamp-in-a-helper false
+  findings and catches limits reached through a returned slice (ENG-195).
+- Clamp matching by object identity; the prototype compares expressions as
+  text.
+- The call-site flag for `math.MaxInt`, the type's maximum, or a constant at
+  least half of it.
