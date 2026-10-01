@@ -16,8 +16,11 @@ without touching the tool.
 
 A rule code like TS-S02 is a label. The sentence next to it says what the rule checks.
 
-The 2026-10-01 update audited querator's 30 cursor-shaped loops and ran two experiments on how
-tiger checks loop bounds. That changed call 2 and added calls 13 and 14, all in section 5.
+The 2026-10-01 update audited querator's 30 cursor-shaped loops, ran experiments on how tiger
+checks loop bounds, and put the loop rules through three deliberations. That reversed call 2 (keep
+requiring proof that a loop ends, and make both loop rules sound), added calls 13 and 14 in
+section 5, turned call 14 into a tool change, and expanded call 3. A prototype of call 2's change 6
+found three bugs in the trial code, filed as ENG-193, ENG-194 and ENG-195.
 
 ## The calls in brief
 
@@ -57,9 +60,10 @@ over. Only a human edit can raise a number. One `tiger budget --write` records t
 clears these lines. That leaves 396 and 323 rule findings.
 
 Two fixture modules were also run against the same binary, to test claims the trials could not
-answer on their own. They are reproduced inline where they matter. Section 5's two experiments
-are committed under [`experiments/`](experiments/), each with its tests and the captured output
-of `go test` and `tiger check`.
+answer on their own. They are reproduced inline where they matter. Five experiment modules are
+committed under [`experiments/`](experiments/). Four of them (`cursorbound`, `annotations`,
+`variants`, `gaps`) hold loops with runtime tests and the captured output of `go test` and
+`tiger check`. The fifth, `limitfacts`, is the prototype analyzer for call 2's change 6.
 
 ---
 
@@ -1302,8 +1306,9 @@ reopens a ticket.
    require a safety cap to report when hit, told apart from a page size by the loop's other exit; require every loop limit to be bounded where it enters the program; accept a verified variant, a `ctx.Err()` loop on a
    context parameter, and standard-library iterators; add the four shrink forms. Every loop in
    `experiments/gaps`, `experiments/variants` and `experiments/annotations` becomes an analyzer test
-   case. Fix tiger's own 14 worklist loops and TS-S01's rule reference and fixture. Rerun both
-   codebases and record what is left.
+   case. Build change 6 starting from [`experiments/limitfacts`](experiments/limitfacts/), adding
+   what its README lists as missing. Fix tiger's own 14 worklist loops and TS-S01's rule reference
+   and fixture. Rerun both codebases and record what is left.
 2. **ENG-177, all four items** (call 7). A test case per recognized shape, and a test showing each
    shape the rule deliberately ignores. Rerun both codebases.
 3. **Remove TS-X01** (call 3), end to end per ADR-0006, with an ADR recording why: a shape rule
