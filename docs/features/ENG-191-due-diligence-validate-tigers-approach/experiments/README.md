@@ -34,7 +34,7 @@ whether it ends.
 | `variant_lie_refill.go` | same, but the body appends | TS-V01 blocks | runs forever |
 | `variant_lie_skip.go` | same, but `continue` skips the shrink | TS-V01 blocks | runs forever |
 | `variant_cursor.go` | `//tiger:variant remaining` on `rows.Next()` | TS-V01 and TS-S02 block | not run |
-| `batched_honest.go` | `//tiger:batched`, true reason | TS-V01 blocks, TS-L09 notice | ends |
+| `batched_honest.go` | `//tiger:batched`, true reason | TS-V01 blocks | ends |
 | `batched_lie.go` | same reason, endless cursor | identical to the honest one | runs forever |
 | `batched_wrong_shape.go` | on `for !ready()` | TS-S02 and TS-V01 block | not run |
 | `batched_no_reason.go` | no reason text | TS-L09 and TS-S02 block | not run |
