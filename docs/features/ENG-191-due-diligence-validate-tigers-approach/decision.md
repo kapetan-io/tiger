@@ -24,7 +24,7 @@ tiger checks loop bounds. That changed call 2 and added calls 13 and 14, all in 
 | # | Proposal | Recommendation | If you ratify | If you veto |
 |---|---|---|---|---|
 | 1 | Add a language model to judge waiver reasons | Reject | tiger stays deterministic; nothing changes | a model judges reasons inside `tiger check` |
-| 2 | Stop blocking loops tiger can't prove end (TS-V01) | Change | 62 findings go away; written annotations are still checked, and TS-S02 accepts one tiger verified | the rule keeps blocking; some loops can add an honest cap, graph walks have none to add |
+| 2 | Keep requiring proof that a loop ends, and teach tiger more proofs (TS-V01) | Change | the proof rule keeps blocking; tiger proves more loops; a proven loop satisfies the bound rule; a counter chasing a growing slice stops counting as bounded | 62 findings on correct code stay, and loops that run forever keep passing |
 | 3 | Remove the single-implementation interface rule (TS-X01) | Remove | the rule is deleted | 24 findings stay, each with a fix that worsens the design |
 | 4 | Stop requiring a comment on dropped errors in cleanup code (TS-E02) | Change | 47 findings go away | a comment is still required there |
 | 5 | Don't count a leading `t` or `ctx` toward the four-parameter limit (TS-N07) | Change | 21 findings go away | the limit counts them as today |
@@ -128,7 +128,7 @@ place a model could plug in is the free-text reason a developer writes on a waiv
 interprets free text. It checks that a reason is present, and nothing more.
 
 **Where it comes up today.** A cursor loop in querator's Postgres backend, written the way ADR-0004
-allows (the probe from section 3, call 2):
+allows (call 13 proposes replacing it):
 
 ```go
 //tiger:batched rows arrive from a Postgres cursor; the table size is the bound
@@ -266,19 +266,26 @@ Ten rules change, one is removed, and the rest stay as they are. Nothing
 new enters as a rule. The golangci-lint linters tiger turns on are out of scope. The
 `tiger golangci` audit governs them, and neither trial found a problem with that split.
 
-### Call 2: stop blocking loops tiger can't prove end (TS-V01)
+### Call 2: keep requiring proof that a loop ends, and teach tiger more proofs (TS-V01)
 
-**Recommendation: Change.** If you ratify, 62 findings go away, a written `//tiger:variant` is
-still checked, and TS-S02 accepts a loop whose variant tiger verified. If you veto, the rule keeps blocking. Loops that consume a slice can add an honest
-cap. Graph walks have no limit in the code to use.
+**Recommendation: Change.** If you ratify, a loop still fails the build when tiger cannot prove it
+ends, and tiger learns enough new proofs to clear most of the 62 findings on correct code. A loop
+tiger proves ends also satisfies the bound rule, and a loop whose limit grows inside its own body no
+longer counts as bounded. If you veto, both loop rules stay as they are, including 62 findings that
+are not bugs and loops that run forever yet pass.
+
+An earlier version of this call recommended the opposite: stop blocking, and show the proof only as
+information. The experiments in section 5 changed that. With only the bound rule blocking, loops that
+run forever pass, so the proof rule stays blocking and the work goes into making it prove more.
 
 **What the rule enforces.** TS-V01 requires every loop to carry a proof that it ends. Tiger looks
 for a value that shrinks on every pass and has a floor, and fires when it cannot find one. A
 developer can supply the value with `//tiger:variant <expr>`. That is a small arithmetic
-expression (numbers, variables, and `len(...)`), not free text, and tiger checks it by fixed rules
-(section 5 shows how). This is
-separate from TS-S02, which only asks that a loop state a bound (a constant, a `len`, or a
-counter) without proving the bound is reached.
+expression (numbers, variables, and `len(...)`), not free text, and tiger checks it by the same
+fixed rules it uses to find one itself (section 5 shows how). TS-S02 is the weaker rule. It asks
+only that a loop's header state a bound (a constant, a `len`, or a counter), without checking that
+the body ever reaches it. A loop with a counter in its header is out of TS-V01's scope, so a
+counter cap is always a way to pass both rules.
 
 **Where it fires today.** git-server's sideband writer. The loop ends because `chunk` is never
 empty while `data` is non-empty, so `data` shrinks by at least one byte every pass. TS-S02 accepts
@@ -341,6 +348,24 @@ variants.go:24:6: TS-S02: tiger can't tell how many times this loop runs: its co
 
 A developer who writes a correct variant, and gets it verified, still has a blocking finding.
 
+**Why the proof rule should keep blocking.** TS-S02 alone accepts loops that run forever. The
+annotations experiment in section 5 has two. One appends back into the slice its condition
+measures, and the other skips the shrink with `continue`. Both have a `len` condition, so TS-S02
+accepts them, and both are still running when the test stops waiting. TS-V01 blocks both. Writing
+this call up found a third case. TS-S01's own documented replacement for recursion is a worklist
+whose counter chases a slice the body grows:
+
+```go
+stack := []*Node{root}
+for i := 0; i < len(stack); i++ {
+	stack = append(stack, stack[i].Next...)
+}
+```
+
+On a graph with a cycle, `stack` grows as fast as `i` advances, so the loop never ends. Tiger
+reports nothing, because TS-S02 sees a counter and TS-V01 skips counter loops. git-server's tag-peel
+denial of service was this kind of walk.
+
 TS-V01 fires 37 times on querator and 25 on git-server. On querator, 30 of the 37 are store and
 cursor loops TS-S02 also flags. Most of those do not depend on this call, and call 13 covers them.
 On git-server, 21 of 25 are loops TS-S02 already accepts, so TS-V01 is the only rule blocking them. I read all 21. Every one terminates. They are
@@ -350,29 +375,49 @@ returns an error when a pass makes no progress. Across both codebases TS-V01 cau
 did not. It also misses the one real termination bug in the trials, a `for { select }` loop, which
 is outside its scope by design.
 
-**What ratifying changes.** Tiger still works out the termination proof where it can and shows
-it with `--show-facts`, and `tiger pin` can lock it in. A written `//tiger:variant` is still
-checked in both directions. A loop with no annotation that TS-S02 accepts is no longer a finding.
-TS-S02 stays the blocking rule for loop bounds, and it accepts a loop whose variant tiger verified,
-written or worked out, because a verified variant is a bound. That clears the two-pointer and
-index-by-2 loops above.
+**What ratifying changes.** TS-V01 keeps blocking, and a written `//tiger:variant` is still
+checked in both directions. Five changes cut the findings on correct code and close the holes
+above.
 
-Before, on the sideband writer: one blocking finding. After: no finding. TS-S02 still requires the
-loop to state a bound, and `len(data) > 0` does. A developer who wants the proof on record writes
-an annotation tiger can verify, and if tiger cannot verify it, that annotation is still a finding.
+1. **Tiger learns four more ways a value shrinks.** Each one comes from a loop the trials or the
+   variants experiment showed tiger rejecting although it ends.
+   - A shift or division by a positive constant under a `> 0` condition: `for size > 0 { size >>= 7 }`.
+   - Slicing a slice by the length of a part tiger can show is not empty:
+     `data = data[len(chunk):]`, when `chunk` is `data` or `data[:max]` with `max > 0`.
+   - A struct field in the condition, such as `len(q.Items) > 0`, when nothing else in the body can
+     write that field.
+   - A condition joined with `&&`, where any one part shrinking is enough, as in Myers diff's
+     `for x > 0 && y > 0 { x--; y-- }`.
+2. **TS-S02 accepts a loop whose variant tiger verified,** whether tiger found it or a developer
+   wrote it. A proven variant is a bound, so the two-pointer and index-by-2 loops stop getting a
+   TS-S02 finding.
+3. **A counter only counts as a bound when its limit cannot grow inside the loop.** TS-S02 rejects
+   `i < len(stack)` when the body appends to `stack`, using the same append check TS-V01 already
+   runs. The TS-S01 worklist then needs a cap, and its rule reference changes to show one:
+   `for i := 0; i < len(stack) && i < nodesMax; i++`.
+4. **`for ctx.Err() == nil { ... }` counts as a forever loop,** the same as a `select` on
+   `ctx.Done()`. Today both rules block it, though its only exit is the same cancellation.
+5. **Rerun both trials and record what is left.** Every remaining finding gets the cap rewrite. Most
+   will be worklists guarded by a visited set, whose honest limit is the number of objects in the
+   store. B1 asks for that number to be declared, and the missing cap on such a walk was
+   git-server's tag-peel bug.
 
-**What a veto costs.** 62 blocking findings across the two codebases stay, none of them a bug. How
-to clear each one depends on the loop.
+Before and after, on the loops above:
 
-- **Store and cursor loops** restate a limit they already declare (call 13).
-- **Loops that consume a slice** can cap their passes at the input's starting length. That is an
-  honest bound, and tiger accepts it, but it adds a counter to code that already ends:
-  `for budget := len(data); budget > 0 && len(data) > 0; budget-- {`
-- **Graph walks guarded by a visited set** have no limit in the code. Their cap would be the number
-  of objects in the store, which nobody declared.
+| Loop | Today | After |
+|---|---|---|
+| Sideband writer, `data = data[len(chunk):]` | TS-V01 blocks | passes |
+| Varint, `size >>= 7` | TS-V01 blocks | passes |
+| Two pointers, `high - low` verified | TS-S02 blocks | passes |
+| Refill loop, `len(pending)` with an append | TS-V01 blocks | TS-V01 blocks |
+| TS-S01 worklist on a cyclic graph | passes, runs forever | TS-S02 blocks until it has a cap |
+| `for ctx.Err() == nil { frame() }` | both block | passes |
 
-The explainer's claim that synthesis "covers nearly every real loop" stays false on both codebases
-it has been measured against.
+**What a veto costs.** The 62 findings on correct code stay, and each one clears only with a counter
+cap like `for budget := len(data); budget > 0 && len(data) > 0; budget-- {`. The two rules keep
+disagreeing about loops tiger has proven. The worklist that TS-S01 tells developers to write keeps
+passing while it can run forever. The explainer's claim that synthesis "covers nearly every real
+loop" stays false on both codebases it has been measured against.
 
 ### Call 3: remove the single-implementation interface rule (TS-X01)
 
@@ -1108,10 +1153,11 @@ reopens a ticket.
 
 ### Follow-ups, in order
 
-1. **TS-V01 stops blocking unannotated loops, and TS-S02 accepts a verified variant** (call 2).
-   Turn the test cases for unannotated loops into passing cases, add the two-pointer and
-   index-by-2 loops from `experiments/variants` as TS-S02 compliant cases, then rerun both
-   codebases and record the counts.
+1. **Teach TS-V01 more proofs and close TS-S02's growing-limit hole** (call 2). Add the four
+   shrink forms, have TS-S02 accept a verified variant and `for ctx.Err() == nil`, and reject a
+   counter whose limit grows in the body. Each gets a passing and a failing test case taken from
+   `experiments/variants` and `experiments/annotations`. Update TS-S01's rule reference to a capped
+   worklist. Rerun both codebases and record what is left.
 2. **ENG-177, all four items** (call 7). A test case per recognized shape, and a test showing each
    shape the rule deliberately ignores. Rerun both codebases.
 3. **Remove TS-X01** (call 3), end to end per ADR-0006.
@@ -1127,9 +1173,11 @@ reopens a ticket.
    `//nolint` sentence into the tiger-rule ban and the counted waiver for golangci-lint linters, replace
    "heuristic" on map order, remove "covers nearly every real loop", and restore the fuller
    built-versus-described disclaimer that `b452818` shortened.
-9. **An ADR** recording the rule behind call 2. When a rule needs a proof tiger cannot always
-   build, tiger shows the proof as information and checks it only where someone writes it down,
-   never as a finding on code nobody annotated. This document is the context and the ADR is the binding record.
+9. **An ADR** recording the rule behind call 2. Tiger blocks a loop it cannot prove ends, because
+   a bound in a loop's header is a claim and the experiments show such claims passing on loops that
+   run forever. A counter cap is always available, so no escape directive is needed. False findings
+   on correct code are fixed by teaching tiger more proofs, never by stopping the block. This
+   document is the context and the ADR is the binding record.
 10. **Stop using `//tiger:batched` for loop bounds** (call 13). Write the ADR that replaces
     ADR-0004's loop-bound half and closes ENG-183. Show the restated-limit form in the rule
     reference.
