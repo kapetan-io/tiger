@@ -24,7 +24,7 @@ tiger checks loop bounds. That changed call 2 and added calls 13 and 14, all in 
 | # | Proposal | Recommendation | If you ratify | If you veto |
 |---|---|---|---|---|
 | 1 | Add a language model to judge waiver reasons | Reject | tiger stays deterministic; nothing changes | a model judges reasons inside `tiger check` |
-| 2 | Stop blocking loops tiger can't prove end (TS-V01) | Change | 62 findings go away; written annotations are still checked | the rule keeps blocking; some loops can add an honest cap, graph walks have none to add |
+| 2 | Stop blocking loops tiger can't prove end (TS-V01) | Change | 62 findings go away; written annotations are still checked, and TS-S02 accepts one tiger verified | the rule keeps blocking; some loops can add an honest cap, graph walks have none to add |
 | 3 | Remove the single-implementation interface rule (TS-X01) | Remove | the rule is deleted | 24 findings stay, each with a fix that worsens the design |
 | 4 | Stop requiring a comment on dropped errors in cleanup code (TS-E02) | Change | 47 findings go away | a comment is still required there |
 | 5 | Don't count a leading `t` or `ctx` toward the four-parameter limit (TS-N07) | Change | 21 findings go away | the limit counts them as today |
@@ -268,8 +268,8 @@ new enters as a rule. The golangci-lint linters tiger turns on are out of scope.
 
 ### Call 2: stop blocking loops tiger can't prove end (TS-V01)
 
-**Recommendation: Change.** If you ratify, 62 findings go away and a written `//tiger:variant` is
-still checked. If you veto, the rule keeps blocking. Loops that consume a slice can add an honest
+**Recommendation: Change.** If you ratify, 62 findings go away, a written `//tiger:variant` is
+still checked, and TS-S02 accepts a loop whose variant tiger verified. If you veto, the rule keeps blocking. Loops that consume a slice can add an honest
 cap. Graph walks have no limit in the code to use.
 
 **What the rule enforces.** TS-V01 requires every loop to carry a proof that it ends. Tiger looks
