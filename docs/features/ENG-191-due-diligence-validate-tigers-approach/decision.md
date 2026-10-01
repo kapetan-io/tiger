@@ -1,6 +1,6 @@
 # ENG-191 Decision: what tiger's static analysis can hold, and the rule set that follows
 
-Date: 2026-09-24
+Date: 2026-09-24, updated 2026-10-01
 
 Tiger's goal is AI-written Go that either conforms to a strict dialect or produces a blocking
 finding the agent must fix. This document answers the four questions ENG-191 asks, in the order
@@ -16,12 +16,15 @@ without touching the tool.
 
 A rule code like TS-S02 is a label. The sentence next to it says what the rule checks.
 
+The 2026-10-01 update audited querator's 30 cursor-shaped loops and ran two experiments on how
+tiger checks loop bounds. That changed call 2 and added calls 13 and 14, all in section 5.
+
 ## The calls in brief
 
 | # | Proposal | Recommendation | If you ratify | If you veto |
 |---|---|---|---|---|
 | 1 | Add a language model to judge waiver reasons | Reject | tiger stays deterministic; nothing changes | a model judges reasons inside `tiger check` |
-| 2 | Stop blocking loops tiger can't prove end (TS-V01) | Change | 62 findings go away; written annotations are still checked | the rule keeps blocking as today |
+| 2 | Stop blocking loops tiger can't prove end (TS-V01) | Change | 62 findings go away; written annotations are still checked | the rule keeps blocking; some loops can add an honest cap, graph walks have none to add |
 | 3 | Remove the single-implementation interface rule (TS-X01) | Remove | the rule is deleted | 24 findings stay, each with a fix that worsens the design |
 | 4 | Stop requiring a comment on dropped errors in cleanup code (TS-E02) | Change | 47 findings go away | a comment is still required there |
 | 5 | Don't count a leading `t` or `ctx` toward the four-parameter limit (TS-N07) | Change | 21 findings go away | the limit counts them as today |
@@ -32,6 +35,8 @@ A rule code like TS-S02 is a label. The sentence next to it says what the rule c
 | 10 | Make `//nolint` on a tiger rule a blocking finding (TS-L09) | Change | the silent bypass closes | `//nolint` keeps silencing tiger's rules |
 | 11 | Keep `//tiger:restrict` opt-in and restore it in the explainer | Keep | the explainer gets the directive back | restrictions turn on by default |
 | 12 | Fix the stale map-order wording in the spec and explainer | Fix docs | the spec and explainer are corrected | the documents stay inconsistent |
+| 13 | Stop using `//tiger:batched` to waive the loop bound (TS-S02, ADR-0004) | Change | store loops restate the limit they already declare; whole-partition scans get a declared maximum or cancellation | the waiver keeps standing in for a limit nobody declared |
+| 14 | Say when a loop limit needs an assert (TS-S02) | Fix docs | the spec and message match what tiger already accepts | tiger must demand an assert, and every full page of results trips it |
 
 ## The evidence this rests on
 
@@ -52,7 +57,9 @@ over. Only a human edit can raise a number. One `tiger budget --write` records t
 clears these lines. That leaves 396 and 323 rule findings.
 
 Two fixture modules were also run against the same binary, to test claims the trials could not
-answer on their own. They are reproduced inline where they matter.
+answer on their own. They are reproduced inline where they matter. Section 5's two experiments
+are committed under [`experiments/`](experiments/), each with its tests and the captured output
+of `go test` and `tiger check`.
 
 ---
 
@@ -86,10 +93,19 @@ domain vocabulary and shapes the metric could not tell from real mistakes. ADR-0
 removal. The specification keeps those maxims and names review as their enforcement. Nothing here
 argues for bringing them back.
 
-**Termination proofs beyond the shape do not work as blocking rules.** TS-V01 tries to prove every
-loop ends by finding a value that shrinks on every pass. Its grammar recognizes a handful of forms
-(`i < n` with `i++`, `len(s) > 0` with `s = s[1:]`, and a few more). Real loops outgrow it
-immediately. Section 3, call 2 has the evidence and the fix.
+**Proving a loop ends works only when whatever stops it is in the code.** Calls 2, 13, and 14
+follow from this line.
+
+| The loop stops because of | Example | What tiger can prove |
+|---|---|---|
+| a value in the code that the body visibly shrinks | `for len(p) > 0 { p = p[1:] }` | it ends, within `len(p)` passes |
+| a counter against a declared limit | `for n := 0; n < limit && rows.Next(); n++` | it runs at most `limit` times, whatever else happens |
+| something outside the program: a database, the network, another goroutine | `for rows.Next()`, `for l.inFlight.Load() != 0` | nothing about termination; tiger can require a declared limit or a cancellation path (`ctx.Done()`), or record a reviewed claim |
+
+Tiger's spec states the principle behind this as B1, taken from TigerStyle and, through it, from
+NASA's Power of Ten rules: "Everything in reality has a limit. Code that does not declare its limit
+has one anyway, chosen by whatever runs out first, discovered at the worst time." The goal is to
+declare the limit. The counter is just where tiger can see it.
 
 **Whether a declaration is true is not static at all.** Whether a `//tiger:batched` reason is
 honest, whether a type really is an open enum, whether the comment beside `_ = f.Close()` is
@@ -253,11 +269,14 @@ new enters as a rule. The golangci-lint linters tiger turns on are out of scope.
 ### Call 2: stop blocking loops tiger can't prove end (TS-V01)
 
 **Recommendation: Change.** If you ratify, 62 findings go away and a written `//tiger:variant` is
-still checked. If you veto, the rule keeps blocking as it does today.
+still checked. If you veto, the rule keeps blocking. Loops that consume a slice can add an honest
+cap. Graph walks have no limit in the code to use.
 
 **What the rule enforces.** TS-V01 requires every loop to carry a proof that it ends. Tiger looks
 for a value that shrinks on every pass and has a floor, and fires when it cannot find one. A
-developer can supply the value with `//tiger:variant <expr>`, and tiger checks it. This is
+developer can supply the value with `//tiger:variant <expr>`. That is a small arithmetic
+expression (numbers, variables, and `len(...)`), not free text, and tiger checks it by fixed rules
+(section 5 shows how). This is
 separate from TS-S02, which only asks that a loop state a bound (a constant, a `len`, or a
 counter) without proving the bound is reached.
 
@@ -284,28 +303,16 @@ func writeSideband(buf *bytes.Buffer, channel byte, data []byte) {
 services/git-server/internal/negotiate/pktline.go:36:2: TS-V01: tiger can't prove this loop ends: nothing in its condition shrinks on every pass — add a cap (for tries := 0; tries < max; tries++ { if done { break } ... }) that fails when the cap is hit, or say what shrinks with //tiger:variant <expr>
 ```
 
-Adding the correct pin does not help:
+Adding the correct annotation does not help. Tiger's checker only accepts a step of a fixed
+number like `data[1:]`, so it cannot see that `data[len(chunk):]` always moves forward:
 
 ```
 services/git-server/internal/negotiate/pktline.go:37:2: TS-V01: //tiger:variant len(data) doesn't provably shrink on every pass (len(data) cannot be shown to move consistently) — add a cap (for tries := 0; tries < max; tries++) that fails when hit, or name an expression that does shrink
 ```
 
-The same happens on querator's cursor loops. ADR-0004 admitted `//tiger:batched` to waive TS-S02
-on a database cursor, because the only honest bound is the size of the table. With the waiver in
-place, TS-S02 goes quiet and TS-V01 still blocks:
-
-```go
-//tiger:batched rows arrive from a Postgres cursor; the table size is the bound
-for rows.Next() {
-```
-
-```
-internal/store/postgres.go:400:2: TS-V01: tiger can't prove this loop ends: nothing in its condition shrinks on every pass — add a cap (for tries := 0; tries < max; tries++ { if done { break } ... }) that fails when the cap is hit, or say what shrinks with //tiger:variant <expr>
-```
-
-TS-V01 fires 37 times on querator and 25 on git-server. On querator, 30 of the 37 are loops
-TS-S02 also flags, all cursor drains. On git-server, 21 of 25 are loops TS-S02 already accepts,
-so TS-V01 is the only rule blocking them. I read all 21. Every one terminates. They are
+TS-V01 fires 37 times on querator and 25 on git-server. On querator, 30 of the 37 are store and
+cursor loops TS-S02 also flags. Most of those do not depend on this call, and call 13 covers them.
+On git-server, 21 of 25 are loops TS-S02 already accepts, so TS-V01 is the only rule blocking them. I read all 21. Every one terminates. They are
 slice-consuming parsers, `for size > 0 { size >>= 7 }` varint encoders, Myers diff index walks
 (`for x > 0 && y > 0 { x--; y-- }`), worklists guarded by a visited set, and a delta resolver that
 returns an error when a pass makes no progress. Across both codebases TS-V01 caught nothing TS-S02
@@ -314,20 +321,25 @@ is outside its scope by design.
 
 **What ratifying changes.** Tiger still works out the termination proof where it can and shows
 it with `--show-facts`, and `tiger pin` can lock it in. A written `//tiger:variant` is still
-checked in both directions. A loop with no annotation that TS-S02 accepts is no longer a finding. TS-S02 stays the blocking rule for termination, with its
-ADR-0004 cursor waiver intact.
+checked in both directions. A loop with no annotation that TS-S02 accepts is no longer a finding.
+TS-S02 stays the blocking rule for loop bounds.
 
-Before, on the sideband writer: one blocking finding, and no compliant exit except an artificial
-cap. After: no finding. A developer who wants the proof on record writes a pin tiger can verify,
-and if tiger cannot verify it, that pin is still a finding.
+Before, on the sideband writer: one blocking finding. After: no finding. TS-S02 still requires the
+loop to state a bound, and `len(data) > 0` does. A developer who wants the proof on record writes
+an annotation tiger can verify, and if tiger cannot verify it, that annotation is still a finding.
 
-**What a veto costs.** 62 blocking findings across the two codebases stay, none of them a bug. The only
-exit the rule offers is an iteration cap like `for tries := 0; tries < max; tries++`. For cursor
-loops, ADR-0004 rejected that cap as "either a magic number or a restatement of however big the
-store is". For parsers and encoders it is a number nobody can justify. The `//tiger:batched`
-waiver ADR-0004 admitted stays half-broken, clearing one rule and leaving the loop blocked by
-another. The explainer's claim that synthesis "covers nearly every real loop" stays false on both
-codebases it has been measured against.
+**What a veto costs.** 62 blocking findings across the two codebases stay, none of them a bug. How
+to clear each one depends on the loop.
+
+- **Store and cursor loops** restate a limit they already declare (call 13).
+- **Loops that consume a slice** can cap their passes at the input's starting length. That is an
+  honest bound, and tiger accepts it, but it adds a counter to code that already ends:
+  `for budget := len(data); budget > 0 && len(data) > 0; budget-- {`
+- **Graph walks guarded by a visited set** have no limit in the code. Their cap would be the number
+  of objects in the store, which nobody declared.
+
+The explainer's claim that synthesis "covers nearly every real loop" stays false on both codebases
+it has been measured against.
 
 ### Call 3: remove the single-implementation interface rule (TS-X01)
 
@@ -776,6 +788,271 @@ optional.
 
 ---
 
+## 5. Loop bounds, revisited
+
+Calls 1 and 2 raised a question the first version did not answer: what can tiger actually prove
+about a database loop like `for rows.Next()`? This section answers it from querator's 30
+cursor-shaped loops and two experiments committed under [`experiments/`](experiments/).
+
+### What querator's 30 loops actually do
+
+These are the 30 loops where TS-S02 and TS-V01 both fire on querator.
+
+| Group | Loops | Examples | Where the limit lives |
+|---|---|---|---|
+| Store reads, limit in the query | 8 | Postgres `List`, `ListScheduled`, `Lease`; Mongo `List` | `LIMIT $2` in the SQL, or `SetLimit(opts.Limit)` in Mongo |
+| Store reads, limit in the loop body | 9 | Badger `Lease` and the eight `List` functions | `if count >= opts.Limit { return nil }` |
+| Whole-partition scans | 5 | Badger `Clear`, `Stats`, `ScanForActions` | none; all five also name their context `_`, so they cannot be cancelled |
+| Not store loops | 8 | 4 tests, a benchmark, a file reader, the shutdown drain, the batch iterator | mixed: test timeouts, `b.N`, other goroutines, a counter |
+
+Seventeen loops already declare a limit. Tiger cannot see it, because it sits in SQL text or in a
+check deep in the loop body.
+
+There are two separate bounds. One is how many items the loop produces, which governs memory and is
+the out-of-memory failure B1 warns about. The other is how many times the loop runs, which governs
+time. Six of the nine Badger loops skip rows before counting them:
+
+```go
+if namespace != "" && role.Namespace != namespace {
+	continue          // skipped rows don't count
+}
+if count >= opts.Limit {
+	return nil
+}
+*roles = append(*roles, role)
+count++
+```
+
+Tiger can prove this never returns more than `opts.Limit` roles. It cannot prove the loop runs at
+most `opts.Limit` times. A namespace with one role in a table of a million still walks the million.
+
+### Experiment 1: a restated limit bounds a cursor loop
+
+[`experiments/cursorbound`](experiments/cursorbound/) writes the same list loop two ways and runs
+it through `tiger check` and `go test`. A fake cursor stands in for the database and counts every
+`Next()` call ([test](experiments/cursorbound/capped_test.go),
+[test output](experiments/cursorbound/test.out), [tiger output](experiments/cursorbound/tiger.out)).
+
+```go
+func ListUncapped(rows Rows) []string {
+	var names []string
+	for rows.Next() {
+		names = append(names, rows.Value())
+	}
+	return names
+}
+
+func ListCapped(rows Rows, limit int) []string {
+	var names []string
+	for count := 0; count < limit && rows.Next(); count++ {
+		names = append(names, rows.Value())
+	}
+	return names
+}
+```
+
+`tiger check` flags only the uncapped loop:
+
+```
+uncapped.go:7:2: TS-V01: tiger can't prove this loop ends: nothing in its condition shrinks on every pass — add a cap (for tries := 0; tries < max; tries++ { if done { break } ... }) that fails when the cap is hit, or say what shrinks with //tiger:variant <expr>
+uncapped.go:7:6: TS-S02: tiger can't tell how many times this loop runs: its condition is not a constant, a len, or a counter — add a cap (for tries := 0; tries < max; tries++) that fails when the cap is hit, or make it an event loop that selects on ctx.Done()
+tiger: 2 blocking
+```
+
+All five runtime cases pass:
+
+| Case | Database LIMIT | Loop limit | Rows returned | `Next()` calls |
+|---|---|---|---|---|
+| Database stops first | 50 | 100 | 50 | 51 |
+| Limits agree | 100 | 100 | 100 | 100 |
+| Loop stops first | 100 | 50 | 50 (truncated) | 50 |
+| Database ignores LIMIT | none | 100 | 100 | 100 |
+| Uncapped loop | 1,000,000 | none | 1,000,000 | 1,000,001 |
+
+The restated limit holds whatever the database does, even when a driver ignores `LIMIT` and sends
+rows forever. When the loop's limit is smaller than the query's, rows get dropped. That is a
+correctness bug for tests and review, not a loop that never ends. Tiger cannot check that the two
+limits agree, because that would mean parsing SQL and knowing each driver's API.
+
+### Experiment 2: how tiger checks an annotation
+
+Two annotations deal with loop bounds, and tiger treats them in opposite ways. It proves a
+`//tiger:variant` against the loop body and blocks the build if the proof fails. It never reads a
+`//tiger:batched` reason, so a false reason passes just like a true one.
+[`experiments/annotations`](experiments/annotations/) puts each annotation on one loop where it is
+true and one where it is false, runs every loop through `tiger check`, and has `go test` run each
+loop to see whether it ends. A loop still running after 300 ms counts as running forever
+([test](experiments/annotations/annotations_test.go),
+[test output](experiments/annotations/test.out), [tiger output](experiments/annotations/tiger.out)).
+
+**`//tiger:variant` is a claim tiger proves.** A variant names a number that gets smaller on every
+pass and keeps the loop running only while it is above zero, so the loop has to end. Tiger accepts
+the claim only after three checks:
+
+1. The expression fits the grammar: integer literals, variables, and `len(x)`, joined by `+` and `-`.
+2. The loop's condition compares that expression with a fixed value, as in `len(pending) > 0`,
+   `i > 0`, or `low < high`.
+3. The body shrinks it on every pass with a move tiger knows (`s = s[1:]`, `i--`, `i += 2`), and no
+   path grows it back or skips the shrink with `continue`.
+
+The true claim passes with no findings, and the test confirms the loop ends:
+
+```go
+//tiger:variant len(pending)
+for len(pending) > 0 {
+	pending = pending[1:]
+	drained++
+}
+```
+
+The same claim on a body that appends back into `pending` is blocked. Fed a `refill` that always
+returns one item, the loop never ends:
+
+```go
+//tiger:variant len(pending)
+for len(pending) > 0 {
+	pending = pending[1:]
+	drained++
+	pending = append(pending, refill()...)
+}
+```
+
+```
+variant_lie_refill.go:8:2: TS-V01: //tiger:variant len(pending) doesn't provably shrink on every pass (len(pending) cannot be shown to move consistently) — add a cap (for tries := 0; tries < max; tries++) that fails when hit, or name an expression that does shrink
+```
+
+A `continue` before the shrink is blocked the same way, and that loop also runs forever:
+
+```
+variant_lie_skip.go:8:2: TS-V01: //tiger:variant len(pending) doesn't provably shrink on every pass (a continue can skip the loop's decrease) — add a cap (for tries := 0; tries < max; tries++) that fails when hit, or name an expression that does shrink
+```
+
+A cursor loop has no honest variant to write. `rows.Next()` is not a comparison, so tiger rejects
+any expression placed on it:
+
+```
+variant_cursor.go:8:2: TS-V01: //tiger:variant remaining doesn't provably shrink on every pass (the loop's condition is not one of the recognized comparison forms) — add a cap (for tries := 0; tries < max; tries++) that fails when hit, or name an expression that does shrink
+```
+
+**`//tiger:batched` is a claim tiger takes on trust.** Tiger checks only that the loop's condition
+is a method call on a plain variable, like `rows.Next()` or `it.Valid()`, and that some text
+follows the annotation. When both hold, TS-S02 stays quiet. These two loops carry the same reason.
+The first one's cursor returns 50 rows. The second one's never runs out:
+
+```go
+// batched_honest.go
+//tiger:batched rows come from SELECT ... LIMIT $1
+for rows.Next() {
+	names = append(names, rows.Value())
+}
+
+// batched_lie.go
+//tiger:batched rows come from SELECT ... LIMIT $1
+for rows.Next() {
+	count++
+}
+```
+
+Tiger reports the same thing for both, and neither gets a TS-S02 finding:
+
+```
+batched_honest.go:7:2: TS-V01: tiger can't prove this loop ends: nothing in its condition shrinks on every pass — …
+batched_lie.go:9:2: TS-V01: tiger can't prove this loop ends: nothing in its condition shrinks on every pass — …
+```
+
+The honest loop returns 50 rows. The other one never returns. The TS-V01 finding on both is the
+clash tracked in ENG-183, where one rule honors the waiver and the other does not. The shape check
+does stop the annotation on a loop that is not cursor-shaped, like `for !ready()`, and tiger blocks
+an annotation with no reason after it. Neither check looks at whether the reason is true.
+
+| Loop | Annotation | Tiger reports | At runtime |
+|---|---|---|---|
+| Drain | `variant len(pending)`, true | nothing | ends |
+| Drain with refill | same, false | TS-V01 blocks | runs forever |
+| Drain with skip | same, false | TS-V01 blocks | runs forever |
+| List, 50 rows | `batched`, true | TS-V01 only | ends |
+| Count, endless rows | `batched`, false | TS-V01 only, same as above | runs forever |
+| Restated limit, endless rows | none | nothing | ends after 100 rows |
+
+Tiger catches every false variant in this experiment and none of the false batched reasons. The
+restated limit needs no annotation, because the proof is the counter in the loop header. That is
+why call 13 drops `//tiger:batched` as a loop-bound waiver instead of trying to make tiger check its
+reason.
+
+### Call 13: stop using `//tiger:batched` to waive the loop bound (TS-S02, ADR-0004)
+
+**Recommendation: Change.** If you ratify, store loops restate the limit they already declare,
+whole-partition scans get a declared maximum or cancellation, and `//tiger:batched` keeps its other
+job. If you veto, the waiver keeps standing in for a limit nobody declared.
+
+**What the rule enforces.** TS-S02 requires every loop to state a bound tiger can see. ADR-0004 lets
+`//tiger:batched <reason>` waive that on a cursor-shaped loop, reasoning that "the store is finite"
+and that any cap would be "either a magic number or a restatement of however big the store is".
+The same directive also waives TS-M10, the rule against IO inside a loop.
+
+**Where it applies today.** The audit above shows ADR-0004's premise does not hold for most of
+these loops. Seventeen declare a real limit, the page or request size, so restating it is no magic
+number. B1 also rejects "the store is finite" as a bound. A finite store with no declared limit is
+exactly the limit "chosen by whatever runs out first". ADR-0004 also clashes with TS-V01, which the
+spec already records as open item ENG-183.
+
+**What ratifying changes.** `//tiger:batched` stops waiving TS-S02 and stays as the waiver for
+TS-M10. A new ADR replaces ADR-0004's loop-bound half and closes ENG-183.
+
+Before:
+
+```go
+//tiger:batched rows arrive from a Postgres cursor; the table size is the bound
+for rows.Next() {
+```
+
+After:
+
+```go
+for count := 0; count < opts.Limit && rows.Next(); count++ {
+```
+
+The five whole-partition scans need one of the two shapes B1 allows. One is a declared maximum
+partition size, with the loop capped at it and an assert if it is exceeded. The other is paging
+that checks `ctx` on every pass so the scan can be cancelled.
+
+**What a veto costs.** A reason string keeps standing in for a declared limit. Loops that already
+have a limit carry a waiver they do not need. The five scans that cannot be cancelled stay hidden
+behind "the table size is the bound", and the clash with TS-V01 stays open.
+
+**Open question, not decided here.** Do filtered loops need a bound on how many times they run, or
+is a bound on how many items they return enough? With the restated limit, `count` counts every row
+examined, so a namespace filter can return fewer than `opts.Limit` matches even when more exist.
+Counting only matches keeps the results right but leaves the run count bounded only by the table's
+size. That is a product decision about list semantics, so it is not a call here.
+
+### Call 14: say when a loop limit needs an assert (TS-S02)
+
+**Recommendation: Fix docs.** If you ratify, the spec and message match what tiger already accepts
+and the tool is unchanged. If you veto, tiger must demand an assert after every capped loop, and
+every full page of results trips it.
+
+**What the three sources say.** The spec says the compliant form is "an explicit iteration cap with
+an assert on exhaustion". Tiger's message says to add a cap "that fails when the cap is hit". But
+tiger accepted `ListCapped` in experiment 1 with no assert at all.
+
+**Why the tool is right.** There are two kinds of cap. A *safety cap* is a limit the code should
+never reach, such as the maximum depth of a delta chain. Reaching it means something is wrong, so
+it should assert. A *declared limit* is part of the behavior, such as the page size of a list.
+Reaching it is normal, because the page is full, and asserting there would fail every full page.
+
+**What ratifying changes.** The spec line and the message distinguish the two. A safety cap asserts
+when it is hit. A loop limit that is a declared value, like a page size or a request limit, does
+not need to. Tiger cannot tell the two apart, so it keeps accepting both, and review judges which
+kind a cap is.
+
+**What a veto costs.** Tiger would have to require an assert after every capped loop. Paged lists
+would then need to fetch one extra row to tell a full page from an overrun, which changes their
+queries and their results.
+
+
+---
+
 ## What happens next
 
 ### The canceled tickets
@@ -818,3 +1095,8 @@ reopens a ticket.
 9. **An ADR** recording the rule behind call 2. When a rule needs a proof tiger cannot always
    build, tiger shows the proof as information and checks it only where someone writes it down,
    never as a finding on code nobody annotated. This document is the context and the ADR is the binding record.
+10. **Stop using `//tiger:batched` for loop bounds** (call 13). Write the ADR that replaces
+    ADR-0004's loop-bound half and closes ENG-183. Show the restated-limit form in the rule
+    reference.
+11. **Fix TS-S02's spec line and message** (call 14) so they tell a safety cap from a declared
+    limit.
