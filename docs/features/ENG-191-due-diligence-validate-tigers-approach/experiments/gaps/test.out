@@ -1,3 +1,29 @@
+=== RUN   TestReadLinesStopsAtTheLimit
+--- PASS: TestReadLinesStopsAtTheLimit (0.00s)
+=== RUN   TestReadLinesStopsAtTheEnd
+--- PASS: TestReadLinesStopsAtTheEnd (0.00s)
+=== RUN   TestSpinReportedFailsLoudlyAtTheCap
+--- PASS: TestSpinReportedFailsLoudlyAtTheCap (0.00s)
+=== RUN   TestSpinReportedSucceedsWhenDone
+--- PASS: TestSpinReportedSucceedsWhenDone (0.00s)
+=== RUN   TestSpinFromConfigClampsAHugeValue
+--- PASS: TestSpinFromConfigClampsAHugeValue (0.00s)
+=== RUN   TestUnreachableCapsRunForever
+=== RUN   TestUnreachableCapsRunForever/SpinBreak
+=== RUN   TestUnreachableCapsRunForever/SpinnerField
+=== RUN   TestUnreachableCapsRunForever/SpinReportedMaxInt
+=== RUN   TestUnreachableCapsRunForever/SpinLimitedMaxInt
+=== RUN   TestUnreachableCapsRunForever/SpinFromConfigRaw
+=== RUN   TestUnreachableCapsRunForever/SpinReportedHugeConstant
+=== RUN   TestUnreachableCapsRunForever/ScanForever
+--- PASS: TestUnreachableCapsRunForever (2.11s)
+    --- PASS: TestUnreachableCapsRunForever/SpinBreak (0.30s)
+    --- PASS: TestUnreachableCapsRunForever/SpinnerField (0.30s)
+    --- PASS: TestUnreachableCapsRunForever/SpinReportedMaxInt (0.30s)
+    --- PASS: TestUnreachableCapsRunForever/SpinLimitedMaxInt (0.30s)
+    --- PASS: TestUnreachableCapsRunForever/SpinFromConfigRaw (0.30s)
+    --- PASS: TestUnreachableCapsRunForever/SpinReportedHugeConstant (0.30s)
+    --- PASS: TestUnreachableCapsRunForever/ScanForever (0.30s)
 === RUN   TestWalkEndsOnATree
 --- PASS: TestWalkEndsOnATree (0.00s)
 === RUN   TestWalkRunsForeverOnACycle
@@ -6,8 +32,8 @@
 === RUN   TestGameLoopsStopOnCancel/Ticker
 === RUN   TestGameLoopsStopOnCancel/Flat
 === RUN   TestGameLoopsStopOnCancel/UntilCancelled
---- PASS: TestGameLoopsStopOnCancel (0.05s)
-    --- PASS: TestGameLoopsStopOnCancel/Ticker (0.05s)
+--- PASS: TestGameLoopsStopOnCancel (0.08s)
+    --- PASS: TestGameLoopsStopOnCancel/Ticker (0.08s)
     --- PASS: TestGameLoopsStopOnCancel/Flat (0.00s)
     --- PASS: TestGameLoopsStopOnCancel/UntilCancelled (0.00s)
 === RUN   TestCounterLoopsTigerAcceptsRunForever
@@ -18,20 +44,20 @@
 === RUN   TestCounterLoopsTigerAcceptsRunForever/ByteWraps
 === RUN   TestCounterLoopsTigerAcceptsRunForever/SpinCapped
 === RUN   TestCounterLoopsTigerAcceptsRunForever/SpinLimited
---- PASS: TestCounterLoopsTigerAcceptsRunForever (3.71s)
+--- PASS: TestCounterLoopsTigerAcceptsRunForever (4.70s)
     --- PASS: TestCounterLoopsTigerAcceptsRunForever/OrCounter (0.30s)
     --- PASS: TestCounterLoopsTigerAcceptsRunForever/CounterReset (0.30s)
-    --- PASS: TestCounterLoopsTigerAcceptsRunForever/FieldNamedLikeCounter (0.30s)
+    --- PASS: TestCounterLoopsTigerAcceptsRunForever/FieldNamedLikeCounter (0.31s)
     --- PASS: TestCounterLoopsTigerAcceptsRunForever/StepsPastLimit (0.30s)
     --- PASS: TestCounterLoopsTigerAcceptsRunForever/ByteWraps (0.30s)
-    --- PASS: TestCounterLoopsTigerAcceptsRunForever/SpinCapped (0.30s)
-    --- PASS: TestCounterLoopsTigerAcceptsRunForever/SpinLimited (0.53s)
+    --- PASS: TestCounterLoopsTigerAcceptsRunForever/SpinCapped (0.31s)
+    --- PASS: TestCounterLoopsTigerAcceptsRunForever/SpinLimited (1.72s)
 === RUN   TestWalkCappedTruncatesSilentlyOnACycle
 --- PASS: TestWalkCappedTruncatesSilentlyOnACycle (0.00s)
 === RUN   TestWalkRangeSkipsAppendedNodes
 --- PASS: TestWalkRangeSkipsAppendedNodes (0.00s)
 === RUN   TestRunUntilCancelledNeverEndsOnBackground
---- PASS: TestRunUntilCancelledNeverEndsOnBackground (0.30s)
+--- PASS: TestRunUntilCancelledNeverEndsOnBackground (0.32s)
 === RUN   TestLoopsTigerAcceptsRunForever
 === RUN   TestLoopsTigerAcceptsRunForever/ShadowSlice
 === RUN   TestLoopsTigerAcceptsRunForever/AliasAppend
@@ -45,22 +71,22 @@
 === RUN   TestLoopsTigerAcceptsRunForever/MapGrow
 === RUN   TestLoopsTigerAcceptsRunForever/RangeNaturals
 === RUN   TestLoopsTigerAcceptsRunForever/GotoLoop
---- PASS: TestLoopsTigerAcceptsRunForever (6.51s)
-    --- PASS: TestLoopsTigerAcceptsRunForever/ShadowSlice (0.30s)
+--- PASS: TestLoopsTigerAcceptsRunForever (8.00s)
+    --- PASS: TestLoopsTigerAcceptsRunForever/ShadowSlice (0.32s)
     --- PASS: TestLoopsTigerAcceptsRunForever/AliasAppend (0.30s)
-    --- PASS: TestLoopsTigerAcceptsRunForever/ClosureGrow (0.32s)
-    --- PASS: TestLoopsTigerAcceptsRunForever/LabeledContinue (0.31s)
-    --- PASS: TestLoopsTigerAcceptsRunForever/Overflow (0.31s)
+    --- PASS: TestLoopsTigerAcceptsRunForever/ClosureGrow (0.30s)
+    --- PASS: TestLoopsTigerAcceptsRunForever/LabeledContinue (1.16s)
+    --- PASS: TestLoopsTigerAcceptsRunForever/Overflow (0.30s)
     --- PASS: TestLoopsTigerAcceptsRunForever/WrongCounter (0.30s)
-    --- PASS: TestLoopsTigerAcceptsRunForever/CounterUndone (0.30s)
-    --- PASS: TestLoopsTigerAcceptsRunForever/LimitGrows (0.30s)
-    --- PASS: TestLoopsTigerAcceptsRunForever/HelperGrow (1.49s)
+    --- PASS: TestLoopsTigerAcceptsRunForever/CounterUndone (0.31s)
+    --- PASS: TestLoopsTigerAcceptsRunForever/LimitGrows (0.32s)
+    --- PASS: TestLoopsTigerAcceptsRunForever/HelperGrow (0.33s)
     --- PASS: TestLoopsTigerAcceptsRunForever/MapGrow (0.30s)
-    --- PASS: TestLoopsTigerAcceptsRunForever/RangeNaturals (0.32s)
+    --- PASS: TestLoopsTigerAcceptsRunForever/RangeNaturals (0.31s)
     --- PASS: TestLoopsTigerAcceptsRunForever/GotoLoop (0.33s)
 === RUN   TestWalkReportedEndsOnATree
 --- PASS: TestWalkReportedEndsOnATree (0.00s)
 === RUN   TestWalkReportedFailsOnACycle
 --- PASS: TestWalkReportedFailsOnACycle (0.00s)
 PASS
-ok  	gaps	11.508s
+ok  	gaps	15.909s

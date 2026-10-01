@@ -97,3 +97,22 @@ the test stops waiting after 300 ms.
 | `WalkReported` | call 2's compliant worklist: capped, returns an error when the cap is hit | no finding | walks a tree; returns an error on a cycle |
 | `RunTicker`, `RunFlat` | `select` on `ctx.Done()` | no finding | stops on cancel |
 | `RunUntilCancelled` | `for ctx.Err() == nil` | TS-S02 and TS-V01 block | stops on cancel; runs forever on `context.Background()` |
+
+### Which caps must report (call 2, change 5)
+
+These loops back the rule that decides when a cap must report and where its
+limit may come from. "Under call 2" is the verdict the ratified rules would
+give; tiger today reports nothing on any of them.
+
+| Loop and caller | Under call 2 | Loop at runtime |
+|---|---|---|
+| `ReadLines(scanner, 2)`, other exit drains a `bufio.Scanner` | passes; a page size needs no report | returns 2 of 5 lines |
+| `SpinReported(never, 1000)`, reports when hit | passes | returns `spin reached its limit` |
+| `SpinFromConfig`, config clamped to `spinsMax` | passes | returns the error after 10,000 spins |
+| `SpinBreak(never, math.MaxInt)`, internal `break` | blocks until it reports, and the call is flagged | runs forever |
+| `Spinner{Max: math.MaxInt}.Spin`, limit in a field | blocks until it reports | runs forever |
+| `SpinLimited(never, math.MaxInt)` | blocks until it reports, and the call is flagged | runs forever |
+| `SpinReported(never, math.MaxInt)` | call flagged for passing the type's maximum | runs forever |
+| `SpinFromConfigRaw`, unclamped config value | blocks until the value is clamped | runs forever |
+| `SpinReported(never, 1 << 40)` | **known miss**: a large constant below the threshold | runs forever |
+| `ScanForever(1 << 40)`, `bufio.Scanner` over an endless reader | **known miss**: counts as an outside stream | runs forever |

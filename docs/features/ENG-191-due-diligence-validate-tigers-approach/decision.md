@@ -36,7 +36,7 @@ tiger checks loop bounds. That changed call 2 and added calls 13 and 14, all in 
 | 11 | Keep `//tiger:restrict` opt-in and restore it in the explainer | Keep | the explainer gets the directive back | restrictions turn on by default |
 | 12 | Fix the stale map-order wording in the spec and explainer | Fix docs | the spec and explainer are corrected | the documents stay inconsistent |
 | 13 | Stop using `//tiger:batched` to waive the loop bound (TS-S02, ADR-0004) | Change | store loops restate the limit they already declare; whole-partition scans get a declared maximum or cancellation | the waiver keeps standing in for a limit nobody declared |
-| 14 | Say when a loop limit needs an assert (TS-S02) | Fix docs | the spec and message match what tiger already accepts | tiger must demand an assert, and every full page of results trips it |
+| 14 | Tell a safety cap from a page size by the loop's other exit (TS-S02) | Change | a cap that guards an internal condition must report when hit; a page over an outside stream need not | the spec keeps asking for an assert the tool never checks, and silent caps keep passing |
 
 ## The evidence this rests on
 
@@ -433,11 +433,18 @@ before TS-S02 starts trusting a proof.
    counter type's maximum.
 4. **TS-S02 accepts a loop whose variant tiger verified,** whether tiger found it or a developer
    wrote it. That clears the two-pointer and index-by-2 loops.
-5. **A cap that stands in for a proof reports when it is hit.** When a loop's only bound is a counter
-   against a constant, the code after the loop asserts or returns an error if the counter reached
-   the constant. A limit that comes from a parameter or a field, such as a page size, needs no
-   report, as call 14 says. The capped worklist becomes the following, which tiger accepts today
-   and whose tests show it walking a tree and returning an error on a cycle
+5. **A safety cap reports when it is hit, and tiger tells a safety cap from a page size by reading
+   the loop.** A counter cap needs no report only when its limit is not a constant and every other
+   way out of the loop drains a stream whose type is declared outside the module, such as
+   `rows.Next()`, `scanner.Scan()` or `decoder.More()`. That limit is a page size, and reaching it
+   means the page is full. Any other way out, an internal condition like `!done()` or a `break` in
+   the body, makes the counter a safety cap. It must assert or return an error when the counter
+   reaches the limit, wherever the limit comes from: a constant, a parameter, or a field. This
+   replaces call 14's "review judges which kind a cap is". On the trial code it fires twice, both
+   in git-server's Myers diff: the outer loop needs an assert (Myers guarantees it never reaches
+   its limit), and the inner search is a false finding that moving the search into its own function
+   clears. The capped worklist becomes the following, which tiger accepts today and whose tests
+   show it walking a tree and returning an error on a cycle
    ([`rewrites.go`](experiments/gaps/rewrites.go), [test](experiments/gaps/rewrites_test.go)):
 
    ```go
@@ -451,15 +458,25 @@ before TS-S02 starts trusting a proof.
    }
    ```
 
-6. **`for ctx.Err() == nil { ... }` counts as a forever loop** when `ctx` is a `context.Context`
+6. **A loop limit has an upper bound where it enters the program.** A parameter or field that is a
+   loop's limit carries that fact across packages. Every value passed into it must be a constant,
+   another bounded limit, or a value clamped against a declared maximum where it enters, such as
+   `min(config.Spins, spinsMax)`. A value read from config, a flag, or a request is clamped at the
+   point it is read. A call that passes `math.MaxInt`, the type's maximum, or a constant at least
+   half of it is flagged at the call site, since no real limit is that large. For call 13 this
+   means querator's `opts.Limit` is clamped to a maximum page size where the request is parsed.
+   The tests for changes 5 and 6 are in [`cap_reports.go`](experiments/gaps/cap_reports.go),
+   [`config.go`](experiments/gaps/config.go) and
+   [their tests](experiments/gaps/cap_reports_test.go).
+7. **`for ctx.Err() == nil { ... }` counts as a forever loop** when `ctx` is a `context.Context`
    parameter, the same as a `select` on `ctx.Done()`. A context from `context.Background()` or
    `context.TODO()` is never cancelled, so it does not count.
-7. **Ranging over an iterator counts as bounded only for the standard library's iterators,** such as
+8. **Ranging over an iterator counts as bounded only for the standard library's iterators,** such as
    `slices.All` and `maps.Keys`. Ranging over any other iterator is a TS-S02 finding, like ranging
    over a channel.
-8. **Tiger fixes its own 14 loops and TS-S01's documentation in the same change,** using the capped
+9. **Tiger fixes its own 14 loops and TS-S01's documentation in the same change,** using the capped
    form above. The TS-S01 rule reference and its compliant fixture show the capped worklist.
-9. **Every loop in `experiments/gaps` becomes a test case in the analyzers,** failing where it runs
+10. **Every loop in `experiments/gaps` becomes a test case in the analyzers,** failing where it runs
    forever and passing once rewritten. Then rerun both trials and record what is left.
 
 Before and after:
@@ -475,15 +492,20 @@ Before and after:
 | The 7 unsound counter loops | pass, run forever | TS-S02 blocks |
 | Shadow, pointer, closure growth | pass, run forever | TS-V01 blocks |
 | `i < math.MaxInt && !done()` | passes, runs forever | blocks until it reports the cap |
+| `SpinLimited(done, limit)` called with `math.MaxInt` | passes, runs forever | blocks until it reports, and the call is flagged |
+| A config value passed straight to a loop limit | passes, runs forever | blocks until clamped to a declared maximum |
+| `count < limit && scanner.Scan()`, a page over an outside stream | passes | passes, no report needed |
 | Range over a non-standard iterator | passes | TS-S02 blocks |
 | `for ctx.Err() == nil` on a parameter | both block | passes |
 | `for ctx.Err() == nil` on `context.Background()` | both block | both block |
 
-**What remains open.** A cap moved into a parameter escapes the report rule: a caller can pass
-`math.MaxInt` as `limit`, and tiger sees a declared limit. Closing that means following arguments
-across calls, which adds analyzer work and false findings on real page-size constants. It is
-recorded as a known miss. Ranging over a worklist while appending to it (`WalkRange`) stays a
-silent bug no loop rule catches; it ends, so it is a correctness bug for tests.
+**What remains open.** Two misses are recorded, each with a test that shows the loop running
+forever. A constant below the call-site threshold, such as `1 << 40`, passes as a limit even though
+no loop reaches it in practice. And a standard-library stream over an endless source inside the
+program, like a `bufio.Scanner` over a reader that never ends, counts as an outside stream, so its
+limit needs no report. Both leave a visible trail for review. Ranging over a worklist while
+appending to it (`WalkRange`) stays a silent bug no loop rule catches; it ends, so it is a
+correctness bug for tests.
 
 **What a veto costs.** The 62 findings on correct code stay, and each clears only with a counter cap
 like `for budget := len(data); budget > 0 && len(data) > 0; budget-- {`. The 20 loops in
@@ -1176,30 +1198,36 @@ examined, so a namespace filter can return fewer than `opts.Limit` matches even 
 Counting only matches keeps the results right but leaves the run count bounded only by the table's
 size. That is a product decision about list semantics, so it is not a call here.
 
-### Call 14: say when a loop limit needs an assert (TS-S02)
+### Call 14: tell a safety cap from a page size by the loop's other exit (TS-S02)
 
-**Recommendation: Fix docs.** If you ratify, the spec and message match what tiger already accepts
-and the tool is unchanged. If you veto, tiger must demand an assert after every capped loop, and
-every full page of results trips it.
+**Recommendation: Change.** If you ratify, tiger decides which caps must report by reading the loop,
+and the spec and message say so. If you veto, the spec keeps asking for an assert on every cap while
+the tool accepts caps that stop silently, and review judges which kind each cap is.
+
+An earlier version recommended only a docs fix, with review telling the two kinds apart. A
+deliberation on call 2's cap rules found a deterministic way to tell them apart, so this call now
+changes the tool.
 
 **What the three sources say.** The spec says the compliant form is "an explicit iteration cap with
 an assert on exhaustion". Tiger's message says to add a cap "that fails when the cap is hit". But
 tiger accepted `ListCapped` in experiment 1 with no assert at all.
 
-**Why the tool is right.** There are two kinds of cap. A *safety cap* is a limit the code should
-never reach, such as the maximum depth of a delta chain. Reaching it means something is wrong, so
-it should assert. A *declared limit* is part of the behavior, such as the page size of a list.
-Reaching it is normal, because the page is full, and asserting there would fail every full page.
+**The two kinds of cap.** A *safety cap* is a limit the code should never reach, such as the maximum
+depth of a delta chain. Reaching it means something is wrong, so it should assert or return an
+error. A *page size* is part of the behavior, such as the size of a list page. Reaching it is
+normal, because the page is full, and asserting there would fail every full page.
 
-**What ratifying changes.** The spec line and the message distinguish the two. A safety cap asserts
-when it is hit. A loop limit that is a declared value, like a page size or a request limit, does
-not need to. Tiger cannot tell the two apart, so it keeps accepting both, and review judges which
-kind a cap is.
+**What ratifying changes.** Tiger reads the loop's other way out (call 2, change 5). When every other
+exit drains a stream from outside the module, like `rows.Next()`, the counter is a page size and
+needs no report. When the other exit is an internal condition or a `break`, the counter is a safety
+cap and must assert or return an error when reached. The spec line and the message state that rule,
+and both drop "review judges which kind a cap is". Every loop limit also needs an upper bound where
+it enters the program (change 6), so a page size read from a request is clamped to a declared
+maximum.
 
-**What a veto costs.** Tiger would have to require an assert after every capped loop. Paged lists
-would then need to fetch one extra row to tell a full page from an overrun, which changes their
-queries and their results.
-
+**What a veto costs.** The spec and the tool keep disagreeing, and a cap that stops silently on a
+cycle or a stuck condition keeps passing, as `WalkCapped` and `SpinLimited` show in
+`experiments/gaps`.
 
 ---
 
@@ -1235,7 +1263,7 @@ reopens a ticket.
 
 1. **Make both loop rules sound, then teach TS-V01 more proofs** (call 2), in one release. Fix
    TS-V01's name matching, outside-the-body growth and wraparound; tighten TS-S02's counter check;
-   require a constant cap to report when hit; accept a verified variant, a `ctx.Err()` loop on a
+   require a safety cap to report when hit, told apart from a page size by the loop's other exit; require every loop limit to be bounded where it enters the program; accept a verified variant, a `ctx.Err()` loop on a
    context parameter, and standard-library iterators; add the four shrink forms. Every loop in
    `experiments/gaps`, `experiments/variants` and `experiments/annotations` becomes an analyzer test
    case. Fix tiger's own 14 worklist loops and TS-S01's rule reference and fixture. Rerun both
@@ -1264,5 +1292,5 @@ reopens a ticket.
 10. **Stop using `//tiger:batched` for loop bounds** (call 13). Write the ADR that replaces
     ADR-0004's loop-bound half and closes ENG-183. Show the restated-limit form in the rule
     reference.
-11. **Fix TS-S02's spec line and message** (call 14) so they tell a safety cap from a declared
-    limit.
+11. **Teach TS-S02 to tell a safety cap from a page size** (call 14), as part of follow-up 1's
+    release, and update the spec line and message to state the rule.
