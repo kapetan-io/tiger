@@ -1,11 +1,11 @@
 # ENG-191 experiments
 
-Two small Go modules back the loop-bound calls in `../decision.md`. Each holds
+Three small Go modules back the loop-bound calls in `../decision.md`. Each holds
 its own `go.mod`, so the repo's `go test ./...` and `tiger check ./...` skip
 them. Each directory also commits the output of both commands, captured with
 tiger built from `main` at `5126797`.
 
-Run either one from its directory:
+Run any one from its directory:
 
 ```sh
 go test -count=1 -v ./...   # saved as test.out
@@ -41,4 +41,24 @@ whether it ends.
 | `restated.go` | none | no finding | ends after `limit` rows on an endless cursor |
 
 The one TS-C02 finding in `tiger.out` is the test helper's goroutine. A loop
-that never returns can't be joined, so the helper leaks it on purpose.
+that never returns can't be joined, so the helper leaks it on purpose. The
+same holds in `variants`.
+
+## variants
+
+Asks which `//tiger:variant` expressions other than `len(pending)` tiger can
+verify. The tests run each loop and report whether it ends.
+
+| Loop | Variant | TS-V01 | TS-S02 | Loop at runtime |
+|---|---|---|---|---|
+| `Countdown` | `i` | verified | passes | ends |
+| `PopAll` | `len(stack)` | verified | passes | ends |
+| `EveryOther` | `n - i` | verified | blocks | ends |
+| `Reverse` | `high - low` | verified | blocks | ends |
+| `DrainQueue` | `len(q.Items)` | rejected, field in the condition | passes | ends |
+| `WrongWay` | `n - i` with `i--` | rejected, ranking grows | blocks | runs forever |
+| `Varint` | `size` with `size >>= 7` | rejected, shift not a known step | passes | ends |
+| `Chunks` | `len(data)` with `data[len(chunk):]` | rejected, step not a fixed number | passes | ends |
+
+TS-S02 blocks two loops whose variant TS-V01 verified, because `i < n` and
+`low < high` carry no counter in the loop header.

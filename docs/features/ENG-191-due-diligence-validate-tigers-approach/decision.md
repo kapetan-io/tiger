@@ -310,6 +310,37 @@ number like `data[1:]`, so it cannot see that `data[len(chunk):]` always moves f
 services/git-server/internal/negotiate/pktline.go:37:2: TS-V01: //tiger:variant len(data) doesn't provably shrink on every pass (len(data) cannot be shown to move consistently) — add a cap (for tries := 0; tries < max; tries++) that fails when hit, or name an expression that does shrink
 ```
 
+The annotation is narrower than its grammar suggests. [`experiments/variants`](experiments/variants/)
+writes eight variants, runs each through `tiger check`, and has `go test` run each loop
+([test](experiments/variants/variants_test.go), [test output](experiments/variants/test.out),
+[tiger output](experiments/variants/tiger.out)):
+
+| Loop | Variant | Body | TS-V01 | TS-S02 | At runtime |
+|---|---|---|---|---|---|
+| Countdown | `i` | `for i > 0 { i-- }` | verified | passes | ends |
+| Stack pop | `len(stack)` | `stack = stack[:len(stack)-1]` | verified | passes | ends |
+| Index by 2 | `n - i` | `for i < n { i += 2 }` | verified | **blocks** | ends |
+| Two pointers | `high - low` | `low++; high--` | verified | **blocks** | ends |
+| Struct field | `len(q.Items)` | `q.Items = q.Items[1:]` | rejected | passes | ends |
+| Wrong direction | `n - i` | `for i < n { i-- }` | rejected | blocks | runs forever |
+| Varint | `size` | `size >>= 7` | rejected | passes | ends |
+| Chunked slice | `len(data)` | `data = data[len(chunk):]` | rejected | passes | ends |
+
+Tiger rejects the one false claim, and names why: "i decreases, growing the ranking instead of
+shrinking it". It also rejects three true ones. It knows only fixed steps (`i--`, `i += 2`,
+`s[1:]`), so a shift or a slice by `len(chunk)` is "cannot be shown to move consistently", and its
+condition check accepts only plain local variables, so `len(q.Items) > 0` is "not one of the
+recognized comparison forms". The varint and chunked shapes are git-server's.
+
+The two rules also disagree with each other. TS-V01 verifies `n - i` and `high - low`, and TS-S02
+still blocks both loops because `i < n` and `low < high` have no counter in the loop header:
+
+```
+variants.go:24:6: TS-S02: tiger can't tell how many times this loop runs: its condition is not a constant, a len, or a counter — add a cap (for tries := 0; tries < max; tries++) that fails when the cap is hit, or make it an event loop that selects on ctx.Done()
+```
+
+A developer who writes a correct variant, and gets it verified, still has a blocking finding.
+
 TS-V01 fires 37 times on querator and 25 on git-server. On querator, 30 of the 37 are store and
 cursor loops TS-S02 also flags. Most of those do not depend on this call, and call 13 covers them.
 On git-server, 21 of 25 are loops TS-S02 already accepts, so TS-V01 is the only rule blocking them. I read all 21. Every one terminates. They are
@@ -322,7 +353,9 @@ is outside its scope by design.
 **What ratifying changes.** Tiger still works out the termination proof where it can and shows
 it with `--show-facts`, and `tiger pin` can lock it in. A written `//tiger:variant` is still
 checked in both directions. A loop with no annotation that TS-S02 accepts is no longer a finding.
-TS-S02 stays the blocking rule for loop bounds.
+TS-S02 stays the blocking rule for loop bounds, and it accepts a loop whose variant tiger verified,
+written or worked out, because a verified variant is a bound. That clears the two-pointer and
+index-by-2 loops above.
 
 Before, on the sideband writer: one blocking finding. After: no finding. TS-S02 still requires the
 loop to state a bound, and `len(data) > 0` does. A developer who wants the proof on record writes
@@ -1075,8 +1108,10 @@ reopens a ticket.
 
 ### Follow-ups, in order
 
-1. **TS-V01 stops blocking unannotated loops** (call 2). Turn the test cases for unannotated
-   loops into passing cases, then rerun both codebases and record the counts.
+1. **TS-V01 stops blocking unannotated loops, and TS-S02 accepts a verified variant** (call 2).
+   Turn the test cases for unannotated loops into passing cases, add the two-pointer and
+   index-by-2 loops from `experiments/variants` as TS-S02 compliant cases, then rerun both
+   codebases and record the counts.
 2. **ENG-177, all four items** (call 7). A test case per recognized shape, and a test showing each
    shape the rule deliberately ignores. Rerun both codebases.
 3. **Remove TS-X01** (call 3), end to end per ADR-0006.
