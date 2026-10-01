@@ -1,0 +1,14 @@
+=== RUN   TestWalkEndsOnATree
+--- PASS: TestWalkEndsOnATree (0.00s)
+=== RUN   TestWalkRunsForeverOnACycle
+--- PASS: TestWalkRunsForeverOnACycle (0.30s)
+=== RUN   TestGameLoopsStopOnCancel
+=== RUN   TestGameLoopsStopOnCancel/Ticker
+=== RUN   TestGameLoopsStopOnCancel/Flat
+=== RUN   TestGameLoopsStopOnCancel/UntilCancelled
+--- PASS: TestGameLoopsStopOnCancel (0.05s)
+    --- PASS: TestGameLoopsStopOnCancel/Ticker (0.05s)
+    --- PASS: TestGameLoopsStopOnCancel/Flat (0.00s)
+    --- PASS: TestGameLoopsStopOnCancel/UntilCancelled (0.00s)
+PASS
+ok  	gaps	0.647s

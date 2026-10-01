@@ -363,7 +363,11 @@ for i := 0; i < len(stack); i++ {
 ```
 
 On a graph with a cycle, `stack` grows as fast as `i` advances, so the loop never ends. Tiger
-reports nothing, because TS-S02 sees a counter and TS-V01 skips counter loops. git-server's tag-peel
+reports nothing, because TS-S02 sees a counter and TS-V01 skips counter loops.
+[`experiments/gaps`](experiments/gaps/) holds this loop and a test that shows it running forever
+on a two-node cycle ([test](experiments/gaps/gaps_test.go), [test output](experiments/gaps/test.out),
+[tiger output](experiments/gaps/tiger.out)). It also holds the `ctx.Err() == nil` game loop from
+change 4, which stops on cancel exactly like the `select` loops tiger accepts. git-server's tag-peel
 denial of service was this kind of walk.
 
 TS-V01 fires 37 times on querator and 25 on git-server. On querator, 30 of the 37 are store and

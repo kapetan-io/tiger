@@ -1,6 +1,6 @@
 # ENG-191 experiments
 
-Three small Go modules back the loop-bound calls in `../decision.md`. Each holds
+Four small Go modules back the loop-bound calls in `../decision.md`. Each holds
 its own `go.mod`, so the repo's `go test ./...` and `tiger check ./...` skip
 them. Each directory also commits the output of both commands, captured with
 tiger built from `main` at `5126797`.
@@ -62,3 +62,16 @@ verify. The tests run each loop and report whether it ends.
 
 TS-S02 blocks two loops whose variant TS-V01 verified, because `i < n` and
 `low < high` carry no counter in the loop header.
+
+## gaps
+
+Holds loops where tiger's verdict and the loop's runtime behavior disagree.
+Each gap found while working on call 2 gets a loop here and a test that shows
+what the loop really does.
+
+| Loop | Tiger | Loop at runtime |
+|---|---|---|
+| `Walk`, TS-S01's worklist rewrite | no finding | ends on a tree, runs forever on a cycle |
+| `RunTicker`, `select` on `ctx.Done()` and a ticker | no finding | stops on cancel |
+| `RunFlat`, `select` on `ctx.Done()` with `default` | no finding | stops on cancel |
+| `RunUntilCancelled`, `for ctx.Err() == nil` | TS-S02 and TS-V01 block | stops on cancel |
