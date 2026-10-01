@@ -67,11 +67,31 @@ TS-S02 blocks two loops whose variant TS-V01 verified, because `i < n` and
 
 Holds loops where tiger's verdict and the loop's runtime behavior disagree.
 Each gap found while working on call 2 gets a loop here and a test that shows
-what the loop really does.
+what the loop really does. "Runs forever" means the loop is still running when
+the test stops waiting after 300 ms.
 
-| Loop | Tiger | Loop at runtime |
-|---|---|---|
-| `Walk`, TS-S01's worklist rewrite | no finding | ends on a tree, runs forever on a cycle |
-| `RunTicker`, `select` on `ctx.Done()` and a ticker | no finding | stops on cancel |
-| `RunFlat`, `select` on `ctx.Done()` with `default` | no finding | stops on cancel |
-| `RunUntilCancelled`, `for ctx.Err() == nil` | TS-S02 and TS-V01 block | stops on cancel |
+| Loop | What it does wrong | Tiger today | Loop at runtime |
+|---|---|---|---|
+| `Walk` | TS-S01's worklist rewrite; counter chases a growing slice | no finding | runs forever on a cycle |
+| `ShadowSlice` | shrinks a shadowing copy, not the loop's slice | no finding | runs forever |
+| `AliasAppend` | grows the slice through a pointer taken before the loop | no finding | runs forever |
+| `ClosureGrow` | grows the slice through a closure made before the loop | no finding | runs forever |
+| `LabeledContinue` | `continue outer` from an inner loop skips the shrink | TS-S09 only (style) | runs forever |
+| `Overflow` | `i <= math.MaxInt` wraps | TS-S02 only; TS-V01 verifies it | runs forever |
+| `WrongCounter` | counter moves away from the limit | no finding | runs forever |
+| `CounterUndone` | `i--` in the body cancels `i++` | no finding | runs forever |
+| `CounterReset` | `i = 0` in the body | no finding | runs forever |
+| `LimitGrows` | `n++` in the body | no finding | runs forever |
+| `HelperGrow` | worklist grown by a helper, not `append` | no finding | runs forever |
+| `MapGrow` | limit is `len(m)` and the body adds entries | no finding | runs forever |
+| `OrCounter` | `i < 10 \|\| !done()` | no finding | runs forever |
+| `FieldNamedLikeCounter` | condition reads field `r.i`, counter is local `i` | no finding | runs forever |
+| `StepsPastLimit` | `i != 7` stepping by 2 | no finding | runs forever |
+| `ByteWraps` | `uint8` counter `<= 255` wraps | no finding | runs forever |
+| `SpinCapped` | unprovable condition behind `i < math.MaxInt` | no finding | runs forever |
+| `RangeNaturals` | ranges over an iterator that never ends | no finding | runs forever |
+| `GotoLoop` | loops with `goto` | TS-S09 only (style) | runs forever |
+| `WalkCapped` | call 2's proposed capped worklist | TS-S21 on the cap constant | stops at 101 nodes on a cycle with no error |
+| `WalkRange` | ranges over a worklist it appends to | no finding | visits only the root |
+| `RunTicker`, `RunFlat` | `select` on `ctx.Done()` | no finding | stops on cancel |
+| `RunUntilCancelled` | `for ctx.Err() == nil` | TS-S02 and TS-V01 block | stops on cancel; runs forever on `context.Background()` |

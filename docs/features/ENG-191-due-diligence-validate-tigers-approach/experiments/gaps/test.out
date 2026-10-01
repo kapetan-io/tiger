@@ -6,9 +6,55 @@
 === RUN   TestGameLoopsStopOnCancel/Ticker
 === RUN   TestGameLoopsStopOnCancel/Flat
 === RUN   TestGameLoopsStopOnCancel/UntilCancelled
---- PASS: TestGameLoopsStopOnCancel (0.05s)
-    --- PASS: TestGameLoopsStopOnCancel/Ticker (0.05s)
+--- PASS: TestGameLoopsStopOnCancel (0.15s)
+    --- PASS: TestGameLoopsStopOnCancel/Ticker (0.15s)
     --- PASS: TestGameLoopsStopOnCancel/Flat (0.00s)
     --- PASS: TestGameLoopsStopOnCancel/UntilCancelled (0.00s)
+=== RUN   TestCounterLoopsTigerAcceptsRunForever
+=== RUN   TestCounterLoopsTigerAcceptsRunForever/OrCounter
+=== RUN   TestCounterLoopsTigerAcceptsRunForever/CounterReset
+=== RUN   TestCounterLoopsTigerAcceptsRunForever/FieldNamedLikeCounter
+=== RUN   TestCounterLoopsTigerAcceptsRunForever/StepsPastLimit
+=== RUN   TestCounterLoopsTigerAcceptsRunForever/ByteWraps
+=== RUN   TestCounterLoopsTigerAcceptsRunForever/SpinCapped
+--- PASS: TestCounterLoopsTigerAcceptsRunForever (3.77s)
+    --- PASS: TestCounterLoopsTigerAcceptsRunForever/OrCounter (0.30s)
+    --- PASS: TestCounterLoopsTigerAcceptsRunForever/CounterReset (0.30s)
+    --- PASS: TestCounterLoopsTigerAcceptsRunForever/FieldNamedLikeCounter (0.30s)
+    --- PASS: TestCounterLoopsTigerAcceptsRunForever/StepsPastLimit (0.30s)
+    --- PASS: TestCounterLoopsTigerAcceptsRunForever/ByteWraps (0.30s)
+    --- PASS: TestCounterLoopsTigerAcceptsRunForever/SpinCapped (0.30s)
+=== RUN   TestWalkCappedTruncatesSilentlyOnACycle
+--- PASS: TestWalkCappedTruncatesSilentlyOnACycle (0.00s)
+=== RUN   TestWalkRangeSkipsAppendedNodes
+--- PASS: TestWalkRangeSkipsAppendedNodes (0.00s)
+=== RUN   TestRunUntilCancelledNeverEndsOnBackground
+--- PASS: TestRunUntilCancelledNeverEndsOnBackground (0.32s)
+=== RUN   TestLoopsTigerAcceptsRunForever
+=== RUN   TestLoopsTigerAcceptsRunForever/ShadowSlice
+=== RUN   TestLoopsTigerAcceptsRunForever/AliasAppend
+=== RUN   TestLoopsTigerAcceptsRunForever/ClosureGrow
+=== RUN   TestLoopsTigerAcceptsRunForever/LabeledContinue
+=== RUN   TestLoopsTigerAcceptsRunForever/Overflow
+=== RUN   TestLoopsTigerAcceptsRunForever/WrongCounter
+=== RUN   TestLoopsTigerAcceptsRunForever/CounterUndone
+=== RUN   TestLoopsTigerAcceptsRunForever/LimitGrows
+=== RUN   TestLoopsTigerAcceptsRunForever/HelperGrow
+=== RUN   TestLoopsTigerAcceptsRunForever/MapGrow
+=== RUN   TestLoopsTigerAcceptsRunForever/RangeNaturals
+=== RUN   TestLoopsTigerAcceptsRunForever/GotoLoop
+--- PASS: TestLoopsTigerAcceptsRunForever (8.80s)
+    --- PASS: TestLoopsTigerAcceptsRunForever/ShadowSlice (0.30s)
+    --- PASS: TestLoopsTigerAcceptsRunForever/AliasAppend (0.30s)
+    --- PASS: TestLoopsTigerAcceptsRunForever/ClosureGrow (0.32s)
+    --- PASS: TestLoopsTigerAcceptsRunForever/LabeledContinue (1.32s)
+    --- PASS: TestLoopsTigerAcceptsRunForever/Overflow (0.30s)
+    --- PASS: TestLoopsTigerAcceptsRunForever/WrongCounter (0.30s)
+    --- PASS: TestLoopsTigerAcceptsRunForever/CounterUndone (0.30s)
+    --- PASS: TestLoopsTigerAcceptsRunForever/LimitGrows (0.30s)
+    --- PASS: TestLoopsTigerAcceptsRunForever/HelperGrow (0.30s)
+    --- PASS: TestLoopsTigerAcceptsRunForever/MapGrow (0.33s)
+    --- PASS: TestLoopsTigerAcceptsRunForever/RangeNaturals (0.32s)
+    --- PASS: TestLoopsTigerAcceptsRunForever/GotoLoop (0.33s)
 PASS
-ok  	gaps	0.647s
+ok  	gaps	13.959s
