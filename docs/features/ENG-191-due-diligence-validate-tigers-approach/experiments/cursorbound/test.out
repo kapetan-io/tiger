@@ -1,0 +1,14 @@
+=== RUN   TestListCappedBoundHoldsWhateverTheDatabaseDoes
+=== RUN   TestListCappedBoundHoldsWhateverTheDatabaseDoes/DatabaseStopsFirst
+=== RUN   TestListCappedBoundHoldsWhateverTheDatabaseDoes/LimitsAgree
+=== RUN   TestListCappedBoundHoldsWhateverTheDatabaseDoes/LoopStopsFirstAndTruncates
+=== RUN   TestListCappedBoundHoldsWhateverTheDatabaseDoes/DatabaseIgnoresLimit
+--- PASS: TestListCappedBoundHoldsWhateverTheDatabaseDoes (0.00s)
+    --- PASS: TestListCappedBoundHoldsWhateverTheDatabaseDoes/DatabaseStopsFirst (0.00s)
+    --- PASS: TestListCappedBoundHoldsWhateverTheDatabaseDoes/LimitsAgree (0.00s)
+    --- PASS: TestListCappedBoundHoldsWhateverTheDatabaseDoes/LoopStopsFirstAndTruncates (0.00s)
+    --- PASS: TestListCappedBoundHoldsWhateverTheDatabaseDoes/DatabaseIgnoresLimit (0.00s)
+=== RUN   TestListUncappedRunsAsLongAsTheDatabaseSends
+--- PASS: TestListUncappedRunsAsLongAsTheDatabaseSends (0.12s)
+PASS
+ok  	cursorbound	0.413s
