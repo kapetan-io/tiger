@@ -519,11 +519,15 @@ nearly every real loop" stays false on both codebases it has been measured again
 with a suggested fix that makes the design worse.
 
 **What the rule enforces.** TS-X01 fires on any interface that has exactly one implementation
-outside `_test.go` files, on the theory that such an interface is abstraction added just in case.
-Its message tells the developer to delete the interface and use the concrete type.
+outside `_test.go` files, on the theory that such an interface is abstraction added just in case
+("we might swap this out someday"). Its message tells the developer to delete the interface and use
+the concrete type.
 
-**Where it fires today.** git-server's graph API reads refs through a deliberately narrow
-interface:
+**Where it fires today.** git-server has a ref store, the concrete type that holds branches and
+tags. It can read refs, and it can also change them, including through a `CompareAndSwap` method
+that atomically moves a ref. The graph API (commit history, diffs, tree walks) only needs to read
+refs, so git-server defines a narrow `RefReader` interface with just the read methods and hands the
+graph API a `RefReader`, not the ref store:
 
 ```go
 // RefReader is the ref half of the seam graphapi consumes: listing and resolution
@@ -535,29 +539,47 @@ type RefReader interface {
 }
 ```
 
+Only one type implements `RefReader`, the ref store, so TS-X01 fires:
+
 ```
 services/git-server/internal/graphapi/graphapi.go:32:6: TS-X01: interface RefReader has one implementation, memory.refStore — use memory.refStore directly and delete the interface, or add a second implementation outside _test.go files
 ```
 
-Following that message gives the graph API a type with `CompareAndSwap` on it, which breaks
-invariant I2. The other 14 git-server hits are the storage ports (`Backend`, `RefStore`,
-`ObjectStore`, `PackEngine`, `GraphIndex`) that a cross-adapter conformance suite exists to test,
-plus the event `Emitter` seam and the `Repos` and `RepoPolicy` seams between packages. querator's
-9 hits are role interfaces like `QueueAdmin` and `UsersAdmin` over one `service.Service`, where
-the fix widens every consumer's dependency to the whole service. That is 24 findings, all of them
-deliberate seams, and following the rule's own suggested fix would make every one of them worse.
+**What following the message would break.** If the graph API took the concrete ref store, it would
+have `CompareAndSwap` in reach. Nothing would stop graph-query code, written today or by an agent
+next month, from changing refs. The interface is not speculative. Its job is to remove
+capabilities, so that "graph queries never change refs" (invariant I2) is enforced by the Go
+compiler rather than by convention. The single implementation is the point: the interface narrows
+what callers can do.
 
-**What ratifying changes.** ADR-0006 removes a rule "whose output on real codebases is
-dominated by findings a reader would decline to act on, including any finding whose named remedy
-would break the code". TS-X01 meets that on both codebases. Removal is end to end, meaning the
-analyzer, its test cases, its registry entry, and the specification's enforcement line. The
-maxim stays in the specification with review as its enforcement.
+The rest of the findings are the same kind of seam. The other 14 git-server hits are the storage
+ports (`Backend`, `RefStore`, `ObjectStore`, `PackEngine`, `GraphIndex`) that a cross-adapter
+conformance suite exists to test, plus the event `Emitter` seam and the `Repos` and `RepoPolicy`
+seams between packages. querator's 9 hits are role interfaces like `QueueAdmin` and `UsersAdmin`
+over one `service.Service`, where the fix widens every consumer's dependency to the whole service.
+
+**Why removal rather than a fix.** Across both trials TS-X01 fired 24 times, and all 24 were
+deliberate seams: narrowing a capability, a test boundary, or a package boundary. None was the
+speculative abstraction the rule targets. Tiger cannot tell the two apart from the code's shape.
+"One implementation" looks identical whether the interface is pointless or is guarding an
+invariant, so every finding pushes toward a fix that makes the design worse, and here it would
+weaken a safety boundary. ADR-0006 removes a rule "whose output on real codebases is dominated by
+findings a reader would decline to act on, including any finding whose named remedy would break the
+code". TS-X01 meets that on both codebases. Whether an interface is the right seam is a design
+judgment, which the specification already leaves to review.
+
+**What ratifying changes.** Removal is end to end, meaning the analyzer, its test cases, its
+registry entry, and the specification's enforcement line. The maxim stays in the specification with
+review as its enforcement. The removal gets its own ADR (see "One ADR per decided call"), recording
+the `RefReader` case and the reason above: a shape rule cannot tell a speculative interface from
+one that narrows capability, and its remedy damages the second kind.
 
 The first pass of this document proposed an advisory trial instead, pending a git-server rerun.
 That rerun is above, and it answered the question the trial would have asked.
 
-**What a veto costs.** 24 blocking findings stay whose named fix is a design regression, including one
-that would delete a structural safety guarantee. An agent told to reach green follows the message.
+**What a veto costs.** 24 blocking findings stay whose named fix is a design regression, including
+one that would delete a structural safety guarantee. An agent told to reach green follows the
+message.
 
 ### Call 4: stop requiring a comment on dropped errors in cleanup code (TS-E02)
 
@@ -1270,7 +1292,9 @@ reopens a ticket.
    codebases and record what is left.
 2. **ENG-177, all four items** (call 7). A test case per recognized shape, and a test showing each
    shape the rule deliberately ignores. Rerun both codebases.
-3. **Remove TS-X01** (call 3), end to end per ADR-0006.
+3. **Remove TS-X01** (call 3), end to end per ADR-0006, with an ADR recording why: a shape rule
+   cannot tell a speculative interface from one that narrows capability, like git-server's
+   `RefReader`, and its remedy damages the second kind.
 4. **Exemptions for TS-E02, TS-N07, TS-C09** (calls 4, 5, 6), each with a test case for the
    exempted shape.
 5. **Silencing channels** (call 10). ENG-178 items 2 to 4, ENG-179 item 1, and counting
