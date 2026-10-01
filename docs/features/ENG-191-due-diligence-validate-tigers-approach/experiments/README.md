@@ -116,3 +116,19 @@ give; tiger today reports nothing on any of them.
 | `SpinFromConfigRaw`, unclamped config value | blocks until the value is clamped | runs forever |
 | `SpinReported(never, 1 << 40)` | **known miss**: a large constant below the threshold | runs forever |
 | `ScanForever(1 << 40)`, `bufio.Scanner` over an endless reader | **known miss**: counts as an outside stream | runs forever |
+
+### Where a limit's bound must sit (call 2, change 6)
+
+A loop limit gets its upper bound where the value enters the program. Tiger
+traces the limit backward from the loop, so a binary decode counts as an entry
+just like config or a request.
+
+| Loop and caller | Under call 2 | Loop at runtime |
+|---|---|---|
+| `ListClamped`, request limit clamped to `listMax` | passes | returns 1,000 of 5,000 rows |
+| `ListRaw`, request limit written into `ListOptions` as is (ENG-194) | flagged where the field is written | returns all 5,000 rows |
+| `ParsePack`, header count checked against the pack size and `objectsMax` | passes | rejects a 12-byte pack claiming 4 million objects |
+| `ParsePackRaw`, header count used as is (ENG-193) | flagged where the count is decoded | allocates room for 4 million entries |
+| `CreateClamped`, partitions clamped in a helper | passes; the helper's result carries the bound | stops at 256 |
+| `CreateRaw`, partitions reached through a returned slice (ENG-195) | flagged | runs forever |
+| `SpinThroughValue`, the loop called through a function value | **known miss** | runs forever |

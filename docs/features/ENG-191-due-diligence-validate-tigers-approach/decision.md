@@ -458,16 +458,30 @@ before TS-S02 starts trusting a proof.
    }
    ```
 
-6. **A loop limit has an upper bound where it enters the program.** A parameter or field that is a
-   loop's limit carries that fact across packages. Every value passed into it must be a constant,
-   another bounded limit, or a value clamped against a declared maximum where it enters, such as
-   `min(config.Spins, spinsMax)`. A value read from config, a flag, or a request is clamped at the
-   point it is read. A call that passes `math.MaxInt`, the type's maximum, or a constant at least
-   half of it is flagged at the call site, since no real limit is that large. For call 13 this
-   means querator's `opts.Limit` is clamped to a maximum page size where the request is parsed.
-   The tests for changes 5 and 6 are in [`cap_reports.go`](experiments/gaps/cap_reports.go),
-   [`config.go`](experiments/gaps/config.go) and
-   [their tests](experiments/gaps/cap_reports_test.go).
+6. **A loop limit has an upper bound where it enters the program.** What matters is where the
+   clamp sits, not what it looks like. Tiger traces each loop limit backward: a parameter, field, or
+   function result that bounds a loop carries that fact across packages, and every value written
+   into it must be a constant, a length, another bounded limit, or a value clamped against a
+   declared maximum, such as `min(config.Spins, spinsMax)` or an `if count > objectsMax` that
+   rejects. A function that returns a clamped value carries the bound to its callers, so a clamp in
+   a validator helper counts. Because the trace starts at the loop, every way a value enters is
+   covered: config, flags, requests, and binary formats like a pack header. A call that passes
+   `math.MaxInt`, the type's maximum, or a constant at least half of it is flagged too. Calls
+   through function values and interface methods are not followed, a recorded miss.
+
+   Deliberation weighed two other designs. A list of input sources (config, flags, environment,
+   requests) missed git-server's pack header, the worst bug below. A clamping limit type let the
+   clamp sit anywhere and was skipped by JSON or YAML decoding into the field.
+
+   A prototype of this check found three bugs in the trial code that no current rule reports, now
+   filed: git-server trusts the object count in a pack header and allocates room for it before
+   reading any object, so a 12-byte push claiming 4 million objects allocated 352 MB (ENG-193);
+   six of querator's seven list endpoints accept any page size up to 2³¹−1 from the request
+   (ENG-194); and querator's create-queue accepts any number of partitions and loops once per
+   partition (ENG-195). The tests for changes 5 and 6 are in
+   [`cap_reports.go`](experiments/gaps/cap_reports.go), [`config.go`](experiments/gaps/config.go),
+   [`boundary.go`](experiments/gaps/boundary.go) and their tests
+   ([1](experiments/gaps/cap_reports_test.go), [2](experiments/gaps/boundary_test.go)).
 7. **`for ctx.Err() == nil { ... }` counts as a forever loop** when `ctx` is a `context.Context`
    parameter, the same as a `select` on `ctx.Done()`. A context from `context.Background()` or
    `context.TODO()` is never cancelled, so it does not count.
@@ -499,8 +513,8 @@ Before and after:
 | `for ctx.Err() == nil` on a parameter | both block | passes |
 | `for ctx.Err() == nil` on `context.Background()` | both block | both block |
 
-**What remains open.** Two misses are recorded, each with a test that shows the loop running
-forever. A constant below the call-site threshold, such as `1 << 40`, passes as a limit even though
+**What remains open.** Three misses are recorded, each with a test that shows the loop running
+forever. A limit passed through a function value or an interface method is not traced. A constant below the call-site threshold, such as `1 << 40`, passes as a limit even though
 no loop reaches it in practice. And a standard-library stream over an endless source inside the
 program, like a `bufio.Scanner` over a reader that never ends, counts as an outside stream, so its
 limit needs no report. Both leave a visible trail for review. Ranging over a worklist while
