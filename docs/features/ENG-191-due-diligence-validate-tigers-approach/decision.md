@@ -1205,6 +1205,14 @@ queries and their results.
 
 ## What happens next
 
+### One ADR per decided call
+
+Once the calls here are decided, each one gets its own ADR (architecture decision record) in
+`docs/adr/` before any implementation work starts. The ADR records what was decided and why, and
+cites this document and its experiments as the context. A vetoed call gets an ADR too, so the
+reason for leaving a rule alone is on record. Where a decision replaces part of an existing ADR,
+as call 13 does to ADR-0004, the new ADR says so and the old one is marked superseded in part.
+
 ### The canceled tickets
 
 Eleven backlog tickets were canceled while this question was open. The direction holds, so most of
@@ -1247,7 +1255,7 @@ reopens a ticket.
    `//nolint` sentence into the tiger-rule ban and the counted waiver for golangci-lint linters, replace
    "heuristic" on map order, remove "covers nearly every real loop", and restore the fuller
    built-versus-described disclaimer that `b452818` shortened.
-9. **An ADR** recording the rule behind call 2. Tiger blocks a loop it cannot prove ends, because
+9. **Call 2's ADR**, the first of the per-call ADRs above. Tiger blocks a loop it cannot prove ends, because
    a bound in a loop's header is a claim and the experiments show such claims passing on loops that
    run forever. The way out is a counter cap, so the counter check must be sound and a constant cap
    that stands in for a proof must report when it is hit. False findings on correct code are fixed
