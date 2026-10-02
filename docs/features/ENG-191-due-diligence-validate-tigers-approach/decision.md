@@ -33,7 +33,7 @@ found three bugs in the trial code, filed as ENG-193, ENG-194 and ENG-195.
 | 4 | Stop requiring a comment on dropped errors in cleanup code (TS-E02) | Change | 47 findings go away | a comment is still required there | Keep and change |
 | 5 | Don't count a leading `t` or `ctx` toward the four-parameter limit (TS-N07) | Change | 21 findings go away | the limit counts them as today | Keep and change |
 | 6 | Stop checking test files for goroutine-per-item loops (TS-C09) | Change | 12 findings go away | test files keep firing | Keep and change |
-| 7 | Make four rules check behavior instead of names | Change | renaming no longer passes; correct `WaitGroup` code passes | the name holes stay open | open |
+| 7 | Make four rules check behavior instead of names | Change | renaming no longer passes; correct shutdown code passes; a loop's only exit is its stop case; goleak is required | the name holes stay open and the rules point agents at shapes that hid four querator bugs | Keep and change |
 | 8 | Teach the map-order rule collect-then-sort (TS-T02) | Change | correct code stops firing | correct code must be rewritten to `slices.Sorted` | open |
 | 9 | Add a baseline file that grandfathers existing findings | Reject | nothing changes | build a baseline mechanism | open |
 | 10 | Make `//nolint` on a tiger rule a blocking finding (TS-L09) | Change | the silent bypass closes | `//nolint` keeps silencing tiger's rules | open |
@@ -41,6 +41,7 @@ found three bugs in the trial code, filed as ENG-193, ENG-194 and ENG-195.
 | 12 | Fix the stale map-order wording in the spec and explainer | Fix docs | the spec and explainer are corrected | the documents stay inconsistent | open |
 | 13 | Stop using `//tiger:batched` to waive the loop bound (TS-S02, ADR-0004) | Change | store loops restate the limit they already declare; whole-partition scans get a declared maximum or cancellation | the waiver keeps standing in for a limit nobody declared | open |
 | 14 | Tell a safety cap from a page size by the loop's other exit (TS-S02) | Change | a cap that guards an internal condition must report when hit; a page over an outside stream need not | the spec keeps asking for an assert the tool never checks, and silent caps keep passing | open |
+| 15 | Ship a tested patterns collection for what the rules can't check | Change | runnable, CI-checked patterns back the rules where they stop short; rule messages and reviewers point to them | the unchecked parts of a correct shape stay with review, with nothing to compare against | open |
 
 ## The evidence this rests on
 
@@ -189,7 +190,7 @@ Counts per rule on each pin. The last column says what reading the findings show
 | TS-X01 single-impl interface | 9 | 15 | 24 of 24 are deliberate seams; see call 3 |
 | TS-S08 closed switch | 15 | 14 | true; needs an assert package |
 | TS-S18 no bare `panic` outside the assert package | 15 | 4 | true; needs an assert package |
-| TS-C02 goroutine owner | 14 | 1 | 10 querator hits are correct `WaitGroup` supervision; see call 7 |
+| TS-C02 goroutine owner | 14 | 1 | 4 querator hits are correct `WaitGroup` code, 3 are the unwaited-`WaitGroup` bug, 7 are other shapes; see call 7 |
 | TS-C05 cancellable wait | 13 | 0 | the real missing-cancellation waits still fire |
 | TS-C09 goroutine per item | 12 | 0 | all in `_test.go`; see call 6 |
 | TS-N08 no `bool` parameter | 5 | 12 | mixed, mostly true |
@@ -739,55 +740,124 @@ There were zero production hits on either codebase, so the production behavior i
 
 ### Call 7: make four rules check behavior instead of names (TS-C02, S03, C05, M05)
 
-**Recommendation: Change.** If we agree, renaming no longer passes these rules and correct
-`WaitGroup` code passes. If we don't, the name holes stay open.
+**Decision (2026-10-01): Keep and change.** All four rules stay blocking. TS-C02 and TS-M05 accept
+only exact shapes, TS-S03 and TS-C05 recognize behavior, a new rule requires an event loop's only
+exit to be its stop case, and goroutine-leak checks plus shutdown edge tests become the runtime
+backstop. Querator's shutdown bugs found along the way are filed as ENG-196.
+
+**Recommendation: Change.** If we agree, renaming no longer passes these rules, correct shutdown
+code passes, and the shape every rule message points to is the one Go's own `net/http` uses. If we
+don't, the name holes stay open and the rules keep pointing agents at shapes that hide bugs.
 
 **What the rules enforce, and where each trusts a name.**
 
-- **TS-C02**: every `go` statement starts through a supervisor, meaning something that waits for
-  the goroutine and ties it to a context. Today the only recognized supervisor is
-  `errgroup.Group.Go`, since ENG-153 removed the config flag that named supervisor functions.
+- **TS-C02**: every `go` statement starts through an owner that waits for it. Today the only
+  recognized owner is `errgroup.Group.Go`.
 - **TS-S03**: a loop that runs forever selects on a case that can stop it. **TS-C05**: a blocking
   channel wait has a case that can cancel it. Both accept `<-x.Done()` for any `x` with a method
   named `Done`, and any channel whose name contains `shutdown`, `stop`, `quit`, or `done`.
 - **TS-M05**: a value put back in a `sync.Pool` is reset first. It accepts any method named
   `Reset`, including an empty one.
 
-**Where they fire, or fail to.** The fixture in section 2 shows the three name holes passing. For
-TS-C02 the problem runs the other way. querator's daemon supervises its server goroutine
-correctly, and the rule cannot see it:
+**Where they fire, or fail to.** The section 2 fixture passes `tiger check` with a `Done()` that
+never fires, a `shutdown` channel nothing closes, and an empty `Reset`. Renaming them gets 5
+blocking findings.
+
+An earlier version of this call said querator's daemon was correct `WaitGroup` code that TS-C02
+wrongly rejects, and that 10 of querator's 14 TS-C02 findings were that shape. Both were wrong.
+`daemon.go` calls `wg.Add` and `wg.Done` but never `wg.Wait`, so `daemon.go:175`, `:209` and `:237`
+are the trial bug itself. Of the 14 sites, 4 are correct `WaitGroup` code (`Wait` in `Close`,
+`Shutdown`, or the same function), 3 are that bug, and 7 are not `WaitGroup` code at all. The review
+also found a hole in today's rule: `wg.Go(f)` or `errgroup.Go(f)` with no `Wait` anywhere passes,
+because TS-C02 only looks at `go` statements. That is the trial bug rewritten in a form tiger accepts.
+
+**What the deliberation tested.** Three designs were argued with probes on querator and git-server:
+
+| | Recognize behavior | Strict, exact shapes only | Enforce at runtime |
+|---|---|---|---|
+| Idea | compute who waits, who closes, what `Reset` clears | accept only `wg.Go`/`errgroup.Go`, `ctx.Done()` on a context, `*b = T{}` | require goleak; drop inference |
+| Fakes caught | most; still misses a `close` in dead code and a `Wait` in a method nobody calls | all, by construction | all the leaking ones, when a test runs them |
+| Correct code rejected | none of querator's | querator's request-carrying `shutdownCh`, and the best shutdown design below | none |
+| Querator's unwaited daemon | caught | caught | **missed 50 of 50 runs**: the goroutine exits a moment after `Shutdown`, before goleak looks |
+
+Then five shutdown designs were built on querator's main and run against the ENG-160 race test and
+five edge cases: the caller's ctx expiring while the loop is busy, a retry after that, two
+concurrent `Shutdown` calls, a pause queued before shutdown, and a cold request queued before
+shutdown.
+
+| Design | Edge cases | Under strict TS-S03 |
+|---|---|---|
+| main today: handshake on `shutdownCh` plus a flag | fails four; a queued pause or stats call panics the process | rejected |
+| handshake, the stop case as the only exit | passes all but the cold request | rejected |
+| cancel a stored context, request in an atomic pointer | fails retry, double and cold | accepted |
+| `net/http` shape: flag, `close(stop)` once, ctx bounds only the wait | passes all but the cold request | rejected |
+| **`net/http` shape, and every waiter also selects on `done`** | **passes all** | rejected |
+
+Strict TS-S03 would reject the best design and accept the worst, so strict is right for TS-C02 and
+TS-M05 but wrong for TS-S03 and TS-C05. Go's own guidance points the same way. `net/http`'s
+`Server.Shutdown` sets a flag and closes its listeners first, lets the caller's ctx bound only the
+wait, and uses the flag only to classify why the loop woke up. Uber's style guide stops a goroutine
+by closing a `stop` channel and waits on a `done` channel, with the stop case as the loop's only
+`return`. Google's guide and the `context` docs say not to store a context in a struct.
+
+The best design, from querator:
 
 ```go
-d.wg.Add(1)
-go func() {
-	defer d.wg.Done()
-	...
-	if err := srv.ServeTLS(d.Listener, "", ""); err != nil {
+func (l *Logical) Shutdown(ctx context.Context) error {
+	l.inShutdown.Store(true)
+	l.stopOnce.Do(func() { close(l.stop) })
+	select {
+	case <-l.done:
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+	l.wg.Wait()
+	return l.closePartitions(ctx)
+}
+
+func (l *Logical) requestLoop() { // started with l.wg.Go
+	var state QueueState
+	l.prepareQueueState(&state)
+	l.serve(&state)          // returns only from `case <-l.stop`
+	l.handleShutdown(&state) // answers everything left in requestCh
+	close(l.done)
+}
 ```
 
-```
-daemon/daemon.go:175:2: TS-C02: this go statement starts a goroutine nobody owns: nothing says when it exits or ties it to a context — start it through errgroup.Group.Go
-```
+None of the static designs catch the four querator bugs the edge tests found: an abandoned shutdown
+when the caller's ctx expires, a second `Shutdown` returning early, a panic on a queued cold
+request, and a cold request never answered. Only running the shutdown paths does. They are filed as
+ENG-196 with the redesign and its tests.
 
-Ten of querator's 14 TS-C02 findings are this shape. The other four are real, and one of them is
-the trial's unwaited-`WaitGroup` bug.
-
-**What agreeing changes.** ENG-177 comes back as written. Each rule recognizes behavior tiger
-can already compute:
+**What agreeing changes.** ENG-177 comes back, revised:
 
 | Rule | Today accepts | After, accepts |
 |---|---|---|
-| TS-C02 | only `errgroup.Group.Go` | also `wg.Add` before the `go` with `wg.Wait` in the same function or in the owning type's `Close`/`Shutdown` |
-| TS-S03, TS-C05 | any `.Done()` | `.Done()` only on a `context.Context` |
-| TS-S03, TS-C05 | any channel named like `shutdown` | a channel the package closes or sends on somewhere |
-| TS-M05 | any method named `Reset` | a `Reset` that writes the receiver |
+| TS-C02 | only `errgroup.Group.Go` | only `errgroup.Group.Go` and `sync.WaitGroup.Go`; a bare `go` statement is always a finding. The group's `Wait` must be reached on the success path: in the same function, or for a field, in an exported method of the owning type. A `Shutdown` that returns early on its own ctx expiring is exempt on that path |
+| TS-S03, TS-C05 | any `.Done()` | `.Done()` only on a `context.Context`, and not on one that traces within the function to `context.Background()` or `context.TODO()` |
+| TS-S03, TS-C05 | any channel named like `shutdown`, or any `chan struct{}` | a channel the package closes or sends on, on the same object: for a struct field, in a method of the owning type reachable from an exported method |
+| TS-M05 | any method named `Reset` | only `*b = T{}` before `Put`. The poolzero bug that flags that form after `pool.Get` is fixed first |
 
-The fixture's `DrainFake`, `Worker.Run`, and `Use` would each fire. `daemon.go:175` would pass.
+Two additions:
 
-**What not agreeing costs.** An agent gets past three blocking rules by naming a channel `done` or writing
-`func (b *Buf) Reset() {}`. Ten correct supervisions on querator have no compliant path except a
-rewrite to `errgroup`. This is the largest gap between the promise that blocking rules are exact
-and what tiger actually ships.
+- **A new rule: an event loop has one exit, its stop case.** In a TS-S03 loop, no `return` or
+  break-out may sit outside the recognized stop case. It is a syntax check, so it is exact. It flags
+  the shape behind ENG-160 and passes the best design. It also flags the correct handshake design,
+  which pushes agents toward closing a stop channel; its message names the `net/http` shape above as
+  the fix. It is measured on querator and git-server before it blocks.
+- **A runtime backstop.** Spec rule TS-C03, `goleak` in `TestMain` for every package that starts
+  goroutines, is implemented as a shape check: tiger blocks a package with a `go`, `wg.Go` or
+  `errgroup.Go` and no goleak harness. TS-S03's message points to shutdown edge tests like the five
+  above.
+
+The TS-S03 and TS-C02 messages name one shape as the fix: set a flag, close a stop channel once, let
+the loop's only exit be its stop case, have the loop close `done`, start it with `wg.Go`, and have
+every waiter select on `done`. The tests for each shape are in
+[`experiments/call7`](experiments/call7/).
+
+**What not agreeing costs.** An agent gets past three blocking rules by naming a channel `done` or
+writing an empty `Reset`, and past TS-C02 by writing `wg.Go` with no `Wait`. The rules keep pointing
+agents at shapes that hid four bugs in querator's shutdown.
 
 ### Call 8: teach the map-order rule collect-then-sort (TS-T02)
 
@@ -1282,6 +1352,93 @@ cycle or a stuck condition keeps passing, as `WalkCapped` and `SpinLimited` show
 
 ---
 
+## 6. What the rules can't check
+
+Calls 2 and 7 found correct shapes that tiger can check only in part. This section adds a second
+part to tiger for the rest.
+
+### Call 15: ship a tested patterns collection for what the rules can't check
+
+**Recommendation: Change.** If we agree, tiger gains a second part next to its rules: a small
+collection of runnable patterns, each covering a gap where a rule stops short and a real bug lived.
+Rule messages point to them, and agent reviewers check diffs against them. If we don't, the parts
+of a correct shape that no rule can check stay in review with nothing concrete to compare against,
+and agents keep improvising them.
+
+**Why the rules alone are not enough.** Calls 2 and 7 found shapes tiger can check only in part.
+The shutdown loop is the clearest case. Tiger can check how the loop goroutine starts, that its
+only exit is its stop case, and that the stop case is a real context or a channel the package
+closes. It cannot check that the loop runs cleanup before it closes `done`, that `Shutdown` lets
+the caller's context bound only its wait, or that every caller waiting on the loop's reply also
+selects on `done`. Querator's shutdown bugs (ENG-160, ENG-196) lived in exactly those parts.
+
+**The precedent.** `examples/ledger` is already a worked pattern: the invariant vocabulary, with an
+`inv` package, an encode/decode pair asserting it, and a violation test per invariant. The README
+points to it and the Explainer walks through it. The specification's "How review divides" section
+already assigns some questions to reviewers. This call makes that a deliberate part of tiger.
+
+**The entry condition.** A pattern exists only where a tiger rule stops short and a real bug lived
+in that gap: a trial finding, a filed ticket, or a bug an experiment reproduced. A shape that is
+merely good Go, with no rule it backs up and no bug behind it, does not qualify. This keeps the
+collection from becoming a general Go style guide.
+
+**What makes a pattern more than a wiki that goes stale.** Every pattern meets all five
+requirements below. They are recorded in the repository's `CLAUDE.md` so that agents adding rules or
+patterns follow them.
+
+1. **Each pattern is runnable code, not prose.** A small Go package showing the right shape, next to
+   the broken shape it replaces. Tests demonstrate both, the way `experiments/call7` shows
+   `StopDoneLoop` cleaning up every time and `EarlyExitLoop` skipping cleanup. Tests are the proof.
+2. **CI keeps the patterns honest.** Every pattern must pass `tiger check` with zero findings and run
+   its tests under `-race`. A pattern can't fall out of date with the rules, because the build fails
+   first.
+3. **Every pattern names the rules it backs up and the part those rules can't see.** For example,
+   the shutdown pattern backs TS-C02, TS-S03 and TS-C05. Tiger can check how the loop starts and
+   stops, but not whether every waiter also watches `done`. That missing check is exactly what the
+   pattern teaches.
+4. **Rule messages point to the pattern.** TS-S03's message ends with something like "see pattern
+   `shutdown-loop`", so an agent that hits the finding reads the right shape in place of
+   improvising one.
+5. **Each pattern gives reviewers a short checklist.** It covers the parts tiger can't check, as
+   yes-or-no questions an agent reviewer can answer while comparing a diff to the pattern. For the
+   shutdown loop: does every caller waiting on the loop's reply also select on `done`? Does
+   `Shutdown` close stop before it waits? Is there a test that calls `Shutdown` with an expired
+   context?
+
+**The seed patterns.** Six already exist as tested code from this decision's experiments:
+
+| Pattern | Comes from | Backs up | The bug behind it |
+|---|---|---|---|
+| Shutdown loop: stop and done, one exit | `call7/StopDoneLoop` | TS-C02, S03, C05 | ENG-160, ENG-196 |
+| Goroutine owner: `wg.Go` and `Wait` | `call7/WaitedDaemon` | TS-C02 | querator's unwaited daemon (ENG-148 trial) |
+| Pool reuse: zero before `Put` | `call7/UseWithZero` | TS-M05 | the empty `Reset` fixture leaking the last user |
+| Capped worklist that reports when the cap is hit | `gaps/WalkReported` | TS-S02, S01 | git-server's tag-peel denial of service (ENG-159 trial) |
+| Page over an outside stream | `gaps/ReadLines`, `cursorbound` | TS-S02, call 13 | querator's whole-partition scans |
+| Clamp a limit where it enters the program | `gaps/ListClamped`, `gaps/ParsePack` | call 2, change 6 | ENG-193, ENG-194, ENG-195 |
+
+`examples/ledger` joins them as the invariant pattern, which backs TS-A07, A08 and A09.
+
+**What is not part of this call.** A reusable runtime package that encodes these shapes, such as a
+`lifecycle` package for the shutdown loop, was considered and set aside. Most of these shapes don't
+reduce to a reusable package, and a package that adds code overall is not clearly better than
+following the pattern. Following the patterns is the goal.
+
+**What agreeing changes.**
+
+- A pattern collection is added to the repository in the format the deliberation below settles,
+  with `examples/ledger` and the six seed patterns as its first entries.
+- CI runs `tiger check` and the tests under `-race` on every pattern, and fails on any finding.
+- The messages of the rules each pattern backs up gain a pointer to it.
+- Every pattern carries its rules, its gap, the bug behind it, and its reviewer checklist.
+- The repository's `CLAUDE.md` records the entry condition and the five requirements.
+- The specification's "How review divides" section points reviewers at the checklists.
+
+**What not agreeing costs.** The parts of a correct shape no rule can check stay with review, and
+review has nothing concrete to compare a diff against. An agent fixing a TS-S03 finding improvises
+a shutdown loop, and querator shows what improvised shutdown loops look like.
+
+---
+
 ## What happens next
 
 ### One ADR per decided call
@@ -1320,8 +1477,11 @@ reopens a ticket.
    case. Build change 6 starting from [`experiments/limitfacts`](experiments/limitfacts/), adding
    what its README lists as missing. Fix tiger's own 14 worklist loops and TS-S01's rule reference
    and fixture. Rerun both codebases and record what is left.
-2. **ENG-177, all four items** (call 7). A test case per recognized shape, and a test showing each
-   shape the rule deliberately ignores. Rerun both codebases.
+2. **ENG-177, revised** (call 7). TS-C02 and TS-M05 accept only exact shapes, with TS-C02's
+   `Wait` check; TS-S03 and TS-C05 recognize behavior; fix poolzero's false finding on `*b = T{}`
+   after `pool.Get`; add the one-exit rule for event loops, measured on both trials first; implement
+   TS-C03's goleak harness check; point every message at the stop-and-done shape. Each shape in
+   `experiments/call7` becomes an analyzer test case. Rerun both codebases.
 3. **Remove TS-X01** (call 3), end to end per ADR-0006, with an ADR recording why: a shape rule
    cannot tell a speculative interface from one that narrows capability, like git-server's
    `RefReader`, and its remedy damages the second kind.
@@ -1348,3 +1508,6 @@ reopens a ticket.
     reference.
 11. **Teach TS-S02 to tell a safety cap from a page size** (call 14), as part of follow-up 1's
     release, and update the spec line and message to state the rule.
+12. **The patterns collection** (call 15), in the format the deliberation settles: the six seed
+    patterns plus `examples/ledger`, CI that holds each to zero findings and passing `-race` tests,
+    pointers from rule messages, and reviewer checklists.
