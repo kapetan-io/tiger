@@ -41,7 +41,7 @@ found three bugs in the trial code, filed as ENG-193, ENG-194 and ENG-195.
 | 12 | Fix the stale map-order wording in the spec and explainer | Fix docs | the spec and explainer are corrected | the documents stay inconsistent | open |
 | 13 | Stop using `//tiger:batched` to waive the loop bound (TS-S02, ADR-0004) | Change | store loops restate the limit they already declare; whole-partition scans get a declared maximum or cancellation | the waiver keeps standing in for a limit nobody declared | open |
 | 14 | Tell a safety cap from a page size by the loop's other exit (TS-S02) | Change | a cap that guards an internal condition must report when hit; a page over an outside stream need not | the spec keeps asking for an assert the tool never checks, and silent caps keep passing | open |
-| 15 | Ship a tested patterns collection for what the rules can't check | Change | runnable, CI-checked patterns back the rules where they stop short; rule messages and reviewers point to them | the unchecked parts of a correct shape stay with review, with nothing to compare against | open |
+| 15 | Ship a tested patterns collection for what the rules can't check | Change | runnable, CI-checked patterns back the rules where they stop short; rule messages and reviewers point to them | the unchecked parts of a correct shape stay with review, with nothing to compare against | Agreed: packages plus the binary |
 
 ## The evidence this rests on
 
@@ -1359,6 +1359,11 @@ part to tiger for the rest.
 
 ### Call 15: ship a tested patterns collection for what the rules can't check
 
+**Decision (2026-10-01): Agreed, with patterns as packages in the repository and built into the
+binary.** Patterns live as tested packages under `patterns/`, the `tiger` binary embeds them and
+prints them with `tiger pattern <name>`, and every finding from a rule a pattern backs names that
+pattern. A skill can be generated later from the same files if reviewer agents need one.
+
 **Recommendation: Change.** If we agree, tiger gains a second part next to its rules: a small
 collection of runnable patterns, each covering a gap where a rule stops short and a real bug lived.
 Rule messages point to them, and agent reviewers check diffs against them. If we don't, the parts
@@ -1423,10 +1428,40 @@ patterns follow them.
 reduce to a reusable package, and a package that adds code overall is not clearly better than
 following the pattern. Following the patterns is the goal.
 
+**The format.** A deliberation weighed three formats against the five requirements:
+
+| | Packages in the repository only | Packages plus the binary | Packages plus a generated agent skill |
+|---|---|---|---|
+| How an agent gets the pattern | the finding names a slug; the agent finds the tiger module or a GitHub URL at the right tag | the finding says `see \`tiger pattern shutdown-loop\``; running it prints the card, the code and the tests | the skill's description matches the finding and the agent loads it |
+| Strongest argument | nothing new to build; `examples/ledger` already works this way | the pattern always comes from the same release as the finding, the pointer is checked by a test, and it works offline with no install | gives reviewers a procedure and can load before a finding exists |
+| Biggest risk | nothing in the finding delivers the code | adopters on the golangci plugin alone have no `tiger` command | the model decides whether a skill loads; it needs an install in every repo |
+
+Every option starts from the same source, tested packages in tiger's root module, so the question
+was what to add on top. Adopters don't have tiger's source: querator does not depend on the tiger
+module at all, and copies `assert/` in. The binary is the only delivery where the pattern an agent
+reads is guaranteed to match the rules that flagged the code, and drift between the two is how a
+pattern collection goes stale.
+
 **What agreeing changes.**
 
-- A pattern collection is added to the repository in the format the deliberation below settles,
-  with `examples/ledger` and the six seed patterns as its first entries.
+- Patterns live under `patterns/<name>/` in tiger's root module, so the existing dogfood job and
+  `go test ./...` cover them. `examples/` is renamed `patterns/`, with `examples/ledger` and the six
+  seed patterns as the first entries. Each seed is cleaned up to meet the requirements before it is
+  added; `experiments/call7` gets 28 findings today, most from its test helper and file layout.
+- The `tiger` binary embeds the patterns. `tiger pattern <name>` prints a pattern's card (the rules
+  it backs, the gap, the bug behind it, the reviewer checklist), its code and its tests.
+  `tiger pattern --rule <code>` lists the patterns behind a rule, and `--checklist` prints only the
+  reviewer questions.
+- Each rule's registry entry names the patterns it is backed by, and the driver appends the pointer
+  (`see \`tiger pattern shutdown-loop\``) to every finding from that rule, so a rule violation
+  leads the agent to the correct shape. The analyzers do not change. A meta-test fails if a pointer
+  names a pattern that does not exist, or if a pattern names a rule that does not exist, and the
+  message length cap counts the pointer.
+- Releases ship the `tiger` binary alongside the golangci plugin, so plugin-only adopters can run
+  `tiger pattern`. An adopter's agent instructions gain one line: findings that name a pattern, run
+  `tiger pattern <name>`.
+- A skill for reviewer agents is not built now. If one is needed, it is generated from the same
+  embedded files.
 - CI runs `tiger check` and the tests under `-race` on every pattern, and fails on any finding.
 - The messages of the rules each pattern backs up gain a pointer to it.
 - Every pattern carries its rules, its gap, the bug behind it, and its reviewer checklist.
@@ -1508,6 +1543,7 @@ reopens a ticket.
     reference.
 11. **Teach TS-S02 to tell a safety cap from a page size** (call 14), as part of follow-up 1's
     release, and update the spec line and message to state the rule.
-12. **The patterns collection** (call 15), in the format the deliberation settles: the six seed
-    patterns plus `examples/ledger`, CI that holds each to zero findings and passing `-race` tests,
-    pointers from rule messages, and reviewer checklists.
+12. **The patterns collection** (call 15): rename `examples/` to `patterns/`, clean up and add the
+    six seed patterns, embed them in the binary behind `tiger pattern`, add the registry field and
+    the driver's pointer suffix with its meta-tests, run `-race` on `patterns/` in CI, and ship the
+    `tiger` binary alongside the plugin.

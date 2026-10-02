@@ -31,6 +31,13 @@ good Go, with no rule it backs up and no bug behind it, does not qualify.
    `Shutdown` close stop before it waits? Is there a test that calls `Shutdown` with an expired
    context?
 
+**Where patterns live and how agents reach them.** Each pattern is a package under
+`patterns/<name>/` in tiger's root module. The `tiger` binary embeds the patterns and prints one with
+`tiger pattern <name>`. Each rule's registry entry names the patterns it is backed by, and every
+finding from that rule ends with a pointer to the pattern, so a rule violation leads the agent to
+the correct shape. When you add or change a rule that a pattern backs, keep the pointer and the
+pattern in step; a meta-test fails if either names something that does not exist.
+
 Patterns are not reusable runtime packages. A package that encodes a shape is not added in place of
 a pattern; following the pattern is the goal.
 
