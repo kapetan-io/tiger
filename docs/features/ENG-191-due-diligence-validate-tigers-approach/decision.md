@@ -4,13 +4,14 @@ Date: 2026-09-24, updated 2026-10-01
 
 Tiger's goal is AI-written Go that either conforms to a strict dialect or produces a blocking
 finding the agent must fix. This document answers the four questions ENG-191 asks, in the order
-it asks them, and ends each answer with the calls a reviewer has to ratify or veto. Every call opens with a
-recommendation and says what ratifying and vetoing each mean. It then states what the rule checks,
-shows it firing on real code from the two trial codebases with the exact text tiger prints, shows
-what ratifying changes, and says what a veto costs.
+it asks them, and ends each answer with the calls to decide. Every call opens with a
+recommendation and says what happens if we agree and if we don't. It then states what the rule
+checks, shows it firing on real code from the two trial codebases with the exact text tiger prints,
+shows what agreeing changes, and says what not agreeing costs. A decided call carries a
+**Decision** line naming the outcome.
 
 Each recommendation is one of five kinds. **Keep** leaves a rule as it ships. **Change** keeps a
-rule blocking but changes what it checks. **Remove** deletes a rule. **Reject** turns down a
+rule blocking but changes what it checks; a decided Change is recorded as *Keep and change*. **Remove** deletes a rule. **Reject** turns down a
 proposed addition, so tiger stays as it is. **Fix docs** corrects the specification or explainer
 without touching the tool.
 
@@ -24,22 +25,22 @@ found three bugs in the trial code, filed as ENG-193, ENG-194 and ENG-195.
 
 ## The calls in brief
 
-| # | Proposal | Recommendation | If you ratify | If you veto |
-|---|---|---|---|---|
-| 1 | Add a language model to judge waiver reasons | Reject | tiger stays deterministic; nothing changes | a model judges reasons inside `tiger check` |
-| 2 | Keep requiring proof that a loop ends, and make both loop rules sound (TS-V01, TS-S02) | Change | the proof rule keeps blocking and proves more; the 20 holes in `experiments/gaps` close; a constant cap reports when hit | 62 findings on correct code stay, and loops that run forever keep passing |
-| 3 | Remove the single-implementation interface rule (TS-X01) | Remove | the rule is deleted | 24 findings stay, each with a fix that worsens the design |
-| 4 | Stop requiring a comment on dropped errors in cleanup code (TS-E02) | Change | 47 findings go away | a comment is still required there |
-| 5 | Don't count a leading `t` or `ctx` toward the four-parameter limit (TS-N07) | Change | 21 findings go away | the limit counts them as today |
-| 6 | Stop checking test files for goroutine-per-item loops (TS-C09) | Change | 12 findings go away | test files keep firing |
-| 7 | Make four rules check behavior instead of names | Change | renaming no longer passes; correct `WaitGroup` code passes | the name holes stay open |
-| 8 | Teach the map-order rule collect-then-sort (TS-T02) | Change | correct code stops firing | correct code must be rewritten to `slices.Sorted` |
-| 9 | Add a baseline file that grandfathers existing findings | Reject | nothing changes | build a baseline mechanism |
-| 10 | Make `//nolint` on a tiger rule a blocking finding (TS-L09) | Change | the silent bypass closes | `//nolint` keeps silencing tiger's rules |
-| 11 | Keep `//tiger:restrict` opt-in and restore it in the explainer | Keep | the explainer gets the directive back | restrictions turn on by default |
-| 12 | Fix the stale map-order wording in the spec and explainer | Fix docs | the spec and explainer are corrected | the documents stay inconsistent |
-| 13 | Stop using `//tiger:batched` to waive the loop bound (TS-S02, ADR-0004) | Change | store loops restate the limit they already declare; whole-partition scans get a declared maximum or cancellation | the waiver keeps standing in for a limit nobody declared |
-| 14 | Tell a safety cap from a page size by the loop's other exit (TS-S02) | Change | a cap that guards an internal condition must report when hit; a page over an outside stream need not | the spec keeps asking for an assert the tool never checks, and silent caps keep passing |
+| # | Proposal | Recommendation | If we agree | If we don't | Decision |
+|---|---|---|---|---|---|
+| 1 | Add a language model to judge waiver reasons | Reject | tiger stays deterministic; nothing changes | a model judges reasons inside `tiger check` | open |
+| 2 | Keep requiring proof that a loop ends, and make both loop rules sound (TS-V01, TS-S02) | Change | the proof rule keeps blocking and proves more; the 20 holes in `experiments/gaps` close; a constant cap reports when hit | 62 findings on correct code stay, and loops that run forever keep passing | Keep and change |
+| 3 | Remove the single-implementation interface rule (TS-X01) | Remove | the rule is deleted | 24 findings stay, each with a fix that worsens the design | Remove |
+| 4 | Stop requiring a comment on dropped errors in cleanup code (TS-E02) | Change | 47 findings go away | a comment is still required there | Keep and change |
+| 5 | Don't count a leading `t` or `ctx` toward the four-parameter limit (TS-N07) | Change | 21 findings go away | the limit counts them as today | Keep and change |
+| 6 | Stop checking test files for goroutine-per-item loops (TS-C09) | Change | 12 findings go away | test files keep firing | Keep and change |
+| 7 | Make four rules check behavior instead of names | Change | renaming no longer passes; correct `WaitGroup` code passes | the name holes stay open | open |
+| 8 | Teach the map-order rule collect-then-sort (TS-T02) | Change | correct code stops firing | correct code must be rewritten to `slices.Sorted` | open |
+| 9 | Add a baseline file that grandfathers existing findings | Reject | nothing changes | build a baseline mechanism | open |
+| 10 | Make `//nolint` on a tiger rule a blocking finding (TS-L09) | Change | the silent bypass closes | `//nolint` keeps silencing tiger's rules | open |
+| 11 | Keep `//tiger:restrict` opt-in and restore it in the explainer | Keep | the explainer gets the directive back | restrictions turn on by default | open |
+| 12 | Fix the stale map-order wording in the spec and explainer | Fix docs | the spec and explainer are corrected | the documents stay inconsistent | open |
+| 13 | Stop using `//tiger:batched` to waive the loop bound (TS-S02, ADR-0004) | Change | store loops restate the limit they already declare; whole-partition scans get a declared maximum or cancellation | the waiver keeps standing in for a limit nobody declared | open |
+| 14 | Tell a safety cap from a page size by the loop's other exit (TS-S02) | Change | a cap that guards an internal condition must report when hit; a page over an outside stream need not | the spec keeps asking for an assert the tool never checks, and silent caps keep passing | open |
 
 ## The evidence this rests on
 
@@ -124,8 +125,8 @@ output never varied.
 
 ### Call 1: add a language model to judge waiver reasons
 
-**Recommendation: Reject.** If you ratify, tiger stays deterministic and nothing changes. If you
-veto, a model judges waiver reasons inside `tiger check`.
+**Recommendation: Reject.** If we agree, tiger stays deterministic and nothing changes. If we
+don't, a model judges waiver reasons inside `tiger check`.
 
 **What it governs.** ENG-191 asks whether some goals need review by a language model. The only
 place a model could plug in is the free-text reason a developer writes on a waiver. Tiger never
@@ -145,10 +146,10 @@ bound is waived, the waiver is printed on every run, and it counts against the p
 The same input gives the same result on every run. Whether the table really is finite is a
 judgment, and it happens in code review of the pull request, not in `tiger check`.
 
-**What ratifying changes.** Nothing. Tiger stays deterministic. The reason stays a claim a
+**What agreeing changes.** Nothing. Tiger stays deterministic. The reason stays a claim a
 reviewer, human or AI, reads on the pull request.
 
-**What a veto costs.** A model inside the pass/fail verdict makes it nondeterministic. The same
+**What not agreeing costs.** A model inside the pass/fail verdict makes it nondeterministic. The same
 commit could pass on one run and fail on the next, and an agent could rephrase a reason until the
 model agrees. A green run is the one thing an agent cannot currently argue with, and a model in
 the verdict would make it negotiable. A model reviewing the pull request, outside the verdict, gets
@@ -272,10 +273,12 @@ new enters as a rule. The golangci-lint linters tiger turns on are out of scope.
 
 ### Call 2: keep requiring proof that a loop ends, and make both loop rules sound (TS-V01, TS-S02)
 
-**Recommendation: Change.** If you ratify, a loop still fails the build when tiger cannot prove it
+**Decision (2026-10-01): Keep and change.** TS-V01 keeps blocking and both loop rules get the soundness fixes, with changes 5 and 6 as decided in the deliberations on caps and limits.
+
+**Recommendation: Change.** If we agree, a loop still fails the build when tiger cannot prove it
 ends. Tiger learns enough new proofs to clear most of the 62 findings on correct code. Both loop
 rules stop accepting the loops in `experiments/gaps` that run forever, and a cap that stands in for
-a proof has to report when it is hit. If you veto, both loop rules stay as they are, including 62
+a proof has to report when it is hit. If we don't, both loop rules stay as they are, including 62
 findings that are not bugs and 20 loops tiger accepts that run forever, cut work short, or skip it.
 
 An earlier version of this call recommended the opposite: stop blocking, and show the proof only as
@@ -412,7 +415,7 @@ in git-server, whose worklists all pop with `for len(queue) > 0`. It hits 14 loo
 code, all correct walks over syntax trees, plus TS-S01's compliant test fixture. And change 2 makes
 TS-S02 trust whatever TS-V01 proves, so a hole in TS-V01 would clear both rules at once.
 
-**What ratifying changes.** TS-V01 keeps blocking, and a written `//tiger:variant` is still checked
+**What agreeing changes.** TS-V01 keeps blocking, and a written `//tiger:variant` is still checked
 in both directions. All of the following ship in one release, with the soundness fixes in place
 before TS-S02 starts trusting a proof.
 
@@ -525,7 +528,7 @@ limit needs no report. Both leave a visible trail for review. Ranging over a wor
 appending to it (`WalkRange`) stays a silent bug no loop rule catches; it ends, so it is a
 correctness bug for tests.
 
-**What a veto costs.** The 62 findings on correct code stay, and each clears only with a counter cap
+**What not agreeing costs.** The 62 findings on correct code stay, and each clears only with a counter cap
 like `for budget := len(data); budget > 0 && len(data) > 0; budget-- {`. The 20 loops in
 `experiments/gaps` keep passing tiger, and most of them never end. The worklist TS-S01 tells
 developers to write keeps running forever on a cycle. The explainer's claim that synthesis "covers
@@ -533,7 +536,9 @@ nearly every real loop" stays false on both codebases it has been measured again
 
 ### Call 3: remove the single-implementation interface rule (TS-X01)
 
-**Recommendation: Remove.** If you ratify, the rule is deleted. If you veto, 24 findings stay, each
+**Decision (2026-10-01): Remove.** TS-X01 is removed end to end, with its own ADR.
+
+**Recommendation: Remove.** If we agree, the rule is deleted. If we don't, 24 findings stay, each
 with a suggested fix that makes the design worse.
 
 **What the rule enforces.** TS-X01 fires on any interface that has exactly one implementation
@@ -586,7 +591,7 @@ findings a reader would decline to act on, including any finding whose named rem
 code". TS-X01 meets that on both codebases. Whether an interface is the right seam is a design
 judgment, which the specification already leaves to review.
 
-**What ratifying changes.** Removal is end to end, meaning the analyzer, its test cases, its
+**What agreeing changes.** Removal is end to end, meaning the analyzer, its test cases, its
 registry entry, and the specification's enforcement line. The maxim stays in the specification with
 review as its enforcement. The removal gets its own ADR (see "One ADR per decided call"), recording
 the `RefReader` case and the reason above: a shape rule cannot tell a speculative interface from
@@ -595,13 +600,15 @@ one that narrows capability, and its remedy damages the second kind.
 The first pass of this document proposed an advisory trial instead, pending a git-server rerun.
 That rerun is above, and it answered the question the trial would have asked.
 
-**What a veto costs.** 24 blocking findings stay whose named fix is a design regression, including
+**What not agreeing costs.** 24 blocking findings stay whose named fix is a design regression, including
 one that would delete a structural safety guarantee. An agent told to reach green follows the
 message.
 
 ### Call 4: stop requiring a comment on dropped errors in cleanup code (TS-E02)
 
-**Recommendation: Change.** If you ratify, 47 findings go away. If you veto, a comment is still
+**Decision (2026-10-01): Keep and change.** TS-E02 stops requiring a comment on an error discarded inside `defer` or `t.Cleanup`. Everywhere else it stays as it is, including the case that found git-server's hash-format bug.
+
+**Recommendation: Change.** If we agree, 47 findings go away. If we don't, a comment is still
 required on every dropped error in `defer` and `t.Cleanup`.
 
 **What the rule enforces.** TS-E02 fires on `_ = f()` and `x, _ := f()` when the discarded value
@@ -626,7 +633,7 @@ compliant fix is always the same comment, something like `// best-effort cleanup
 checks only that a comment exists, never what it says. A fixture confirms that `// x` satisfies
 it, and so does a bare `//nolint` (see call 10).
 
-**What ratifying changes.** A discard inside a `defer` statement's call, or inside a function
+**What agreeing changes.** A discard inside a `defer` statement's call, or inside a function
 literal passed to `t.Cleanup`, is not a finding. Every other discard still fires, including the
 hash-validation discard that was the rule's one real bug, and non-deferred cleanup like
 `_ = resp.Body.Close()`.
@@ -650,12 +657,14 @@ The exemption has a cost. `defer func() { _ = f.Close() }()` on a file opened fo
 the write error, and that is a real bug class. The rule does not catch it today either. It asks
 for a comment, and the comment can say anything.
 
-**What a veto costs.** 47 boilerplate comments across two codebases, and the rule keeps teaching agents
+**What not agreeing costs.** 47 boilerplate comments across two codebases, and the rule keeps teaching agents
 that any comment clears it.
 
 ### Call 5: don't count a leading `t` or `ctx` toward the four-parameter limit (TS-N07)
 
-**Recommendation: Change.** If you ratify, 21 findings go away. If you veto, the limit keeps
+**Decision (2026-10-01): Keep and change.** TS-N07 keeps its four-parameter limit and stops counting a leading test handle or `ctx`.
+
+**Recommendation: Change.** If we agree, 21 findings go away. If we don't, the limit keeps
 counting `t` and `ctx`.
 
 **What the rule enforces.** TS-N07 has two halves. It fires when two adjacent parameters share a
@@ -675,7 +684,7 @@ service/partition_test.go:503:1: TS-N07: this function takes 5 parameters — gr
 The two leading parameters are Go convention and cannot be swapped with anything after them. They
 use up half the cap before the helper does anything.
 
-**What ratifying changes.** A leading `testing.TB` (or `*testing.T` or `*testing.B`) and a
+**What agreeing changes.** A leading `testing.TB` (or `*testing.T` or `*testing.B`) and a
 `context.Context` that comes first or right after it do not count toward the cap. The
 adjacent-same-type half is untouched, and that half carries the swap hazards, like the 67
 adjacent-`string` findings on git-server.
@@ -685,13 +694,15 @@ codebases, 9 of querator's 10 cap findings and 12 of git-server's 21 clear. The 
 are real, like an eight-parameter `Finalize` in querator's benchmarks and an eight-parameter diff
 helper in git-server.
 
-**What a veto costs.** 21 findings whose fix is an options struct wrapping `name` and `expected`, in helpers
+**What not agreeing costs.** 21 findings whose fix is an options struct wrapping `name` and `expected`, in helpers
 where nobody would swap them. Agents learn to thread `t` through a struct field, which reads worse.
 
 ### Call 6: stop checking test files for goroutine-per-item loops (TS-C09)
 
-**Recommendation: Change.** If you ratify, 12 findings go away and production code is checked as
-before. If you veto, test files keep firing.
+**Decision (2026-10-01): Keep and change.** TS-C09 stops checking `_test.go` files.
+
+**Recommendation: Change.** If we agree, 12 findings go away and production code is checked as
+before. If we don't, test files keep firing.
 
 **What the rule enforces.** TS-C09 fires on a loop that starts one goroutine per item, because in
 production that lets outside traffic set the concurrency level. Its fix is a bounded queue drained
@@ -721,15 +732,15 @@ service/common_test.go:626:3: TS-C09: this loop starts a goroutine per item, so 
 The test exists to put N concurrent requests on the server at once. A single-worker queue would
 serialize them and defeat the test.
 
-**What ratifying changes.** TS-C09 skips `_test.go` files. Production fan-out still fires.
+**What agreeing changes.** TS-C09 skips `_test.go` files. Production fan-out still fires.
 There were zero production hits on either codebase, so the production behavior is unchanged.
 
-**What a veto costs.** 12 findings whose fix breaks the tests they fire in.
+**What not agreeing costs.** 12 findings whose fix breaks the tests they fire in.
 
 ### Call 7: make four rules check behavior instead of names (TS-C02, S03, C05, M05)
 
-**Recommendation: Change.** If you ratify, renaming no longer passes these rules and correct
-`WaitGroup` code passes. If you veto, the name holes stay open.
+**Recommendation: Change.** If we agree, renaming no longer passes these rules and correct
+`WaitGroup` code passes. If we don't, the name holes stay open.
 
 **What the rules enforce, and where each trusts a name.**
 
@@ -761,7 +772,7 @@ daemon/daemon.go:175:2: TS-C02: this go statement starts a goroutine nobody owns
 Ten of querator's 14 TS-C02 findings are this shape. The other four are real, and one of them is
 the trial's unwaited-`WaitGroup` bug.
 
-**What ratifying changes.** ENG-177 comes back as written. Each rule recognizes behavior tiger
+**What agreeing changes.** ENG-177 comes back as written. Each rule recognizes behavior tiger
 can already compute:
 
 | Rule | Today accepts | After, accepts |
@@ -773,14 +784,14 @@ can already compute:
 
 The fixture's `DrainFake`, `Worker.Run`, and `Use` would each fire. `daemon.go:175` would pass.
 
-**What a veto costs.** An agent gets past three blocking rules by naming a channel `done` or writing
+**What not agreeing costs.** An agent gets past three blocking rules by naming a channel `done` or writing
 `func (b *Buf) Reset() {}`. Ten correct supervisions on querator have no compliant path except a
 rewrite to `errgroup`. This is the largest gap between the promise that blocking rules are exact
 and what tiger actually ships.
 
 ### Call 8: teach the map-order rule collect-then-sort (TS-T02)
 
-**Recommendation: Change.** If you ratify, correct collect-then-sort code stops firing. If you veto,
+**Recommendation: Change.** If we agree, correct collect-then-sort code stops firing. If we don't,
 that code must be rewritten to `slices.Sorted(maps.Keys(m))`.
 
 **What the rule enforces.** TS-T02 bans ranging over a map unless the loop body matches an
@@ -805,7 +816,7 @@ I sampled four of querator's 11. One is a real order leak into logs. Three are o
 shapes the allowlist does not model: this append followed by a sort, nested deletes on a second
 map, and a map write under `if`/`else`.
 
-**What ratifying changes.** The analyzer extends its allowlist with those shapes, each backed
+**What agreeing changes.** The analyzer extends its allowlist with those shapes, each backed
 by a test case. The ENG-150 blueprint already says the allowlist grows this way, as an
 analyzer change and never a config knob. The first shape to add is an append into a local slice
 that is sorted before any other use.
@@ -813,12 +824,12 @@ that is sorted before any other use.
 Before, the snippet above fires. After, it passes, and the same loop without the `sort.Strings`
 still fires.
 
-**What a veto costs.** Developers rewrite correct code into the `slices.Sorted(maps.Keys(m))` form. That
+**What not agreeing costs.** Developers rewrite correct code into the `slices.Sorted(maps.Keys(m))` form. That
 is harmless but pure churn. The rule is not wrong. It is narrower than it needs to be.
 
 ### Call 9: add a baseline file that grandfathers existing findings
 
-**Recommendation: Reject.** If you ratify, nothing changes. If you veto, tiger gets a mechanism
+**Recommendation: Reject.** If we agree, nothing changes. If we don't, tiger gets a mechanism
 that records today's findings and fails only on new ones.
 
 **What it governs.** Some linters let an adopter record today's findings in a file and fail only
@@ -828,12 +839,12 @@ on new ones. Tiger has no such file for blocking rules.
 existing codebase cannot adopt tiger incrementally. It has to fix everything or disable
 analyzers.
 
-**What ratifying changes.** Nothing. This records the cost instead of paying it with a
+**What agreeing changes.** Nothing. This records the cost instead of paying it with a
 mechanism. ADR-0011 refused the same mechanism for advisory findings, because a file that raises
 a limit is the cheapest path to green an agent can find. The argument is the same for blocking
 findings. Tiger's stated target is new AI-written code, where this cost does not arise.
 
-**What a veto costs.** A baseline lets brownfield teams adopt tiger in a day. It also gives an agent a
+**What not agreeing costs.** A baseline lets brownfield teams adopt tiger in a day. It also gives an agent a
 command that turns any regression green. If the project wants brownfield adoption, that deserves
 its own ADR, with a design that can only ever lower the numbers, like ADR-0011's budget file.
 
@@ -877,8 +888,8 @@ reflect. Each resolves below as part of the rule set above, not as a separate pa
 
 ### Call 10: make `//nolint` on a tiger rule a blocking finding (TS-L09)
 
-**Recommendation: Change.** If you ratify, the silent bypass closes and `//nolint` for other
-linters is counted. If you veto, `//nolint` keeps silencing tiger's rules.
+**Recommendation: Change.** If we agree, the silent bypass closes and `//nolint` for other
+linters is counted. If we don't, `//nolint` keeps silencing tiger's rules.
 
 **What the three sources say.** The specification allows `//nolint` with a reason, enforced by
 golangci-lint's `nolintlint` under TS-L09. The explainer says tiger "flags any `//nolint` as a
@@ -904,7 +915,7 @@ That exits 0. Under the golangci-lint plugin, `//nolint:tiger` silences any tige
 with no advisory and no count (ENG-178, item 2). The explainer's sentence is false about the tool
 as shipped.
 
-**What ratifying changes.** Tiger's own rules accept no suppression, whether tiger runs as
+**What agreeing changes.** Tiger's own rules accept no suppression, whether tiger runs as
 `tiger check` or inside golangci-lint. The
 `directives` analyzer already reads every comment. A bare `//nolint`, or one that names `tiger`,
 becomes a blocking TS-L09 finding. The finding is reported at the file's `package` line, where
@@ -926,7 +937,7 @@ printed on every run as a `TS-L09-escape` notice and counted against the package
 After this, the explainer's sentence becomes true for tiger's rules, and it gains a clause for the
 golangci-lint linters.
 
-**What a veto costs.** Under the plugin, one comment silences any blocking rule with no trace. Under the
+**What not agreeing costs.** Under the plugin, one comment silences any blocking rule with no trace. Under the
 CLI, a `//nolint` clears any rule that asks for a comment, by accident. The explainer keeps promising a ban
 that does not exist. The alternative, banning `//nolint` for every enabled linter, is defensible
 and simpler to explain. It was not chosen because it forces adopters to turn off whole linters
@@ -934,8 +945,8 @@ over one false positive, which is louder but loses more signal than a counted wa
 
 ### Call 11: keep `//tiger:restrict` opt-in and restore it in the explainer (TS-P01, P02, K03)
 
-**Recommendation: Keep.** If you ratify, the tool stays as it is and the explainer gets the
-directive back. If you veto, restrictions turn on for every package by default.
+**Recommendation: Keep.** If we agree, the tool stays as it is and the explainer gets the
+directive back. If we don't, restrictions turn on for every package by default.
 
 **What the rule enforces.** A package can declare restrictions in its doc comment, such as
 `//tiger:restrict closed-dispatch` (every method call resolves to one concrete type, never through
@@ -961,21 +972,21 @@ which TS-S03 and TS-C05 require. And TS-P02 fires on every third-party import, s
 code declares nothing. A default-on closed-dispatch rule contradicts tiger's own cancellation
 rules and cannot be satisfied by any codebase that imports a library.
 
-**What ratifying changes.** The shipped design stays. The restriction set is an opt-in claim a
+**What agreeing changes.** The shipped design stays. The restriction set is an opt-in claim a
 package makes, and absence is never a finding. The explainer restores the paragraph that
 introduces the directive. Without it, a reader who meets TS-P01 in the rule reference has no way
 to learn what a restriction set is. The explainer was half right about one axis. Reflection is
 already banned everywhere by the golangci-lint linter behind TS-S12, and `no-reflect` on the directive only
 makes that claim checkable by dependents. The explainer should say so.
 
-**What a veto costs.** Either the rule reference documents three blocking rules the explainer never
+**What not agreeing costs.** Either the rule reference documents three blocking rules the explainer never
 mentions, or restriction becomes default-on and every adopter meets findings like the 68 above on
 day one.
 
 ### Call 12: fix the stale map-order wording in the spec and explainer (TS-T02)
 
-**Recommendation: Fix docs.** If you ratify, the specification and explainer are corrected and the
-tool is unchanged. If you veto, the documents stay inconsistent with each other and the code.
+**Recommendation: Fix docs.** If we agree, the specification and explainer are corrected and the
+tool is unchanged. If we don't, the documents stay inconsistent with each other and the code.
 
 **What the three sources say.** The explainer says the map-order check bans every map range except
 a fixed set of safe body shapes, and calls it "a heuristic rather than a proof". The
@@ -984,7 +995,7 @@ writes. Heuristic". The code does what the explainer describes, the allowlist in
 call 8. The ENG-150 blueprint made that inversion on purpose, called it exact, and flagged the
 specification line for amendment. The amendment never landed.
 
-**What ratifying changes.** Nothing in the product changes. This is a disagreement between documents only.
+**What agreeing changes.** Nothing in the product changes. This is a disagreement between documents only.
 
 - The specification's TS-T02 enforcement line and its Part V analyzer table change to describe
   the allowlist.
@@ -994,7 +1005,7 @@ specification line for amendment. The amendment never landed.
   slice) gets past it. The replacement wording is "exact over a
   conservative allowlist, backstopped by the double-run test (TS-T11)".
 
-**What a veto costs.** The specification keeps describing an analyzer tiger does not ship, and the
+**What not agreeing costs.** The specification keeps describing an analyzer tiger does not ship, and the
 explainer keeps calling a rule that never guesses a heuristic, which invites readers to treat its findings as
 optional.
 
@@ -1193,9 +1204,9 @@ reason.
 
 ### Call 13: stop using `//tiger:batched` to waive the loop bound (TS-S02, ADR-0004)
 
-**Recommendation: Change.** If you ratify, store loops restate the limit they already declare,
+**Recommendation: Change.** If we agree, store loops restate the limit they already declare,
 whole-partition scans get a declared maximum or cancellation, and `//tiger:batched` keeps its other
-job. If you veto, the waiver keeps standing in for a limit nobody declared.
+job. If we don't, the waiver keeps standing in for a limit nobody declared.
 
 **What the rule enforces.** TS-S02 requires every loop to state a bound tiger can see. ADR-0004 lets
 `//tiger:batched <reason>` waive that on a cursor-shaped loop, reasoning that "the store is finite"
@@ -1208,7 +1219,7 @@ number. B1 also rejects "the store is finite" as a bound. A finite store with no
 exactly the limit "chosen by whatever runs out first". ADR-0004 also clashes with TS-V01, which the
 spec already records as open item ENG-183.
 
-**What ratifying changes.** `//tiger:batched` stops waiving TS-S02 and stays as the waiver for
+**What agreeing changes.** `//tiger:batched` stops waiving TS-S02 and stays as the waiver for
 TS-M10. A new ADR replaces ADR-0004's loop-bound half and closes ENG-183.
 
 Before:
@@ -1228,7 +1239,7 @@ The five whole-partition scans need one of the two shapes B1 allows. One is a de
 partition size, with the loop capped at it and an assert if it is exceeded. The other is paging
 that checks `ctx` on every pass so the scan can be cancelled.
 
-**What a veto costs.** A reason string keeps standing in for a declared limit. Loops that already
+**What not agreeing costs.** A reason string keeps standing in for a declared limit. Loops that already
 have a limit carry a waiver they do not need. The five scans that cannot be cancelled stay hidden
 behind "the table size is the bound", and the clash with TS-V01 stays open.
 
@@ -1240,8 +1251,8 @@ size. That is a product decision about list semantics, so it is not a call here.
 
 ### Call 14: tell a safety cap from a page size by the loop's other exit (TS-S02)
 
-**Recommendation: Change.** If you ratify, tiger decides which caps must report by reading the loop,
-and the spec and message say so. If you veto, the spec keeps asking for an assert on every cap while
+**Recommendation: Change.** If we agree, tiger decides which caps must report by reading the loop,
+and the spec and message say so. If we don't, the spec keeps asking for an assert on every cap while
 the tool accepts caps that stop silently, and review judges which kind each cap is.
 
 An earlier version recommended only a docs fix, with review telling the two kinds apart. A
@@ -1257,7 +1268,7 @@ depth of a delta chain. Reaching it means something is wrong, so it should asser
 error. A *page size* is part of the behavior, such as the size of a list page. Reaching it is
 normal, because the page is full, and asserting there would fail every full page.
 
-**What ratifying changes.** Tiger reads the loop's other way out (call 2, change 5). When every other
+**What agreeing changes.** Tiger reads the loop's other way out (call 2, change 5). When every other
 exit drains a stream from outside the module, like `rows.Next()`, the counter is a page size and
 needs no report. When the other exit is an internal condition or a `break`, the counter is a safety
 cap and must assert or return an error when reached. The spec line and the message state that rule,
@@ -1265,7 +1276,7 @@ and both drop "review judges which kind a cap is". Every loop limit also needs a
 it enters the program (change 6), so a page size read from a request is clamped to a declared
 maximum.
 
-**What a veto costs.** The spec and the tool keep disagreeing, and a cap that stops silently on a
+**What not agreeing costs.** The spec and the tool keep disagreeing, and a cap that stops silently on a
 cycle or a stuck condition keeps passing, as `WalkCapped` and `SpinLimited` show in
 `experiments/gaps`.
 
@@ -1277,14 +1288,14 @@ cycle or a stuck condition keeps passing, as `WalkCapped` and `SpinLimited` show
 
 Once the calls here are decided, each one gets its own ADR (architecture decision record) in
 `docs/adr/` before any implementation work starts. The ADR records what was decided and why, and
-cites this document and its experiments as the context. A vetoed call gets an ADR too, so the
+cites this document and its experiments as the context. A call we don't agree to gets an ADR too, so the
 reason for leaving a rule alone is on record. Where a decision replaces part of an existing ADR,
 as call 13 does to ADR-0004, the new ADR says so and the old one is marked superseded in part.
 
 ### The canceled tickets
 
 Eleven backlog tickets were canceled while this question was open. The direction holds, so most of
-them describe work this decision still wants. Reopening is for whoever ratifies this. Nothing here
+them describe work this decision still wants. Reopening is for whoever decides these calls. Nothing here
 reopens a ticket.
 
 | Ticket | Disposition |
