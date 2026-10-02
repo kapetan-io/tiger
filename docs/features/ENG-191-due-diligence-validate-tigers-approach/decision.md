@@ -35,8 +35,8 @@ found three bugs in the trial code, filed as ENG-193, ENG-194 and ENG-195.
 | 6 | Stop checking test files for goroutine-per-item loops (TS-C09) | Change | 12 findings go away | test files keep firing | Keep and change |
 | 7 | Make four rules check behavior instead of names | Change | renaming no longer passes; correct shutdown code passes; a loop's only exit is its stop case; goleak is required | the name holes stay open and the rules point agents at shapes that hid four querator bugs | Keep and change |
 | 8 | Accept collect-then-sort in the map-order rule (TS-T02) | Change | correct code stops firing | correct code must be rewritten to `slices.Sorted` | Keep and change: plain sorts plus full coverage |
-| 9 | Add a baseline file that grandfathers existing findings | Reject | nothing changes | build a baseline mechanism | open |
-| 10 | Make `//nolint` on a tiger rule a blocking finding (TS-L09) | Change | the silent bypass closes | `//nolint` keeps silencing tiger's rules | open |
+| 9 | Add a baseline file that grandfathers existing findings | Reject | nothing changes | build a baseline mechanism | Reject |
+| 10 | Make `//nolint` on a tiger rule a blocking finding (TS-L09) | Change | the silent bypass closes | `//nolint` keeps silencing tiger's rules | Keep and change: opt-in, off by default |
 | 11 | Keep `//tiger:restrict` opt-in and restore it in the explainer | Keep | the explainer gets the directive back | restrictions turn on by default | open |
 | 12 | Fix the stale map-order wording in the spec and explainer | Fix docs | the spec and explainer are corrected | the documents stay inconsistent | open |
 | 13 | Stop using `//tiger:batched` to waive the loop bound (TS-S02, ADR-0004) | Change | store loops restate the limit they already declare; whole-partition scans get a declared maximum or cancellation | the waiver keeps standing in for a limit nobody declared | open |
@@ -936,6 +936,16 @@ is harmless but pure churn. The rule is not wrong. It is narrower than it needs 
 
 ### Call 9: add a baseline file that grandfathers existing findings
 
+**Decision (2026-10-02): Reject.** Tiger gets no baseline mechanism and does not recommend one.
+`config/golangci.yml` drops its line telling adopters to use `--new-from-rev=origin/main`. An
+adopter who chooses golangci-lint's own new-code filters (`--new-from-rev`, `new-from-merge-base`,
+`new-from-patch`, `issues.new`) may use them, and tiger does not check for them;
+that is the adopter's call, not tiger's default. `experiments/newfromrev` shows what the filter
+does to tiger's findings: with `--new-from-rev=HEAD~1` the plugin drops the finding on the line the
+branch didn't touch and prints nothing about it, with `--new-from-rev=HEAD` a repository with two
+blocking findings passes, and run through a symlinked path it drops every finding, including the
+new one. `tiger check` reads no git history and reports both.
+
 **Recommendation: Reject.** If we agree, nothing changes. If we don't, tiger gets a mechanism
 that records today's findings and fails only on new ones.
 
@@ -994,6 +1004,26 @@ Writing the ENG-154 explainer asserted three product decisions that the spec, co
 reflect. Each resolves below as part of the rule set above, not as a separate patch.
 
 ### Call 10: make `//nolint` on a tiger rule a blocking finding (TS-L09)
+
+**Decision (2026-10-02): Keep and change, as an opt-in.** Whether a codebase uses `//nolint` is
+the adopter's choice, so tiger does not ban it by default. A `tiger.yaml` entry turns the ban on:
+
+```yaml
+nolint:
+  forbid: true
+  reason: agents must fix findings, not silence them
+```
+
+With it on, every `//nolint` in a checked package is a blocking TS-L09 finding, reported at the
+file's `package` line. `tiger check` enforces it. Under the golangci-lint plugin it can be bypassed,
+and the docs say so: `experiments/nolint` shows a file-wide `//nolint:tiger` in the package doc
+comment dropping even a finding at the `package` line, and an `exclusions` rule in
+`.golangci.yml` dropping findings without touching the code. `tiger check` never honors
+`//nolint`. A bare `//nolint` does satisfy TS-E02's "say why in a comment", but only because the
+rule checks that a comment exists, which `// x` also satisfies (call 4), so rejecting `//nolint`
+there would close nothing. The explainer drops "tiger flags any `//nolint`", and the
+specification's TS-L09 line describes the opt-in. The counted `//nolint:<linter>` waiver proposed
+below is not adopted.
 
 **Recommendation: Change.** If we agree, the silent bypass closes and `//nolint` for other
 linters is counted. If we don't, `//nolint` keeps silencing tiger's rules.
@@ -1532,7 +1562,7 @@ reopens a ticket.
 | Ticket | Disposition |
 |---|---|
 | ENG-177, recognize behavior, not names | revive as written (call 7) |
-| ENG-178, close uncounted silencing channels | revive items 2, 3, 4: `//nolint` under the plugin (call 10), recognize `package assert` by import path, drop the unread `hot`/`wire`/`owner` verbs. Drop item 1; one advisory per generated file is noise of the kind ADR-0006 removes |
+| ENG-178, close uncounted silencing channels | revive items 3 and 4: recognize `package assert` by import path, drop the unread `hot`/`wire`/`owner` verbs. Drop item 1; one advisory per generated file is noise of the kind ADR-0006 removes. Drop item 2; call 10 leaves `//nolint` under the plugin to the adopter |
 | ENG-179, trusted declarations get the escape treatment | revive item 1 (`//tiger:openenum` counted as an escape with a reason). Drop item 2; call 4's cleanup exemption replaces the proposed `//tiger:discard` directive |
 | ENG-176, revive naming rules on the config file | leave canceled; scoping was never the failure |
 | ENG-175, exemptions for signatures pinned by third-party interfaces | leave canceled; one site in one repo, and an adapter function is the compliant shape |
@@ -1561,8 +1591,9 @@ reopens a ticket.
    `RefReader`, and its remedy damages the second kind.
 4. **Exemptions for TS-E02, TS-N07, TS-C09** (calls 4, 5, 6), each with a test case for the
    exempted shape.
-5. **Silencing channels** (call 10). ENG-178 items 2 to 4, ENG-179 item 1, and counting
-   `//nolint:<linter>` as `TS-L09-escape`.
+5. **Silencing channels** (call 10). ENG-178 items 3 and 4, ENG-179 item 1, and the opt-in
+   `nolint.forbid` entry in `tiger.yaml`, enforced by `tiger check`.
+   Drop the `--new-from-rev` recommendation from `config/golangci.yml` in the same change (call 9).
 6. **TS-T02 collect-then-sort, full coverage and the closed escape** (call 8). Build from
    `experiments/fullcoverage`, keeping its soundness test. A second ticket tightens the rest of the
    allowlist: the prototype also refuses `keys[i] = k; i++` and reads of carried state anywhere in

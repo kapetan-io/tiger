@@ -1,7 +1,8 @@
 # ENG-191 experiments
 
-Eight small Go modules back calls in `../decision.md`: six for the loop-bound
-calls, and `maporder` and `fullcoverage` for call 8. Each holds
+Ten small Go modules back calls in `../decision.md`: six for the loop-bound
+calls, `maporder` and `fullcoverage` for call 8, `newfromrev` for call 9, and
+`nolint` for call 10. Each holds
 its own `go.mod`, so the repo's `go test ./...` and `tiger check ./...` skip
 them. Each directory also commits the output of both commands, captured with
 tiger built from `main` at `5126797`.
@@ -234,3 +235,54 @@ What production needs that the prototype lacks:
   and `sort.Sort` with a `Less` method, each a 20 to 60 line extension.
 - The known misses: last writer wins, a map-write value that calls a
   function, `golang.org/x/exp/maps.Keys` and `reflect.MapKeys`.
+
+## newfromrev
+
+Backs call 9. Asks whether golangci-lint's `--new-from-rev`, which tiger's
+`config/golangci.yml` tells adopters to use, hides tiger's own findings. Each
+test builds a git repository with two commits, `old.go` on the main line and
+`new.go` on the branch, each with the same TS-S09 violation, then runs
+golangci-lint built with the tiger plugin and `tiger check`.
+
+| Run | Findings | Exit |
+|---|---|---|
+| plugin, no flag | `old.go` and `new.go` | 1 |
+| plugin, `--new-from-rev=HEAD~1` | `new.go` only; nothing says `old.go` was dropped | 1 |
+| plugin, `--new-from-rev=HEAD` | none | 0 |
+| plugin, `--new-from-rev=HEAD~1`, run through a symlinked path | none, not even `new.go` | 0 |
+| `tiger check` | `old.go` and `new.go` | 1 |
+
+The tests need both binaries. Build the plugin with `golangci-lint custom`
+from the repo root (v2.11.4) and tiger with `go build ./cmd/tiger`, then:
+
+```sh
+TIGER_GCL=<path>/tiger-gcl TIGER=<path>/tiger go test -count=1 -v ./...
+```
+
+`tiger.out` holds three findings in the test helpers, not in the fixture.
+
+## nolint
+
+Backs call 10. Asks what `//nolint` does to tiger's findings under
+`tiger check` and under the golangci-lint plugin, and whether an opt-in "no
+`//nolint`" finding reported at the file's `package` line could survive the
+plugin. Each fixture under `testdata/` is copied into a fresh module.
+
+| Fixture | `tiger check` | plugin |
+|---|---|---|
+| `dropped`: `_ = os.Remove(path)` | TS-E02, exit 1 | not run |
+| `droppednolint`: the same with a bare `//nolint` | passes, the comment counts as TS-E02's reason | not run |
+| `line`: `//nolint:tiger` on a TS-S09 line | TS-S09, exit 1 | passes |
+| `filewide`: `//nolint:tiger` in the package doc comment | TS-P02 at the `package` line and TS-S09 | passes, both dropped |
+| `excluded`: an `exclusions` rule in `.golangci.yml`, no comment | TS-S09, exit 1 | passes |
+
+So an opt-in "no `//nolint`" check can be enforced under `tiger check` only.
+Under the plugin a file-wide `//nolint:tiger` drops a finding at the
+`package` line, and an `exclusions` rule drops any finding without touching the
+code. The tests need both binaries, built as in `newfromrev`:
+
+```sh
+TIGER_GCL=<path>/tiger-gcl TIGER=<path>/tiger go test -count=1 -v ./...
+```
+
+`tiger.out` holds three findings in the test helpers, not in the fixtures.
