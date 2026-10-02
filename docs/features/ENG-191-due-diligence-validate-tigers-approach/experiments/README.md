@@ -1,6 +1,7 @@
 # ENG-191 experiments
 
-Six small Go modules back the loop-bound calls in `../decision.md`. Each holds
+Eight small Go modules back calls in `../decision.md`: six for the loop-bound
+calls, and `maporder` and `fullcoverage` for call 8. Each holds
 its own `go.mod`, so the repo's `go test ./...` and `tiger check ./...` skip
 them. Each directory also commits the output of both commands, captured with
 tiger built from `main` at `5126797`.
@@ -180,3 +181,56 @@ Tiger's other findings here are TS-C05 on the demo `Submit` sends and
 `<-ready`, TS-M05 on `PeekPooled`'s read-only `Put`, and TS-C12 asking for the
 channel types to share one file; none bear on call 7. The tests pass 50 of 50
 runs under `-race`.
+
+## maporder
+
+Backs call 8. Shows the collect-then-sort shape call 8 accepts, and three map
+loops whose output varies while tiger passes them or would pass them under a
+looser call 8. Each test calls the function 200 times and counts the different
+results it prints.
+
+| Function | Shape | TS-T02 today | Different results in 200 calls |
+|---|---|---|---|
+| `SortedIDs` | append keys, then `sort.Strings` | blocks (call 8 makes it pass) | 1 |
+| `UnsortedIDs` | append keys, no sort | blocks | more than 1 |
+| `FirstThree` | map write gated by a counter carried across iterations | no finding | more than 1 |
+| `RankByValue` | `slices.SortedFunc(maps.Keys(m), ...)` with a comparator that ties | no finding, the range target is not a map | more than 1 |
+| `SortedValues` | append floats, then `sort.Float64s`; -0 and +0 tie | blocks; accepting `sort.Float64s` would pass it | more than 1 |
+
+## fullcoverage
+
+A prototype of TS-T02 with call 8's four changes, kept as the starting point
+for building it into tiger: collect-then-sort with plain sorts, comparator
+sorts accepted only when they compare every field of the element, a check on
+every `maps.Keys`/`Values`/`All` result, and no reads of state an earlier
+visit wrote. `evidence.md` holds the module-cache counts and every
+classification.
+
+`cases/` holds 72 functions: 9 real sites with one function per rewrite, the
+`maporder` gaps, and 20 boundary probes built to tie. `TestSoundness` joins
+the prototype's live verdict with 200 calls per function and fails if any
+function it passes prints more than one result. The one documented exception
+is `boundary.Invert` (last writer wins), a known miss. Every boundary in the
+design is rejected, and each rejected probe really does vary: one array byte,
+one field, `String()`, pointer, interface, float, bool and `time.Time` fields,
+and asymmetric or calling tie-breaks.
+
+On the module cache (678 of 970 modules loaded), plain sorts accepted 91 sites
+and full coverage 4, all in tiger and none able to tie. Of 46 rejected
+comparator sites, 22% are real leaks and 72% are total by an invariant the
+check can't see, mostly `sort.Slice`. On the trial pins TS-T02 drops from 11
+to 7 findings on querator and from 17 to 15 on git-server, with none added.
+
+`cmd/fullcoverage` runs it standalone: `go run ./cmd/fullcoverage ./...`.
+`cmd/scan` reproduces the module-cache scan.
+
+What production needs that the prototype lacks:
+
+- A decision on the extra allowlist tightening it carries: refusing
+  `keys[i] = k; i++` and carried-state reads anywhere in the body. Across the
+  module cache that finds 31 real leaks tiger misses and adds 47 false
+  findings.
+- Accepting comparators held in a variable, `sort.Slice` index comparators
+  and `sort.Sort` with a `Less` method, each a 20 to 60 line extension.
+- The known misses: last writer wins, a map-write value that calls a
+  function, `golang.org/x/exp/maps.Keys` and `reflect.MapKeys`.

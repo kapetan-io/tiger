@@ -27,14 +27,14 @@ found three bugs in the trial code, filed as ENG-193, ENG-194 and ENG-195.
 
 | # | Proposal | Recommendation | If we agree | If we don't | Decision |
 |---|---|---|---|---|---|
-| 1 | Add a language model to judge waiver reasons | Reject | tiger stays deterministic; nothing changes | a model judges reasons inside `tiger check` | open |
+| 1 | Add a language model to judge waiver reasons | Reject | tiger stays deterministic; nothing changes | a model judges reasons inside `tiger check` | Reject |
 | 2 | Keep requiring proof that a loop ends, and make both loop rules sound (TS-V01, TS-S02) | Change | the proof rule keeps blocking and proves more; the 20 holes in `experiments/gaps` close; a constant cap reports when hit | 62 findings on correct code stay, and loops that run forever keep passing | Keep and change |
 | 3 | Remove the single-implementation interface rule (TS-X01) | Remove | the rule is deleted | 24 findings stay, each with a fix that worsens the design | Remove |
 | 4 | Stop requiring a comment on dropped errors in cleanup code (TS-E02) | Change | 47 findings go away | a comment is still required there | Keep and change |
 | 5 | Don't count a leading `t` or `ctx` toward the four-parameter limit (TS-N07) | Change | 21 findings go away | the limit counts them as today | Keep and change |
 | 6 | Stop checking test files for goroutine-per-item loops (TS-C09) | Change | 12 findings go away | test files keep firing | Keep and change |
 | 7 | Make four rules check behavior instead of names | Change | renaming no longer passes; correct shutdown code passes; a loop's only exit is its stop case; goleak is required | the name holes stay open and the rules point agents at shapes that hid four querator bugs | Keep and change |
-| 8 | Teach the map-order rule collect-then-sort (TS-T02) | Change | correct code stops firing | correct code must be rewritten to `slices.Sorted` | open |
+| 8 | Accept collect-then-sort in the map-order rule (TS-T02) | Change | correct code stops firing | correct code must be rewritten to `slices.Sorted` | Keep and change: plain sorts plus full coverage |
 | 9 | Add a baseline file that grandfathers existing findings | Reject | nothing changes | build a baseline mechanism | open |
 | 10 | Make `//nolint` on a tiger rule a blocking finding (TS-L09) | Change | the silent bypass closes | `//nolint` keeps silencing tiger's rules | open |
 | 11 | Keep `//tiger:restrict` opt-in and restore it in the explainer | Keep | the explainer gets the directive back | restrictions turn on by default | open |
@@ -125,6 +125,8 @@ only approximates. Map order is the example. TS-T02 bans the shape, and the doub
 output never varied.
 
 ### Call 1: add a language model to judge waiver reasons
+
+**Decision (2026-10-01): Reject.** Tiger stays deterministic. Waiver reasons stay a claim that pull request review reads, outside the pass/fail verdict.
 
 **Recommendation: Reject.** If we agree, tiger stays deterministic and nothing changes. If we
 don't, a model judges waiver reasons inside `tiger check`.
@@ -859,7 +861,42 @@ every waiter select on `done`. The tests for each shape are in
 writing an empty `Reset`, and past TS-C02 by writing `wg.Go` with no `Wait`. The rules keep pointing
 agents at shapes that hid four bugs in querator's shutdown.
 
-### Call 8: teach the map-order rule collect-then-sort (TS-T02)
+### Call 8: accept collect-then-sort in the map-order rule (TS-T02)
+
+**Decision (2026-10-02): Keep and change, plain sorts plus full coverage.** TS-T02 stays blocking
+and gains four changes, each proven in `experiments/fullcoverage`:
+
+- **Plain sorts.** A map loop that appends into a local slice passes when the slice's first use
+  after the loop is `sort.Strings`, `sort.Ints` or `slices.Sort` on string or integer elements.
+  Equal values of those types can't be told apart, so the result never depends on map order. Floats
+  are excluded, because -0 and +0 compare equal and print differently.
+- **Full coverage.** A comparator sort passes only when its comparisons, taken together, cover every
+  field of the element with `cmp.Compare`, `strings.Compare`, or `bytes.Compare` on a whole array.
+  Covering every field proves the comparator returns 0 only for identical elements. Pointer,
+  interface, bool, float and `time.Time` fields never count as covered. A `Compare` method on a key
+  type that passes the same check counts too, which gives struct and array keys a way through:
+  `slices.SortedFunc(maps.Keys(m), K.Compare)`. Every other comparator sort fires with its own
+  message, which names `slices.Sorted(maps.Keys(m))` followed by `slices.SortStableFunc`.
+- **The escape closes.** A `maps.Keys`, `maps.Values` or `maps.All` result fires unless it goes to
+  `slices.Sorted`, a full-coverage `SortedFunc`, `maps.Collect` or `maps.Insert`, or a range that
+  is checked like a map range. This catches `slices.Collect(maps.Keys(m))`, today's documented miss.
+- **No reads of carried state.** A map write gated by a counter, such as copying the first three
+  entries visited, fires.
+
+A deliberation weighed plain sorts against trusting every sort and against proving a comparator
+total by tracing the key. About 15% of comparator sorts after a map loop in the module cache tie
+and leak map order (`docker images`, x/tools linecount, revive, containerd's unmount order,
+`go/ast`'s `CommentMap.String`); trusting every sort would pass them silently. Full coverage
+replaced the key-tracing proof because it is a check on the element's type, not on what the code
+means. The experiment's soundness test runs the prototype's verdict on 72 functions, 9 of them
+real sites, and calls each one 200 times; no function it passes prints more than one result, and
+every boundary probe it rejects really does vary. On real code full coverage accepts few sites (4 in
+970 modules, all in tiger), because most comparators are `sort.Slice` or cover only the key. Its
+value is the struct-key path and the closed escape. Plain sorts do most of the work: 91 sites
+accepted, including querator's 4. On the trial pins the findings drop from 11 to 7 on querator and
+from 17 to 15 on git-server, and none are added. Keys with no order (pointers, interfaces) have no
+check tiger can make, so they get a pattern (call 15). Tightening the rest of today's allowlist is a
+separate follow-up.
 
 **Recommendation: Change.** If we agree, correct collect-then-sort code stops firing. If we don't,
 that code must be rewritten to `slices.Sorted(maps.Keys(m))`.
@@ -1411,7 +1448,7 @@ patterns follow them.
    `Shutdown` close stop before it waits? Is there a test that calls `Shutdown` with an expired
    context?
 
-**The seed patterns.** Six already exist as tested code from this decision's experiments:
+**The seed patterns.** Seven already exist as tested code from this decision's experiments:
 
 | Pattern | Comes from | Backs up | The bug behind it |
 |---|---|---|---|
@@ -1421,6 +1458,7 @@ patterns follow them.
 | Capped worklist that reports when the cap is hit | `gaps/WalkReported` | TS-S02, S01 | git-server's tag-peel denial of service (ENG-159 trial) |
 | Page over an outside stream | `gaps/ReadLines`, `cursorbound` | TS-S02, call 13 | querator's whole-partition scans |
 | Clamp a limit where it enters the program | `gaps/ListClamped`, `gaps/ParsePack` | call 2, change 6 | ENG-193, ENG-194, ENG-195 |
+| Sorted map output when the key has no order | `fullcoverage/cases/checker`, `cases/commentmap` | TS-T02 (call 8) | Go issues #27013 and #30202, `go/ast`'s `CommentMap.String` |
 
 `examples/ledger` joins them as the invariant pattern, which backs TS-A07, A08 and A09.
 
@@ -1446,7 +1484,7 @@ pattern collection goes stale.
 **What agreeing changes.**
 
 - Patterns live under `patterns/<name>/` in tiger's root module, so the existing dogfood job and
-  `go test ./...` cover them. `examples/` is renamed `patterns/`, with `examples/ledger` and the six
+  `go test ./...` cover them. `examples/` is renamed `patterns/`, with `examples/ledger` and the seven
   seed patterns as the first entries. Each seed is cleaned up to meet the requirements before it is
   added; `experiments/call7` gets 28 findings today, most from its test helper and file layout.
 - The `tiger` binary embeds the patterns. `tiger pattern <name>` prints a pattern's card (the rules
@@ -1525,7 +1563,11 @@ reopens a ticket.
    exempted shape.
 5. **Silencing channels** (call 10). ENG-178 items 2 to 4, ENG-179 item 1, and counting
    `//nolint:<linter>` as `TS-L09-escape`.
-6. **TS-T02 allowlist growth** (call 8), starting with collect-then-sort.
+6. **TS-T02 collect-then-sort, full coverage and the closed escape** (call 8). Build from
+   `experiments/fullcoverage`, keeping its soundness test. A second ticket tightens the rest of the
+   allowlist: the prototype also refuses `keys[i] = k; i++` and reads of carried state anywhere in
+   the body, which finds 31 real leaks tiger misses across the module cache and adds 47 false
+   findings to work down first.
 7. **Specification reconciliation**, one ticket. Covers the TS-T02 line and Part V table, TS-V01,
    TS-X01's removal, TS-L09's `//nolint` wording, the restriction-set defaults, and the ENG-181
    gaps (`tiger.yaml`, `tiger golangci --print`, the rule count).
@@ -1545,6 +1587,6 @@ reopens a ticket.
 11. **Teach TS-S02 to tell a safety cap from a page size** (call 14), as part of follow-up 1's
     release, and update the spec line and message to state the rule.
 12. **The patterns collection** (call 15): rename `examples/` to `patterns/`, clean up and add the
-    six seed patterns, embed them in the binary behind `tiger pattern`, add the registry field and
+    seven seed patterns, embed them in the binary behind `tiger pattern`, add the registry field and
     the driver's pointer suffix with its meta-tests, run `-race` on `patterns/` in CI, and ship the
     `tiger` binary alongside the plugin.
