@@ -15,6 +15,7 @@ good Go, with no rule it backs up and no bug behind it, does not qualify.
 1. **Each pattern is runnable code, not prose.** A small Go package showing the right shape, next to
    the broken shape it replaces. Tests demonstrate both, the way `experiments/call7` shows
    `StopDoneLoop` cleaning up every time and `EarlyExitLoop` skipping cleanup. Tests are the proof.
+   The broken shape shows only the gap: it passes `tiger check`, and its test shows the bug.
 2. **CI keeps the patterns honest.** Every pattern must pass `tiger check` with zero findings and run
    its tests under `-race`. A pattern can't fall out of date with the rules, because the build fails
    first.
