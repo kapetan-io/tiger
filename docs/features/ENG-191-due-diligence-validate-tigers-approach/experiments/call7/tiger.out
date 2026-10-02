@@ -1,0 +1,29 @@
+call7_test.go:21:2: TS-C02: this go statement starts a goroutine nobody owns: nothing says when it exits or ties it to a context — start it through errgroup.Group.Go
+call7_test.go:98:36: TS-C05: this channel operation blocks outside a select, so shutdown can't interrupt it — wrap it in a select that also has case <-ctx.Done(): return ctx.Err()
+call7_test.go:99:2: TS-C05: this channel operation blocks outside a select, so shutdown can't interrupt it — wrap it in a select that also has case <-ctx.Done(): return ctx.Err()
+call7_test.go:104:2: TS-C02: this go statement starts a goroutine nobody owns: nothing says when it exits or ties it to a context — start it through errgroup.Group.Go
+call7_test.go:116:36: TS-C05: this channel operation blocks outside a select, so shutdown can't interrupt it — wrap it in a select that also has case <-ctx.Done(): return ctx.Err()
+call7_test.go:117:2: TS-C05: this channel operation blocks outside a select, so shutdown can't interrupt it — wrap it in a select that also has case <-ctx.Done(): return ctx.Err()
+call7_test.go:121:2: TS-C02: this go statement starts a goroutine nobody owns: nothing says when it exits or ties it to a context — start it through errgroup.Group.Go
+call7_test.go:132:36: TS-C05: this channel operation blocks outside a select, so shutdown can't interrupt it — wrap it in a select that also has case <-ctx.Done(): return ctx.Err()
+call7_test.go:133:2: TS-C05: this channel operation blocks outside a select, so shutdown can't interrupt it — wrap it in a select that also has case <-ctx.Done(): return ctx.Err()
+call7_test.go:148:36: TS-C05: this channel operation blocks outside a select, so shutdown can't interrupt it — wrap it in a select that also has case <-ctx.Done(): return ctx.Err()
+call7_test.go:149:2: TS-C05: this channel operation blocks outside a select, so shutdown can't interrupt it — wrap it in a select that also has case <-ctx.Done(): return ctx.Err()
+call7_test.go:153:2: TS-C02: this go statement starts a goroutine nobody owns: nothing says when it exits or ties it to a context — start it through errgroup.Group.Go
+call7_test.go:153:14: TS-C05: this channel operation blocks outside a select, so shutdown can't interrupt it — wrap it in a select that also has case <-ctx.Done(): return ctx.Err()
+call7_test.go:154:2: TS-C02: this go statement starts a goroutine nobody owns: nothing says when it exits or ties it to a context — start it through errgroup.Group.Go
+call7_test.go:154:14: TS-C05: this channel operation blocks outside a select, so shutdown can't interrupt it — wrap it in a select that also has case <-ctx.Done(): return ctx.Err()
+call7_test.go:157:21: TS-C05: this channel operation blocks outside a select, so shutdown can't interrupt it — wrap it in a select that also has case <-ctx.Done(): return ctx.Err()
+call7_test.go:158:21: TS-C05: this channel operation blocks outside a select, so shutdown can't interrupt it — wrap it in a select that also has case <-ctx.Done(): return ctx.Err()
+fakes.go:79:13: TS-M05: this Put is not preceded by a Reset (or a zeroing) of the same value on every path to it — call Reset() or zero the value before every Put, so pooled data can't leak to the next user
+fakes.go:85:2: TS-M05: this Put is not preceded by a Reset (or a zeroing) of the same value on every path to it — call Reset() or zero the value before every Put, so pooled data can't leak to the next user
+loops.go:11:6: TS-C12: this channel type is declared outside fakes.go, the file that holds this package's channel types — move the declaration to fakes.go
+loops.go:43:47: TS-C05: this channel operation blocks outside a select, so shutdown can't interrupt it — wrap it in a select that also has case <-ctx.Done(): return ctx.Err()
+loops.go:53:3: TS-C05: this channel operation blocks outside a select, so shutdown can't interrupt it — wrap it in a select that also has case <-ctx.Done(): return ctx.Err()
+loops.go:67:6: TS-C12: this channel type is declared outside fakes.go, the file that holds this package's channel types — move the declaration to fakes.go
+loops.go:103:46: TS-C05: this channel operation blocks outside a select, so shutdown can't interrupt it — wrap it in a select that also has case <-ctx.Done(): return ctx.Err()
+owners.go:10:6: TS-C12: this channel type is declared outside fakes.go, the file that holds this package's channel types — move the declaration to fakes.go
+owners.go:20:2: TS-C02: this go statement starts a goroutine nobody owns: nothing says when it exits or ties it to a context — start it through errgroup.Group.Go
+owners.go:35:6: TS-C12: this channel type is declared outside fakes.go, the file that holds this package's channel types — move the declaration to fakes.go
+owners.go:62:6: TS-C12: this channel type is declared outside fakes.go, the file that holds this package's channel types — move the declaration to fakes.go
+tiger: 28 blocking

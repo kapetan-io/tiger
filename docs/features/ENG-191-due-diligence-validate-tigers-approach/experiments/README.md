@@ -1,6 +1,6 @@
 # ENG-191 experiments
 
-Five small Go modules back the loop-bound calls in `../decision.md`. Each holds
+Six small Go modules back the loop-bound calls in `../decision.md`. Each holds
 its own `go.mod`, so the repo's `go test ./...` and `tiger check ./...` skip
 them. Each directory also commits the output of both commands, captured with
 tiger built from `main` at `5126797`.
@@ -158,3 +158,25 @@ What production needs that the prototype lacks:
   text.
 - The call-site flag for `math.MaxInt`, the type's maximum, or a constant at
   least half of it.
+
+## call7
+
+The shapes behind call 7, each with a runtime test. "Tiger today" is
+`tiger.out`; "Under call 7" is what the decided rules would report.
+
+| Shape | Tiger today | Under call 7 | At runtime |
+|---|---|---|---|
+| `DrainLatch`, select on a `Done()` that returns nil | no finding | TS-S03/C05: not a `context.Context` | never stops |
+| `Worker.Run`, a `shutdown` channel nothing closes | no finding | TS-S03/C05: nothing closes or sends on it | never stops |
+| `UseWithEmptyReset`, an empty `Reset` before `Put` | no finding | TS-M05 | the next user sees `alice` |
+| `UseWithZero`, `*b = Buf{}` before `Put` | **TS-M05 (false finding, the poolzero bug)** | passes | never leaks |
+| `UnwaitedDaemon`, `Add`/`go`/`Done` with no `Wait` (querator's trial bug) | TS-C02 | TS-C02 | `Shutdown` returns while the goroutine runs |
+| `WaitedDaemon`, `wg.Go` with `Wait` in `Shutdown` | no finding | passes | waits for the goroutine |
+| `GoNoWaitDaemon`, `wg.Go` with no `Wait` | **no finding** | TS-C02: `Wait` never reached | `Shutdown` returns while the goroutine runs |
+| `EarlyExitLoop`, a request case that returns on a flag (ENG-160's shape) | no TS-S03 finding | one-exit rule | cleanup skipped; `Shutdown` waits out its deadline |
+| `StopDoneLoop`, close `stop` once, one exit, close `done` | no finding on the loop | passes | cleans up every time, survives an expired `Shutdown`, two concurrent `Shutdown`s both wait |
+
+Tiger's other findings here are TS-C05 on the demo `Submit` sends and
+`<-ready`, TS-M05 on `PeekPooled`'s read-only `Put`, and TS-C12 asking for the
+channel types to share one file; none bear on call 7. The tests pass 50 of 50
+runs under `-race`.

@@ -1,0 +1,24 @@
+=== RUN   TestDrainLatchNeverStops
+--- PASS: TestDrainLatchNeverStops (0.30s)
+=== RUN   TestWorkerNeverStops
+--- PASS: TestWorkerNeverStops (0.30s)
+=== RUN   TestEmptyResetLeaksTheLastUser
+--- PASS: TestEmptyResetLeaksTheLastUser (0.00s)
+=== RUN   TestZeroBeforePutNeverLeaks
+--- PASS: TestZeroBeforePutNeverLeaks (0.00s)
+=== RUN   TestUnwaitedDaemonReturnsEarly
+--- PASS: TestUnwaitedDaemonReturnsEarly (0.00s)
+=== RUN   TestWaitedDaemonWaits
+--- PASS: TestWaitedDaemonWaits (0.05s)
+=== RUN   TestGoNoWaitDaemonReturnsEarly
+--- PASS: TestGoNoWaitDaemonReturnsEarly (0.00s)
+=== RUN   TestEarlyExitLoopSkipsCleanup
+--- PASS: TestEarlyExitLoopSkipsCleanup (0.20s)
+=== RUN   TestStopDoneLoopAlwaysCleansUp
+--- PASS: TestStopDoneLoopAlwaysCleansUp (0.00s)
+=== RUN   TestStopDoneLoopSurvivesAnExpiredShutdown
+--- PASS: TestStopDoneLoopSurvivesAnExpiredShutdown (0.02s)
+=== RUN   TestStopDoneLoopDoubleShutdownBothWait
+--- PASS: TestStopDoneLoopDoubleShutdownBothWait (0.00s)
+PASS
+ok  	call7	2.204s
