@@ -1,0 +1,14 @@
+=== RUN   TestDroppedErrorFires
+--- PASS: TestDroppedErrorFires (0.29s)
+=== RUN   TestBareNolintSatisfiesDroppedError
+--- PASS: TestBareNolintSatisfiesDroppedError (0.25s)
+=== RUN   TestTigerCheckIgnoresLineNolint
+--- PASS: TestTigerCheckIgnoresLineNolint (0.04s)
+=== RUN   TestPluginLineNolintSilencesFinding
+--- PASS: TestPluginLineNolintSilencesFinding (0.14s)
+=== RUN   TestFileNolintSilencesWholeFile
+--- PASS: TestFileNolintSilencesWholeFile (0.19s)
+=== RUN   TestExclusionsSilenceFinding
+--- PASS: TestExclusionsSilenceFinding (0.18s)
+PASS
+ok  	nolint	2.361s
