@@ -38,7 +38,7 @@ found three bugs in the trial code, filed as ENG-193, ENG-194 and ENG-195.
 | 9 | Add a baseline file that grandfathers existing findings | Reject | nothing changes | build a baseline mechanism | Reject |
 | 10 | Make `//nolint` on a tiger rule a blocking finding (TS-L09) | Change | the silent bypass closes | `//nolint` keeps silencing tiger's rules | Keep and change: opt-in, off by default |
 | 11 | Keep `//tiger:restrict` opt-in and restore it in the explainer | Keep | the explainer gets the directive back | restrictions turn on by default | Remove all package-level declarations |
-| 12 | Fix the stale map-order wording in the spec and explainer | Fix docs | the spec and explainer are corrected | the documents stay inconsistent | open |
+| 12 | Fix the stale map-order wording in the spec and explainer | Fix docs | the spec and explainer are corrected | the documents stay inconsistent | Fix docs: describe call 8's rule and its known misses |
 | 13 | Stop using `//tiger:batched` to waive the loop bound (TS-S02, ADR-0004) | Change | store loops restate the limit they already declare; whole-partition scans get a declared maximum or cancellation | the waiver keeps standing in for a limit nobody declared | open |
 | 14 | Tell a safety cap from a page size by the loop's other exit (TS-S02) | Change | a cap that guards an internal condition must report when hit; a page over an outside stream need not | the spec keeps asking for an assert the tool never checks, and silent caps keep passing | open |
 | 15 | Ship a tested patterns collection for what the rules can't check | Change | runnable, CI-checked patterns back the rules where they stop short; rule messages and reviewers point to them | the unchecked parts of a correct shape stay with review, with nothing to compare against | Agreed: packages plus the binary |
@@ -1134,6 +1134,26 @@ day one.
 
 ### Call 12: fix the stale map-order wording in the spec and explainer (TS-T02)
 
+**Decision (2026-10-04): Fix docs, describing the rule as call 8 changes it.** The documents
+describe the decided rule, not today's analyzer, and drop "exact" as well as "heuristic".
+
+- **Explainer.** TS-T02 bans every map range except an allowlist of shapes that can't depend on
+  order. The allowlist includes collect-then-sort with a plain sort, or with a comparator that
+  covers every field (call 8). A finding means the loop's shape is outside the allowlist, not that
+  the output really varies; 72% of the rejected comparator sorts in call 8's sample can't tie. The
+  rule passes five shapes that do depend on order, and the double-run test (TS-T11) backs them up.
+- **Specification.** The TS-T02 enforcement line and the Part V analyzer table describe the
+  allowlist, the closed `maps.Keys`/`Values`/`All` escape, and the known misses, in place of
+  "range over a map whose body appends or writes. Heuristic".
+- **Known misses**, from `experiments/fullcoverage`: last writer wins (`inverse[v] = k` when two
+  keys share a value), a map write whose value calls a function (`labels[k] = fmt.Sprint(v)`),
+  `golang.org/x/exp/maps.Keys`, `reflect.Value.MapKeys`, and a range over a type parameter
+  constrained to a map.
+
+The proposal below was written before call 8. The escape it names (collect the keys, never sort,
+range the slice) is closed by call 8, and "exact over a conservative allowlist" overstates a rule
+with known misses.
+
 **Recommendation: Fix docs.** If we agree, the specification and explainer are corrected and the
 tool is unchanged. If we don't, the documents stay inconsistent with each other and the code.
 
@@ -1686,7 +1706,8 @@ reopens a ticket.
    sections around the report once call 16 is decided. Also: drop every `//tiger:restrict`
    mention (call 11), replace "tiger flags any `//nolint`" with the opt-in from call 10, say tiger
    keeps no baseline and does not recommend `--new-from-rev` (call 9), describe the map-order rule
-   as exact over its allowlist with collect-then-sort and full coverage (calls 8 and 12), remove
+   as an allowlist with collect-then-sort and full coverage, a finding as a shape outside it, and
+   its five known misses as backed by TS-T11 (calls 8 and 12), remove
    "covers nearly every real loop", and restore the fuller built-versus-described disclaimer that
    `b452818` shortened.
 9. **Call 2's ADR**, the first of the per-call ADRs above. Tiger blocks a loop it cannot prove ends, because
