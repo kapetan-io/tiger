@@ -1,0 +1,119 @@
+=== RUN   TestHandlerStartsCallingDatabase
+=== PAUSE TestHandlerStartsCallingDatabase
+=== RUN   TestReachIsNotPropagatedToCallers
+=== PAUSE TestReachIsNotPropagatedToCallers
+=== RUN   TestInterfaceCallNamesTheInterface
+=== PAUSE TestInterfaceCallNamesTheInterface
+=== RUN   TestPureHelpersAreSilent
+=== PAUSE TestPureHelpersAreSilent
+=== RUN   TestRemovedCall
+=== PAUSE TestRemovedCall
+=== RUN   TestRefactorWithinOwnerIsSilent
+=== PAUSE TestRefactorWithinOwnerIsSilent
+=== RUN   TestRefactorIntoFreeHelperMovesTheEdge
+=== PAUSE TestRefactorIntoFreeHelperMovesTheEdge
+=== RUN   TestFmtLeaksThroughPackageFilter
+=== PAUSE TestFmtLeaksThroughPackageFilter
+=== RUN   TestContextIsReported
+=== PAUSE TestContextIsReported
+=== RUN   TestWriteThroughIOWriterIsSilent
+=== PAUSE TestWriteThroughIOWriterIsSilent
+=== RUN   TestMessagePassingIsSilent
+=== PAUSE TestMessagePassingIsSilent
+=== RUN   TestChannelReceiverIsReported
+=== PAUSE TestChannelReceiverIsReported
+=== RUN   TestNewMethodOnKnownTypeIsSilent
+=== PAUSE TestNewMethodOnKnownTypeIsSilent
+=== RUN   TestNewConstructorIsReported
+=== PAUSE TestNewConstructorIsReported
+=== RUN   TestFunctionFilter
+=== PAUSE TestFunctionFilter
+=== RUN   TestMixedFilter
+=== PAUSE TestMixedFilter
+=== RUN   TestPackageFilterKeepsFileClose
+=== PAUSE TestPackageFilterKeepsFileClose
+=== RUN   TestMermaid
+=== PAUSE TestMermaid
+=== RUN   TestLoadRevisionLeavesRepositoryAlone
+=== PAUSE TestLoadRevisionLeavesRepositoryAlone
+=== RUN   TestLoadRevisionUnknown
+=== PAUSE TestLoadRevisionUnknown
+=== CONT  TestReachIsNotPropagatedToCallers
+=== CONT  TestPackageFilterKeepsFileClose
+=== CONT  TestMessagePassingIsSilent
+=== CONT  TestWriteThroughIOWriterIsSilent
+=== CONT  TestRefactorWithinOwnerIsSilent
+=== CONT  TestMermaid
+=== CONT  TestNewConstructorIsReported
+=== CONT  TestLoadRevisionLeavesRepositoryAlone
+=== CONT  TestLoadRevisionUnknown
+=== CONT  TestContextIsReported
+=== CONT  TestFunctionFilter
+--- PASS: TestLoadRevisionUnknown (0.35s)
+=== RUN   TestFunctionFilter/handler
+=== PAUSE TestFunctionFilter/handler
+=== RUN   TestFunctionFilter/fmt-errors
+=== PAUSE TestFunctionFilter/fmt-errors
+=== RUN   TestFunctionFilter/file-close
+=== PAUSE TestFunctionFilter/file-close
+=== RUN   TestFunctionFilter/context
+=== PAUSE TestFunctionFilter/context
+=== CONT  TestRemovedCall
+--- PASS: TestLoadRevisionLeavesRepositoryAlone (0.47s)
+=== CONT  TestPureHelpersAreSilent
+--- PASS: TestReachIsNotPropagatedToCallers (7.68s)
+=== CONT  TestFmtLeaksThroughPackageFilter
+--- PASS: TestPureHelpersAreSilent (9.36s)
+=== CONT  TestMixedFilter
+=== RUN   TestMixedFilter/handler
+=== PAUSE TestMixedFilter/handler
+=== RUN   TestMixedFilter/fmt-errors
+=== PAUSE TestMixedFilter/fmt-errors
+=== RUN   TestMixedFilter/file-close
+=== PAUSE TestMixedFilter/file-close
+=== RUN   TestMixedFilter/context
+=== PAUSE TestMixedFilter/context
+=== RUN   TestMixedFilter/pure
+=== PAUSE TestMixedFilter/pure
+=== CONT  TestInterfaceCallNamesTheInterface
+--- PASS: TestWriteThroughIOWriterIsSilent (14.21s)
+=== CONT  TestRefactorIntoFreeHelperMovesTheEdge
+--- PASS: TestContextIsReported (15.02s)
+=== CONT  TestNewMethodOnKnownTypeIsSilent
+--- PASS: TestMessagePassingIsSilent (17.34s)
+=== CONT  TestChannelReceiverIsReported
+--- PASS: TestMermaid (19.72s)
+=== CONT  TestHandlerStartsCallingDatabase
+--- PASS: TestPackageFilterKeepsFileClose (21.19s)
+=== CONT  TestFunctionFilter/handler
+--- PASS: TestRefactorWithinOwnerIsSilent (21.20s)
+=== CONT  TestFunctionFilter/fmt-errors
+--- PASS: TestNewConstructorIsReported (25.11s)
+=== CONT  TestFunctionFilter/context
+--- PASS: TestFmtLeaksThroughPackageFilter (18.21s)
+=== CONT  TestFunctionFilter/file-close
+--- PASS: TestRemovedCall (28.46s)
+=== CONT  TestMixedFilter/fmt-errors
+--- PASS: TestHandlerStartsCallingDatabase (15.68s)
+=== CONT  TestMixedFilter/pure
+=== CONT  TestMixedFilter/context
+--- PASS: TestInterfaceCallNamesTheInterface (29.17s)
+=== CONT  TestMixedFilter/file-close
+=== CONT  TestMixedFilter/handler
+--- PASS: TestRefactorIntoFreeHelperMovesTheEdge (30.66s)
+--- PASS: TestNewMethodOnKnownTypeIsSilent (29.90s)
+--- PASS: TestChannelReceiverIsReported (28.00s)
+--- PASS: TestFunctionFilter (0.00s)
+    --- PASS: TestFunctionFilter/handler (15.11s)
+    --- PASS: TestFunctionFilter/fmt-errors (17.92s)
+    --- PASS: TestFunctionFilter/context (19.61s)
+    --- PASS: TestFunctionFilter/file-close (20.07s)
+--- PASS: TestMixedFilter (0.00s)
+    --- PASS: TestMixedFilter/fmt-errors (14.54s)
+    --- PASS: TestMixedFilter/pure (9.46s)
+    --- PASS: TestMixedFilter/handler (7.58s)
+    --- PASS: TestMixedFilter/context (11.45s)
+    --- PASS: TestMixedFilter/file-close (9.20s)
+PASS
+ok  	changed/changed	49.629s
+?   	changed/cmd/changed	[no test files]

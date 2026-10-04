@@ -1,8 +1,8 @@
 # ENG-191 experiments
 
-Ten small Go modules back calls in `../decision.md`: six for the loop-bound
-calls, `maporder` and `fullcoverage` for call 8, `newfromrev` for call 9, and
-`nolint` for call 10. Each holds
+Eleven small Go modules back calls in `../decision.md`: six for the loop-bound
+calls, `maporder` and `fullcoverage` for call 8, `newfromrev` for call 9,
+`nolint` for call 10, and `changed` for call 16. Each holds
 its own `go.mod`, so the repo's `go test ./...` and `tiger check ./...` skip
 them. Each directory also commits the output of both commands, captured with
 tiger built from `main` at `5126797`.
@@ -286,3 +286,30 @@ TIGER_GCL=<path>/tiger-gcl TIGER=<path>/tiger go test -count=1 -v ./...
 ```
 
 `tiger.out` holds three findings in the test helpers, not in the fixtures.
+
+## changed
+
+Backs call 16. A prototype of `tiger changed <base>`: for each struct, or free
+function, it lists the types and functions it calls now that it did not call
+at the base revision. Nothing propagates to callers, and a new method on a type
+the struct already calls is not reported. `evidence.md` holds the real-code
+runs.
+
+The tests build a fixture git repository from `changed/testdata`, with
+`fakedb` as a stand-in database driver outside the module. They cover a
+handler that starts calling the database, a change reported on the struct that
+made it and not on its callers, an interface call named as the interface, pure
+helpers staying silent, a removed call, refactors within a struct, a new
+method on a known type staying silent, a new constructor being reported, and
+the receiving end of a channel being reported. The known blind spots each have
+a test too: a write through `io.Writer`, and a send over a channel.
+
+On 10 querator commits it printed 5 lines, 2 of them real (aeb014c, where the
+daemon starts constructing the Postgres stores). On git-server's head commit it
+printed 173 lines, 110 from generated code; the mixed filter and skipping
+generated files bring that to 36.
+
+```sh
+go run ./cmd/changed -base origin/main <dir>   # or: changed <base-dir> <head-dir>
+go test -race -count=1 -v ./...
+```

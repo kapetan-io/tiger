@@ -37,11 +37,12 @@ found three bugs in the trial code, filed as ENG-193, ENG-194 and ENG-195.
 | 8 | Accept collect-then-sort in the map-order rule (TS-T02) | Change | correct code stops firing | correct code must be rewritten to `slices.Sorted` | Keep and change: plain sorts plus full coverage |
 | 9 | Add a baseline file that grandfathers existing findings | Reject | nothing changes | build a baseline mechanism | Reject |
 | 10 | Make `//nolint` on a tiger rule a blocking finding (TS-L09) | Change | the silent bypass closes | `//nolint` keeps silencing tiger's rules | Keep and change: opt-in, off by default |
-| 11 | Keep `//tiger:restrict` opt-in and restore it in the explainer | Keep | the explainer gets the directive back | restrictions turn on by default | open |
+| 11 | Keep `//tiger:restrict` opt-in and restore it in the explainer | Keep | the explainer gets the directive back | restrictions turn on by default | Remove all package-level declarations |
 | 12 | Fix the stale map-order wording in the spec and explainer | Fix docs | the spec and explainer are corrected | the documents stay inconsistent | open |
 | 13 | Stop using `//tiger:batched` to waive the loop bound (TS-S02, ADR-0004) | Change | store loops restate the limit they already declare; whole-partition scans get a declared maximum or cancellation | the waiver keeps standing in for a limit nobody declared | open |
 | 14 | Tell a safety cap from a page size by the loop's other exit (TS-S02) | Change | a cap that guards an internal condition must report when hit; a page over an outside stream need not | the spec keeps asking for an assert the tool never checks, and silent caps keep passing | open |
 | 15 | Ship a tested patterns collection for what the rules can't check | Change | runnable, CI-checked patterns back the rules where they stop short; rule messages and reviewers point to them | the unchecked parts of a correct shape stay with review, with nothing to compare against | Agreed: packages plus the binary |
+| 16 | Replace effect and frame pins with a `tiger changed` report | Change | a reviewer sees which struct started calling something new, with nothing an agent can edit to hide it | pins that miss every database and network call through an interface or library stay | Keep and change: report replaces pins |
 
 ## The evidence this rests on
 
@@ -1082,6 +1083,17 @@ over one false positive, which is louder but loses more signal than a counted wa
 
 ### Call 11: keep `//tiger:restrict` opt-in and restore it in the explainer (TS-P01, P02, K03)
 
+**Decision (2026-10-04): Remove all package-level declarations.** `//tiger:restrict` goes, with
+TS-P01, P02, P03 and K03 and the rule that requires pins on every exported function of a
+closed-dispatch package. Each axis is either redundant or unworkable. `no-reflect` repeats TS-S12,
+which already bans `reflect` everywhere. `imports(...)` repeats TS-D01's default and the TS-X03
+layer file. `closed-dispatch` is not from TigerStyle or Power of Ten (the nearest ancestor is Power
+of Ten's ban on function pointers), no codebase declares it, and it contradicts tiger's own
+cancellation rules: a probe that waits the way TS-C05 requires gets two TS-K03 findings on
+`ctx.Done()` and `ctx.Err()`, whose named fix is impossible because no concrete type exists for a
+`context.Context` you are handed. Pins stay opt-in, as the documentation describes; what replaces
+effect and frame pins is decided separately.
+
 **Recommendation: Keep.** If we agree, the tool stays as it is and the explainer gets the
 directive back. If we don't, restrictions turn on for every package by default.
 
@@ -1541,6 +1553,67 @@ pattern collection goes stale.
 review has nothing concrete to compare a diff against. An agent fixing a TS-S03 finding improvises
 a shutdown loop, and querator shows what improvised shutdown loops look like.
 
+### Call 16: replace effect and frame pins with a `tiger changed` report (TS-F01, F02, F07)
+
+**Decision (2026-10-04): Keep and change; the report replaces pins.** `//tiger:effects` and
+`//tiger:frame` pins go, with TS-F01, F02 and F07, the effect table and the effects and frames
+analyzers. `tiger changed <base>` replaces them: for each struct (or free function), it lists the
+types and functions it calls now that it did not call at the base revision. A new method on a type
+the struct already calls is not reported. Nothing is annotated and nothing is propagated to
+callers. It is a report for review, human or agent, not a rule, so ADR-0012 does not apply.
+`//tiger:variant` stays; `//tiger:requires` and `//tiger:ensures` are not part of this call. The
+report's output format is a follow-up ticket.
+
+**What pins were for.** The explainer's own example is the goal: if the architecture allows
+database access only through a `Store` interface and an agent adds a database call somewhere else,
+the reviewer should learn that the PR changed the architecture, not only the code. That goal stays.
+
+**Why pins could not meet it.** A probe showed tiger computing `func Save(s Storage, e string)
+error { return s.Write(e) }` as having no effects and accepting `//tiger:effects none` on it, while
+a test passed a `Disk` and a file was written. On querator, all 276 functions on the request path,
+from the HTTP handlers to the Postgres, Mongo and Badger stores, compute as doing no IO, because
+tiger drops calls through interfaces and calls into third-party libraries. `fmt.Fprintf` counts as
+disk IO, so a pure SHA-1 hash fails a pin. Frames miss a write through a value receiver's pointer
+field and a map `delete` through the receiver. Fixing effects needs either a table mapping every
+library's methods to effects, a maintenance burden on tiger and adopters that never covers pgx or
+the next driver, or closed dispatch, which call 11 removed. Pinning an interface is also the wrong
+question: `Save` does disk IO with a `Disk` and none with a test double, so only concrete code has
+one true answer. And a pin is a comment the agent edits in the same commit as the code; it helps
+only when a change three calls deep forces an edit to a pin the human cares about, and then only
+if someone notices the pin line changed.
+
+**What the deliberation weighed.** Three advocates prototyped on querator and git-server. Reach
+pins (a pin listing the outside code a function calls, by Go name) caught 23 real behavior changes
+over 10 querator commits with no table, but pins high in the call stack ran to about 1,300
+characters and the agent still edits them. Effects through the signature (IO only through values
+passed in, locked by a `//tiger:uses` pin) caught 4 of 6 IO changes but needed a package-level
+declaration call 11 had just removed. Removing pins cost nothing in use (no codebase has one) but
+left the goal unmet. The owner's question settled it: if the goal is a report of what changed
+between the base branch and the PR, tiger can compute both sides itself and needs no pins.
+
+**What the report shows, and where.** A change is reported on the struct where it was written,
+not on everything that calls it: if B starts calling the database and A calls B, only B is
+reported, because B is where the surprising change happened. Work handed over a channel shows on
+the struct at the receiving end when it makes the new call. Calls are named by what the code
+calls: an interface call is named by the interface, never by a guess at the implementation, so
+the report needs no table. Pure helpers are kept out by a filter computed from the import graph,
+with no list of packages: a method or interface counts when its package reaches `syscall`, and a
+free function counts when its own body does, which keeps `os`, `net`, `time`, pgx and badger and
+drops `strings`, `sort` and `fmt`. Generated files are skipped and `context.Context` is shown.
+
+**The evidence.** `experiments/changed` holds the prototype (537 lines) and 29 tests on a fixture
+git repository, including a handler that starts calling the database, reach not propagated to
+callers, an interface call named as the interface, a new method on a known type staying silent, a
+new constructor reported, and the receiving end of a channel reported. On 10 querator commits it
+printed 5 lines, 2 of them real: commit aeb014c, where the daemon starts constructing the Postgres
+stores. On git-server's head commit it printed 173 lines, 110 from generated protobuf code; the
+mixed filter and skipping generated files bring that to 36 hand-written lines.
+
+**Known blind spots,** each pinned by a test: a write through `io.Writer` is silent, because the
+`io` package never reaches the OS; moving a call into a separate free function reads as one edge
+removed and one added; a renamed type reads as all its edges removed and re-added. Whether to add
+a section for new methods on known types is an open question for the output-format ticket.
+
 ---
 
 ## What happens next
@@ -1588,7 +1661,9 @@ reopens a ticket.
    `experiments/call7` becomes an analyzer test case. Rerun both codebases.
 3. **Remove TS-X01** (call 3), end to end per ADR-0006, with an ADR recording why: a shape rule
    cannot tell a speculative interface from one that narrows capability, like git-server's
-   `RefReader`, and its remedy damages the second kind.
+   `RefReader`, and its remedy damages the second kind. Remove `//tiger:restrict` (call 11) the same
+   way: TS-P01, P02, P03 and K03, the `restrictions` and `closedworld` analyzers, the directive, and
+   the closed-dispatch pin requirement.
 4. **Exemptions for TS-E02, TS-N07, TS-C09** (calls 4, 5, 6), each with a test case for the
    exempted shape.
 5. **Silencing channels** (call 10). ENG-178 items 3 and 4, ENG-179 item 1, and the opt-in
@@ -1600,12 +1675,20 @@ reopens a ticket.
    the body, which finds 31 real leaks tiger misses across the module cache and adds 47 false
    findings to work down first.
 7. **Specification reconciliation**, one ticket. Covers the TS-T02 line and Part V table, TS-V01,
-   TS-X01's removal, TS-L09's `//nolint` wording, the restriction-set defaults, and the ENG-181
+   TS-X01's removal, TS-L09's `//nolint` opt-in, the removal of `//tiger:restrict`, and the ENG-181
    gaps (`tiger.yaml`, `tiger golangci --print`, the rule count).
-8. **Explainer reconciliation**, one ticket. Restore the `//tiger:restrict` paragraph, split the
-   `//nolint` sentence into the tiger-rule ban and the counted waiver for golangci-lint linters, replace
-   "heuristic" on map order, remove "covers nearly every real loop", and restore the fuller
-   built-versus-described disclaimer that `b452818` shortened.
+8. **Rewrite the Tiger Explainer** (TODO, in ENG-191 itself, as its last step after the calls are
+   decided). The explainer
+   says it "describes tiger as it is meant to be when it is finished", and several of the things it
+   describes are now decided against. Its overview sells effects and pins as the way a reviewer
+   learns that an agent changed the architecture; that goal stays, but pins and computed effects
+   are being replaced by the `tiger changed` report (call 16, pending). Rewrite the effects and pins
+   sections around the report once call 16 is decided. Also: drop every `//tiger:restrict`
+   mention (call 11), replace "tiger flags any `//nolint`" with the opt-in from call 10, say tiger
+   keeps no baseline and does not recommend `--new-from-rev` (call 9), describe the map-order rule
+   as exact over its allowlist with collect-then-sort and full coverage (calls 8 and 12), remove
+   "covers nearly every real loop", and restore the fuller built-versus-described disclaimer that
+   `b452818` shortened.
 9. **Call 2's ADR**, the first of the per-call ADRs above. Tiger blocks a loop it cannot prove ends, because
    a bound in a loop's header is a claim and the experiments show such claims passing on loops that
    run forever. The way out is a counter cap, so the counter check must be sound and a constant cap
@@ -1621,3 +1704,9 @@ reopens a ticket.
     seven seed patterns, embed them in the binary behind `tiger pattern`, add the registry field and
     the driver's pointer suffix with its meta-tests, run `-race` on `patterns/` in CI, and ship the
     `tiger` binary alongside the plugin.
+13. **`tiger changed <base>`** (call 16). Build it from `experiments/changed`: the mixed filter,
+    skip generated files, show `context.Context`. Remove `//tiger:effects` and `//tiger:frame`
+    with TS-F01, F02, F07, the effect table and the effects and frames analyzers, and the
+    effects and frames half of `tiger pin`; ADR-0007 and ADR-0008 are amended to cover variants
+    only. A separate ticket settles the output format, including whether new methods on known
+    types get their own section and how a brand-new package is summarized.
