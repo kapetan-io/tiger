@@ -22,7 +22,22 @@ whatever the database does. `ListUncapped` is querator's shape today.
 test feeds both a fake cursor that stops early, agrees with the limit, or never
 stops, and counts every `Next` call.
 
-Tiger blocks only `uncapped.go` (TS-V01 and TS-S02).
+Tiger blocks only `uncapped.go` (TS-V01 and TS-S02) of those two.
+
+`filtered.go` backs call 13's filtered-loop question: a list that skips rows
+outside a namespace before it keeps one. `fakeTable` puts the matching rows at
+the end of the table.
+
+| Loop | Counts | Tiger | At runtime |
+|---|---|---|---|
+| `ListFilteredCountRows` | every row read, against `limit` | passes | empty page while 5 matches exist |
+| `ListFilteredCountMatches` | only kept rows, in the body | TS-V01 and TS-S02 block | reads all 1,000,000 rows for one match |
+| `ListFilteredTwoLimits` | kept rows against `limit` clamped to `pageMax`, rows read against `scanMax` | passes | fills a page; returns `ErrScanLimit` after 10,000 reads on a sparse table |
+
+The two-limit loop first drew TS-S21 on `scanMax`. The relation that clears it,
+`const _ = uint(scanMax - pageMax)`, says a scan must be able to fill a dense
+page. Tiger can't see the short-page bug in `ListFilteredCountRows`: its only
+other exit drains the cursor, so the counter reads as a page size.
 
 ## annotations
 

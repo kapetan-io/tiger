@@ -39,7 +39,7 @@ found three bugs in the trial code, filed as ENG-193, ENG-194 and ENG-195.
 | 10 | Make `//nolint` on a tiger rule a blocking finding (TS-L09) | Change | the silent bypass closes | `//nolint` keeps silencing tiger's rules | Keep and change: opt-in, off by default |
 | 11 | Keep `//tiger:restrict` opt-in and restore it in the explainer | Keep | the explainer gets the directive back | restrictions turn on by default | Remove all package-level declarations |
 | 12 | Fix the stale map-order wording in the spec and explainer | Fix docs | the spec and explainer are corrected | the documents stay inconsistent | Fix docs: describe call 8's rule and its known misses |
-| 13 | Stop using `//tiger:batched` to waive the loop bound (TS-S02, ADR-0004) | Change | store loops restate the limit they already declare; whole-partition scans get a declared maximum or cancellation | the waiver keeps standing in for a limit nobody declared | open |
+| 13 | Stop using `//tiger:batched` to waive the loop bound (TS-S02, ADR-0004) | Change | store loops restate the limit they already declare; whole-partition scans get a declared maximum or cancellation | the waiver keeps standing in for a limit nobody declared | Keep and change: filtered loops get a page limit and a scan limit |
 | 14 | Tell a safety cap from a page size by the loop's other exit (TS-S02) | Change | a cap that guards an internal condition must report when hit; a page over an outside stream need not | the spec keeps asking for an assert the tool never checks, and silent caps keep passing | open |
 | 15 | Ship a tested patterns collection for what the rules can't check | Change | runnable, CI-checked patterns back the rules where they stop short; rule messages and reviewers point to them | the unchecked parts of a correct shape stay with review, with nothing to compare against | Agreed: packages plus the binary |
 | 16 | Replace effect and frame pins with a `tiger changed` report | Change | a reviewer sees which struct started calling something new, with nothing an agent can edit to hide it | pins that miss every database and network call through an interface or library stay | Keep and change: report replaces pins |
@@ -1373,6 +1373,28 @@ reason.
 
 ### Call 13: stop using `//tiger:batched` to waive the loop bound (TS-S02, ADR-0004)
 
+**Decision (2026-10-04): Keep and change, with two limits on a filtered loop.** `//tiger:batched`
+stops waiving TS-S02 and stays the waiver for TS-M10. A store loop restates the limit it already
+declares. A loop that filters rows before it keeps them has two limits. The page limit counts kept
+rows and is clamped to a declared `pageMax`. The scan limit counts every row read and is a declared
+`scanMax` with `const _ = uint(scanMax - pageMax)`. The scan limit is a safety cap under call 14,
+because the loop's other exit is the page filling, so the loop returns an error when it reaches
+`scanMax`. This settles the open question below: tiger keeps bounding how many times a loop runs,
+not only how much it returns.
+
+`experiments/cursorbound/filtered.go` shows the three shapes against a table whose matching rows
+come last:
+
+| Loop | Tiger | At runtime |
+|---|---|---|
+| counts every row read against `limit` | passes | returns an empty page while 5 matches exist |
+| counts only kept rows, in the body | TS-V01 and TS-S02 block | reads 1,000,000 rows to return one |
+| two limits | passes, once `scanMax` is related to `pageMax` (TS-S21) | fills a page; returns `ErrScanLimit` after 10,000 reads on a sparse table |
+
+Tiger can't see the short page in the first shape: its only other exit drains the cursor, so the
+counter reads as a page size. That gap, with the bug the test reproduces, is the case for a pattern
+under call 15, "filtered page over an outside stream".
+
 **Recommendation: Change.** If we agree, store loops restate the limit they already declare,
 whole-partition scans get a declared maximum or cancellation, and `//tiger:batched` keeps its other
 job. If we don't, the waiver keeps standing in for a limit nobody declared.
@@ -1412,7 +1434,7 @@ that checks `ctx` on every pass so the scan can be cancelled.
 have a limit carry a waiver they do not need. The five scans that cannot be cancelled stay hidden
 behind "the table size is the bound", and the clash with TS-V01 stays open.
 
-**Open question, not decided here.** Do filtered loops need a bound on how many times they run, or
+**Open question, settled by the decision above.** Do filtered loops need a bound on how many times they run, or
 is a bound on how many items they return enough? With the restated limit, `count` counts every row
 examined, so a namespace filter can return fewer than `opts.Limit` matches even when more exist.
 Counting only matches keeps the results right but leaves the run count bounded only by the table's
