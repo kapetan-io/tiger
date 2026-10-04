@@ -1708,5 +1708,5 @@ reopens a ticket.
     skip generated files, show `context.Context`. Remove `//tiger:effects` and `//tiger:frame`
     with TS-F01, F02, F07, the effect table and the effects and frames analyzers, and the
     effects and frames half of `tiger pin`; ADR-0007 and ADR-0008 are amended to cover variants
-    only. A separate ticket settles the output format, including whether new methods on known
+    only. ENG-203 settles the output format, including whether new methods on known
     types get their own section and how a brand-new package is summarized.
