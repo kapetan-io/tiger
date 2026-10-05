@@ -1686,8 +1686,11 @@ reopens a ticket.
    findings to work down first.
 7. **Specification reconciliation**, one ticket. Covers the TS-T02 line and Part V table, TS-S02's line asking for an assert on every cap, TS-V01,
    TS-X01's removal, TS-L09's `//nolint` opt-in, the removal of `//tiger:restrict`, and the ENG-181
-   gaps (`tiger.yaml`, `tiger golangci --print`, the rule count).
-8. **Rewrite the Tiger Explainer** (TODO, in ENG-191 itself, as its last step after the calls are
+   gaps (`tiger.yaml`, `tiger golangci --print`, the rule count). The spec also names the `effects` analyzer, which call 16 removes,
+   as the planned enforcement for TS-F03, F04, F05, F08, A05 and C06 (none built) and for the
+   helper-depth halves of TS-C08 and T01 (forbidigo enforces the direct half today); each gets review as
+   its enforcement or is removed.
+8. **Rewrite the Tiger Explainer** (done 2026-10-04, in ENG-191 itself, after the calls were
    decided). The explainer
    says it "describes tiger as it is meant to be when it is finished", and several of the things it
    describes are now decided against. Its overview sells effects and pins as the way a reviewer
