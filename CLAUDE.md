@@ -42,5 +42,5 @@ pattern in step; a meta-test fails if either names something that does not exist
 Patterns are not reusable runtime packages. A package that encodes a shape is not added in place of
 a pattern; following the pattern is the goal.
 
-The reasoning and the first seven patterns are in
+The reasoning and the seed patterns are in
 `docs/features/ENG-191-due-diligence-validate-tigers-approach/decision.md`, call 15.

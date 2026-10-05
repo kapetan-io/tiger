@@ -1390,8 +1390,8 @@ come last:
 | two limits | passes, once `scanMax` is related to `pageMax` (TS-S21) | fills a page; returns `ErrScanLimit` after 10,000 reads on a sparse table |
 
 Tiger can't see the short page in the first shape: its only other exit drains the cursor, so the
-counter reads as a page size. That gap, with the bug the test reproduces, is the case for a pattern
-under call 15, "filtered page over an outside stream".
+counter reads as a page size. That gap, with the bug the test reproduces, is call 15's eighth seed pattern,
+"filtered page".
 
 **Recommendation: Change.** If we agree, store loops restate the limit they already declare,
 whole-partition scans get a declared maximum or cancellation, and `//tiger:batched` keeps its other
@@ -1499,7 +1499,7 @@ patterns follow them.
    `Shutdown` close stop before it waits? Is there a test that calls `Shutdown` with an expired
    context?
 
-**The seed patterns.** Seven already exist as tested code from this decision's experiments:
+**The seed patterns.** Eight already exist as tested code from this decision's experiments:
 
 | Pattern | Comes from | Backs up | The bug behind it |
 |---|---|---|---|
@@ -1510,6 +1510,7 @@ patterns follow them.
 | Page over an outside stream | `gaps/ReadLines`, `cursorbound` | TS-S02, call 13 | querator's whole-partition scans |
 | Clamp a limit where it enters the program | `gaps/ListClamped`, `gaps/ParsePack` | call 2, change 6 | ENG-193, ENG-194, ENG-195 |
 | Sorted map output when the key has no order | `fullcoverage/cases/checker`, `cases/commentmap` | TS-T02 (call 8) | Go issues #27013 and #30202, `go/ast`'s `CommentMap.String` |
+| Filtered page: a page limit on kept rows and a scan limit that reports | `cursorbound/ListFilteredTwoLimits` | TS-S02, call 13 | `ListFilteredCountRows` passes tiger and returns an empty page while 5 matches exist; querator's Badger list loops filter before counting |
 
 `examples/ledger` joins them as the invariant pattern, which backs TS-A07, A08 and A09.
 
@@ -1535,7 +1536,7 @@ pattern collection goes stale.
 **What agreeing changes.**
 
 - Patterns live under `patterns/<name>/` in tiger's root module, so the existing dogfood job and
-  `go test ./...` cover them. `examples/` is renamed `patterns/`, with `examples/ledger` and the seven
+  `go test ./...` cover them. `examples/` is renamed `patterns/`, with `examples/ledger` and the eight
   seed patterns as the first entries. Each seed is cleaned up to meet the requirements before it is
   added; `experiments/call7` gets 28 findings today, most from its test helper and file layout.
 - The `tiger` binary embeds the patterns. `tiger pattern <name>` prints a pattern's card (the rules
@@ -1709,7 +1710,7 @@ reopens a ticket.
     ADR-0004's loop-bound half and closes ENG-183. Show the restated-limit form in the rule
     reference.
 11. **The patterns collection** (call 15): rename `examples/` to `patterns/`, clean up and add the
-    seven seed patterns, embed them in the binary behind `tiger pattern`, add the registry field and
+    eight seed patterns, embed them in the binary behind `tiger pattern`, add the registry field and
     the driver's pointer suffix with its meta-tests, run `-race` on `patterns/` in CI, and ship the
     `tiger` binary alongside the plugin.
 12. **`tiger changed <base>`** (call 16). Build it from `experiments/changed`: the mixed filter,
