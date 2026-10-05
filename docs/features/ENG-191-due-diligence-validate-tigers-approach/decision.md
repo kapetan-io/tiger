@@ -19,8 +19,8 @@ A rule code like TS-S02 is a label. The sentence next to it says what the rule c
 
 The 2026-10-01 update audited querator's 30 cursor-shaped loops, ran experiments on how tiger
 checks loop bounds, and put the loop rules through three deliberations. That reversed call 2 (keep
-requiring proof that a loop ends, and make both loop rules sound), added calls 13 and 14 in
-section 5, turned call 14 into a tool change, and expanded call 3. A prototype of call 2's change 6
+requiring proof that a loop ends, and make both loop rules sound), added call 13 in
+section 5 and expanded call 3. A prototype of call 2's change 6
 found three bugs in the trial code, filed as ENG-193, ENG-194 and ENG-195.
 
 ## The calls in brief
@@ -40,7 +40,6 @@ found three bugs in the trial code, filed as ENG-193, ENG-194 and ENG-195.
 | 11 | Keep `//tiger:restrict` opt-in and restore it in the explainer | Keep | the explainer gets the directive back | restrictions turn on by default | Remove all package-level declarations |
 | 12 | Fix the stale map-order wording in the spec and explainer | Fix docs | the spec and explainer are corrected | the documents stay inconsistent | Fix docs: describe call 8's rule and its known misses |
 | 13 | Stop using `//tiger:batched` to waive the loop bound (TS-S02, ADR-0004) | Change | store loops restate the limit they already declare; whole-partition scans get a declared maximum or cancellation | the waiver keeps standing in for a limit nobody declared | Keep and change: filtered loops get a page limit and a scan limit |
-| 14 | Tell a safety cap from a page size by the loop's other exit (TS-S02) | Change | a cap that guards an internal condition must report when hit; a page over an outside stream need not | the spec keeps asking for an assert the tool never checks, and silent caps keep passing | open |
 | 15 | Ship a tested patterns collection for what the rules can't check | Change | runnable, CI-checked patterns back the rules where they stop short; rule messages and reviewers point to them | the unchecked parts of a correct shape stay with review, with nothing to compare against | Agreed: packages plus the binary |
 | 16 | Replace effect and frame pins with a `tiger changed` report | Change | a reviewer sees which struct started calling something new, with nothing an agent can edit to hide it | pins that miss every database and network call through an interface or library stay | Keep and change: report replaces pins |
 
@@ -100,7 +99,7 @@ domain vocabulary and shapes the metric could not tell from real mistakes. ADR-0
 removal. The specification keeps those maxims and names review as their enforcement. Nothing here
 argues for bringing them back.
 
-**Proving a loop ends works only when whatever stops it is in the code.** Calls 2, 13, and 14
+**Proving a loop ends works only when whatever stops it is in the code.** Calls 2 and 13
 follow from this line.
 
 | The loop stops because of | Example | What tiger can prove |
@@ -450,8 +449,7 @@ before TS-S02 starts trusting a proof.
    `rows.Next()`, `scanner.Scan()` or `decoder.More()`. That limit is a page size, and reaching it
    means the page is full. Any other way out, an internal condition like `!done()` or a `break` in
    the body, makes the counter a safety cap. It must assert or return an error when the counter
-   reaches the limit, wherever the limit comes from: a constant, a parameter, or a field. This
-   replaces call 14's "review judges which kind a cap is". On the trial code it fires twice, both
+   reaches the limit, wherever the limit comes from: a constant, a parameter, or a field. On the trial code it fires twice, both
    in git-server's Myers diff: the outer loop needs an assert (Myers guarantees it never reaches
    its limit), and the inner search is a false finding that moving the search into its own function
    clears. The capped worklist becomes the following, which tiger accepts today and whose tests
@@ -1377,7 +1375,7 @@ reason.
 stops waiving TS-S02 and stays the waiver for TS-M10. A store loop restates the limit it already
 declares. A loop that filters rows before it keeps them has two limits. The page limit counts kept
 rows and is clamped to a declared `pageMax`. The scan limit counts every row read and is a declared
-`scanMax` with `const _ = uint(scanMax - pageMax)`. The scan limit is a safety cap under call 14,
+`scanMax` with `const _ = uint(scanMax - pageMax)`. The scan limit is a safety cap under call 2's change 5,
 because the loop's other exit is the page filling, so the loop returns an error when it reaches
 `scanMax`. This settles the open question below: tiger keeps bounding how many times a loop runs,
 not only how much it returns.
@@ -1439,37 +1437,6 @@ is a bound on how many items they return enough? With the restated limit, `count
 examined, so a namespace filter can return fewer than `opts.Limit` matches even when more exist.
 Counting only matches keeps the results right but leaves the run count bounded only by the table's
 size. That is a product decision about list semantics, so it is not a call here.
-
-### Call 14: tell a safety cap from a page size by the loop's other exit (TS-S02)
-
-**Recommendation: Change.** If we agree, tiger decides which caps must report by reading the loop,
-and the spec and message say so. If we don't, the spec keeps asking for an assert on every cap while
-the tool accepts caps that stop silently, and review judges which kind each cap is.
-
-An earlier version recommended only a docs fix, with review telling the two kinds apart. A
-deliberation on call 2's cap rules found a deterministic way to tell them apart, so this call now
-changes the tool.
-
-**What the three sources say.** The spec says the compliant form is "an explicit iteration cap with
-an assert on exhaustion". Tiger's message says to add a cap "that fails when the cap is hit". But
-tiger accepted `ListCapped` in experiment 1 with no assert at all.
-
-**The two kinds of cap.** A *safety cap* is a limit the code should never reach, such as the maximum
-depth of a delta chain. Reaching it means something is wrong, so it should assert or return an
-error. A *page size* is part of the behavior, such as the size of a list page. Reaching it is
-normal, because the page is full, and asserting there would fail every full page.
-
-**What agreeing changes.** Tiger reads the loop's other way out (call 2, change 5). When every other
-exit drains a stream from outside the module, like `rows.Next()`, the counter is a page size and
-needs no report. When the other exit is an internal condition or a `break`, the counter is a safety
-cap and must assert or return an error when reached. The spec line and the message state that rule,
-and both drop "review judges which kind a cap is". Every loop limit also needs an upper bound where
-it enters the program (change 6), so a page size read from a request is clamped to a declared
-maximum.
-
-**What not agreeing costs.** The spec and the tool keep disagreeing, and a cap that stops silently on a
-cycle or a stuck condition keeps passing, as `WalkCapped` and `SpinLimited` show in
-`experiments/gaps`.
 
 ---
 
@@ -1690,7 +1657,7 @@ reopens a ticket.
 
 1. **Make both loop rules sound, then teach TS-V01 more proofs** (call 2), in one release. Fix
    TS-V01's name matching, outside-the-body growth and wraparound; tighten TS-S02's counter check;
-   require a safety cap to report when hit, told apart from a page size by the loop's other exit; require every loop limit to be bounded where it enters the program; accept a verified variant, a `ctx.Err()` loop on a
+   require a safety cap to report when hit, told apart from a page size by the loop's other exit, and say so in TS-S02's message; require every loop limit to be bounded where it enters the program; accept a verified variant, a `ctx.Err()` loop on a
    context parameter, and standard-library iterators; add the four shrink forms. Every loop in
    `experiments/gaps`, `experiments/variants` and `experiments/annotations` becomes an analyzer test
    case. Build change 6 starting from [`experiments/limitfacts`](experiments/limitfacts/), adding
@@ -1716,7 +1683,7 @@ reopens a ticket.
    allowlist: the prototype also refuses `keys[i] = k; i++` and reads of carried state anywhere in
    the body, which finds 31 real leaks tiger misses across the module cache and adds 47 false
    findings to work down first.
-7. **Specification reconciliation**, one ticket. Covers the TS-T02 line and Part V table, TS-V01,
+7. **Specification reconciliation**, one ticket. Covers the TS-T02 line and Part V table, TS-S02's line asking for an assert on every cap, TS-V01,
    TS-X01's removal, TS-L09's `//nolint` opt-in, the removal of `//tiger:restrict`, and the ENG-181
    gaps (`tiger.yaml`, `tiger golangci --print`, the rule count).
 8. **Rewrite the Tiger Explainer** (TODO, in ENG-191 itself, as its last step after the calls are
@@ -1741,13 +1708,11 @@ reopens a ticket.
 10. **Stop using `//tiger:batched` for loop bounds** (call 13). Write the ADR that replaces
     ADR-0004's loop-bound half and closes ENG-183. Show the restated-limit form in the rule
     reference.
-11. **Teach TS-S02 to tell a safety cap from a page size** (call 14), as part of follow-up 1's
-    release, and update the spec line and message to state the rule.
-12. **The patterns collection** (call 15): rename `examples/` to `patterns/`, clean up and add the
+11. **The patterns collection** (call 15): rename `examples/` to `patterns/`, clean up and add the
     seven seed patterns, embed them in the binary behind `tiger pattern`, add the registry field and
     the driver's pointer suffix with its meta-tests, run `-race` on `patterns/` in CI, and ship the
     `tiger` binary alongside the plugin.
-13. **`tiger changed <base>`** (call 16). Build it from `experiments/changed`: the mixed filter,
+12. **`tiger changed <base>`** (call 16). Build it from `experiments/changed`: the mixed filter,
     skip generated files, show `context.Context`. Remove `//tiger:effects` and `//tiger:frame`
     with TS-F01, F02, F07, the effect table and the effects and frames analyzers, and the
     effects and frames half of `tiger pin`; ADR-0007 and ADR-0008 are amended to cover variants
