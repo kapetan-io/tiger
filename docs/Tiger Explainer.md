@@ -77,16 +77,15 @@ Taken directly from TigerStyle and Holzmann's Power of Ten rules for mission-cri
   strings and integers, so a value nobody checked cannot reach them.
 
 ## golangci-lint and tiger's own analyzers
-A project that already runs golangci-lint is enforcing part of tiger's rule set,
-because for those rules an off-the-shelf linter exists. We never reimplement a rule such a
-linter enforces. The rules no linter can check are the other part, and for those tiger
-carries analyzers of its own, run by `tiger check`. The specification calls them the
-custom half, and the linter side the auto half. On that side what tiger adds is the
-configuration: it writes the file that turns each linter on at the setting the rule
-requires, and it audits that file against the rules. The linter itself keeps running as
-before.
+Tiger's rules split in two by what checks them. Some of them can be checked by a linter
+that golangci-lint already ships, such as funlen for function length. For those, tiger does
+not write its own check. It generates the golangci-lint configuration that turns each
+linter on at the setting the rule requires, audits that configuration against the rules,
+and leaves the checking to golangci-lint. The rest of the rules no existing linter checks,
+so tiger carries analyzers of its own for them, run by `tiger check`. The specification
+calls the first group the auto half and the second the custom half.
 
-Among the rules golangci-lint enforces:
+Among the rules tiger leaves to golangci-lint:
 
 - A function is at most 70 lines (funlen) and a line at most 100 columns (lll).
 - A switch over a closed set of values lists every case, and a default arm does not excuse
