@@ -1,0 +1,26 @@
+=== RUN   TestListCappedBoundHoldsWhateverTheDatabaseDoes
+=== RUN   TestListCappedBoundHoldsWhateverTheDatabaseDoes/DatabaseStopsFirst
+=== RUN   TestListCappedBoundHoldsWhateverTheDatabaseDoes/LimitsAgree
+=== RUN   TestListCappedBoundHoldsWhateverTheDatabaseDoes/LoopStopsFirstAndTruncates
+=== RUN   TestListCappedBoundHoldsWhateverTheDatabaseDoes/DatabaseIgnoresLimit
+--- PASS: TestListCappedBoundHoldsWhateverTheDatabaseDoes (0.00s)
+    --- PASS: TestListCappedBoundHoldsWhateverTheDatabaseDoes/DatabaseStopsFirst (0.00s)
+    --- PASS: TestListCappedBoundHoldsWhateverTheDatabaseDoes/LimitsAgree (0.00s)
+    --- PASS: TestListCappedBoundHoldsWhateverTheDatabaseDoes/LoopStopsFirstAndTruncates (0.00s)
+    --- PASS: TestListCappedBoundHoldsWhateverTheDatabaseDoes/DatabaseIgnoresLimit (0.00s)
+=== RUN   TestListUncappedRunsAsLongAsTheDatabaseSends
+--- PASS: TestListUncappedRunsAsLongAsTheDatabaseSends (1.29s)
+=== RUN   TestListFilteredCountRowsReturnsAShortPage
+--- PASS: TestListFilteredCountRowsReturnsAShortPage (0.00s)
+=== RUN   TestListFilteredCountMatchesReadsTheWholeTable
+--- PASS: TestListFilteredCountMatchesReadsTheWholeTable (1.35s)
+=== RUN   TestListFilteredTwoLimits
+=== RUN   TestListFilteredTwoLimits/PageFills
+=== RUN   TestListFilteredTwoLimits/TableEndsFirst
+=== RUN   TestListFilteredTwoLimits/ScanLimitStopsASparseList
+--- PASS: TestListFilteredTwoLimits (0.02s)
+    --- PASS: TestListFilteredTwoLimits/PageFills (0.00s)
+    --- PASS: TestListFilteredTwoLimits/TableEndsFirst (0.00s)
+    --- PASS: TestListFilteredTwoLimits/ScanLimitStopsASparseList (0.02s)
+PASS
+ok  	cursorbound	3.996s
