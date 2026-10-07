@@ -34,7 +34,7 @@ The tiger coding standard follows rules [proven on flight software](https://doi.
 - **Avoids mistakes.** Tiger bans language features which are frequently misused or that [contribute disproportionately](https://www.youtube.com/watch?v=GRJtYwneG2Q) to errors in code, as [MISRA C](https://misra.org.uk/product-category/misra-c-2/) does for C.
 
 **Tiger reports architectural change**
-Nothing about this is annotated. There is no comment in the code that records what a function calls, so there is nothing for an agent to edit in the same commit to hide the change. Tiger computes both sides, the base and the branch, itself.
+Tiger builds the report from the code at both revisions, so a reviewer sees each new call a change makes before reading the diff.
 
 - **A change is reported on the struct where it was written,** not on everything that
   calls that struct.
@@ -208,7 +208,7 @@ is reported. Three more rules decide where a call shows up:
 - Work handed over a channel shows on the struct at the receiving end, once that struct
   makes the new call.
 - A call made through an interface is named by the interface itself, never by a guess
-  at the implementation, so the report needs no table of what each library does.
+  at the implementation.
 
 Pure helpers are filtered out by the import graph, with no list of packages. A method or
 an interface counts when its package reaches `syscall`. A free function counts when its
@@ -454,7 +454,7 @@ Every loop limit is also checked at its source. Tiger traces the limit backward 
 
 A few loop shapes have fixed answers. Ranging over a standard-library iterator such as `maps.Keys` counts as bounded, while ranging over any other iterator is a finding, the same as ranging over a channel. A `for` loop testing `ctx.Err() == nil` against a `context.Context` parameter counts as running until cancelled, the same as a `select` on `ctx.Done()`. Testing `context.Background()` does not.
 
-A loop pulling rows from a store cursor restates the limit its query already declared, as in `for count := 0; count < opts.Limit && rows.Next(); count++`, and the `//tiger:batched` escape no longer waives that bound. A loop that filters rows before keeping them needs two separate limits instead, a page size that counts the rows it keeps and a scan maximum that counts every row it reads, returning an error if that maximum is reached. These changes to the loop rules are decided but not yet built, so today's tiger still accepts some loops that run forever.
+A loop pulling rows from a store cursor restates the limit its query already declared, as in `for count := 0; count < opts.Limit && rows.Next(); count++`. A loop that filters rows before keeping them needs two separate limits instead, a page size that counts the rows it keeps and a scan maximum that counts every row it reads, returning an error if that maximum is reached. These changes to the loop rules are decided but not yet built, so today's tiger still accepts some loops that run forever.
 
 A `switch` over a type with a fixed, closed set of values must cover every value and end
 in a `default` arm that calls `assert.Unreachable`. Go's compiler cannot check that such a
@@ -470,7 +470,7 @@ so `assert.Unreachable` is not required. This rule caught three real bugs on the
 codebases tiger was run against before its rules settled, two of them storage backends
 that silently dropped an action because their switch had no default case.
 
-TS-C05 requires a blocking select, one with no `default` case, to carry a case that can end the wait on shutdown. TS-S03 requires the same of a loop built to run forever. The accepted stop cases are a receive from `ctx.Done()`, where the context does not trace, within the function, back to `context.Background()` or `context.TODO()`, or a receive from a channel that the owning package itself closes or sends on. When that channel is a struct field, the closing or sending can happen in any method of the owning type that an exported method can reach. A channel's name no longer satisfies the rule on its own, so a channel named `shutdown` that nothing in the package closes is still a finding. A new rule covers the loop around the select. An event loop's only way out must be that stop case, so no `return` or `break` elsewhere in the loop may leave it. Without a stop case, a shutdown request has no effect, so the wait blocks until something else ends it, such as `SIGKILL`. A process killed in the middle of a write loses that write. TS-C05 caught a real bug, a queue whose Produce, Complete, and Retry waits could never be cancelled, though its documentation claimed a cancellation that only its Lease method implemented.
+TS-C05 requires a blocking select, one with no `default` case, to carry a case that can end the wait on shutdown. TS-S03 requires the same of a loop built to run forever. The accepted stop cases are a receive from `ctx.Done()`, where the context does not trace, within the function, back to `context.Background()` or `context.TODO()`, or a receive from a channel that the owning package itself closes or sends on. When that channel is a struct field, the closing or sending can happen in any method of the owning type that an exported method can reach. A channel named `shutdown` that nothing in the package closes is a finding. A second rule covers the loop around the select. An event loop's only way out must be that stop case, so no `return` or `break` elsewhere in the loop may leave it. Without a stop case, a shutdown request has no effect, so the wait blocks until something else ends it, such as `SIGKILL`. A process killed in the middle of a write loses that write. TS-C05 caught a real bug, a queue whose Produce, Complete, and Retry waits could never be cancelled, though its documentation claimed a cancellation that only its Lease method implemented.
 
 TS-C02 requires a goroutine to start only through `errgroup.Group.Go` or `sync.WaitGroup.Go`, so a bare `go` statement anywhere else is always a finding. The group's `Wait` must be reached on the success path, either in the same function or, when the group is held in a struct field, in an exported method of the owning type. A `Shutdown` method that returns early because its own context has already expired is exempt from that requirement. Tiger keeps no allowlist of supervisor functions, because naming one would exempt every `go` statement written inside it. TS-C02 caught a real bug, a daemon whose `sync.WaitGroup` went unwaited, so its `Shutdown` method returned before its HTTP goroutines had exited.
 
@@ -601,8 +601,7 @@ There are three kinds of directive.
 2. Intent declarations state something no analyzer can compute, and the code is held to it
    afterward. `//tiger:openenum`, introduced earlier, is the one verb of this kind.
 3. The one escape directive, `//tiger:batched`, waives the rule against IO inside a loop
-   body (TS-M10) at one site and always carries a reason. It does not waive a loop's
-   bound. It counts against its package's budget on every run, whether or not
+   body (TS-M10) at one site and always carries a reason. It counts against its package's budget on every run, whether or not
    it is currently waiving a finding.
 
 An escape is admitted only where the rules eliminate something reality requires and no
@@ -624,7 +623,7 @@ A change that passes `tiger check` has settled several things before the reviewe
 - Every declared invariant is asserted somewhere in production code and violated by a test that proves the assertion fires.
 - Outside a short list of known misses, no map range has a shape that could leak map order.
 
-What the check settles says nothing about whether the change does something new. `tiger changed <base>` answers that question before the diff is opened. For each struct, it lists what that struct calls now that it did not call at the base commit, so when an agent adds a database call inside a handler, the handler's struct appears in the report with the new call. The reviewer learns that the change reaches the database before reading a single line of the diff, and there is no annotation on the call for the agent to edit to keep it out of the report. They open the diff already knowing what changed, and read it to learn why. A write through `io.Writer` is not reported.
+What the check settles says nothing about whether the change does something new. `tiger changed <base>` answers that question before the diff is opened. For each struct, it lists what that struct calls now that it did not call at the base commit, so when an agent adds a database call inside a handler, the handler's struct appears in the report with the new call. The reviewer learns that the change reaches the database before reading a single line of the diff. They open the diff already knowing what changed, and read it to learn why. A write through `io.Writer` is not reported.
 
 For the part of a shape the check cannot see, each pattern gives the reviewer a checklist. It is a short list of yes-or-no questions, answered by comparing the diff to the pattern's shape, covering the gap no rule can check.
 
