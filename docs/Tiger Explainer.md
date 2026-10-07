@@ -82,7 +82,7 @@ Taken directly from TigerStyle and Holzmann's Power of Ten rules for mission-cri
 ## golangci-lint and tiger's own analyzers
 
 golangci-lint is a Go tool that runs many separate linters in one pass, all configured
-through one `.golangci.yml` file. Tiger's rules split into two groups by what checks them.
+through one `.golangci.yml` file.
 An auto rule is one an existing golangci-lint linter can check, so tiger writes no analyzer
 of its own for it. A custom rule is one no existing linter checks, so tiger carries its own
 analyzer for it. `tiger check` runs that analyzer. The specification calls these the auto half
