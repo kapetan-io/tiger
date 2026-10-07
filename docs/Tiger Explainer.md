@@ -79,48 +79,26 @@ Taken directly from TigerStyle and Holzmann's Power of Ten rules for mission-cri
 - **Interfaces say what they mean.** Exported functions take domain types, not bare
   strings and integers, so a value nobody checked cannot reach them.
 
-## golangci-lint and tiger's own analyzers
+## Tiger and golangci-lint
 
-golangci-lint is a Go tool that runs many separate linters in one pass, all configured
-through one `.golangci.yml` file.
-An auto rule is one an existing golangci-lint linter can check, so tiger writes no analyzer
-of its own for it. A custom rule is one no existing linter checks, so tiger carries its own
-analyzer for it. `tiger check` runs that analyzer. The specification calls these the auto half
-and the custom half.
+Many of tiger's rules are things existing Go linters already know how to check, such as how
+long a function may be or whether a switch covers every case. Tiger doesn't rewrite those
+checks. It turns them on in golangci-lint, a widely used tool that runs many Go linters in one
+pass. The rules no existing linter can check, such as whether a loop is bounded or whether a
+goroutine has an owner, tiger checks itself with `tiger check`.
 
-For the auto half, tiger's own part is configuration, which a rule registry supplies by mapping
-each auto rule to the linter that checks it and the setting that linter needs:
+So a project that uses tiger runs two commands in CI, and both must pass:
 
-- Functions at most 70 lines (TS-S04): funlen, with lines set to 70.
-- Lines at most 100 columns (TS-L02): lll, with line-length set to 100.
-- Cyclomatic complexity at most 10 and cognitive complexity at most 15 (TS-S05): cyclop and
-  gocognit.
-- A switch over a closed set of values lists every value, and a default arm does not count as
-  covering a missing one (TS-S08): exhaustive, with default-signifies-exhaustive set to false.
-- No init functions and no package-level mutable state (TS-S10, S11): gochecknoinits and
-  gochecknoglobals.
-- No naked returns (TS-E08): nakedret, with max-func-lines set to 0.
-- No direct calls to time.Now, time.Sleep, time.After, or panic (TS-C08, T01): forbidigo.
-- No unsafe outside internal/sys, and no reflect, math/rand, or crypto/rand under
-  internal/domain (TS-S12, T01): depguard.
+```
+$ golangci-lint run
+$ tiger check ./...
+```
 
-`tiger golangci --init` writes a `.golangci.yml` from this registry for a project that has
-none, turning on every linter an auto rule needs, each at the setting the rule requires. If a
-config already exists it refuses and prints "a golangci-lint config already exists; run tiger
-golangci to audit it." The generated config also sets golangci-lint's max-issues-per-linter and
-max-same-issues to 0, which removes golangci-lint's own cap on how many issues it will report.
-
-`tiger golangci` with no flag runs the other direction. It audits an existing config against
-the same registry. A required linter that is not turned on, or a required setting that is
-missing or holds a different value, becomes a finding naming the rule and the change that
-restores it. Extra linters and extra settings pass, since the registry only checks for what it
-requires. The comparison is exact, so a setting stricter than the rule's baseline fails the
-audit too. Generation and audit read the same registry, so a config `tiger golangci --init` just
-wrote always passes its own audit. Every auto rule in the registry is both generated and
-audited.
-
-After the funlen limit in a generated config is changed from 70 to 80, the audit prints this and
-exits 1:
+`tiger golangci --init` writes the `.golangci.yml` that turns on the linters tiger needs, set to
+what its rules require: functions at most 70 lines, lines at most 100 columns, limits on
+complexity, no global variables, no direct calls to `time.Now`, and so on. After that,
+`tiger golangci` checks that nobody has changed the file. If someone raises the function limit
+from 70 to 80, it fails:
 
 ```
 $ tiger golangci
@@ -128,38 +106,18 @@ TS-S04: linters.settings.funlen.lines is 80, but tiger's baseline for the rule "
 tiger: 1 auto rules unenforced
 ```
 
-With the value back at 70 it prints nothing and exits 0.
+The two commands treat `//nolint` differently. golangci-lint honors it, so a developer can
+silence a linter on one line. `tiger check` ignores it, so a finding from `tiger check` has to
+be fixed. A team that wants `//nolint` gone everywhere can set `nolint.forbid` in `tiger.yaml`,
+and `tiger check` then reports every one it finds.
 
-The custom half covers shapes no linter models:
+Tiger's analyzers can also run inside golangci-lint as a plugin, which is handy in an editor.
+The plugin skips a few checks that need to see the whole program at once, so CI still relies
+on `tiger check`.
 
-- Whether every loop has a bound and a proof that it ends.
-- Whether every goroutine is started by an owner that waits for it.
-- Whether every blocking wait can be cancelled.
-- Whether a map range can leak its order.
-- Whether every declared invariant is asserted and violated by a test.
-
-These same analyzers also run as a golangci-lint plugin, but the plugin leaves two things to
-`tiger check` alone. TS-A07 and TS-A09 are whole-program rules, decided only in a finish step
-that runs after every package in the build has been visited. Only the `tiger` CLI runs that
-finish step, so the plugin cannot decide these two rules. The plugin also does not enforce the
-per-package budget on tiger's escape directive, `//tiger:batched`. The directive and its budget
-each get their own section later in this document.
-
-`tiger check` has no suppression comment and does not read `//nolint`. Under golangci-lint,
-`//nolint` silences a finding the same way it does for any other linter, including tiger's own
-analyzers when they run as the plugin. That difference between the two tools is why
-`tiger check` is the verdict for tiger's own rules. CI runs two commands, golangci-lint with the
-generated config and `tiger check ./...`, and both must pass.
-
-A project that wants `tiger check`'s verdict to also cover `//nolint` turns on `nolint.forbid`
-in `tiger.yaml`. With that setting on, every `//nolint` comment in a checked package becomes a
-blocking finding under `tiger check`, reported at the file's package line.
-
-The same verdict applies regardless of when a finding was introduced. Tiger keeps no baseline
-file of findings from before a change. It also does not recommend golangci-lint's
-`--new-from-rev` flag, which limits a report to only the lines a branch changed. A finding on a
-line the branch never touched still counts under `tiger check`, so a codebase already in
-production adopts tiger by fixing everything it currently reports.
+Tiger has no way to set existing findings aside. It keeps no list of old findings to ignore,
+and it doesn't support checking only the lines a branch changed. A codebase adopts tiger by
+fixing what it reports.
 
 ### What counts as a rule
 
