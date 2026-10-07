@@ -1,12 +1,17 @@
 `tiger check` · binary verdict · change detection
 
 **This page describes tiger as it is meant to be when it is finished.** It reflects the
-decisions in ENG-191, and several of them are not built yet: the `tiger changed` report, the
-patterns collection, the loop, goroutine, and wait rules as described here, and the
-collect-then-sort part of the map-order rule. Each section that describes unbuilt behavior says
-so. Every transcript on the page is real output from today's `tiger check`, except where a
-section names the prototype it came from, so a finding's wording can differ from the finished
-tool's. The rule reference lists every rule tiger enforces today, and the specification marks
+decisions recorded in ENG-191. Several pieces described here are not built yet: the
+`tiger changed` report, the patterns collection and the `tiger pattern` command, the
+changes to the loop, goroutine, and wait rules, and the
+collect-then-sort part of the map-order rule. Each section that describes one of these
+says so where it appears.
+
+Every transcript on the page is real output, either from a run of today's `tiger check`
+or, where a section says so, from a prototype. A finding's wording in a transcript can
+differ from the wording the finished tool will print.
+
+The rule reference lists every rule tiger enforces today, and the specification marks
 each rule that is not yet built.
 
 ## Overview
@@ -44,12 +49,10 @@ Tiger builds the report from the code at both revisions, so a reviewer sees each
   system, such as `strings`, `sort`, and `fmt`, are not reported.
 
 **Tiger has no warnings**
-AIs (like humans) can get lazy, and often just want to complete the task instead of writing quality, maintainable code. `tiger check` has no suppression comment and never honors `//nolint`, so the only way past a finding is a rewrite. Holzmann's [tenth rule](https://spinroot.com/gerard/pdf/P10.pdf) is the same: compile with all warnings on and allow none, because [one new warning among thousands is invisible](https://www.youtube.com/watch?v=GRJtYwneG2Q).
+Every finding fails the run. There is no comment that suppresses a finding, and `tiger check` does not read `//nolint`. Holzmann's [tenth rule](https://spinroot.com/gerard/pdf/P10.pdf) makes the same demand of a compiler. It calls for compiling with every warning on and allowing none, because [one new warning among thousands is invisible](https://www.youtube.com/watch?v=GRJtYwneG2Q). A `tiger check` run passes or fails. The only way past a finding is to change the code until it satisfies the rule.
 
-- **The agent can't bypass the check.** A run fails or it passes. Tiger has no
-  warnings and no suppression comment, so the agent's only path forward is a
-  rewrite.
-- **Human review should be about behavior and intent, not code.** If a change passes your test suite and the check, the human reviewing the PR can focus on intent and behavior instead of code.
+- **The cheapest path for an agent is the rewrite.** An agent finishing a task takes whichever path reaches a passing run at the lowest cost, and with no warning tier and no suppression comment available, that path is rewriting the code.
+- **Review time goes to intent and behavior.** When a change passes the test suite and `tiger check`, the reviewer can spend the review on what the change does and why.
 
 **Tiger enforces code structure**
 Taken directly from TigerStyle and Holzmann's Power of Ten rules for mission-critical code, tiger enforces code structure that is proven to result in high-quality, reliable software.
@@ -77,38 +80,47 @@ Taken directly from TigerStyle and Holzmann's Power of Ten rules for mission-cri
   strings and integers, so a value nobody checked cannot reach them.
 
 ## golangci-lint and tiger's own analyzers
-Tiger's rules split in two by what checks them. Some of them can be checked by a linter
-that golangci-lint already ships, such as funlen for function length. For those, tiger does
-not write its own check. It generates the golangci-lint configuration that turns each
-linter on at the setting the rule requires, audits that configuration against the rules,
-and leaves the checking to golangci-lint. The rest of the rules no existing linter checks,
-so tiger carries analyzers of its own for them, run by `tiger check`. The specification
-calls the first group the auto half and the second the custom half.
 
-Among the rules tiger leaves to golangci-lint:
+golangci-lint is a Go tool that runs many separate linters in one pass, all configured
+through one `.golangci.yml` file. Tiger's rules split into two groups by what checks them.
+An auto rule is one an existing golangci-lint linter can check, so tiger writes no analyzer
+of its own for it. A custom rule is one no existing linter checks, so tiger carries its own
+analyzer for it. `tiger check` runs that analyzer. The specification calls these the auto half
+and the custom half.
 
-- A function is at most 70 lines (funlen) and a line at most 100 columns (lll).
-- A switch over a closed set of values lists every case, and a default arm does not excuse
-  a missing one (exhaustive).
-- Every returned error is handled (errcheck), and no function uses a naked return
-  (nakedret).
-- There are no init functions (gochecknoinits) and no package-level mutable state
-  (gochecknoglobals).
-- A domain package may not import unsafe, reflect, or math/rand (depguard).
-- No code calls time.Now, time.Sleep, time.After, or panic directly (forbidigo).
+For the auto half, tiger's own part is configuration, which a rule registry supplies by mapping
+each auto rule to the linter that checks it and the setting that linter needs:
 
-`tiger golangci --init` writes a `.golangci.yml` for a new project from the rule registry,
-the table mapping each rule to its linter and required setting, with every linter the auto
-rules need enabled and every setting at the rule's value. It refuses to run if a config
-already exists. `tiger golangci` with no flag audits an existing config against that same
-baseline. A required linter that is not enabled, or a setting that is missing or differs
-from the baseline, is a finding that names the rule and the change that restores it. Extra
-linters and settings pass. The comparison is exact, so a stricter value fails too.
-Generation and audit read the same table, so a generated config passes its own audit. No
-rule enters the registry without being both generated and audited.
+- Functions at most 70 lines (TS-S04): funlen, with lines set to 70.
+- Lines at most 100 columns (TS-L02): lll, with line-length set to 100.
+- Cyclomatic complexity at most 10 and cognitive complexity at most 15 (TS-S05): cyclop and
+  gocognit.
+- A switch over a closed set of values lists every value, and a default arm does not count as
+  covering a missing one (TS-S08): exhaustive, with default-signifies-exhaustive set to false.
+- No init functions and no package-level mutable state (TS-S10, S11): gochecknoinits and
+  gochecknoglobals.
+- No naked returns (TS-E08): nakedret, with max-func-lines set to 0.
+- No direct calls to time.Now, time.Sleep, time.After, or panic (TS-C08, T01): forbidigo.
+- No unsafe outside internal/sys, and no reflect, math/rand, or crypto/rand under
+  internal/domain (TS-S12, T01): depguard.
 
-After the funlen limit in a generated config is changed from 70 to 80, the audit prints
-this and exits 1:
+`tiger golangci --init` writes a `.golangci.yml` from this registry for a project that has
+none, turning on every linter an auto rule needs, each at the setting the rule requires. If a
+config already exists it refuses and prints "a golangci-lint config already exists; run tiger
+golangci to audit it." The generated config also sets golangci-lint's max-issues-per-linter and
+max-same-issues to 0, which removes golangci-lint's own cap on how many issues it will report.
+
+`tiger golangci` with no flag runs the other direction. It audits an existing config against
+the same registry. A required linter that is not turned on, or a required setting that is
+missing or holds a different value, becomes a finding naming the rule and the change that
+restores it. Extra linters and extra settings pass, since the registry only checks for what it
+requires. The comparison is exact, so a setting stricter than the rule's baseline fails the
+audit too. Generation and audit read the same registry, so a config `tiger golangci --init` just
+wrote always passes its own audit. Every auto rule in the registry is both generated and
+audited.
+
+After the funlen limit in a generated config is changed from 70 to 80, the audit prints this and
+exits 1:
 
 ```
 $ tiger golangci
@@ -118,33 +130,55 @@ tiger: 1 auto rules unenforced
 
 With the value back at 70 it prints nothing and exits 0.
 
-golangci-lint fails its run on any issue, and the generated config removes its caps on how
-many issues it reports. `tiger check` has no suppression comment and does not read
-`//nolint`. Under golangci-lint, `//nolint` works as it does for any linter, including on
-tiger's analyzers when they run as a plugin. That is why `tiger check` is the verdict, and a
-project that wants no `//nolint` at all sets `nolint.forbid` in `tiger.yaml`, which makes every
-`//nolint` in a checked package a blocking finding under `tiger check`. Tiger's one escape
-directive, `//tiger:batched`, is counted against a per-package budget on every run. CI runs
-golangci-lint with the generated config and `tiger check ./...`, and both must pass.
+The custom half covers shapes no linter models:
 
-Tiger keeps no baseline file of existing findings, and it does not recommend golangci-lint's
-`--new-from-rev` flag, which reports only findings on lines a branch changed. A finding on an
-old line is still a finding, so an existing codebase adopts tiger by fixing what it reports.
+- Whether every loop has a bound and a proof that it ends.
+- Whether every goroutine is started by an owner that waits for it.
+- Whether every blocking wait can be cancelled.
+- Whether a map range can leak its order.
+- Whether every declared invariant is asserted and violated by a test.
 
-The custom analyzers check shapes no linter models: whether every loop has a bound and a
-proof that it ends, whether every goroutine has an owner that waits for it, whether every
-blocking wait can be cancelled, whether a map range can leak its order, and whether every
-declared invariant is asserted and violated by a test. A few rules are
-whole-program, decided once every package has been visited, and only `tiger check` reports
-those. The same analyzers also run as a golangci-lint plugin, minus the whole-program
-rules and the budget.
+These same analyzers also run as a golangci-lint plugin, but the plugin leaves two things to
+`tiger check` alone. TS-A07 and TS-A09 are whole-program rules, decided only in a finish step
+that runs after every package in the build has been visited. Only the `tiger` CLI runs that
+finish step, so the plugin cannot decide these two rules. The plugin also does not enforce the
+per-package budget on tiger's escape directive, `//tiger:batched`. The directive and its budget
+each get their own section later in this document.
+
+`tiger check` has no suppression comment and does not read `//nolint`. Under golangci-lint,
+`//nolint` silences a finding the same way it does for any other linter, including tiger's own
+analyzers when they run as the plugin. That difference between the two tools is why
+`tiger check` is the verdict for tiger's own rules. CI runs two commands, golangci-lint with the
+generated config and `tiger check ./...`, and both must pass.
+
+A project that wants `tiger check`'s verdict to also cover `//nolint` turns on `nolint.forbid`
+in `tiger.yaml`. With that setting on, every `//nolint` comment in a checked package becomes a
+blocking finding under `tiger check`, reported at the file's package line.
+
+The same verdict applies regardless of when a finding was introduced. Tiger keeps no baseline
+file of findings from before a change. It also does not recommend golangci-lint's
+`--new-from-rev` flag, which limits a report to only the lines a branch changed. A finding on a
+line the branch never touched still counts under `tiger check`, so a codebase already in
+production adopts tiger by fixing everything it currently reports.
 
 ### What counts as a rule
 
-A rule in tiger is a question a tool can answer from the code. "Does this loop have a
-bound" is a rule, because an analyzer can check it. "Does this look risky" is not, because that is a subjective statement. Tiger's analysis is deterministic static analysis and never a language model, so the same code gets the same verdict on every run.
+A rule in tiger is a question a tool can answer from the code. "Does this loop have a bound" is
+a rule, because an analyzer can check it against the code. "Does this look risky" is not a rule,
+since no analyzer can answer it the way it answers a loop's bound.
 
-The inspiration for tiger's static checking comes from Gerard Holzmann's work on flight software at NASA's Jet Propulsion Laboratory. He checked the code of past missions against the rules their own developers said they supported and found the supported rules were not followed, because none of them had ever been checked by a tool. A rule nobody checks is not followed, even by people who agree with it, or in [Holzmann's words](https://www.youtube.com/watch?v=GRJtYwneG2Q), "If your rule is not checkable, don't put it in the standard." He wrote the ten rules that could be checked, built the [Cobra](https://spinroot.com/cobra/) analyzer to check them, and the rules became the [coding standard](https://everyspec.com/NASA/NASA-JPL/JPL-D-60411_VER-1_32832/) for all software written at JPL. Tiger follows that. It has no opinion about whether a change is correct, only about whether the change follows the coding standard tiger defines.
+The idea behind that test comes from Gerard Holzmann's work on flight software at NASA's Jet
+Propulsion Laboratory. Holzmann checked the code of past missions against the coding rules those
+missions' own developers said they followed. The rules were not followed, because no tool had ever
+checked any of them. As [Holzmann put it
+himself](https://www.youtube.com/watch?v=GRJtYwneG2Q), "If your rule is not checkable, don't put
+it in the standard." He wrote ten rules that could be checked and built the
+[Cobra](https://spinroot.com/cobra/) analyzer to check them. Those ten rules became the
+[coding standard](https://everyspec.com/NASA/NASA-JPL/JPL-D-60411_VER-1_32832/) for software
+written at JPL.
+
+Tiger follows that same model. It has no opinion about whether a change is correct, only about
+whether the change follows tiger's coding standard.
 
 ## Using Tiger
 
@@ -581,35 +615,17 @@ end-of-run step that totals counts across packages.
 
 ### Directives
 
-A directive is a `//tiger:<verb>` comment that lets code carry a claim tiger can check: a
-pin, a declared intent, or an escape from a rule, and it binds to the code on the
-line after its comment group. The verb vocabulary is closed and owned by a single package,
-which also formats every directive. A finding's text and the pin that satisfies it are
-identical by construction. An unknown verb, or an escape verb with no reason after it, is
-a blocking finding.
+A directive is a `//tiger:<verb>` comment that lets a line of code carry a claim tiger can check. It binds to the code on the line that follows its comment group. The verb vocabulary is closed and owned by a single package. That package also formats every directive, so a finding's text and the directive that satisfies it always match. An unknown verb, or an escape directive with no reason after it, is a blocking finding (TS-L09).
 
 There are three kinds of directive.
 
-1. Pins state a claim tiger proves, and a pin the code does not satisfy is a blocking
-   finding. `//tiger:variant`, introduced with loops, is one. `//tiger:requires` and
-   `//tiger:ensures` pin a function's contract: `requires` states a precondition the caller
-   must establish, and `ensures` states a postcondition the function guarantees on return.
-   Each is written as a small comparison such as `n > 0` or as an invariant ID. `tiger pin`
-   writes a variant tiger found as a `//tiger:variant` comment. It does not write requires
-   or ensures.
-2. Intent declarations state something no analyzer can compute, and the code is held to it
-   afterward. `//tiger:openenum`, introduced earlier, is the one verb of this kind.
-3. The one escape directive, `//tiger:batched`, waives the rule against IO inside a loop
-   body (TS-M10) at one site and always carries a reason. It counts against its package's budget on every run, whether or not
-   it is currently waiving a finding.
+1. A pin states a claim tiger proves, and a pin the code does not satisfy is a blocking finding. `//tiger:variant`, from the loop section, is one. `//tiger:requires` and `//tiger:ensures` state a function's contract. `requires` states a precondition the caller must establish, and `ensures` states a postcondition the function guarantees on return. Each is written as a small comparison such as `n > 0` or as the ID of a named invariant (TS-V03). `tiger pin` writes a variant tiger found as a `//tiger:variant` comment, and that is the only directive it writes.
+2. An intent declaration states something no analyzer can compute, and the code is held to that claim afterward. `//tiger:openenum`, from the switch rule, is the only verb of this kind.
+3. The escape directive, `//tiger:batched`, waives the rule against IO inside a loop body (TS-M10) at one site, and it always carries a reason. It counts against its package's budget on every run, whether or not it is waiving a finding at that moment.
 
-An escape is admitted only where the rules eliminate something reality requires and no
-rewrite satisfies the rule instead. The primary consumer of tiger's findings is an AI
-agent, and an agent offered a cheaper path than conforming will take it. `//tiger:batched`
-was admitted because some external systems accept only one item of IO at a time. No
-rewrite of the caller changes that. There is deliberately no directive that dismisses a
-rule at a site. The only ways past a finding are a satisfying rewrite or a reasoned escape
-counted against the budget.
+An escape is admitted only where the rules forbid something the outside world requires and no rewrite can satisfy the rule. `//tiger:batched` was admitted because some external systems accept only one item of IO at a time. No rewrite of the caller changes that.
+
+Tiger's main reader is an AI agent, and an agent offered a cheaper path than conforming takes it. There is no directive that dismisses a rule at a site. The only ways past a finding are a rewrite that satisfies the rule, or the one reasoned escape, counted against the budget.
 
 ## What tiger tells a reviewer
 
@@ -685,49 +701,54 @@ the filter as those were fixed, until the count reached zero.
 
 ## Where tiger stands today
 
-Tiger installs as a single Go binary with `go install`, naming the CLI's module path.
-The `check` subcommand runs it against a package tree:
+Tiger is installed and run with two commands:
 
 ```
 $ go install github.com/kapetan-io/tiger/cmd/tiger@latest
 $ tiger check ./...
 ```
 
-A first run against a codebase tiger has not seen before produces many findings, because
-tiger checks the whole tree against every rule on that pass. Today's tiger prints 401
-blocking findings against querator, a queue service of about 36,000 lines, and 339 against
-git-server, a git server of about 17,000 lines. Both are codebases we knew and trusted.
+A first run against a codebase tiger has not seen before produces many findings,
+because that run checks the whole tree against every rule. Today's tiger printed 401
+blocking findings against querator, a queue service of about 36,000 lines with four
+storage backends, and 339 against git-server, a git server of about 17,000 lines. Of
+those, 5 findings on querator and 16 on git-server were bookkeeping, skipped tests and
+misordered declarations. Those only count as blocking until `tiger budget --write`
+records them.
 
-Every one of those findings is blocking. Each rule exists to prevent one bug class its
-specification entry names, and there is no warning tier. A finding is a true positive
-to fix or a false positive that is a bug in tiger. Filing that bug adds the case
-to the rule's test corpus, so it cannot regress.
+Every one of those findings is blocking. A finding is either a true positive to fix or a
+false positive. A false positive is a bug in tiger. Fixing that bug adds the case to the
+rule's test corpus, so it cannot come back.
 
-The way to judge tiger is to read a sample of its findings against your own judgment. If
-most name something you would want fixed, gating CI on `tiger check` is warranted.
+A sample of tiger's findings read against a reviewer's own judgment shows whether most
+of them name something worth fixing. When most do, gating CI on `tiger check` is
+warranted.
 
-The repository's [examples/ledger](../examples/ledger) is built to the invariant pattern:
-an `inv` package declaring the invariant IDs, an encode and decode pair asserting them,
-and a violation test per invariant. It passes `tiger check` with zero findings today, a
-live example of code that satisfies every rule tiger enforces, not just the invariant
-ones.
+The repository's [examples/ledger](../examples/ledger) is built to the invariant
+pattern: an `inv` package declares the invariant IDs, an encode and decode pair asserts
+them, and each invariant has a violation test. It passes `tiger check` with zero findings.
 
-The [rule reference](Tiger%20Rule%20Reference.md) gives one entry per enforced rule: what
-it requires, why it exists, a firing example, and the compliant rewrite. A doc meta-test
-in `internal/rules` fails when the reference and the rule registry disagree. The
+The [rule reference](Tiger%20Rule%20Reference.md) has one entry per enforced rule, giving what it requires, why it exists, an
+example that fires, and the compliant rewrite. A test in `internal/rules` fails when the
+reference and the rule registry disagree. The
 [specification](Tiger%20Specification.md) is the normative document the reference is
 drawn from.
 
 ---
 
-Every transcript on this page is live output from today's tiger unless the section names
-a prototype. The invariant run is against `examples/ledger`. The `Drain` run and the
-four-file `bugs` run are against scratch packages, since the ledger has no loop, switch,
-goroutine, or wait written in the shapes tiger rejects; their messages are today's and will
-change as the decided loop and goroutine rules are built. The `tiger golangci` audit is
-against a config `tiger golangci --init` generated, with one setting changed by hand. The
-`tiger changed` output is from the prototype in ENG-191's `experiments/changed`, run on
-querator. The `Clock` and `Expire` snippet is illustrative.
+The transcripts on this page come from different runs and prototypes.
+
+The invariant run is against `examples/ledger`. The `Drain` run and the four-file `bugs`
+run use scratch packages instead, because the ledger has no loop, switch, goroutine, or
+wait written in a shape tiger rejects. Their findings use today's wording. It will
+change once the decided loop and goroutine rules are built.
+
+The remaining transcripts each come from their own source:
+- The `tiger golangci` audit is against a config that `tiger golangci --init` generated,
+  with one setting changed by hand.
+- The `tiger changed` output comes from the prototype in ENG-191's
+  `experiments/changed`, run against querator.
+- The `Clock` and `Expire` code is illustrative.
 
 ## References
 
