@@ -1656,7 +1656,7 @@ reopens a ticket.
 
 ### Follow-ups, in order
 
-1. **Make both loop rules sound, then teach TS-V01 more proofs** (call 2), in one release. Fix
+1. **Make both loop rules sound, then teach TS-V01 more proofs** (call 2) [ENG-336], in one release. Fix
    TS-V01's name matching, outside-the-body growth and wraparound; tighten TS-S02's counter check;
    require a safety cap to report when hit, told apart from a page size by the loop's other exit, and say so in TS-S02's message; require every loop limit to be bounded where it enters the program; accept a verified variant, a `ctx.Err()` loop on a
    context parameter, and standard-library iterators; add the four shrink forms. Every loop in
@@ -1664,27 +1664,27 @@ reopens a ticket.
    case. Build change 6 starting from [`experiments/limitfacts`](experiments/limitfacts/), adding
    what its README lists as missing. Fix tiger's own 14 worklist loops and TS-S01's rule reference
    and fixture. Rerun both codebases and record what is left.
-2. **ENG-177, revised** (call 7). TS-C02 and TS-M05 accept only exact shapes, with TS-C02's
+2. **ENG-177, revised** (call 7) [ENG-177]. TS-C02 and TS-M05 accept only exact shapes, with TS-C02's
    `Wait` check; TS-S03 and TS-C05 recognize behavior; fix poolzero's false finding on `*b = T{}`
    after `pool.Get`; add the one-exit rule for event loops, measured on both trials first; implement
    TS-C03's goleak harness check; point every message at the stop-and-done shape. Each shape in
    `experiments/call7` becomes an analyzer test case. Rerun both codebases.
-3. **Remove TS-X01** (call 3), end to end per ADR-0006, with an ADR recording why: a shape rule
+3. **Remove TS-X01** (call 3) [ENG-337], end to end per ADR-0006, with an ADR recording why: a shape rule
    cannot tell a speculative interface from one that narrows capability, like git-server's
    `RefReader`, and its remedy damages the second kind. Remove `//tiger:restrict` (call 11) the same
    way: TS-P01, P02, P03 and K03, the `restrictions` and `closedworld` analyzers, the directive, and
    the closed-dispatch pin requirement.
-4. **Exemptions for TS-E02, TS-N07, TS-C09** (calls 4, 5, 6), each with a test case for the
+4. **Exemptions for TS-E02, TS-N07, TS-C09** (calls 4, 5, 6) [ENG-338], each with a test case for the
    exempted shape.
-5. **Silencing channels** (call 10). ENG-178 items 3 and 4, ENG-179 item 1, and the opt-in
+5. **Silencing channels** (call 10) [ENG-339]. ENG-178 items 3 and 4, ENG-179 item 1, and the opt-in
    `nolint.forbid` entry in `tiger.yaml`, enforced by `tiger check`.
    Drop the `--new-from-rev` recommendation from `config/golangci.yml` in the same change (call 9).
-6. **TS-T02 collect-then-sort, full coverage and the closed escape** (call 8). Build from
+6. **TS-T02 collect-then-sort, full coverage and the closed escape** (call 8) [ENG-340, then ENG-341]. Build from
    `experiments/fullcoverage`, keeping its soundness test. A second ticket tightens the rest of the
    allowlist: the prototype also refuses `keys[i] = k; i++` and reads of carried state anywhere in
    the body, which finds 31 real leaks tiger misses across the module cache and adds 47 false
    findings to work down first.
-7. **Specification reconciliation**, one ticket. Covers the TS-T02 line and Part V table, TS-S02's line asking for an assert on every cap, TS-V01,
+7. **Specification reconciliation** (done 2026-10-12 in ENG-191). Covers the TS-T02 line and Part V table, TS-S02's line asking for an assert on every cap, TS-V01,
    TS-X01's removal, TS-L09's `//nolint` opt-in, the removal of `//tiger:restrict`, and the ENG-181
    gaps (`tiger.yaml`, `tiger golangci --print`, the rule count). The spec also names the `effects` analyzer, which call 16 removes,
    as the planned enforcement for TS-F03, F04, F05, F08, A05 and C06 (none built) and for the
@@ -1703,20 +1703,20 @@ reopens a ticket.
    its five known misses as backed by TS-T11 (calls 8 and 12), remove
    "covers nearly every real loop", and restore the fuller built-versus-described disclaimer that
    `b452818` shortened.
-9. **Call 2's ADR**, the first of the per-call ADRs above. Tiger blocks a loop it cannot prove ends, because
+9. **Call 2's ADR** (done 2026-10-12, ADR-0013; every call's ADR is ADR-0013 to ADR-0028), the first of the per-call ADRs above. Tiger blocks a loop it cannot prove ends, because
    a bound in a loop's header is a claim and the experiments show such claims passing on loops that
    run forever. The way out is a counter cap, so the counter check must be sound and a constant cap
    that stands in for a proof must report when it is hit. False findings on correct code are fixed
    by teaching tiger more proofs, never by stopping the block. This document is the context and the
    ADR is the binding record.
-10. **Stop using `//tiger:batched` for loop bounds** (call 13). Write the ADR that replaces
+10. **Stop using `//tiger:batched` for loop bounds** (call 13) [ENG-183]. Write the ADR that replaces
     ADR-0004's loop-bound half and closes ENG-183. Show the restated-limit form in the rule
     reference.
-11. **The patterns collection** (call 15): rename `examples/` to `patterns/`, clean up and add the
+11. **The patterns collection** (call 15) [ENG-342]: rename `examples/` to `patterns/`, clean up and add the
     eight seed patterns, embed them in the binary behind `tiger pattern`, add the registry field and
     the driver's pointer suffix with its meta-tests, run `-race` on `patterns/` in CI, and ship the
     `tiger` binary alongside the plugin.
-12. **`tiger changed <base>`** (call 16). Build it from `experiments/changed`: the mixed filter,
+12. **`tiger changed <base>`** (call 16) [ENG-343]. Build it from `experiments/changed`: the mixed filter,
     skip generated files, show `context.Context`. Remove `//tiger:effects` and `//tiger:frame`
     with TS-F01, F02, F07, the effect table and the effects and frames analyzers, and the
     effects and frames half of `tiger pin`; ADR-0007 and ADR-0008 are amended to cover variants
