@@ -88,4 +88,4 @@ an error on a cycle. Every loop in `experiments/gaps`, `experiments/variants` an
   standard-library stream over an endless in-program source counts as an outside stream. Ranging
   over a slice while appending to it ends, so it stays a correctness bug for tests, not a loop rule.
 - `//tiger:batched` stops waiving the loop bound on cursor loops. That replaces part of ADR-0004 and
-  is recorded in its own ADR (ENG-191 call 13).
+  is recorded in ADR-0014.
