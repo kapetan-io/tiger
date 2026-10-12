@@ -46,6 +46,6 @@ Two rules stay without the markers:
   `openenum`, and the escape `batched`.
 - An unknown verb is a blocking TS-L09 finding, so code that still carries `//tiger:hot`, `wire` or
   `owner` fails until the comment is removed.
-- TS-C11 (no exported method returns a pointer, slice, or map aliasing an internal field) stays, so
-  part of what TS-C10 protected is still enforced for every type.
+- TS-C11 (no exported method returns a pointer, slice, or map aliasing an internal field) stays a
+  rule for every type, so part of what TS-C10 protected remains. It is not built yet.
 - Allocation on hot paths and wire-format layout are left to benchmarks and review.
