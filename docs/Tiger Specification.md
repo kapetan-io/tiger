@@ -46,23 +46,26 @@ available wins.
 > other rules. The analysis does not get smarter. The language gets smaller.
 
 Alias analysis is the clearest case. In general Go it is hopeless. In a package with no package-level
-mutable state, no `unsafe`, no reflection, no escaping internal pointers, and no single-implementation
-interfaces, the ways a pointer can reach a piece of state are small, enumerable, and decidable.
+mutable state, no `unsafe`, no reflection, and no escaping internal pointers, the ways a pointer can
+reach a piece of state are small, enumerable, and decidable.
 
 The restrictions compound, and they compound in a specific order:
 
 ```
 no globals + no unsafe + no reflection
   → the heap graph is reachable only through parameters and receivers
-    → points-to analysis is exact for the fragment
-      → frame conditions are checkable
-        → "what can this function change" is machine-answerable
-          → mechanical refactoring is provably behavior-preserving
-            → refactoring diffs need no review
+    → the functions that could have written a value are few
+      → a reviewer looking at a wrong value can name every function that could have written it
 ```
 
 Each link is worthless alone. No globals, by itself, is mild hygiene. In the chain it is load-bearing
-for a guarantee five steps away.
+for a guarantee three steps away. The other half of what a reviewer needs is to know when that set
+changes, and `tiger changed` (Part V) reports it: the struct or function that started calling
+something new.
+
+An earlier form of this chain continued through computed frame conditions to refactoring that is
+provably behavior-preserving, so that a refactoring diff would need no review. Tiger does not make
+that proof (ADR-0027). A refactoring diff is reviewed like any other.
 
 The practical consequence: **you do not get sixty percent of the value from sixty percent of the
 rules.** You get very little until a chain completes, and then a lot at once. Adopt by chain, not by
@@ -90,25 +93,23 @@ opposite of how review attention is usually distributed.
 The split is not by topic and not by directory. Every concern has two parts, and the parts get
 different treatment.
 
-**Machines check the correspondence.** Does the code satisfy the invariant it names, stay inside its
-declared frame, terminate, cover every state, match its declared effect set, route its nondeterminism
-through an injectable surface, respect the declared layering.
+**Machines check the correspondence.** Does the code satisfy the invariant it names, terminate,
+cover every state, route its nondeterminism through an injectable surface, respect the declared
+layering.
 
 **Humans and AI review the declarations.** Is `SequenceMonotonic` the invariant this protocol actually
-needs. Should this function be permitted to touch the disk at all. Is 512-byte sectors true of the
-hardware. Can the `Storage` interface express a torn write.
+needs. Should this struct be calling the disk at all, now that `tiger changed` shows it does. Is
+512-byte sectors true of the hardware. Can the `Storage` interface express a torn write.
 
 **The declarations are a layer, not a region.** They cut across every file. There is no part of the
-tree that is "the reviewed part", because the effect set of a function determines which checks apply
-to it, and the effect set is computed rather than decreed.
+tree that is "the reviewed part", because invariants, limit derivations, contracts, and variants sit
+next to the code they govern, wherever that code is.
 
 The policy that falls out:
 
-> A change touching no declaration and passing CI merges without a human reading it. A change touching
-> a declaration goes to someone who knows the domain, and nothing else about it is discussed, because
-> everything else has already been checked.
-
-Track one number and make it the headline: **the fraction of merged lines that no human read.**
+> A change touching a declaration goes to someone who knows the domain. Every change is still read,
+> but review does not re-check what CI already checked: termination, coverage, injection, layering.
+> Review spends its attention on the declarations and on what `tiger changed` reports.
 
 ## The nine benefits
 
@@ -190,7 +191,7 @@ split the codebase into a verified core and an unverified shell, on the grounds 
 then be tested in isolation. When it became clear that testing the core in isolation leaves the bugs
 in the shell and at the boundary, the split was restructured into three tiers rather than retired.
 The conclusion had outlived its rationale and was being defended on inertia. The correct response was
-to delete it, which is what the scoping model below does.
+to delete it, which this specification did.
 
 ## Turning judgment into checks
 
@@ -222,151 +223,63 @@ previously unexercised.
 
 # Part II: Structure
 
-## The scoping model
+## Where restrictions live
 
-> **Status: confirmed 2026-08-12**, after an adversarial review of this section against the rest
-> of the specification. It replaces an earlier core/shell split, rejected twice. Confirmation
-> brought amendments, chiefly: `TS-P01` gained per-axis defaults so the absence of a declaration
-> is never an error (mirroring the pin model one level up), and `TS-P03`'s surface-diff
-> obligation now also covers drops in the computed `TS-P02` bound.
+> **Status: replaced 2026-10-12.** This section was the scoping model: effect sets computed for every
+> function, and restriction sets declared per package with `//tiger:restrict` (`TS-P01`, `TS-P02`,
+> `TS-P03`, and `TS-K03`'s closed dispatch). ADR-0024 removed the package declarations, and ADR-0026
+> removed effect sets and frames. The retired rules are listed under "Retiring a rule".
 
-Restrictions divide along two axes, and conflating them is what produced the rejected split.
+Go's import granularity is the package, so a restriction on what code may import is package-scoped.
+Restrictions are not declared per package. `TS-D01` limits every package to the standard library by
+default, and the `TS-X03` layer file gives each package a role with an import allowlist (not built,
+ENG-328). Reflection, `unsafe`, and cgo are banned everywhere by `TS-S12`, with `unsafe` permitted
+only in `internal/sys`.
 
-**Function scope, computed.** Effects, frames, contracts, and variants are properties of a single
-function, derived from its body and its callees. A function's declared effect set determines which
-checks apply to it. There is no boundary here and no region to defend, only a gradient. A function
-with an empty effect set gets contracts, variants, frames, and totality checking. A function that
-declares `io(disk)` gets the same checks modulo the declared effect, plus the obligation that the
-effect reach an injectable surface.
-
-**Package scope, declared.** Import allowlists, dependency bans, dispatch closure, and layering can
-only be package-scoped, because Go's import granularity is the package. A file cannot import a
-package differently from its neighbour. The layering axis is not a second declaration: it is the
-`TS-X03` checked-in layer file, which a restriction set references rather than duplicates.
-
-**The relationship: package restrictions are enablers, not tiers.** They determine the *precision* of
-the function-level checks, not whether those checks run. A function in a package that permits dynamic
-dispatch still gets a computed effect set; the analyzer uses a conservative over-approximation and
-reports lower confidence. The result is a precision gradient rather than a wall, which matters because
-a wall is a thing that gets argued about, eroded, and exempted, and a computed property is not.
-
-**The ratchet.** Track the fraction of functions with empty effect sets and the fraction of packages
-with closed dispatch. These are descriptive metrics that should rise over time. Pure functions will
-cluster in practice; do not decree the cluster in advance and then defend its border. The metrics
-track voluntary claims: `TS-P01` never requires a package to claim closure — an undeclared axis
-takes its default — so the cluster emerges instead of being decreed.
-
-**`TS-P01` A package's restriction set is declared; undeclared axes take stated defaults.**
-Why. Import allowlists, dispatch closure, and dependency bans are package-granular by language
-constraint, so they must be stated somewhere — and a per-package declaration lets a reviewer answer
-"how precise are the checks on this function" from the package clause instead of walking the import
-graph. Without a declared or defaulted input, `TS-P02`'s transitive bound is undefined. Absence of
-a declaration is never an error — each axis has a default, mirroring the pin model one level up
-("unpinned is fine, a wrong pin fails"): imports default to `TS-D01`'s stdlib-only baseline,
-dispatch defaults to open (no precision claim; conservative over-approximation applies), and
-layering defaults to the `TS-X03` layer file, referenced rather than duplicated. External test
-packages (`foo_test`) need no declaration and make no claim; nothing imports them, so they never
-enter a bound.
-
-The form is a directive in the package doc comment, at most one per package. Its grammar is a
-comma-separated list of axes, each `closed-dispatch`, `no-reflect`, or
-`imports(<path>[, <path>...])`; paths are module-relative, optionally ending in `/...` to match
-the subtree, and the standard library is always allowed (the `TS-D01` baseline the axis extends).
-Canonical form lists the axes in that order with paths sorted. A malformed argument — an unknown
-axis, an empty `imports()`, unbalanced parentheses — is a `TS-L09` finding, never a silently
-meaningless claim:
-
-```go
-// Package ledger applies entries to the account state machine.
-//
-//tiger:restrict closed-dispatch, no-reflect, imports(internal/domain/...)
-package ledger
-```
-
-Enforce. `restrictions` (custom) plus `depguard` (auto). Blocking on a contradiction between a
-declaration and observed code, never on the absence of a declaration.
-
-**`TS-P02` A package's effective precision is bounded by the weakest package it transitively imports.**
-Why. Closed dispatch buys nothing if a dependency reintroduces an unknown callee. Computing and
-reporting the bound stops a package from claiming a guarantee its dependencies do not support. The
-standard library does not degrade the bound: the analyzer carries a curated fact table for it (the
-same table the built-in `io` qualifiers come from), so stdlib internals are semantic ground rather
-than an unknown. A third-party dependency with no declaration counts as weakest on every axis,
-which is honest and points the incentive the same direction `TS-D01` already does.
-Enforce. `restrictions` (custom). Blocking: a package that claims an axis its transitive imports do
-not support has made a claim the code contradicts, and the finding names the edit — declare the axis
-on the dependency, or drop the claim. Each weakened axis is one finding at the package clause naming
-the first dependency that weakens it. A drop in the bound additionally appears in the release
-surface diff, per `TS-P03`.
-
-**`TS-P03` Weakening a package's restriction set requires a directive and appears in the surface diff.**
-Why. Erosion happens one convenient exception at a time. Making each one visible in the release
-surface diff is what stops the drift. The obligation covers both doors. Editing your own
-declaration is a choice: blocking, directive required, visible in the diff. A drop in the computed
-`TS-P02` bound caused by a dependency change is a consequence: nobody made a choice a directive
-could justify, so it does not block — but the drop appears in the release surface diff, so
-dependency-caused erosion gets the same guaranteed human moment. A diff entry fires only when the
-bound's value actually changes, never on every transitive dependency touch; and it is
-annotation-only — it does not participate in `TS-R02`'s semantic-version decision, because the
-package's own surface did not change, only its neighbourhood.
-Enforce. `restrictions` plus `surfacediff` (custom). Blocking for declaration edits;
-reported-in-diff for computed-bound drops.
+Facts about a single function are not computed into effect sets and are not pinned, except loop
+variants (`TS-V01`). When a change makes a struct or free function call something new, `tiger
+changed` reports it, and a reviewer decides whether the call belongs there.
 
 ## Pins: the analyzer infers, a declaration locks
 
-> **Status: adopted 2026-08-12**, replacing the original mandatory-declaration model for
-> function-scoped facts. `TS-F01` and `TS-F02` are rewritten in its terms. Chosen by deliberation
-> against declarations-first and computed-only-first alternatives; the deciding evidence was the
-> history of annotation systems — the survivors (Rust lifetimes, TypeScript, NullAway) all let
-> inference do the bulk of the work and required annotation only at boundaries, while the systems
-> that front-loaded annotation cost before the tool gave value (checked exceptions, JML, .NET Code
-> Contracts) died of it.
+> **Status: adopted 2026-08-12, narrowed 2026-10-12.** ADR-0026 removed effect and frame pins with
+> the `effects` and `frames` analyzers; `tiger changed` (Part V) now shows a reviewer what a
+> function newly calls. Pins cover loop variants and function contracts. The model was chosen by
+> deliberation against declarations-first and computed-only-first alternatives; the deciding
+> evidence was the history of annotation systems. The survivors (Rust lifetimes, TypeScript,
+> NullAway) all let inference do the bulk of the work and required annotation only at boundaries,
+> while the systems that front-loaded annotation cost before the tool gave value (checked
+> exceptions, JML, .NET Code Contracts) died of it.
 
-Function-scoped facts — effect sets, frames, variants — have a computed baseline: the analyzer
-derives them from the code and its callees with no annotation required, for every function, from
-day one. The declaration for such a fact is therefore optional, and its meaning changes: it is a
-**pin**. A pin freezes the computed fact into a blocking contract.
+A **pin** is a declaration tiger proves. There are three: a loop variant (`//tiger:variant`,
+`TS-V01`), a precondition (`//tiger:requires`, `TS-V03`), and a postcondition (`//tiger:ensures`,
+`TS-V03`). A pin the code does not satisfy is a blocking finding.
 
-The lifecycle:
+A loop variant has a computed baseline: where tiger can synthesize one, no annotation is needed. The
+lifecycle:
 
-1. **Unpinned.** The analyzer computes the fact on every run and prints nothing for it; a
-   plain `tiger check` is silent about unpinned functions and the merge continues.
-   `tiger check --show-facts` prints the fact in pin syntax, the exact line you would paste
-   above the function. Fact output and pin are one format; adopting a pin is a paste.
-2. **Pinned.** The analyzer compares pin and code on every pull request. Agreement is silence.
-   Disagreement fails the CI check before merge, showing the pin and the computed line in the same
-   format. The two exits are to change the code or change the pin, and a pin edit is visible in
-   the diff, so a reviewer rules on the new promise. A pin cannot go stale: a wrong pin is a
-   failed check, not a lie in a comment.
+1. **Unpinned.** The analyzer synthesizes the variant on every run and prints nothing for it.
+   `tiger check --show-facts` prints it in pin syntax, the exact line you would paste above the
+   loop, and `tiger pin` writes it. Fact output and pin are one format.
+2. **Pinned.** The analyzer compares pin and code on every run. Agreement is silence.
+   Disagreement fails the check, showing the pin and the reason in the same format. The two exits
+   are to change the code or change the pin, and a pin edit is visible in the diff, so a reviewer
+   rules on the new promise. A pin cannot go stale: a wrong pin is a failed check, not a lie in a
+   comment.
 
-Four rules govern pins:
+Three rules govern pins:
 
-- **Function-scoped pins attach to exported functions and methods only, the inbound surface.** Unexported helpers are
-  exactly the region mechanical refactoring (`TS-R01`) must be free to reshape; a pin there fights
-  the prover and invites keeping dead code alive to keep CI quiet. Nothing is lost, because of the
-  next rule. (`main` has almost no exports; `main` itself is pinnable. Loop variants are the
-  placement exception: a variant pin attaches to its loop, wherever the loop lives, because the
-  termination obligation belongs to the loop and cannot be checked from an enclosing signature.)
-- **A pin bounds its entire callee subtree.** Effects propagate upward, so exported pins constrain
-  unexported internals transitively, and the failure names the introducing call. Sparse pins give
-  dense enforcement.
-- **Pins are exact.** Undeclared effects fail and declared-but-absent effects fail, which stops a
-  pin drifting into a defensive superset that means nothing. Purity is a positive claim with a
-  positive spelling: `//tiger:effects none`. Absence of a pin never means purity; it means
-  unpinned.
-- **The trigger.** In a package that declares closed dispatch (`TS-K03` under `TS-P01`), pins are
-  required on every exported function. Pins become mandatory exactly where the computed facts are
-  exact — a defined event, not a mood. This is what keeps "optional" from decaying into "never".
+- **A variant pin attaches to its loop,** wherever the loop lives, because the termination
+  obligation belongs to the loop and cannot be checked from an enclosing signature. A contract pin
+  attaches to a function.
+- **Pins are exact.** Tiger checks a pin in both directions and never accepts one it cannot verify.
+- **A variant must be found.** Where the analyzer synthesizes one, the lifecycle above applies.
+  Where it cannot, the loop needs a pinned variant or a counter cap that reports when it is hit
+  (`TS-V01`, `TS-S02`). That is the only way a pin stops being optional.
 
-One asymmetry inside the pinnable set: an effect set or frame always exists to be computed, but a
-variant must be *found*. Where the analyzer synthesizes one, the usual lifecycle applies; where it
-cannot, the variant pin is required (`TS-V01`) — mandatory because the fact is missing, not because
-precision is claimed. The trigger and this are the only two ways a pin stops being optional, and
-both are defined events.
-
-What is not pinnable: invariants, surface fault sets, package restriction sets, `hot`, `wire`,
-`owner`. These have no computed baseline; they are intent, not observation. You state them first
-and the analyzer enforces their consequences. Facts become machine; intent stays human.
+What is not pinnable: invariants, surface fault sets, open enums. These have no computed baseline;
+they are intent, not observation. You state them first and the analyzer enforces their
+consequences. Facts become machine; intent stays human.
 
 ## The prerequisite: an assert package
 
@@ -400,7 +313,7 @@ Source directives share one namespace, `//tiger:<verb>`, following Go's own dire
 (`//go:build`, `//go:generate`); the prefix matches the analyzer binary, `tiger`, so seeing a
 directive tells you what to run. (The prefix was renamed from `//tigerstyle:` — the project is
 defined as not-a-style-guide, and the word `style` does not belong inside every declaration.)
-Three kinds with different lifecycles: **pins** (computed by default, blocking once written, see
+Three kinds with different lifecycles: **pins** (a claim tiger proves, blocking once written, see
 above), **intent declarations** (nothing to infer; stated first, enforced after), and **escape
 hatches** (loosen one rule at one site, always with a reason, counted by `TS-D06`).
 
@@ -408,17 +321,12 @@ hatches** (loosen one rule at one site, always with a reason, counted by `TS-D06
 | --- | --- | --- | --- |
 | Invariant | `inv.HeaderChecksum`, declared in one package | intent | TS-A07 |
 | Limit derivation | `// BatchMax = (WriteBufferSize - HeaderSizeBytes) / EntrySize` | intent | TS-S22 |
-| Effect set | `//tiger:effects io(disk), mutate(r.log)` — `none` for purity | pin | TS-F01 |
-| Frame | `//tiger:frame r.log, r.checkpoint` | pin | TS-F07 |
 | Precondition | `//tiger:requires len(target) == HeaderSizeBytes` | pin | TS-V03 |
 | Postcondition | `//tiger:ensures result.Checksum == checksum(result.Payload)` | pin | TS-V03 |
 | Loop variant | `//tiger:variant len(pending)` | pin | TS-V01 |
 | Surface fault set | fault cases enumerated in the interface | intent | TS-I05 |
-| Package restrictions | `//tiger:restrict closed-dispatch, imports(...)` in the package doc comment | intent | TS-P01 |
-| Layer graph | checked-in layer file | intent | TS-X03 |
-| Hot path | `//tiger:hot` | intent | TS-F03 |
-| Wire type | `//tiger:wire` | intent | TS-K06 |
-| Open enum | `//tiger:openenum` | intent | TS-S08 |
+| Layer graph | checked-in layer file (not built, ENG-328) | intent | TS-X03 |
+| Open enum | `//tiger:openenum <reason>`, counted by `TS-D06` | intent | TS-S08 |
 | Batched IO | `//tiger:batched <reason>` | escape | TS-M10 |
 | Deviation | `//tiger:<rule-id> <reason>` | escape (gated, does not ship before the first heuristic rules + TS-D06 ratchet) | TS-L09 |
 
@@ -433,8 +341,14 @@ hatches** (loosen one rule at one site, always with a reason, counted by `TS-D06
 > `//tiger:batched` passes: an external system that only accepts per-item IO is a fact of the
 > world no rewrite removes. The deviation form ships, if ever, together with the first heuristic
 > rules and the `TS-D06` ratchet — mechanism and control in one release. Every escape directive
-> in a tree additionally surfaces as a standing **advisory** finding on every run: shape is
-> machine-checked, truth is human-reviewed, and unverified claims never leave the report.
+> in a tree additionally counts against its package's `TS-D06` budget on every run and prints
+> when the package goes over: shape is machine-checked, truth is human-reviewed, and adding an
+> unverified claim is a visible budget change.
+>
+> **Amended 2026-10-12.** `//tiger:batched` waives `TS-M10` only. ADR-0014 removed its waiver of
+> the `TS-S02` loop bound. `//tiger:openenum` carries a reason and is counted the same way, because
+> tiger cannot check that an enum really is open (ENG-179). The `hot`, `wire`, and `owner` verbs
+> are removed with the rules that used them (ADR-0028).
 
 ---
 
