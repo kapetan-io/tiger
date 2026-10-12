@@ -1910,7 +1910,7 @@ The chains only pay when complete, so build them in dependency order rather than
 afternoon.
 
 **Stage 1, the assert package.** Add it, then apply `TS-A01` and `TS-A02`. Density on legacy code is
-a project, and tiger keeps no baseline to defer it (ADR-0022), so budget the project.
+a project; tiger keeps no baseline that would let the project wait (ADR-0022).
 
 **Stage 2, structural rules.** `funlen`, `cyclop`, `nestif`, `gochecknoglobals`, `depguard`. Real
 refactoring, so run advisory and ratchet per package.
@@ -1969,7 +1969,7 @@ freeze the fact, so the line ends in text that can be pasted above the loop.
 Before:
 
 ```
-TS-V01: //tiger:variant len(data) doesn't provably shrink on every pass (len(data) cannot be shown to move consistently) — add a cap
+TS-V01: variant len(data) not monotone: ranking not strictly decreasing on back edge — pin a valid variant
 ```
 
 After:
