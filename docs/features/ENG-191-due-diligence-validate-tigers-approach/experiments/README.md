@@ -32,7 +32,7 @@ the end of the table.
 |---|---|---|---|
 | `ListFilteredCountRows` | every row read, against `limit` | passes | empty page while 5 matches exist |
 | `ListFilteredCountMatches` | only kept rows, in the body | TS-V01 and TS-S02 block | reads all 1,000,000 rows for one match |
-| `ListFilteredTwoLimits` | kept rows against `limit` clamped to `pageMax`, rows read against `scanMax` | passes | fills a page; returns `ErrScanLimit` after 10,000 reads on a sparse table |
+| `ListFilteredTwoLimits` | kept rows against `limit` clamped to `pageMax` (zero or less returns nothing), rows read against `scanMax` | passes | fills a page; returns `ErrScanLimit` after 10,000 reads on a sparse table |
 
 The two-limit loop first drew TS-S21 on `scanMax`. The relation that clears it,
 `const _ = uint(scanMax - pageMax)`, says a scan must be able to fill a dense

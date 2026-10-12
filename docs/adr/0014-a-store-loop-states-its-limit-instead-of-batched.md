@@ -54,7 +54,8 @@ A store loop states its limit in the header, restating the one its query already
 
 A loop that filters rows before keeping them has two limits:
 
-- A page limit that counts kept rows, clamped to a declared `pageMax`.
+- A page limit that counts kept rows, clamped to a declared `pageMax`. A limit of zero or less
+  returns an empty page, since it would never equal the count of kept rows.
 - A scan limit that counts every row read, a declared `scanMax` related to the page limit by
   `const _ = uint(scanMax - pageMax)`. The loop's other exit is the page filling, so under ADR-0013
   the scan limit is a safety cap, and the loop returns an error when it reaches `scanMax`.

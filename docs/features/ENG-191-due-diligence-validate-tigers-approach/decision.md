@@ -62,10 +62,12 @@ over. Only a human edit can raise a number. One `tiger budget --write` records t
 clears these lines. That leaves 396 and 323 rule findings.
 
 Two fixture modules were also run against the same binary, to test claims the trials could not
-answer on their own. They are reproduced inline where they matter. Five experiment modules are
-committed under [`experiments/`](experiments/). Four of them (`cursorbound`, `annotations`,
-`variants`, `gaps`) hold loops with runtime tests and the captured output of `go test` and
-`tiger check`. The fifth, `limitfacts`, is the prototype analyzer for call 2's change 6.
+answer on their own. They are reproduced inline where they matter. Eleven experiment modules are
+committed under [`experiments/`](experiments/), and [its README](experiments/README.md) indexes
+them: `cursorbound`, `annotations`, `variants`, `gaps`, `call7`, `maporder`, `newfromrev` and
+`nolint` hold runtime tests or fixtures with the captured output of `go test` and `tiger check`;
+`limitfacts`, `fullcoverage` and `changed` are prototypes for call 2's change 6, call 8 and
+call 16.
 
 ---
 
@@ -270,8 +272,10 @@ code that breaks the rule passes. Call 7 closes them.
 
 ## 3. The rule set tiger should ship
 
-Ten rules change, one is removed, and the rest stay as they are. Nothing
-new enters as a rule. The golangci-lint linters tiger turns on are out of scope. The
+Eleven rules change (TS-V01, S02, S03, C02, C05, M05, E02, N07, C09, T02 and L09), eight are removed (TS-X01, P01, P02, P03, K03, F01, F02, F07), and one is added, the
+one-exit rule for event loops (TS-S23). TS-C03's goleak check, already specified, gets built. The
+rest stay as they are. Removals decided after these calls, by ADR-0027 and ADR-0028, are recorded
+in those ADRs. The golangci-lint linters tiger turns on are out of scope. The
 `tiger golangci` audit governs them, and neither trial found a problem with that split.
 
 ### Call 2: keep requiring proof that a loop ends, and make both loop rules sound (TS-V01, TS-S02)
@@ -462,7 +466,7 @@ before TS-S02 starts trusting a proof.
    for ; i < len(stack) && i < nodesMax; i++ {
    	stack = append(stack, stack[i].Next...)
    }
-   if i == nodesMax {
+   if i == nodesMax && i < len(stack) {
    	return nil, errWalkTooLarge
    }
    ```
@@ -967,28 +971,25 @@ its own ADR, with a design that can only ever lower the numbers, like ADR-0011's
 ### Rules that stay as they are
 
 These stay blocking with no change. Each was true on real code in both trials. Where the volume is
-high, it counts one decision made many times, not many wrong decisions.
+high, it counts one decision made many times, not many wrong decisions. TS-S02 (calls 2 and 13),
+TS-S03, C05 and M05 (call 7) and TS-L09 (call 10) change, so they are not listed here.
+TS-F01, F02, F07, P01, P02 and K03 are removed by calls 11 and 16.
 
 | Rule | What it checks | querator / git-server |
 |---|---|---:|
-| TS-S02 | every loop states a bound: a constant, a `len`, or a counter; `for {}` needs a `select` on `ctx.Done()` | 35 / 23 |
-| TS-S03 | a loop that runs forever has a case that stops it | 0 / 0 |
 | TS-S08 | a switch over an enum ends in `assert.Unreachable`, or the type is marked `//tiger:openenum` | 15 / 14 |
 | TS-S09 | no labeled `break` or `continue`; move the inner loop into a function | 35 / 0 |
 | TS-S18 | no bare `panic` outside the assert package | 15 / 4 |
 | TS-S01 | no recursion; a cycle in the call graph is a finding | 2 / 3 |
 | TS-S06, S07 | one logical operator per condition; split compound assertions | 2 / 6 |
 | TS-S21, S22 | every limit constant is asserted against, and its stated derivation evaluates to its value | 0 / 0 |
-| TS-C05 | every blocking channel wait can be cancelled | 13 / 0 |
 | TS-C12 | channel types are declared in one file per package | 3 / 0 |
-| TS-M05 | a pooled value is reset before `Put` (gets call 7's fix) | 0 / 0 |
 | TS-M10 | no IO inside a loop body, unless `//tiger:batched` | 2 / 6 |
 | TS-E06 | at most two return values, the second an `error` or `bool` | 11 / 39 |
 | TS-N08 | no `bool` parameters; use a named type | 5 / 12 |
 | TS-N14 | exported names do not end in a present participle | 0 / 1 |
 | TS-T06, T10 | tests have a doc comment; table tests have a `name` field | 44 / 3 |
-| TS-L09 | every directive is well formed and carries a reason | 0 / 0 |
-| TS-F01, F02, F07, V03, P01, P02, K03, A07, A09 | opt-in pins (effects, frames, preconditions, invariants) and restrictions; silent until declared | 0 / 0 |
+| TS-V03, A07, A09 | opt-in contracts and invariants; silent until declared | 0 / 0 |
 
 The accounting findings stay as they are. TS-D07 is a skipped test, TS-L05 a misordered
 declaration, TS-L09-escape an escape directive in use, and TS-D06 the budget that counts them.
@@ -1374,7 +1375,7 @@ reason.
 **Decision (2026-10-04): Keep and change, with two limits on a filtered loop.** `//tiger:batched`
 stops waiving TS-S02 and stays the waiver for TS-M10. A store loop restates the limit it already
 declares. A loop that filters rows before it keeps them has two limits. The page limit counts kept
-rows and is clamped to a declared `pageMax`. The scan limit counts every row read and is a declared
+rows and is clamped to a declared `pageMax`; a limit of zero or less returns an empty page. The scan limit counts every row read and is a declared
 `scanMax` with `const _ = uint(scanMax - pageMax)`. The scan limit is a safety cap under call 2's change 5,
 because the loop's other exit is the page filling, so the loop returns an error when it reaches
 `scanMax`. This settles the open question below: tiger keeps bounding how many times a loop runs,

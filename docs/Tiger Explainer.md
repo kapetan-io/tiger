@@ -293,7 +293,9 @@ A collect-then-sort passes when the sort is `sort.Strings`, `sort.Ints`, or
 integers cannot be told apart. Floats are excluded, because -0 and +0 compare
 equal and print differently. A comparator sort passes only when its comparisons
 together cover every field of the element, using `cmp.Compare`,
-`strings.Compare`, or `bytes.Compare` on a whole array. Covering every field
+`strings.Compare`, or `bytes.Compare` on a whole array. A float, pointer,
+interface, bool, or `time.Time` field never counts as covered, because none
+has an order these comparisons can rely on. Covering every field
 means the comparator returns 0 only for identical elements, so no tie can leak
 map order. A result of `maps.Keys`, `maps.Values`, or `maps.All` must go to
 `slices.Sorted`, to a sort whose comparator covers every field, to

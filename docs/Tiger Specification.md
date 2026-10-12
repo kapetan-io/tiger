@@ -425,7 +425,7 @@ over any other iterator is a finding, the same as ranging over a channel.
 
 A store loop restates the limit its query already declares, as in
 `for count := 0; count < opts.Limit && rows.Next(); count++`. A loop that filters rows before keeping
-them has two limits. The page limit counts kept rows and is clamped to a declared `pageMax`. The scan
+them has two limits. The page limit counts kept rows and is clamped to a declared `pageMax`, and a limit of zero or less returns an empty page. The scan
 limit counts every row read and is a declared `scanMax`, related by `const _ = uint(scanMax -
 pageMax)`; it is a safety cap, so the loop returns an error when it reaches `scanMax`. A
 whole-partition scan either declares a maximum partition size, capped with an assert, or pages and
