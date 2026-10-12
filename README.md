@@ -7,17 +7,18 @@ that code to the restrictions NASA's
 put on flight and database software, so the result is testable and free of
 whole classes of production bugs. Every loop has a bound, every goroutine has an
 owner, and every clock, random source, and IO call is passed in, so any function
-can be tested in isolation. A run either passes or fails. Tiger has no warnings
-and no suppression comment, so code that fails the check is rewritten until it
-passes. The analysis is deterministic static analysis and never a language
+can be tested in isolation. A run either passes or fails. `tiger check` has no
+warnings and honors no suppression comment, so code that fails the check is
+rewritten until it passes. The analysis is deterministic static analysis and never a language
 model, with no network. **The specification lives in the source and a machine
 checks the code against it.**
 
 ## Documentation
 
 - [Tiger Explainer](docs/Tiger%20Explainer.md) — start here: what tiger is
-  for and why, the concepts (surfaces, pins, effects, frames, invariants,
-  budgets, directives), and the real bugs its rules caught in trials.
+  for and why, the concepts (injected nondeterminism, invariants, patterns,
+  `tiger changed`, budgets, directives), and the real bugs its rules caught in
+  trials.
 - [Tiger Rule Reference](docs/Tiger%20Rule%20Reference.md) — one entry per
   enforced rule: what it requires and why, a firing example, the compliant
   rewrite, severity, and directive interactions. A doc meta-test in
@@ -38,6 +39,10 @@ tiger golangci --init           # generate the baseline config for a new project
 tiger golangci --print          # write the baseline to stdout for hand merging
 ```
 
+Decided in ENG-191 and not built yet: `tiger changed <base>`, which reports
+each struct that started calling something new since the base revision, and
+`tiger pattern <name>`, which prints the pattern a finding points to.
+
 Exit codes: 0 clean, 1 findings, 2 operational failure (a package that fails
 to load is never reported as clean). A rule either blocks or it is not a rule
 (ADR-0012): blocking findings fail the run; the only other findings are the
@@ -45,9 +50,10 @@ standing advisory notices the specification names — every escape directive
 and every skipped test — which are counted per package against
 `tiger.budget.yaml`: under budget they print nothing, and a package over its
 row (or with no row) fails the run with a `TS-D06` line followed by the
-counted findings. Computed facts — effect sets, frames, synthesized loop
-variants — are not rules: they print only under `--show-facts`, in exact,
-freeze-ready pin syntax, and are what `tiger pin` freezes. Output is
+counted findings. A synthesized loop variant is a computed fact, not a rule:
+it prints only under `--show-facts`, in exact, freeze-ready pin syntax, and is
+what `tiger pin` freezes. (Today `--show-facts` also prints effect sets and
+frames; ADR-0026 removes them.) Output is
 deterministic and position-sorted; CI runs the check twice and diffs the
 bytes, with and without the facts channel.
 
@@ -104,25 +110,28 @@ Two engines enforce the rules:
   `variant`, `contracts`), with effect sets and frames crossing package
   boundaries through `go/analysis` facts; the cross-package wave adds the
   rules whose evidence spans the module (`restrictions`, `closedworld`,
-  `invariantrefs`, `invariantnegative`, `singleimpl`). Analyzers are
-  driver-agnostic `go/analysis` passes; severity and exit codes live in the
-  driver, per ADR-0002. Three rules — TS-A07, TS-A09, TS-X01 — are
-  whole-program rules: their finding is decided in a finish step the tiger
-  driver runs once after every package has been visited (ADR-0010). Only
+  `invariantrefs`, `invariantnegative`, `singleimpl`). ENG-191 removes
+  `effects` and `frames` (ADR-0026), `restrictions` and `closedworld`
+  (ADR-0024), and `singleimpl` (ADR-0016); the specification's analyzer table
+  shows what is built and what is decided. Analyzers are driver-agnostic
+  `go/analysis` passes; severity and exit codes live in the driver, per
+  ADR-0002. TS-A07 and TS-A09 are whole-program rules (and TS-X01 until its
+  removal lands): their finding is decided in a finish step the tiger driver
+  runs once after every package has been visited (ADR-0010). Only
   `tiger check` reports them; under the golangci-lint plugin their
-  per-package halves still run and export facts, and those three codes are
-  simply absent.
+  per-package halves still run and export facts, and those codes are simply
+  absent.
 
 Directives share the `//tiger:<verb>` namespace, owned by the grammar package
 (`internal/directive`): an unknown verb is a blocking error, never a silently
-meaningless comment. Wave 1 admits exactly one escape hatch,
-`//tiger:batched <reason>`, and it is counted against its package's budget on
-every run — escapes are never silent: the debt they carry is a number in
-`tiger.budget.yaml`'s diff (ADR-0003, ADR-0011). There is deliberately no
-`//tiger:bounded` and no dismissal directive. A package states its
-restrictions with `//tiger:restrict closed-dispatch, no-reflect,
-imports(internal/domain/...)` in its doc comment; absence of a declaration is
-never a finding, a declaration its own imports or dispatch contradict is.
+meaningless comment. Tiger admits exactly one escape hatch,
+`//tiger:batched <reason>`, which waives only the rule against IO inside a loop
+(TS-M10, ADR-0014), and it is counted against its package's budget on every
+run, so the debt it carries is a number in `tiger.budget.yaml`'s diff
+(ADR-0003, ADR-0011). `//tiger:openenum` carries a reason and is counted the
+same way. There is deliberately no `//tiger:bounded` and no dismissal
+directive. Tiger has no package-level declarations: ADR-0024 removes
+`//tiger:restrict`, and ADR-0028 removes the `hot`, `wire`, and `owner` verbs.
 
 ## What is here
 
@@ -130,9 +139,9 @@ never a finding, a declaration its own imports or dispatch contradict is.
 | --- | --- |
 | `cmd/tiger/` | The CLI: a thin `main` over a testable run function. |
 | `internal/rules/` | The rule registry — the single source of the rule set. The binary's analyzer set, the finish functions, the corpus meta-tests, severity, the computed-facts table, and the `tiger golangci` audit are all derived from it. |
-| `internal/analyzers/` | The 33 analyzers, one package per analyzer, each with its corpus (failure-mode fires, compliant rewrite silent, known misses marked): an `analysistest` corpus for a per-package rule, a small module under `testdata/module/` run through the tiger driver for a whole-program rule. The shared internals live under `internal/analyzers/internal/`: `words` (identifier tokenization), `ssalib` (the effect lattice plumbing over `go/ssa`, including the curated stdlib effects table), `restrict` (the package restriction declaration), and `invariants` (invariant const and assert-call collection). |
-| `internal/directive/` | The `//tiger:` grammar: closed verb vocabulary, per-verb pin argument grammars (the effect lattice, frame lists, variant expressions, contract predicates), canonical printing, and the round-trip contract `Parse(Format(d)) == d`. |
-| `plugin/` + `.custom-gcl.yml` | The golangci-lint module plugin: the same analyzers under `golangci-lint run`, minus the finish step — TS-A07, TS-A09, and TS-X01 are `tiger check`-only. See "Running under golangci-lint" below. |
+| `internal/analyzers/` | The 33 analyzers, one package per analyzer, each with its corpus (failure-mode fires, compliant rewrite silent, known misses marked): an `analysistest` corpus for a per-package rule, a small module under `testdata/module/` run through the tiger driver for a whole-program rule. The shared internals live under `internal/analyzers/internal/`: `words` (identifier tokenization), `ssalib` (the effect lattice plumbing over `go/ssa`, including the curated stdlib effects table, removed with `effects` by ADR-0026), `restrict` (the package restriction declaration, removed by ADR-0024), and `invariants` (invariant const and assert-call collection). |
+| `internal/directive/` | The `//tiger:` grammar: closed verb vocabulary, per-verb pin argument grammars (variant expressions and contract predicates; the effect lattice and frame lists go with ADR-0026), canonical printing, and the round-trip contract `Parse(Format(d)) == d`. |
+| `plugin/` + `.custom-gcl.yml` | The golangci-lint module plugin: the same analyzers under `golangci-lint run`, minus the finish step — TS-A07 and TS-A09 (and TS-X01 until its removal) are `tiger check`-only. See "Running under golangci-lint" below. |
 | `assert/` | The always-on assertion package, including `Invariant`/`Violates` generic over `~string`. Zero dependencies. Copy it to `internal/assert` in your project. |
 | `examples/ledger/` | The invariant vocabulary pattern: an `inv` package declaring IDs (TS-A07), a symmetric encode/decode pair asserting them (TS-A08), and a violation test per invariant (TS-A09). |
 | `config/golangci.yml` | The Stage 0 golangci-lint v2 template with rule-ID comments. `tiger golangci --init` generates the machine-audited baseline from the registry. |
