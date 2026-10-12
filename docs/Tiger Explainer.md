@@ -71,10 +71,9 @@ Taken directly from TigerStyle and Holzmann's Power of Ten rules for mission-cri
   the line where an assumption stops holding, instead of somewhere else ten minutes later.
   A 2006 study of two Microsoft components found that fault density after release fell as
   assertion density rose ([Kudrjavets, Nagappan, and Ball](https://doi.org/10.1109/ISSRE.2006.14)).
-- **State has one owner.** A type marked as an owner has no exported fields, no mutex, and
-  cannot be copied, and no exported method hands out a pointer, slice, or map into its
-  state. Nothing outside the package can reach the state, so the data race is designed out
-  rather than defended against.
+- **State stays inside its type.** No exported method hands out a pointer, slice, or map
+  into a type's internal state, so code outside the type can change that state only through
+  its methods.
 - **[Data lives at the smallest scope.](https://spinroot.com/gerard/pdf/P10.pdf)** There is no package-level mutable state, and every
   variable is declared where it is first used, so when a value is wrong the functions that
   could have written it are few and tiger can name them.
@@ -587,7 +586,7 @@ A directive is a `//tiger:<verb>` comment that lets a line of code carry a claim
 There are three kinds of directive.
 
 1. A pin states a claim tiger proves, and a pin the code does not satisfy is a blocking finding. `//tiger:variant`, from the loop section, is one. `//tiger:requires` and `//tiger:ensures` state a function's contract. `requires` states a precondition the caller must establish, and `ensures` states a postcondition the function guarantees on return. Each is written as a small comparison such as `n > 0` or as the ID of a named invariant (TS-V03). `tiger pin` writes a variant tiger found as a `//tiger:variant` comment, and that is the only directive it writes.
-2. An intent declaration states something no analyzer can compute, and the code is held to that claim afterward. `//tiger:openenum`, from the switch rule, is one. Because tiger can't check that an enum really is open, it carries a reason and counts against its package's budget, the way an escape does. `//tiger:owner` is the other: it marks a type as the single owner of its state (TS-C10).
+2. An intent declaration states something no analyzer can compute, and the code is held to that claim afterward. `//tiger:openenum`, from the switch rule, is the only one. Because tiger can't check that an enum really is open, it carries a reason and counts against its package's budget, the way an escape does.
 3. The escape directive, `//tiger:batched`, waives the rule against IO inside a loop body (TS-M10) at one site, and it always carries a reason. It counts against its package's budget on every run, whether or not it is waiving a finding at that moment.
 
 An escape is admitted only where the rules forbid something the outside world requires and no rewrite can satisfy the rule. `//tiger:batched` was admitted because some external systems accept only one item of IO at a time. No rewrite of the caller changes that.
