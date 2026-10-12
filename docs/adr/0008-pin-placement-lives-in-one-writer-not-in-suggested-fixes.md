@@ -6,6 +6,9 @@ Date: 2026-08-26
 
 Accepted
 
+Amended by [ADR-0026](0026-tiger-changed-replaces-effect-and-frame-pins.md): effect and frame
+directives are removed, so the writer now places variant directives only.
+
 ## Context
 
 Writing a `//tiger:` directive into source requires deciding where it goes. The rule is already

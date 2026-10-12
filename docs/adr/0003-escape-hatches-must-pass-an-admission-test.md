@@ -6,6 +6,11 @@ Date: 2026-08-12
 
 Accepted
 
+Amended by [ADR-0014](0014-a-store-loop-states-its-limit-instead-of-batched.md), which removes
+`//tiger:batched` as a loop-bound waiver, and by
+[ADR-0023](0023-banning-nolint-is-an-adopter-opt-in.md), under which an adopter can have
+`tiger check` block every `//nolint`, so that door is closed when they opt in.
+
 ## Context
 
 Tiger's primary consumer is an AI coding agent, and an agent offered a cheaper path to a green
