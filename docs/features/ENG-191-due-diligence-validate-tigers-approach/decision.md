@@ -1676,7 +1676,7 @@ reopens a ticket.
    the closed-dispatch pin requirement.
 4. **Exemptions for TS-E02, TS-N07, TS-C09** (calls 4, 5, 6) [ENG-338], each with a test case for the
    exempted shape.
-5. **Silencing channels** (call 10) [ENG-339]. ENG-178 items 3 and 4, ENG-179 item 1, and the opt-in
+5. **Silencing channels** (call 10) [ENG-339; ENG-178 items 3 and 4 are filed in ENG-337]. ENG-178 items 3 and 4, ENG-179 item 1, and the opt-in
    `nolint.forbid` entry in `tiger.yaml`, enforced by `tiger check`.
    Drop the `--new-from-rev` recommendation from `config/golangci.yml` in the same change (call 9).
 6. **TS-T02 collect-then-sort, full coverage and the closed escape** (call 8) [ENG-340, then ENG-341]. Build from
