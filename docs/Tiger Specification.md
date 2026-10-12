@@ -1483,17 +1483,18 @@ Every rule, the benefits it serves, and its class. **Sub** means the rule preven
 mode. **Coord** means the value is in unanimity and the specific answer is arbitrary. **Mixed** means
 the rule is substantive and its particular form is convention.
 
+Retired and deleted IDs stay in the table, so a reference to one in an old commit still resolves.
 Orphans, meaning rules citing no benefit: zero. That is the point of maintaining the table. A rule
 that cannot fill the third column does not go in.
 
 | ID | Rule | Benefits | Class |
 | --- | --- | --- | --- |
-| TS-P01 | A package's restriction set is declared; undeclared axe... | B8, B3 | Sub |
-| TS-P02 | A package's effective precision is bounded by the weake... | B8 | Sub |
-| TS-P03 | Weakening a package's restriction set requires a direct... | B7, B8 | Sub |
+| TS-P01 | Retired, package declarations removed (ADR-0024) | — | Retired |
+| TS-P02 | Retired, package declarations removed (ADR-0024) | — | Retired |
+| TS-P03 | Retired, package declarations removed (ADR-0024) | — | Retired |
 | TS-S01 | No recursion | B1, B6 | Sub |
 | TS-S02 | Every loop has an upper bound | B1 | Sub |
-| TS-S03 | An unbounded event loop selects on ctx.Done() and asser... | B1, B2 | Sub |
+| TS-S03 | An unbounded event loop selects on a stop case and asserts progress | B1, B2 | Sub |
 | TS-S04 | Hard limit of 70 lines per function | B3, B0 | Mixed |
 | TS-S05 | Cyclomatic complexity at most 10, cognitive at most 15,... | B3, B0 | Mixed |
 | TS-S06 | One logical operator per condition | B3, B2 | Sub |
@@ -1513,6 +1514,7 @@ that cannot fill the third column does not go in.
 | TS-S20 | Type assertions are always checked | B2 | Sub |
 | TS-S21 | Every limit constant participates in a compile-time rel... | B1, B7 | Sub |
 | TS-S22 | Every limit constant carries a derivation, and the anal... | B1, B7, B6 | Sub |
+| TS-S23 | An event loop's only exit is its stop case | B1, B2 | Sub |
 | TS-A01 | Average at least two assertions per function | B5, B2 | Sub |
 | TS-A02 | Assert every precondition on entry and every postcondit... | B2, B5 | Sub |
 | TS-A03 | Assert the invariant on both sides of every boundary | B2, B5 | Sub |
@@ -1534,26 +1536,26 @@ that cannot fill the third column does not go in.
 | TS-E07 | Close errors on writable resources are checked | B2 | Sub |
 | TS-E08 | No naked returns | B3 | Sub |
 | TS-C01 | Prefer a single owner goroutine over shared memory with... | B8, B4, B3 | Sub |
-| TS-C02 | Every goroutine has an owner, a documented exit conditi... | B1, B8 | Sub |
+| TS-C02 | Every goroutine starts through a group that waits for it | B1, B8 | Sub |
 | TS-C03 | Goroutine leaks fail the test suite | B1 | Sub |
 | TS-C04 | Every channel has an explicit capacity, and the capacit... | B1, B6 | Sub |
-| TS-C05 | Every blocking receive or send has a ctx.Done() case | B1 | Sub |
+| TS-C05 | Every blocking receive or send has a stop case | B1 | Sub |
 | TS-C06 | No mutex held across a channel operation or a call that... | B1, B6 | Sub |
 | TS-C07 | context.Context is the first parameter, never stored in... | B1, B8 | Sub |
 | TS-C08 | No time.Sleep in production code | B4, B6 | Sub |
 | TS-C09 | Run at your own pace. Do not spawn work in direct react... | B1, B6 | Sub |
-| TS-C10 | A type marked //tiger:owner has no exported fields... | B8, B4 | Sub |
+| TS-C10 | Retired with the `owner` verb (ADR-0028) | — | Retired |
 | TS-C11 | No exported method returns a pointer, slice, or map tha... | B8 | Sub |
 | TS-C12 | Channel types used across goroutines are declared in on... | B3, B1 | Sub |
 | TS-C13 | One concurrency paradigm per package | B3 | Sub |
-| TS-F01 | Every function's effect set is computed; a pin makes it a contract | B2, B8, B4 | Sub |
-| TS-F02 | A pin bounds the entire subtree beneath it | B2, B8 | Sub |
-| TS-F03 | A function marked //tiger:hot has effect set at mo... | B6 | Sub |
-| TS-F04 | Assertion arguments are pure | B4, B2 | Sub |
-| TS-F05 | A critical section has effect set excluding block | B1, B6 | Sub |
+| TS-F01 | Retired, replaced by `tiger changed` (ADR-0026) | — | Retired |
+| TS-F02 | Retired, replaced by `tiger changed` (ADR-0026) | — | Retired |
+| TS-F03 | Retired with effects and the `hot` verb (ADR-0026, ADR-0028) | — | Retired |
+| TS-F04 | Retired, TS-A05 is review (ADR-0026) | — | Retired |
+| TS-F05 | Retired, TS-C06 is review (ADR-0026) | — | Retired |
 | TS-F06 | Deleted, superseded by TS-F01 + TS-T01 | — | Deleted |
-| TS-F07 | Every function's frame is computed; writes outside a pi... | B8, B3 | Sub |
-| TS-F08 | spawn is a declared effect, and only a supervisor may d... | B1, B8 | Sub |
+| TS-F07 | Retired, replaced by `tiger changed` (ADR-0026) | — | Retired |
+| TS-F08 | Retired, TS-C02 decides ownership at the start site (ADR-0020, ADR-0026) | — | Retired |
 | TS-V01 | Every unbounded loop has a verified variant: synthesize... | B1 | Sub |
 | TS-V02 | Functions are total | B1, B6 | Sub |
 | TS-V03 | Preconditions are declared and discharged at call sites | B2, B3 | Sub |
@@ -1565,26 +1567,26 @@ that cannot fill the third column does not go in.
 | TS-I06 | Deleted, not decidable without a surface declaration | — | Deleted |
 | TS-I07 | Fidelity is configuration, not code | B4, B7 | Sub |
 | TS-M01 | Preallocate with a known capacity | B6 | Sub |
-| TS-M02 | Hot paths allocate zero times | B6 | Sub |
+| TS-M02 | Retired with the `hot` verb (ADR-0028) | — | Retired |
 | TS-M03 | Pass structs larger than 64 bytes by pointer | B6 | Sub |
 | TS-M04 | Initialize large structs in place through an out pointer | B6 | Sub |
-| TS-M05 | Pooled types implement Reset, and Put is preceded by a... | B8, B2 | Sub |
-| TS-M06 | Wire and hot structs are field-aligned with explicit pa... | B6, B4 | Sub |
-| TS-M07 | No any, no reflection, no fmt.Sprintf in hot paths | B6 | Sub |
-| TS-M08 | Extract hot loops into standalone functions with primit... | B6, B3 | Sub |
+| TS-M05 | Put is preceded by zeroing the value | B8, B2 | Sub |
+| TS-M06 | Retired with the `wire` and `hot` verbs (ADR-0028) | — | Retired |
+| TS-M07 | No fmt.Sprintf where strconv will do | B6 | Sub |
+| TS-M08 | Retired with the `hot` verb (ADR-0028) | — | Retired |
 | TS-M09 | Batch across every boundary you cross | B6 | Sub |
 | TS-M10 | No IO inside a loop body | B6 | Sub |
-| TS-M11 | Hot paths are declared and cross-checked against the pr... | B6, B7 | Sub |
-| TS-X01 | No interface with exactly one implementation | B3, B6 | Sub |
+| TS-M11 | Retired with the `hot` verb (ADR-0028) | — | Retired |
+| TS-X01 | No speculative interfaces | B3, B6 | Sub |
 | TS-X02 | No pass-through methods | B3 | Sub |
 | TS-X03 | The package import graph is declared and enforced | B8, B3 | Sub |
 | TS-K01 | One spelling per construct | B7, B0 | Mixed |
 | TS-K02 | One import path per package, one alias per import path,... | B7, B0 | Mixed |
-| TS-K03 | No dynamic dispatch where precision is claimed | B2, B8 | Sub |
+| TS-K03 | Retired, package declarations removed (ADR-0024) | — | Retired |
 | TS-K04 | Declaration order is total and deterministic | B0, B7 | Mixed |
 | TS-K05 | No shadowed identifier anywhere in a function, includin... | B2, B7 | Sub |
-| TS-K06 | Struct field order is semantic and declared | B4, B7 | Sub |
-| TS-R01 | Extract-function, inline-function, and rename are prove... | B7, B3 | Sub |
+| TS-K06 | Retired with the `wire` verb (ADR-0028) | — | Retired |
+| TS-R01 | Retired, tiger does not prove refactors (ADR-0027) | — | Retired |
 | TS-R02 | Public surface changes are diffed against the previous... | B7 | Sub |
 | TS-R03 | Generated and hand-written code are indistinguishable a... | B7, B2 | Sub |
 | TS-N01 | MixedCaps. Acronyms keep their case | B0 | Coord |
@@ -1612,13 +1614,13 @@ that cannot fill the third column does not go in.
 | TS-L11 | Imports grouped standard, external, internal | B0 | Coord |
 | TS-L12 | A doc comment may not restate its identifier | B3 | Sub |
 | TS-L13 | Commit bodies contain a Why: section | B7 | Sub |
-| TS-D01 | The standard library, and nothing else, where restricti... | B8, B6 | Sub |
+| TS-D01 | The standard library, and nothing else, unless the layer fil... | B8, B6 | Sub |
 | TS-D02 | Dependencies are vendored and pinned, including the too... | B4, B8 | Sub |
 | TS-D03 | Scripts are Go programs, not shell | B4, B0 | Mixed |
 | TS-D04 | Generated code is committed and verified | B4 | Sub |
 | TS-D05 | TODO and FIXME reference a tracker ID that exists and i... | B7 | Sub |
 | TS-D06 | Per-package budgets may only decrease | B7, B3 | Sub |
-| TS-D07 | Skipped tests are reported on every run | B5 | Sub |
+| TS-D07 | Skipped tests are counted on every run | B5 | Sub |
 | TS-T01 | Core logic is deterministic. Time, randomness, and IDs... | B4 | Sub |
 | TS-T02 | Map iteration order never reaches an output | B4 | Sub |
 | TS-T03 | Every parser, decoder, and state machine has a fuzz target | B5 | Sub |
@@ -1635,26 +1637,26 @@ that cannot fill the third column does not go in.
 
 | Benefit | Rules citing it |
 | --- | --- |
-| B3 Local reasoning | 44 |
-| B2 Short defect distance | 40 |
-| B7 Change safety | 31 |
-| B0 Uniformity | 23 |
-| B4 Determinism | 23 |
-| B6 Predictable cost | 22 |
-| B8 Blast radius | 19 |
-| B1 Bounded execution | 18 |
+| B2 Short defect distance | 37 |
+| B3 Local reasoning | 36 |
+| B7 Change safety | 26 |
+| B0 Uniformity | 22 |
+| B1 Bounded execution | 17 |
+| B4 Determinism | 17 |
+| B6 Predictable cost | 16 |
 | B5 Defect discovery | 15 |
+| B8 Blast radius | 10 |
 
-Of 145 rules, 120 are substantive, 14 are substantive in a conventional form, 9 are pure convention,
-and 2 are deleted. Local reasoning and short defect distance carry the document between them, which is
-a fair description of what TigerStyle is once the poetry is stripped off. B0 is cited by 23 rules, so
-roughly one rule in six exists for agreement rather than correctness. Better to know that number than
-to pretend it is zero.
+Of 143 rule IDs, 122 are live: 100 substantive, 13 substantive in a conventional form, and 9 pure
+convention. The other 21 are retired (18) or deleted (3). Short defect distance and local reasoning
+carry the document between them, which is a fair description of what TigerStyle is once the poetry
+is stripped off. B0 is cited by 22 rules, so roughly one rule in six exists for agreement rather
+than correctness. Better to know that number than to pretend it is zero.
 
 ## The nine coordination-only rules
 
 `TS-N01`, `TS-N10`, `TS-L01`, `TS-L02`, `TS-L03`, `TS-L04`, `TS-L05`, `TS-L06`, `TS-L11`, plus the
-formatting halves of the 14 `Mixed` rules.
+formatting halves of the 13 `Mixed` rules.
 
 These are conventions. Their entire value is that everyone follows them, they are enforced by tooling
 so nobody has to think about them, and arguing about them is the most expensive thing you can do with
@@ -1667,10 +1669,9 @@ on them, since a tool does it.
 
 ## Thresholds are calibrated, not derived
 
-Twelve numbers here are calibration points rather than consequences of any argument: 70 lines, 100
+Nine numbers here are calibration points rather than consequences of any argument: 70 lines, 100
 columns, cyclomatic 10, cognitive 15, nesting 3, 64 bytes for pointer passing, two assertions per
-function, five methods per interface, four parameters, ten lines of declaration-to-use distance,
-twenty profiled functions, and a dupl threshold of 150 tokens.
+function, four parameters, and a dupl threshold of 150 tokens.
 
 The distinction that matters: **the existence of each bound is justified** by B1 or B3 or B6, and the
 particular number is a starting point from someone else's codebase. Changing a number needs data from
@@ -1689,12 +1690,15 @@ memory claim.
 
 All are `golang.org/x/tools/go/analysis` passes. Ship them as one binary via `multichecker` for local
 use (`tiger check ./...`), and as a golangci-lint module plugin (`.custom-gcl.yml` plus
-`golangci-lint custom`) so they run in the same pass as everything else.
+`golangci-lint custom`) so they run in the same pass as everything else. Releases ship the `tiger`
+binary alongside the plugin, because patterns and `tiger changed` need it. The plugin skips the
+whole-program rules (`TS-A07`, `TS-A09`) and the budgets, and golangci-lint's `//nolint:tiger` and
+`exclusions` silence tiger's rules under it, so CI runs `tiger check`.
 
-**Output contract:** analyzers print computed function-scoped facts in pin syntax — the exact
-`//tiger:...` line a developer would paste. Report and pin are one format, so adopting a pin is a
-paste, comparing a failed pin to reality is a two-line diff, and a `tiger pin <func>` command can
-write the declaration mechanically.
+**Output contract:** the `variant` analyzer prints a synthesized loop variant in pin syntax, the
+exact `//tiger:variant` line a developer would paste. Report and pin are one format, so adopting a
+pin is a paste, comparing a failed pin to reality is a two-line diff, and `tiger pin` writes the
+declaration mechanically.
 
 **Acceptance contract:** there are no effort estimates — implementation is AI-driven, and the
 binding constraint is functional acceptance, which every analyzer defines before it merges. Per
@@ -1705,66 +1709,131 @@ syntax. And no silent scope cuts: where coverage is narrower than the rule claim
 advisory, partial predicate language), the corpus contains the known miss, marked as such. An
 analyzer without its corpus does not merge, no matter how plausible its implementation looks.
 
-| Analyzer | Rules | Approach |
-| --- | --- | --- |
-| `effects` | TS-F01–F05, F08, A05, C06, C08, T01 | `buildssa`, compute effect sets over the callgraph, print unpinned sets in pin syntax under `--show-facts`, enforce each pin over its callee subtree |
-| `frames` | TS-F07 | `buildssa` points-to over the restricted fragment |
-| `contracts` | TS-V03 | Abstract interpretation over nil-ness, integer ranges, length relations, invariant IDs |
-| `variant` | TS-V01, V02 | `buildssa`; synthesizes candidate variants for linear loops, verifies pinned ones at loop head and back edges |
-| `surfaces` | TS-I01, I03, I05, I07 | Not built and not planned. TS-I01 is enforced by `effects` pins; I03, I05, I07 are review |
-| `closedworld` | TS-K03 | `types` plus `packages`; devirtualization check |
-| `canonical` | TS-K01, K02, K04, K05 | AST, with auto-fix |
-| `refactor` | TS-R01 | Not a linter. A transform tool that emits a proof obligation CI re-checks |
-| `surfacediff` | TS-R02, P02, P03 | Serialize the exported surface plus each package's computed precision bound, diff against a checked-in file |
-| `restrictions` | TS-P01–P03 | Per-package restriction declarations, transitive precision bound |
-| `derivation` | TS-S22 | Parse a trailing `Name = expr` comment, evaluate against package constants, compare |
-| `invariantrefs` | TS-A07 | Group `assert.Invariant` calls by constant, count referencing functions |
-| `invariantsymmetry` | TS-A08 | Not built (ENG-182). Pair functions by naming convention, compare invariant sets |
-| `invariantnegative` | TS-A09 | Require `assert.Violates` per declared invariant |
-| `norecursion` | TS-S01 | `buildssa`, CHA callgraph, report any cycle |
-| `boundedloop` | TS-S02, S03 | AST, classify every loop; unclassifiable loops are findings — no directive waives TS-S02 |
-| `compoundcond` | TS-S06, S07, S08 | AST, count binary logical operators per condition |
-| `assertdensity` | TS-A01, A02 | AST plus `types`, count assert calls per function and package |
-| `quantitycast` | TS-Q01, Q03 | `types`, forbid direct conversions outside the quantity package |
-| `domaintypes` | TS-Q02 | `types`, exported signatures may not take bare primitives |
-| `sametypeparams` | TS-N07, N08 | `types`, adjacent identical types, bool params, arity |
-| `participle` | TS-N14 | Suffix check plus allowlist |
-| `unitsuffix` | TS-N03 | AST plus token dictionary and a position rule |
-| `noabbrev` | TS-N02 | AST plus dictionary; the dictionary is the work |
-| `ownership` | TS-C10 | `types`, exported field count, sync types, noCopy |
-| `escapecheck` | TS-C11 | AST, returns of `&x.field`, `x.slice`, `x.map` from exported methods |
-| `paradigm` | TS-C13 | `types`, mutex fields versus channel fields per package |
-| `chandecl` | TS-C12 | AST, channel type declarations per package |
-| `selectctx` | TS-C05 | AST, every blocking select needs a Done case |
-| `nogoroutine` | TS-C02, C09 | AST, `GoStmt` outside supervisors |
-| `queuebound` | TS-C04 | AST, slice-backed queues with unbounded append |
-| `ioinloop` | TS-M10 | `types`, IO calls inside loop bodies |
-| `hotpath` | TS-F03, M11 | AST, constraints on `//tiger:hot` functions |
-| `poolzero` | TS-M05 | `buildssa`, `sync.Pool.Put` argument must be reset |
-| `outptr` | TS-M04 | `types`, constructors returning oversized value types |
-| `wiretypes` | TS-S17, M06, K06 | AST plus `types`, fixed-size fields, explicit padding, size assertion |
-| `limitrelate` | TS-S21 | AST, every Max/Min constant appears in a relational assertion |
-| `singleimpl` | TS-X01 | `types` plus `packages`, whole-module implementation counting |
-| `passthrough` | TS-X02 | AST, body is a single forwarding call |
-| `adapters` | TS-I06 | Deleted with TS-I06 |
-| `errignore` | TS-E02 | AST plus `types`, `_ =` on error requires a comment |
-| `returnarity` | TS-E06 | `types`, result count and composition |
-| `paniccheck` | TS-S18 | AST, panic outside the assert package |
-| `nogoto` | TS-S09 | AST, `BranchStmt` with Goto or a label |
-| `nofloat` | TS-N11 | `types`, float types in restricted packages |
-| `declorder` | TS-L05 | AST, declaration and method order (TS-L04 not shipped, see TS-L04) |
-| `deferdistance` | TS-L10 | AST plus token positions |
-| `restatement` | TS-L12 | Token overlap between comment and identifier. Tune it |
-| `directives` | TS-L09 | AST, every escape-hatch directive carries a reason |
-| `maporder` | TS-T02 | `buildssa`, range over a map whose body appends or writes. Heuristic |
-| `fuzzcoverage` | TS-T03 | `packages`, parsers must have a Fuzz function |
-| `corpuscheck` | TS-T09 | Directory presence plus a test that iterates it |
-| `tablename` | TS-T10 | AST, table test literals require a name field |
-| `testdoc` | TS-T06 | AST, Test functions need a doc comment |
-| `skipcheck` | TS-D07 | AST, every `t.Skip` surfaces as a standing advisory |
+Status is what exists today: **built**, **built; changes decided** (the analyzer exists and an ADR
+changes what it checks), or **not built**.
 
-The bottom two thirds are cheap and cover most of the value. The top six are the ones that turn
-heuristics into guarantees, and they are a team rather than a quarter.
+| Analyzer | Rules | Approach | Status |
+| --- | --- | --- | --- |
+| `contracts` | TS-V03 | Abstract interpretation over nil-ness, integer ranges, length relations, invariant IDs | built |
+| `variant` | TS-V01, V02 | `buildssa`; synthesizes variants for fixed steps, constant division and shifts, slicing by a part shown non-empty, struct fields no call receives, and `&&` conditions; matches variables by identity; verifies pinned ones at loop head and back edges | built; changes decided (ADR-0013) |
+| `surfaces` | TS-I01, I03, I05, I07 | Not planned. TS-I01's direct half is `TS-T01`'s bans, the rest is review with `tiger changed`; I03, I05, I07 are review | not built |
+| `canonical` | TS-K01, K02, K04, K05 | AST, with auto-fix | not built |
+| `surfacediff` | TS-R02 | Serialize the exported surface, diff against a checked-in file | not built |
+| `derivation` | TS-S22 | Parse a trailing `Name = expr` comment, evaluate against package constants, compare | built |
+| `invariantrefs` | TS-A07 | Group `assert.Invariant` calls by constant, count referencing functions | built |
+| `invariantsymmetry` | TS-A08 | Pair functions by naming convention, compare invariant sets | not built (ENG-182) |
+| `invariantnegative` | TS-A09 | Require `assert.Violates` per declared invariant | built |
+| `norecursion` | TS-S01 | `buildssa`, CHA callgraph, report any cycle | built |
+| `boundedloop` | TS-S02, S03, S23 | AST, classify every loop; unclassifiable loops are findings and no directive waives TS-S02. Checks counter soundness and cap reporting, and traces each loop limit to where it enters the program; whether the trace is a separate analyzer is left to the build ticket | built; changes decided (ADR-0013, ADR-0014, ADR-0020) |
+| `compoundcond` | TS-S06, S07, S08 | AST, count binary logical operators per condition | built |
+| `assertdensity` | TS-A01, A02 | AST plus `types`, count assert calls per function and package | not built |
+| `quantitycast` | TS-Q01, Q03 | `types`, forbid direct conversions outside the quantity package | not built |
+| `domaintypes` | TS-Q02 | `types`, exported signatures may not take bare primitives | not built |
+| `sametypeparams` | TS-N07, N08 | `types`, adjacent identical types, bool params, arity; a leading `t` or `ctx` is not counted | built; changes decided (ADR-0018) |
+| `participle` | TS-N14 | Suffix check plus allowlist | built |
+| `unitsuffix` | TS-N03 | AST plus token dictionary and a position rule | not built |
+| `noabbrev` | TS-N02 | AST plus dictionary; the dictionary is the work | not built |
+| `escapecheck` | TS-C11 | AST, returns of `&x.field`, `x.slice`, `x.map` from exported methods | not built |
+| `paradigm` | TS-C13 | `types`, mutex fields versus channel fields per package | not built |
+| `chandecl` | TS-C12 | AST, channel type declarations per package | built |
+| `selectctx` | TS-C05 | AST, every blocking select needs a `default` or a stop case: `ctx.Done()` on a context that is not `Background` or `TODO`, or a channel the package closes or sends on | built; changes decided (ADR-0020) |
+| `nogoroutine` | TS-C02, C03, C09 | AST, only `errgroup.Group.Go` and `sync.WaitGroup.Go` start goroutines, with `Wait` reached; a goleak harness in `TestMain` where goroutines start; `_test.go` files skipped for TS-C09 | built; changes decided (ADR-0019, ADR-0020) |
+| `queuebound` | TS-C04 | AST, slice-backed queues with unbounded append | not built |
+| `ioinloop` | TS-M10 | `types`, IO calls inside loop bodies | built |
+| `poolzero` | TS-M05 | `buildssa`, the `sync.Pool.Put` argument must be zeroed with `*b = T{}` | built; changes decided (ADR-0020) |
+| `outptr` | TS-M04 | `types`, constructors returning oversized value types | not built |
+| `limitrelate` | TS-S21 | AST, every Max/Min constant appears in a relational assertion | built |
+| `passthrough` | TS-X02 | AST, body is a single forwarding call | not built |
+| `adapters` | TS-I06 | Deleted with TS-I06 | deleted |
+| `errignore` | TS-E02 | AST plus `types`, `_ =` on error requires a comment, except inside `defer` or `t.Cleanup` | built; changes decided (ADR-0017) |
+| `returnarity` | TS-E06 | `types`, result count and composition | built |
+| `paniccheck` | TS-S18 | AST, panic outside the assert package | built |
+| `nogoto` | TS-S09 | AST, `BranchStmt` with Goto or a label | built |
+| `nofloat` | TS-N11 | `types`, float types in the packages a `tiger.yaml` entry lists | not built |
+| `declorder` | TS-L05 | AST, declaration and method order (TS-L04 not shipped, see TS-L04) | built |
+| `deferdistance` | TS-L10 | AST plus token positions | built |
+| `restatement` | TS-L12 | Token overlap between comment and identifier. Tune it | not built |
+| `directives` | TS-L09 | AST, every escape-hatch directive and `//tiger:openenum` carries a reason; with `nolint.forbid` on, every `//nolint` is a finding | built; changes decided (ADR-0023, ENG-179) |
+| `maporder` | TS-T02 | `buildssa`, allowlist of order-safe loop bodies; collect-then-sort with plain sorts or full-coverage comparators; the `maps` escape closed | built; changes decided (ADR-0021) |
+| `fuzzcoverage` | TS-T03 | `packages`, parsers must have a Fuzz function | not built |
+| `corpuscheck` | TS-T09 | Directory presence plus a test that iterates it | not built |
+| `tablename` | TS-T10 | AST, table test literals require a name field | built |
+| `testdoc` | TS-T06 | AST, Test functions need a doc comment | built |
+| `skipcheck` | TS-D07 | AST, every `t.Skip` is counted against the budget | built |
+
+The `effects`, `frames`, `restrictions`, `closedworld`, and `singleimpl` analyzers exist today and are
+removed by ADR-0024, ADR-0026, and ADR-0016. `refactor`, `ownership`, `hotpath`, and `wiretypes` were
+never built and are dropped with their rules (ADR-0027, ADR-0028).
+
+Most rows are AST or `types` checks and are cheap. The `buildssa` analyzers and `contracts` carry the
+cost, and they are where a false positive is hardest to fix.
+
+## `tiger changed`
+
+`tiger changed <base>` compares the code at a base revision, such as `main`, with the working tree.
+For each struct, or each free function, it lists the types and functions it calls now that it did
+not call at the base. It replaces effect and frame pins (ADR-0026). It is a report for review, human
+or agent, not a rule, so it never fails a run.
+
+- A change is reported on the struct where it was written, not propagated to its callers. Work handed
+  over a channel shows on the struct at the receiving end when it makes the new call.
+- A call through an interface is named by the interface, never by a guess at the implementation, so
+  the report needs no table of library effects.
+- Pure helpers are filtered by the import graph, with no list of packages. A method or interface
+  counts when its package reaches `syscall`, and a free function counts when its own body does. That
+  keeps `os`, `net`, `time`, pgx, and badger, and drops `strings`, `sort`, and `fmt`.
+- A new method on a type the struct already calls is not reported. Generated files are skipped, and
+  `context.Context` is shown.
+
+Known blind spots, each pinned by a test in the prototype: a write through `io.Writer` is silent,
+because the `io` package never reaches the operating system; moving a call into a separate free
+function reads as one edge removed and one added; and a renamed type reads as all its edges removed
+and re-added. Not built: the prototype is `experiments/changed` under ENG-191, and ENG-203 settles
+the output format.
+
+## Patterns
+
+Tiger has two parts: blocking rules for what it can check exactly, and a collection of patterns for
+the parts of a correct shape no rule can check (ADR-0025). A pattern exists only where a rule stops
+short and a real bug lived in that gap: a trial finding, a filed ticket, or a bug an experiment
+reproduced. Every pattern:
+
+1. is runnable code, a small Go package with the right shape next to the broken shape it replaces,
+   and tests that demonstrate both; the broken shape passes `tiger check`, and its test shows the bug
+2. passes `tiger check` with zero findings and runs its tests under `-race` in CI
+3. names the rules it backs up and the part those rules can't see
+4. is named by the messages of those rules
+5. gives reviewers a short checklist of yes-or-no questions for the parts tiger can't check
+
+Patterns live under `patterns/<name>/` in tiger's root module. The `tiger` binary embeds them:
+`tiger pattern <name>` prints a pattern's card, code, and tests, `tiger pattern --rule <code>` lists
+the patterns behind a rule, and `--checklist` prints only the reviewer questions. Each rule's registry
+entry names its patterns, and the driver appends ``see `tiger pattern <name>` `` to every finding from
+that rule; the message length cap counts it. A meta-test fails if a pointer names a pattern that does
+not exist or a pattern names a rule that does not exist.
+
+The seed patterns are the shutdown loop, the goroutine owner, pool reuse, the capped worklist, a page
+over an outside stream, clamping a limit where it enters the program, sorted map output when the key
+has no order, and the filtered page, plus `examples/ledger`. Not built: today only `examples/ledger`
+exists.
+
+## `tiger golangci` and `tiger.yaml`
+
+The rules marked auto run in golangci-lint from a config tiger generates. `tiger golangci --init`
+writes that config for a project that has none, `tiger golangci --print` writes it to stdout for
+merging into an existing one, and `tiger golangci` audits the project's config against it. The audit
+compares exactly, so a looser value and a stricter one both fail.
+
+`tiger.yaml` carries the facts a repository tells the analyzers about its world. It is versioned,
+and each entry is a value, a reason a reviewer accepted, and an optional list of packages it applies
+to, keyed by analyzer and setting. An entry widens what an analyzer detects or corrects its
+dictionary; no entry names a function, file, or site to exempt. `nolint.forbid` (`TS-L09`) and the
+`nofloat` package scope (`TS-N11`) are entries.
+
+Tiger keeps no baseline of existing findings and does not check only the lines a branch changed
+(ADR-0022). `tiger check` checks the whole tree, and a codebase adopts tiger by fixing what it
+reports. golangci-lint's own new-code filters are the adopter's choice, and tiger does not recommend
+them.
 
 ## What does not port from Zig
 
@@ -1775,13 +1844,13 @@ heuristics into guarantees, and they are a team rather than a quarter.
 | Braces on every `if` | Go requires them | nothing needed |
 | Single-line `if (a) assert(b)` | `gofmt` splits composite statements, so the form is not expressible | `assert.Implies(a, b, msg)` |
 | Explicitly-sized types everywhere | `len`, `cap`, and slice indices are `int` by language definition. Banning `int` means casting at every index, adding the bugs you were avoiding | `int` in memory, fixed-size types mandatory across wire, disk, and FFI, plus `TS-S19` |
-| All memory statically allocated at startup | Go has a GC and no allocator control. Not expressible, and pretending otherwise produces cargo cult | `TS-M01`, `TS-F03`, `TS-C04`. Same goal, different mechanism |
-| Pass arguments over 16 bytes as `*const` | Go has no `const` qualifier and no immutable reference | `TS-M03` for copy cost only. The immutability guarantee is lost; `TS-F07` frames are the partial recovery |
+| All memory statically allocated at startup | Go has a GC and no allocator control. Not expressible, and pretending otherwise produces cargo cult | `TS-M01`, `TS-C04`. Same goal, different mechanism |
+| Pass arguments over 16 bytes as `*const` | Go has no `const` qualifier and no immutable reference | `TS-M03` for copy cost only. The immutability guarantee is lost |
 | In-place init for pointer stability | Go's GC does not move heap objects and escape analysis handles most of it | `TS-M04`, narrowed to large structs and mutex-containing types |
 | Explicitly pass library options | Go has no default arguments. The equivalent failure is the zero value you did not think about | `TS-S15` |
 | Compile-time assertions via `comptime` | Go has no compile-time execution. You get constant overflow and interface satisfaction checks | `TS-S17`, which covers sizes and constant relationships but not arbitrary predicates |
 | `@divExact`, `@divFloor`, `div_ceil` | No such builtins, and `/` truncates toward zero, so `-7/2` is `-3`. Signed division is a sharper trap in Go | A `mathx` package with `DivExact`, `DivFloor`, `DivCeil`, plus an analyzer banning bare `/` on signed integers |
-| Functions run to completion without suspending | Go has no async coloring. The scheduler preempts any goroutine at any instruction, so "does not suspend" is not a property a function can have | `TS-C01`, `TS-C10`, `TS-F07`. The reachable version is ownership, not suspension |
+| Functions run to completion without suspending | Go has no async coloring. The scheduler preempts any goroutine at any instruction, so "does not suspend" is not a property a function can have | `TS-C01`, `TS-C11`. The reachable version is ownership, not suspension |
 | Callbacks go last | Go's conventions are fixed: `ctx` first, `error` last | `TS-C07` |
 | Follow the Zig style guide | Different language | Effective Go, Go Code Review Comments, Google Go Style Guide, in that order |
 | Write scripts in Zig | Substrate | `TS-D03` |
@@ -1797,7 +1866,7 @@ are all the same kind of thing.
 | Are the derivation's inputs true | `TS-S22` checks that `BatchMax` follows from `SectorSize`. Whether the disk has 512-byte sectors is a fact about the world | The constants file |
 | Is the contract right | `TS-V03` proves callers establish the precondition. Whether the header should be that size is design | Contract annotations |
 | Is the fault model complete | `TS-I05` checks every declared fault is expressible and tested. Whether real disks fail in ways you did not declare cannot be answered from inside the model | Surface interfaces |
-| Should this effect be permitted | `TS-F01` proves the effect set is accurate. Whether this function should be doing IO at all is design | Effect declarations |
+| Should this struct make this call | `tiger changed` shows the struct started calling the database. Whether it should is design | Review of the `tiger changed` report |
 | Is this the right product | No comment | Not a code review question, and never was |
 
 All six are instances of one thing.
@@ -1824,12 +1893,13 @@ against the analyzer rather than a resolved issue.
 
 **Cost is exponential in the tail.** Off-the-shelf linters reach roughly 80 percent mechanization in an
 afternoon. The promoted rules reach 96 percent for about 40 analyzers. The last few percent costs an
-effect system, a points-to analysis, an abstract interpreter, and a refactoring prover. Whether the
+abstract interpreter and a loop-limit trace across packages. Tiger declined an effect system, a
+points-to analysis, and a refactoring prover (ADR-0026, ADR-0027). Whether the
 tail is worth it depends entirely on how expensive your defects are, which is why this is a good idea
 for a database and a bad idea for most software.
 
 **You are hiring for a language nobody knows.** Onboarding is longer and some good engineers will not
-want to work this way. The precision gradient is the mitigation and it is a partial one.
+want to work this way. Adopting by chain is the mitigation and it is a partial one.
 
 ## Adoption
 
@@ -1839,36 +1909,31 @@ The chains only pay when complete, so build them in dependency order rather than
 `errorlint`, `nakedret`, `gochecknoinits`, `decorder`, `lll`. Mechanical, mostly auto-fixed, one
 afternoon.
 
-**Stage 1, the assert package.** Add it, then apply `TS-A01` and `TS-A02` with `--new-from-rev`.
-Density on legacy code is a project; density on the diff is a habit.
+**Stage 1, the assert package.** Add it, then apply `TS-A01` and `TS-A02`. Density on legacy code is
+a project, and tiger keeps no baseline to defer it (ADR-0022), so budget the project.
 
 **Stage 2, structural rules.** `funlen`, `cyclop`, `nestif`, `gochecknoglobals`, `depguard`. Real
 refactoring, so run advisory and ratchet per package.
 
-**Chain 1, ownership.** `TS-S11`, `TS-S12`, `TS-C10`, `TS-C11`, `TS-X01`, then `TS-F07`. Completing
-this makes frames checkable, which makes "who wrote this value" a query. Highest value, and the
+**Chain 1, ownership.** `TS-S11`, `TS-S12`, `TS-C11`, `TS-C13`. Completing this makes "which
+functions could have written this value" a short list a reviewer can name. Highest value, and the
 prerequisite for everything else.
 
 **Chain 2, surfaces.** `TS-I01` through `TS-I07`. Independent of chain 1 and the thing that makes the
 test suite worth trusting. Do it early; `TS-I05` in particular is worth more than any three analyzers.
 
-**Chain 3, effects.** `TS-P01` declarations where precision will be claimed, then `TS-K03`, since
-dispatch precision gates the analysis, then `TS-F01`
-through `TS-F08`. Converts six heuristics into exact checks, so it removes analyzers as well as adding
-them.
+**Chain 3, layering.** `TS-D01`, then the `TS-X03` layer file. A package that does IO has to import
+the package that does it, so once each package has a role, IO stays behind interfaces passed in.
+`tiger changed` reports the calls the layer file cannot see.
 
-**Chain 4, termination.** `TS-S01`, `TS-V01`, `TS-V02`. Cheap, self-contained, makes worst-case
-behaviour a stated property.
+**Chain 4, termination.** `TS-S01`, `TS-S02`, `TS-V01`, `TS-V02`. Cheap, self-contained, makes
+worst-case behaviour a stated property.
 
 **Chain 5, contracts.** `TS-A07` through `TS-A09`, then `TS-V03`. Most expensive and last, because it
 depends on the invariant vocabulary being mature. Do not start here.
 
-**Chain 6, canonical form.** `TS-K01` through `TS-K06`, then `TS-R01`. Cheap and auto-fixable, can run
-in parallel, but only pays off once the refactoring prover exists.
-
-Measure one number throughout and make it the headline: **the fraction of merged lines that no human
-read.** It starts near zero. If chains 1 and 3 complete, it should pass half. If it is not moving,
-something in a chain is incomplete and the analyzers you added are decorative.
+**Chain 6, canonical form.** `TS-K01` through `TS-K05`. Cheap and auto-fixable, can run in parallel,
+and pays off in review: a diff in canonical form is semantic by construction.
 
 ## Diagnostics
 
@@ -1891,28 +1956,26 @@ and no marker; under budget they do not print at all.
 The body is prose for a reader who has never seen a `//tiger:` directive. It has three parts in
 a fixed order, separated by ` — `:
 
-1. **What the code does.** Concrete and local: "this function makes a network call
-   (`helper.Ping` at core.go:12:20)".
-2. **What tiger expected.** The gap in plain words: "but its `//tiger:effects` comment doesn't
-   list `io(net)`".
-3. **The edit.** A change the reader can make without opening this document: "add `io(net)` to
-   the comment, or remove the call".
+1. **What the code does.** Concrete and local: "this select waits on `jobs` and `results`".
+2. **What tiger expected.** The gap in plain words: "but nothing in it ends the wait on shutdown".
+3. **The edit.** A change the reader can make without opening this document: "add
+   `case <-ctx.Done(): return ctx.Err()`".
 
 Parts 1 and 2 may merge when one clause carries both ("goto jumps to a label" already says what
 tiger expected). Part 3 is never omitted from a blocking finding. The `--show-facts` channel
 prints facts, not findings: what tiger found, "nothing to fix", and the directive that would
-freeze the fact, so the line ends in text that can be pasted above the function.
+freeze the fact, so the line ends in text that can be pasted above the loop.
 
 Before:
 
 ```
-TS-F02: computed effects io(net) are not declared by this pin — introduced by a call to helper.Ping at core.go:12:20 — remove the call or update the pin to //tiger:effects io(net)
+TS-V01: //tiger:variant len(data) doesn't provably shrink on every pass (len(data) cannot be shown to move consistently) — add a cap
 ```
 
 After:
 
 ```
-TS-F02: this function makes a network call (helper.Ping at core.go:12:20) but its //tiger:effects comment doesn't list io(net) — add io(net) to the comment, or remove the call
+TS-V01: //tiger:variant len(data) doesn't provably shrink on every pass (len(data) cannot be shown to move consistently) — add a cap (for tries := 0; tries < max; tries++) that fails when hit, or name an expression that does shrink
 ```
 
 The checklist an author runs before committing a message:
@@ -1921,9 +1984,8 @@ The checklist an author runs before committing a message:
    understands?
 2. Does it name the gap without a banned word? The list: pin, pinned, computed, fact, facts,
    effect set, frame condition, lattice, closed set, back edge, dominating, synthesized, ranking,
-   allowlist. Matched case-insensitively at word boundaries. Directive verbs (`effects`,
-   `frame`, `variant`, `requires`, `ensures`, `batched`) appear only as the literal directive
-   spelling.
+   allowlist. Matched case-insensitively at word boundaries. Directive verbs (`variant`,
+   `requires`, `ensures`, `openenum`, `batched`) appear only as the literal directive spelling.
 3. Does it end with an edit the reader can make now? A comment to add, a call to remove, a name
    to change, a snippet to paste. Never a restatement of the rule.
 4. Is every directive spelled `//tiger:<verb> <args>`?
@@ -1956,6 +2018,8 @@ Falsifier.   What observation would retire this rule.
 Enforcement. Tool and level, or the honest admission that it is review.
 Threshold.   If it contains a number, is that number derived or calibrated.
 Proxy test.  If it is a proxy, does satisfying it require the same thinking?
+Pattern.     If the rule stops short of a correct shape and a real bug lived in the gap, the
+             pattern that covers it (see "Patterns").
 ```
 
 ## Retiring a rule
@@ -1975,3 +2039,16 @@ Keep the rule count in review. A document that only grows is a document that has
 one as another rule plus a review judgment, one as another rule's existence precondition under a
 second ID — and their IDs are retired rather than reused, so that a reference to either in an old
 commit still resolves.
+
+ENG-191 retired eighteen more, each recorded in an ADR, and none of the IDs is reused:
+
+| IDs | Why | ADR |
+| --- | --- | --- |
+| `TS-P01`, `TS-P02`, `TS-P03`, `TS-K03` | Package-level restriction declarations and closed dispatch are removed; imports stay with `TS-D01` and `TS-X03`, reflection with `TS-S12` | ADR-0024 |
+| `TS-F01`, `TS-F02`, `TS-F07` | Effect and frame pins missed every call through an interface or a library; `tiger changed` replaces them | ADR-0026 |
+| `TS-F03`, `TS-F04`, `TS-F05`, `TS-F08` | They had no enforcement but the removed `effects` analyzer; `TS-A05` and `TS-C06` are review, and `TS-C02` decides goroutine ownership at the start site | ADR-0026, ADR-0020 |
+| `TS-M02`, `TS-M06`, `TS-M08`, `TS-M11`, `TS-K06`, `TS-C10` | They applied only to code marked `//tiger:hot`, `//tiger:wire`, or `//tiger:owner`, and those verbs are removed | ADR-0028 |
+| `TS-R01` | Proving a refactor preserves behavior rested on computed frames | ADR-0027 |
+
+`TS-X01` keeps its ID as a review maxim; its single-implementation check is removed (ADR-0016). The
+built analyzers behind retired rules are removed in their build tickets.
