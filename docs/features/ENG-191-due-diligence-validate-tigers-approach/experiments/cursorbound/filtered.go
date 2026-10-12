@@ -51,6 +51,10 @@ func ListFilteredCountMatches(rows Rows, namespace string, limit int) []string {
 // ListFilteredTwoLimits counts matches against limit and rows read against
 // scanMax, and reports when scanMax stops the loop.
 func ListFilteredTwoLimits(rows Rows, namespace string, limit int) ([]string, error) {
+	// A limit of zero or less would never equal len(names), turning the page bound off.
+	if limit <= 0 {
+		return nil, nil
+	}
 	limit = min(limit, pageMax)
 	var names []string
 	scanned := 0

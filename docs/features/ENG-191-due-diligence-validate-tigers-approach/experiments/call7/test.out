@@ -21,4 +21,4 @@
 === RUN   TestStopDoneLoopDoubleShutdownBothWait
 --- PASS: TestStopDoneLoopDoubleShutdownBothWait (0.00s)
 PASS
-ok  	call7	2.204s
+ok  	call7	1.149s

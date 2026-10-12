@@ -29,3 +29,17 @@ func (p *Pool) Query(key string) (string, error) {
 func (p *Pool) Close() error {
 	return p.file.Close()
 }
+
+// Ping and Pong call each other, and only Ping reaches os, so a walk that
+// starts at Ping meets Ping again while still inside it.
+func Ping(n int) error {
+	if n > 0 {
+		return Pong(n - 1)
+	}
+	_, err := os.Stat(".")
+	return err
+}
+
+func Pong(n int) error {
+	return Ping(n)
+}

@@ -45,13 +45,13 @@
 === RUN   TestWalkEndsOnATree
 --- PASS: TestWalkEndsOnATree (0.00s)
 === RUN   TestWalkRunsForeverOnACycle
---- PASS: TestWalkRunsForeverOnACycle (0.31s)
+--- PASS: TestWalkRunsForeverOnACycle (0.30s)
 === RUN   TestGameLoopsStopOnCancel
 === RUN   TestGameLoopsStopOnCancel/Ticker
 === RUN   TestGameLoopsStopOnCancel/Flat
 === RUN   TestGameLoopsStopOnCancel/UntilCancelled
---- PASS: TestGameLoopsStopOnCancel (0.05s)
-    --- PASS: TestGameLoopsStopOnCancel/Ticker (0.05s)
+--- PASS: TestGameLoopsStopOnCancel (0.21s)
+    --- PASS: TestGameLoopsStopOnCancel/Ticker (0.21s)
     --- PASS: TestGameLoopsStopOnCancel/Flat (0.00s)
     --- PASS: TestGameLoopsStopOnCancel/UntilCancelled (0.00s)
 === RUN   TestCounterLoopsTigerAcceptsRunForever
@@ -62,13 +62,13 @@
 === RUN   TestCounterLoopsTigerAcceptsRunForever/ByteWraps
 === RUN   TestCounterLoopsTigerAcceptsRunForever/SpinCapped
 === RUN   TestCounterLoopsTigerAcceptsRunForever/SpinLimited
---- PASS: TestCounterLoopsTigerAcceptsRunForever (3.80s)
-    --- PASS: TestCounterLoopsTigerAcceptsRunForever/OrCounter (0.31s)
-    --- PASS: TestCounterLoopsTigerAcceptsRunForever/CounterReset (0.32s)
-    --- PASS: TestCounterLoopsTigerAcceptsRunForever/FieldNamedLikeCounter (0.47s)
+--- PASS: TestCounterLoopsTigerAcceptsRunForever (3.43s)
+    --- PASS: TestCounterLoopsTigerAcceptsRunForever/OrCounter (0.32s)
+    --- PASS: TestCounterLoopsTigerAcceptsRunForever/CounterReset (0.30s)
+    --- PASS: TestCounterLoopsTigerAcceptsRunForever/FieldNamedLikeCounter (0.32s)
     --- PASS: TestCounterLoopsTigerAcceptsRunForever/StepsPastLimit (0.30s)
-    --- PASS: TestCounterLoopsTigerAcceptsRunForever/ByteWraps (0.37s)
-    --- PASS: TestCounterLoopsTigerAcceptsRunForever/SpinCapped (0.30s)
+    --- PASS: TestCounterLoopsTigerAcceptsRunForever/ByteWraps (0.31s)
+    --- PASS: TestCounterLoopsTigerAcceptsRunForever/SpinCapped (1.11s)
     --- PASS: TestCounterLoopsTigerAcceptsRunForever/SpinLimited (0.30s)
 === RUN   TestWalkCappedTruncatesSilentlyOnACycle
 --- PASS: TestWalkCappedTruncatesSilentlyOnACycle (0.00s)
@@ -89,22 +89,24 @@
 === RUN   TestLoopsTigerAcceptsRunForever/MapGrow
 === RUN   TestLoopsTigerAcceptsRunForever/RangeNaturals
 === RUN   TestLoopsTigerAcceptsRunForever/GotoLoop
---- PASS: TestLoopsTigerAcceptsRunForever (4.10s)
-    --- PASS: TestLoopsTigerAcceptsRunForever/ShadowSlice (0.30s)
-    --- PASS: TestLoopsTigerAcceptsRunForever/AliasAppend (0.33s)
+--- PASS: TestLoopsTigerAcceptsRunForever (5.04s)
+    --- PASS: TestLoopsTigerAcceptsRunForever/ShadowSlice (0.31s)
+    --- PASS: TestLoopsTigerAcceptsRunForever/AliasAppend (0.30s)
     --- PASS: TestLoopsTigerAcceptsRunForever/ClosureGrow (0.31s)
-    --- PASS: TestLoopsTigerAcceptsRunForever/LabeledContinue (0.33s)
-    --- PASS: TestLoopsTigerAcceptsRunForever/Overflow (0.39s)
+    --- PASS: TestLoopsTigerAcceptsRunForever/LabeledContinue (0.32s)
+    --- PASS: TestLoopsTigerAcceptsRunForever/Overflow (0.31s)
     --- PASS: TestLoopsTigerAcceptsRunForever/WrongCounter (0.32s)
-    --- PASS: TestLoopsTigerAcceptsRunForever/CounterUndone (0.30s)
-    --- PASS: TestLoopsTigerAcceptsRunForever/LimitGrows (0.30s)
+    --- PASS: TestLoopsTigerAcceptsRunForever/CounterUndone (0.32s)
+    --- PASS: TestLoopsTigerAcceptsRunForever/LimitGrows (1.44s)
     --- PASS: TestLoopsTigerAcceptsRunForever/HelperGrow (0.31s)
-    --- PASS: TestLoopsTigerAcceptsRunForever/MapGrow (0.32s)
-    --- PASS: TestLoopsTigerAcceptsRunForever/RangeNaturals (0.32s)
-    --- PASS: TestLoopsTigerAcceptsRunForever/GotoLoop (0.41s)
+    --- PASS: TestLoopsTigerAcceptsRunForever/MapGrow (0.34s)
+    --- PASS: TestLoopsTigerAcceptsRunForever/RangeNaturals (0.31s)
+    --- PASS: TestLoopsTigerAcceptsRunForever/GotoLoop (0.46s)
 === RUN   TestWalkReportedEndsOnATree
 --- PASS: TestWalkReportedEndsOnATree (0.00s)
+=== RUN   TestWalkReportedEndsOnATreeOfExactlyNodesMax
+--- PASS: TestWalkReportedEndsOnATreeOfExactlyNodesMax (0.00s)
 === RUN   TestWalkReportedFailsOnACycle
 --- PASS: TestWalkReportedFailsOnACycle (0.00s)
 PASS
-ok  	gaps	11.922s
+ok  	gaps	12.468s

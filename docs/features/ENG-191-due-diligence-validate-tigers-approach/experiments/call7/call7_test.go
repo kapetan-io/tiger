@@ -42,15 +42,8 @@ func TestWorkerNeverStops(t *testing.T) {
 
 // An empty Reset passes today's TS-M05, and the next pool user sees the last user's data.
 func TestEmptyResetLeaksTheLastUser(t *testing.T) {
-	leaked := false
-	for range 100 {
-		call7.UseWithEmptyReset("alice")
-		if call7.PeekPooled() == "alice" {
-			leaked = true
-			break
-		}
-	}
-	assert.True(t, leaked)
+	pooled := call7.UseWithEmptyReset("alice")
+	assert.Equal(t, "alice", pooled.User)
 }
 
 // Zeroing before Put never leaks the last user.

@@ -13,6 +13,7 @@ package changed
 import (
 	"fmt"
 	"go/types"
+	"math"
 	"sort"
 	"strings"
 
@@ -98,6 +99,7 @@ func Load(dir string, filter Filter) (Edges, error) {
 		syscall: syscall,
 		filter:  filter,
 		bodies:  map[*ssa.Function]int{},
+		depth:   map[*ssa.Function]int{},
 		edges:   Edges{},
 	}
 	for fn := range ssautil.AllFunctions(prog) {
@@ -115,6 +117,8 @@ type walker struct {
 	syscall map[string]bool
 	filter  Filter
 	bodies  map[*ssa.Function]int
+	depth   map[*ssa.Function]int
+	stack   []*ssa.Function
 	edges   Edges
 }
 
@@ -250,38 +254,78 @@ const (
 // body reports whether fn statically reaches package syscall, following
 // static calls, referenced functions and closures, but not interface calls.
 func (w *walker) body(fn *ssa.Function) bool {
+	found, _ := w.walk(fn)
+	return found
+}
+
+// walk answers body for fn with Tarjan's strongly connected components. A
+// function still being visited stays on w.stack, and low is the shallowest
+// stack position the walk met. A false answer is only final for a component
+// as a whole, so it is remembered when fn is the component's root (low is not
+// above fn). A true answer holds for everything still on the stack from fn
+// up, since each of those reaches fn or one of its callers.
+func (w *walker) walk(fn *ssa.Function) (found bool, low int) {
 	switch w.bodies[fn] {
-	case visiting, without:
-		return false
+	case visiting:
+		return false, w.depth[fn]
+	case without:
+		return false, noVisit
 	case with:
-		return true
+		return true, noVisit
 	}
-	w.bodies[fn] = visiting
 	if pkg := fn.Package(); pkg != nil && (pkg.Pkg.Path() == "syscall" || strings.HasPrefix(pkg.Pkg.Path(), "internal/syscall")) {
 		w.bodies[fn] = with
-		return true
+		return true, noVisit
 	}
+	depth := len(w.stack)
+	w.bodies[fn] = visiting
+	w.depth[fn] = depth
+	w.stack = append(w.stack, fn)
+	low = noVisit
+	for _, next := range callees(fn) {
+		f, l := w.walk(next)
+		if f {
+			w.settle(depth, with)
+			return true, noVisit
+		}
+		low = min(low, l)
+	}
+	if low < depth {
+		return false, low
+	}
+	w.settle(depth, without)
+	return false, noVisit
+}
+
+// settle records answer for every function on the stack from depth up and
+// pops them.
+func (w *walker) settle(depth, answer int) {
+	for _, fn := range w.stack[depth:] {
+		w.bodies[fn] = answer
+		delete(w.depth, fn)
+	}
+	w.stack = w.stack[:depth]
+}
+
+// noVisit is the low depth of a walk that met no function still being visited.
+const noVisit = math.MaxInt
+
+// callees lists the functions fn refers to and the closures it defines.
+func callees(fn *ssa.Function) []*ssa.Function {
+	var list []*ssa.Function
 	for _, block := range fn.Blocks {
 		for _, instr := range block.Instrs {
 			for _, op := range instr.Operands(nil) {
 				if op == nil || *op == nil {
 					continue
 				}
-				if next, ok := (*op).(*ssa.Function); ok && w.body(next) {
-					w.bodies[fn] = with
-					return true
+				if next, ok := (*op).(*ssa.Function); ok {
+					list = append(list, next)
 				}
 			}
 		}
 	}
-	for _, anon := range fn.AnonFuncs {
-		if w.body(anon) {
-			w.bodies[fn] = with
-			return true
-		}
-	}
-	w.bodies[fn] = without
-	return false
+	return append(list, fn.AnonFuncs...)
 }
 
 // List returns the edges sorted by owner then target.

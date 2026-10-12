@@ -64,6 +64,7 @@ func TestListFilteredTwoLimits(t *testing.T) {
 		name      string
 		total     int
 		matching  int
+		limit     int
 		wantNames int
 		wantNext  int
 		wantErr   error
@@ -72,6 +73,7 @@ func TestListFilteredTwoLimits(t *testing.T) {
 			name:      "PageFills",
 			total:     100,
 			matching:  50,
+			limit:     10,
 			wantNames: 10,
 			wantNext:  60,
 		},
@@ -79,6 +81,7 @@ func TestListFilteredTwoLimits(t *testing.T) {
 			name:      "TableEndsFirst",
 			total:     100,
 			matching:  5,
+			limit:     10,
 			wantNames: 5,
 			wantNext:  101,
 		},
@@ -86,14 +89,31 @@ func TestListFilteredTwoLimits(t *testing.T) {
 			name:      "ScanLimitStopsASparseList",
 			total:     1_000_000,
 			matching:  1,
+			limit:     10,
 			wantNames: 0,
 			wantNext:  10_000,
 			wantErr:   cursorbound.ErrScanLimit,
 		},
+		{
+			name:      "ZeroLimitReadsNothing",
+			total:     100,
+			matching:  50,
+			limit:     0,
+			wantNames: 0,
+			wantNext:  0,
+		},
+		{
+			name:      "NegativeLimitReadsNothing",
+			total:     100,
+			matching:  50,
+			limit:     -1,
+			wantNames: 0,
+			wantNext:  0,
+		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			table := &fakeTable{total: test.total, matching: test.matching}
-			names, err := cursorbound.ListFilteredTwoLimits(table, "team", 10)
+			names, err := cursorbound.ListFilteredTwoLimits(table, "team", test.limit)
 			if test.wantErr != nil {
 				require.ErrorIs(t, err, test.wantErr)
 			} else {

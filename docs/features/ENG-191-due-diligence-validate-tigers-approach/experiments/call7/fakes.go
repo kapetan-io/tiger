@@ -62,12 +62,15 @@ func (b *Buf) Reset() {}
 var bufPool = sync.Pool{New: func() any { return new(Buf) }}
 
 // UseWithEmptyReset fills a pooled buffer for user and puts it back after an
-// empty Reset, so the next user sees it.
-func UseWithEmptyReset(user string) {
+// empty Reset, so the next user sees it. It returns the buffer it put back, so
+// a test can see what the next Get would get without depending on sync.Pool
+// handing that buffer back, which it does not promise.
+func UseWithEmptyReset(user string) *Buf {
 	b := bufPool.Get().(*Buf)
 	b.User = user
 	b.Reset()
 	bufPool.Put(b)
+	return b
 }
 
 // UseWithZero zeroes the buffer before putting it back, the only shape call 7

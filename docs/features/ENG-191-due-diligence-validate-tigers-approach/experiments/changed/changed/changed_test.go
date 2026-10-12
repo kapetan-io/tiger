@@ -254,6 +254,19 @@ func TestMixedFilter(t *testing.T) {
 	}
 }
 
+// Ping and Pong call each other and only Ping reaches os. The walk meets Ping
+// again while answering for Pong, and must not remember Pong as never reaching
+// syscall, or the later Pong call is dropped.
+func TestMutualRecursionReachesSyscall(t *testing.T) {
+	t.Parallel()
+	for _, filter := range []changed.Filter{changed.ByFunction, changed.Mixed} {
+		assert.Equal(t, "web.Handler\n"+
+			"  + example.com/fakedb.Ping: Greet calls Ping\n"+
+			"  + example.com/fakedb.Pong: Greet calls Pong\n",
+			report(t, "recursion", filter))
+	}
+}
+
 // Under the package filter the same Close is reported, since fakedb imports
 // os.
 func TestPackageFilterKeepsFileClose(t *testing.T) {

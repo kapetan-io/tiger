@@ -16,6 +16,15 @@ Three filters for outside packages were measured. None uses a table.
 
 Each line is classed as signal (a reviewer would want to know) or noise.
 
+The counts below predate a fix to the function and mixed filters (PR #14
+review). The body walk used to remember a function as not reaching `syscall`
+when it was answered while a mutually recursive caller was still being walked,
+so a later call to it could be dropped, depending on map order. The function
+and mixed counts could therefore differ after the fix in either direction: a
+new call that was dropped now shows, and an unchanged call dropped at only one
+revision no longer reads as added or removed. The package filter is
+unaffected. The runs were not repeated.
+
 ## querator, package filter
 
 | Commit | Lines | Signal | Noise |

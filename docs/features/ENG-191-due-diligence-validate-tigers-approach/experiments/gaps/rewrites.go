@@ -14,7 +14,8 @@ func WalkReported(root *Node) (int, error) {
 	for ; i < len(stack) && i < nodesMax; i++ {
 		stack = append(stack, stack[i].Next...)
 	}
-	if i == nodesMax {
+	// A graph of exactly nodesMax nodes ends here too, with nothing left to visit.
+	if i == nodesMax && i < len(stack) {
 		return 0, errWalkTooLarge
 	}
 	return len(stack), nil

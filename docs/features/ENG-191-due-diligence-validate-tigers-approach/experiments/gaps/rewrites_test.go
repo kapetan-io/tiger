@@ -17,6 +17,18 @@ func TestWalkReportedEndsOnATree(t *testing.T) {
 	assert.Equal(t, 3, visited)
 }
 
+// A tree of exactly nodesMax nodes is a complete walk, not a hit cap.
+func TestWalkReportedEndsOnATreeOfExactlyNodesMax(t *testing.T) {
+	const nodesMax = 100
+	leaves := make([]*gaps.Node, nodesMax-1)
+	for i := range leaves {
+		leaves[i] = &gaps.Node{}
+	}
+	visited, err := gaps.WalkReported(&gaps.Node{Next: leaves})
+	require.NoError(t, err)
+	assert.Equal(t, nodesMax, visited)
+}
+
 // The reported worklist fails loudly on a cycle instead of returning a partial walk.
 func TestWalkReportedFailsOnACycle(t *testing.T) {
 	a, b := &gaps.Node{}, &gaps.Node{}
