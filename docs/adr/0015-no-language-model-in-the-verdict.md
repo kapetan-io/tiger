@@ -21,7 +21,8 @@ for rows.Next() {
 Tiger never interprets that text. ADR-0003 already records why: a reason can be shape-checked
 (the verb is known, the reason is present) but never truth-checked. Tiger checks that the text
 after `batched` is not empty and that the loop has a cursor's shape. When both hold, the waiver
-applies, it is printed on every run, and it counts against the package budget. The same input
+applies and counts against the package budget on every run. It prints only when the package
+goes over its budget. The same input
 gives the same result on every run.
 
 That leaves false reasons unchecked. `experiments/annotations` puts the same `//tiger:batched`
@@ -45,8 +46,8 @@ can be a person or a model.
 
 - The same commit gives the same verdict on every run, so a failing run is always a fact about the
   code and never about a model's mood.
-- False waiver reasons are not caught by tiger. They stay visible, printed on every run and counted
-  against the budget, so review sees them.
+- False waiver reasons are not caught by tiger. Each waiver stays in the code, where review reads
+  it, and counts against its package's budget, so adding one is a visible change.
 - A model reviewing the pull request gets every benefit a model in the verdict would, without
   making the verdict negotiable.
 - The pressure to make tiger read reasons is relieved by having fewer of them. ADR-0014 removes the

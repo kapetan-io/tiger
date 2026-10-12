@@ -1,11 +1,19 @@
 `tiger check` · binary verdict · change detection
 
 **This page describes tiger as it is meant to be when it is finished.** It reflects the
-decisions recorded in ENG-191. Several pieces described here are not built yet: the
-`tiger changed` report, the patterns collection and the `tiger pattern` command, the
-changes to the loop, goroutine, and wait rules, and the
-collect-then-sort part of the map-order rule. Each section that describes one of these
-says so where it appears.
+decisions recorded in ENG-191. Several pieces described here are not built yet:
+
+- the `tiger changed` report, and the removal of effect and frame pins it replaces
+- the patterns collection and the `tiger pattern` command
+- the changes to the loop rules, including the end of `//tiger:batched` as a loop-bound waiver
+- the changes to the goroutine and wait rules, including TS-C03's goleak check
+- the collect-then-sort part of the map-order rule, and TS-T11's double test run
+- the layer file that declares which packages may import which (ENG-328)
+- the opt-in ban on `//nolint`
+- the removal of the single-implementation interface rule and of package-level restrictions
+
+Today's tiger still reports findings from the rules this page leaves out. Several sections
+note where they describe something not built.
 
 Every transcript on the page is real output, either from a run of today's `tiger check`
 or, where a section says so, from a prototype. A finding's wording in a transcript can
@@ -15,7 +23,7 @@ The rule reference lists every rule tiger enforces today, and the specification 
 each rule that is not yet built.
 
 ## Overview
-Tiger is a static analyzer for Go, built for code that AI agents write. It holds that code to the restrictions NASA's [Power of Ten](https://spinroot.com/gerard/pdf/P10.pdf) and TigerBeetle's [TigerStyle](https://github.com/tigerbeetle/tigerbeetle/blob/main/docs/TIGER_STYLE.md) put on flight and database software, so the result is testable and free of whole classes of production bugs. Every loop has a bound, every goroutine has an owner, and every clock, random source, and IO call is passed in, so any function can be tested in isolation. A run either passes or fails. Tiger has no warnings and no suppression comment, so code that fails the check is rewritten until it passes. The analysis is deterministic static analysis and never a language model, so the same code gets the same verdict every time.
+Tiger is a static analyzer for Go, built for code that AI agents write. It holds that code to the restrictions NASA's [Power of Ten](https://spinroot.com/gerard/pdf/P10.pdf) and TigerBeetle's [TigerStyle](https://github.com/tigerbeetle/tigerbeetle/blob/main/docs/TIGER_STYLE.md) put on flight and database software, so the result is testable and free of whole classes of production bugs. Every loop has a bound, every goroutine has an owner, and every clock, random source, and IO call is passed in, so any function can be tested in isolation. A run either passes or fails. `tiger check` has no warnings and honors no suppression comment, so code that fails the check is rewritten until it passes. The analysis is deterministic static analysis and never a language model, so the same code gets the same verdict every time.
 
 Tiger also has a second command, `tiger changed <base>`, which compares the code at a base revision such as `main` with the working tree. If a program is only supposed to reach the database through a `Store` interface, and an agent adds a database call somewhere else, the report shows the new call, so the reviewer learns that the pull request changed the architecture and not only the code it touched. For each struct, or each free function, it lists the types and functions it calls now that it did not call at the base. `tiger changed` is not a rule, so it never fails the run. It is a report, meant to be read by a human or an agent.
 
@@ -45,11 +53,11 @@ Tiger builds the report from the code at both revisions, so a reviewer sees each
   calls that struct.
 - **A call through an interface is named by the interface.** Tiger does not guess which
   implementation runs underneath it.
-- **Pure helpers are left out.** Calls into packages that never reach the operating
-  system, such as `strings`, `sort`, and `fmt`, are not reported.
+- **Pure helpers are left out.** Calls that never reach the operating system, such as
+  `strings.Split` or `fmt.Sprintf`, are not reported.
 
 **Tiger has no warnings**
-Every finding fails the run. There is no comment that suppresses a finding, and `tiger check` does not read `//nolint`. Holzmann's [tenth rule](https://spinroot.com/gerard/pdf/P10.pdf) makes the same demand of a compiler. It calls for compiling with every warning on and allowing none, because [one new warning among thousands is invisible](https://www.youtube.com/watch?v=GRJtYwneG2Q). A `tiger check` run passes or fails. The only way past a finding is to change the code until it satisfies the rule.
+Every finding fails the run. `tiger check` honors no comment that suppresses a finding, and it does not read `//nolint`. Holzmann's [tenth rule](https://spinroot.com/gerard/pdf/P10.pdf) makes the same demand of a compiler. It calls for compiling with every warning on and allowing none, because [one new warning among thousands is invisible](https://www.youtube.com/watch?v=GRJtYwneG2Q). A `tiger check` run passes or fails. The only way past a finding is to change the code until it satisfies the rule.
 
 - **The cheapest path for an agent is the rewrite.** An agent finishing a task takes whichever path reaches a passing run at the lowest cost, and with no warning tier and no suppression comment available, that path is rewriting the code.
 - **Review time goes to intent and behavior.** When a change passes the test suite and `tiger check`, the reviewer can spend the review on what the change does and why.
@@ -112,8 +120,9 @@ be fixed. A team that wants `//nolint` gone everywhere can set `nolint.forbid` i
 and `tiger check` then reports every one it finds.
 
 Tiger's analyzers can also run inside golangci-lint as a plugin, which is handy in an editor.
-The plugin skips a few checks that need to see the whole program at once, so CI still relies
-on `tiger check`.
+The plugin skips a few checks that need to see the whole program at once, and golangci-lint's
+`//nolint` silences tiger's rules there like any other linter's, so CI still relies on
+`tiger check`.
 
 Tiger has no way to set existing findings aside. It keeps no list of old findings to ignore,
 and it doesn't support checking only the lines a branch changed. A codebase adopts tiger by
@@ -589,7 +598,8 @@ Tiger's main reader is an AI agent, and an agent offered a cheaper path than con
 
 A change that passes `tiger check` has settled several things before the reviewer reads any of it.
 
-- Every loop has a bound, a proof that it ends or a cap that reports when the cap is hit.
+- Every loop has a bound: a proof that it ends, a cap that reports when it is hit, or a page
+  limit over rows read from outside the program.
 - Every goroutine starts through an owner that waits for it to finish.
 - Every blocking wait can be cancelled.
 - Every switch over a closed type covers every value the type can take.
