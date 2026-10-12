@@ -1985,7 +1985,8 @@ The checklist an author runs before committing a message:
 2. Does it name the gap without a banned word? The list: pin, pinned, computed, fact, facts,
    effect set, frame condition, lattice, closed set, back edge, dominating, synthesized, ranking,
    allowlist. Matched case-insensitively at word boundaries. Directive verbs (`variant`,
-   `requires`, `ensures`, `openenum`, `batched`) appear only as the literal directive spelling.
+   `requires`, `ensures`, `openenum`, `batched`) appear only as the literal directive spelling. *(Decided and not built: the meta-test's verb list in `internal/rules/meta_test.go` still names
+   the retired `effects`, `frame` and `restrict` and lacks `openenum`.)*
 3. Does it end with an edit the reader can make now? A comment to add, a call to remove, a name
    to change, a snippet to paste. Never a restatement of the rule.
 4. Is every directive spelled `//tiger:<verb> <args>`?
