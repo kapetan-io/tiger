@@ -1419,7 +1419,8 @@ finding means the loop's shape is outside the allowlist, not that the output var
 Five shapes pass despite depending on order: last writer wins (`inverse[v] = k` when two keys share
 a value), a map write whose value calls a function (`labels[k] = fmt.Sprint(v)`),
 `golang.org/x/exp/maps.Keys`, `reflect.Value.MapKeys`, and a range over a type parameter constrained
-to a map. `TS-T11` backs them up on every path the tests exercise. Pattern: sorted map output when
+to a map. `TS-T11` can catch them on the paths the tests exercise, though two runs sometimes visit entries
+in the same order. Pattern: sorted map output when
 the key has no order.
 *(Amended 2026-10-12: plain sorts, full coverage, the closed escape, and the carried-state check are
 decided and not built, ADR-0021.)*
@@ -1754,7 +1755,7 @@ changes what it checks), or **not built**.
 | `deferdistance` | TS-L10 | AST plus token positions | built |
 | `restatement` | TS-L12 | Token overlap between comment and identifier. Tune it | not built |
 | `directives` | TS-L09 | AST, every escape-hatch directive and `//tiger:openenum` carries a reason; with `nolint.forbid` on, every `//nolint` is a finding | built (ADR-0023, ENG-179) |
-| `maporder` | TS-T02 | `buildssa`, allowlist of order-safe loop bodies; collect-then-sort with plain sorts or full-coverage comparators; the `maps` escape closed | built; changes decided (ADR-0021) |
+| `maporder` | TS-T02 | `buildssa`, allowlist of order-safe loop bodies; collect-then-sort with plain sorts or full-coverage comparators; the `maps` escape closed | built (ADR-0021) |
 | `fuzzcoverage` | TS-T03 | `packages`, parsers must have a Fuzz function | not built |
 | `corpuscheck` | TS-T09 | Directory presence plus a test that iterates it | not built |
 | `tablename` | TS-T10 | AST, table test literals require a name field | built |
