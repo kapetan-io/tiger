@@ -14,5 +14,12 @@ import (
 // stay silent, and the assert package plus its external test package keep
 // their sanctioned exemption.
 func TestCorpus(t *testing.T) {
-	analysistest.Run(t, analysistest.TestData(), paniccheck.Analyzer, "ts-s18", "github.com/kapetan-io/tiger/assert", "lookalike/assert")
+	analysistest.Run(
+		t,
+		analysistest.TestData(),
+		paniccheck.Analyzer,
+		"ts-s18",
+		"github.com/kapetan-io/tiger/assert",
+		"lookalike/assert",
+	)
 }

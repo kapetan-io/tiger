@@ -111,9 +111,11 @@ func TestCheckRetiredDirectiveVerbsFailL09(t *testing.T) {
 		{"Owner", "owner", "owner"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			dir := writeModule(t, sourceFile{"pkg/pkg.go",
-				"// Package pkg carries a retired directive.\npackage pkg\n\n" +
-					"//tiger:" + test.line + "\n// Value is a number.\nvar Value = 1\n"})
+			dir := writeModule(t, sourceFile{
+				name: "pkg/pkg.go",
+				content: "// Package pkg carries a retired directive.\npackage pkg\n\n" +
+					"//tiger:" + test.line + "\n// Value is a number.\nvar Value = 1\n",
+			})
 
 			got := run(t, "check", "-C", dir, "./...")
 			assert.Equal(t, cli.ExitFindings, got.code)
