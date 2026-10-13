@@ -310,8 +310,7 @@ others are a map write whose value calls a function (`labels[k] =
 fmt.Sprint(v)`), `golang.org/x/exp/maps.Keys`, `reflect.Value.MapKeys`, and a
 range over a type parameter constrained to a map. TS-T11 runs the test suite
 twice and diffs the output, which catches an order leak on any path the tests
-exercise. The collect-then-sort and full-coverage parts of TS-T02 are decided
-but not yet built.
+exercise.
 
 Deterministic simulation found the bugs that made TigerBeetle worth imitating.
 Their simulator, the

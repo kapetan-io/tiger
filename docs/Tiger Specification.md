@@ -1754,7 +1754,7 @@ changes what it checks), or **not built**.
 | `deferdistance` | TS-L10 | AST plus token positions | built |
 | `restatement` | TS-L12 | Token overlap between comment and identifier. Tune it | not built |
 | `directives` | TS-L09 | AST, every escape-hatch directive and `//tiger:openenum` carries a reason; with `nolint.forbid` on, every `//nolint` is a finding | built; changes decided (ADR-0023, ENG-179) |
-| `maporder` | TS-T02 | `buildssa`, allowlist of order-safe loop bodies; collect-then-sort with plain sorts or full-coverage comparators; the `maps` escape closed | built; changes decided (ADR-0021) |
+| `maporder` | TS-T02 | `buildssa`, allowlist of order-safe loop bodies; collect-then-sort with plain sorts or full-coverage comparators; the `maps` escape closed | built (ADR-0021) |
 | `fuzzcoverage` | TS-T03 | `packages`, parsers must have a Fuzz function | not built |
 | `corpuscheck` | TS-T09 | Directory presence plus a test that iterates it | not built |
 | `tablename` | TS-T10 | AST, table test literals require a name field | built |

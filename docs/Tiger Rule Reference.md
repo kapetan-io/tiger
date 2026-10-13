@@ -1220,9 +1220,39 @@ func Names(m map[string]int) []string {
 }
 ```
 
-**Known miss:** Collecting keys with `slices.Collect(maps.Keys(m))` without sorting,
-then ranging over that slice, escapes the check. The range target is a slice by then,
-not the map.
+The sorted rewrite is not the only shape that passes. A map loop that appends into a local
+slice passes when the slice's first use after the loop is `sort.Strings`, `sort.Ints`, or
+`slices.Sort` on string or integer elements, since equal strings or integers cannot be told
+apart:
+
+```go
+ids := make([]string, 0, len(m))
+for id := range m {
+	ids = append(ids, id)
+}
+sort.Strings(ids)
+```
+
+Floats do not pass, because -0 and +0 compare equal and print differently. A comparator sort
+(`slices.SortFunc`, `slices.SortStableFunc`, `slices.SortedFunc`) passes only when its comparisons
+together cover every field of the element, using `cmp.Compare`, `strings.Compare`, or
+`bytes.Compare` on a whole array. Pointer, interface, bool, float, and `time.Time` fields never
+count as covered. A key type's `Compare` method that passes the same check counts, as in
+`slices.SortedFunc(maps.Keys(m), K.Compare)`. Any other comparator sort fires, and its message
+names `slices.Sorted(maps.Keys(m))` followed by `slices.SortStableFunc`.
+
+A result of `maps.Keys`, `maps.Values`, or `maps.All` fires unless it goes to `slices.Sorted`, a
+full-coverage `SortedFunc`, `maps.Collect`, `maps.Insert`, or a range checked like a map range, so
+`slices.Collect(maps.Keys(m))` is a finding. A map write gated by a counter, such as copying the
+first three entries visited, fires too.
+
+A finding means the loop's shape is outside the allowlist, not that the output varies.
+
+**Known misses:** Five shapes pass although they depend on order. Last writer wins
+(`inverse[v] = k` when two keys share a value). A map write whose value calls a function
+(`labels[k] = fmt.Sprint(v)`). `golang.org/x/exp/maps.Keys`. `reflect.Value.MapKeys`. A range over
+a type parameter constrained to a map. TS-T11, which runs the tests twice and compares the output,
+backs these up on every path the tests exercise.
 
 <!-- rule: TS-T06 -->
 ### TS-T06 — test functions have a doc comment
