@@ -528,7 +528,10 @@ func (t *tracer) constantList(parent int, literal *ast.CompositeLit) {
 // so a trace that does not settle counts as unbounded.
 func (t *tracer) evaluate(root ast.Expr) traceResult {
 	rounds := len(t.nodes)
-	for round := 0; round <= rounds && !t.nodes[0].done; round++ {
+	for round := 0; round <= rounds; round++ {
+		if t.nodes[0].done {
+			continue
+		}
 		for index := len(t.nodes) - 1; index >= 0; index-- {
 			t.resolveNode(index)
 		}
