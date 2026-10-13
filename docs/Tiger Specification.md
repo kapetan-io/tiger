@@ -388,35 +388,56 @@ building at all.
 Why. Bounded execution. A recursive function's stack depth depends on data, and data comes from
 outside. Go grows stacks to 1GB by default, so you do not get a clean early crash, you get a process
 that quietly eats a gigabyte and dies far from the cause.
-Enforce. `norecursion` (custom, SSA callgraph, catches mutual recursion).
+Enforce. `norecursion` (custom, SSA static call graph, catches mutual recursion).
 
 **`TS-S02` Every loop has an upper bound.**
 Why. Everything in reality has a limit. A loop that does not state its limit is asserting that some
 input will always be well-formed. Bound it and an infinite hang becomes a fast, loud failure at the
 boundary. See `TS-V01` for the stronger form.
 Enforce. `boundedloop` (custom). A `for` with no condition, or a condition that states no bound, is a
-finding, and no directive waives it. A bound is a constant, a `len`, a sound counter, or a variant
+finding, and no directive waives it (until ADR-0014 is built, `//tiger:batched` still waives a
+cursor-shaped loop). A bound is a constant, a `len`, a sound counter, or a variant
 `TS-V01` verified. Where none exists, the compliant forms are an explicit counter cap and the
 `TS-S03` event-loop shape.
 
 A counter is sound only when its comparison is a top-level `&&` term of the condition, not inside
 `||` or behind `!`. It pairs `<` or `<=` with `++` or `+=`, or `>` or `>=` with `--`, never `!=`.
 Nothing in the body writes the counter or its limit, whether through a helper, a method, a pointer,
-or a map insert when the limit is `len(m)`. The limit sits below the counter type's maximum.
+or a map insert when the limit is `len(m)`. The counter arrives at the limit before it wraps around the
+counter type's range, so `for i := uint8(0); i <= 255; i++` is not sound. A step by `+=` or `-=` is a
+constant of at least 1. A limit may call only `len`, `cap`, `min`, `max`, conversions, and declared
+functions or methods such as `tuple.Len()`; a function value could return something larger on every pass.
 
 A counter cap is a page size, and needs no report, only when its limit is not a constant and every
 other way out of the loop drains a stream whose type is declared outside the module (`rows.Next()`,
 `scanner.Scan()`, `decoder.More()`). Reaching a page size means the page is full. Any other way out,
 an internal condition or a `break`, makes the counter a safety cap, and the loop must assert or
 return an error when the counter reaches the limit, whether the limit is a constant, a parameter, or
-a field. The finding's message says so.
+a field. A `len` or `cap` limit is a bound the data sets, so it is never a safety cap. A `return` from
+the body is a result, not a silent stop, so it does not make a safety cap either. The report is an
+`if` after the loop that compares the counter with the limit, or reads a variable the loop assigns,
+and then asserts, panics, or returns an error; a bare assert or panic statement after the loop counts
+too. The finding's message says so.
 
 Every loop limit is bounded where it enters the program. The analyzer traces a limit back through
 parameters, fields, and function results, across packages. Every value written into it must be a
 constant, a length, another bounded limit, or a value clamped against a declared maximum, such as
 `min(config.Spins, spinsMax)` or an `if count > objectsMax` that rejects. A function that returns a
-clamped value carries the bound to its callers. A call that passes `math.MaxInt`, the type's
-maximum, or a constant at least half of it is a finding.
+clamped value carries the bound to its callers. A clamp caps the upper end only, so a limit becomes
+unbounded again when it is negated, when anything but a non-negative constant, length or unsigned
+value is subtracted from it, when it is multiplied by or combined with an exclusive or against a
+value that may also be negative, when a remainder has a divisor that may be negative, or when a
+quotient has both a dividend and a divisor that may be negative. A quotient with either one known to
+be non-negative, such as `len(items)/step`, stays bounded. Wrap-around at the bottom of the type is
+not modelled. A parameter the function writes carries the written value as well as the caller's. A
+call that passes `math.MaxInt`, the type's
+maximum, or a constant at least half of it is a finding, on integer types of 32 bits or wider, where
+no loop reaches half the range. A running total (`n += len(x)`, `n++`) is as bounded as what is added,
+because every loop tiger accepts ends. Standard library packages and `_test.go` files are not traced.
+Three more things are recorded misses: a limit read through a declared getter such as `q.Len()` while
+the body grows `q` through another method; a struct field changed through a global pointer or an
+interface method that the loop never passes the struct to; and a cap whose report is any failing `if`
+on a variable the loop assigns.
 
 `for ctx.Err() == nil` on a `context.Context` parameter is the event-loop shape, the same as a
 `select` on `ctx.Done()`. On a context from `context.Background()` or `context.TODO()` it is not.
@@ -443,9 +464,10 @@ Patterns: capped worklist, page over an outside stream, clamp a limit, filtered 
 admission test, since a reason is shape-checkable but not truth-checkable and every terminating
 loop can state a cap. See "Declarations at a glance".)*
 *(Amended 2026-10-12: ADR-0014 supersedes the 2026-08-17 amendment that let `//tiger:batched`
-waive this rule on cursor-shaped loops; no directive waives it. The counter, cap, limit,
-`ctx.Err()`, iterator, and store-loop requirements above are decided and not built (ADR-0013,
-ADR-0014, ENG-191 follow-ups 1 and 10).)*
+waive this rule on cursor-shaped loops. ADR-0014 decides that no directive waives it; that part is
+not built. ADR-0013 is built: the counter,
+cap, limit, `ctx.Err()` and iterator requirements above. The store-loop requirement is decided and
+not built (ADR-0014, ENG-183).)*
 
 **`TS-S03` An unbounded event loop selects on a stop case and asserts progress.**
 Why. Some loops genuinely run forever. Those get an explicit termination path and an assertion that
@@ -937,13 +959,13 @@ A proof is sound: variables are matched by identity, not by name, so a shadowing
 count. Growth through a pointer or a closure made before the loop defeats a proof, and so does a
 bound at the counter type's maximum (`i <= math.MaxInt`).
 
-Enforce. `variant` (custom, `buildssa`). Blocking when a loop has neither a synthesized nor a pinned
+Enforce. `variant` (custom, AST and `go/types`). Blocking when a loop has neither a synthesized nor a pinned
 variant, and when a pinned variant fails to decrease. A loop whose termination argument is beyond
 the analyzer's predicate language takes a counter cap that reports when it is hit (`TS-S02`).
 `TS-S02` accepts a loop whose variant this rule verified, whether synthesized or pinned.
 *(Amended 2026-10-12: the four shapes after the fixed step, the soundness fixes, and `TS-S02`
-accepting a verified variant are decided and not built, ADR-0013. ADR-0014 closes the ENG-183 clash
-with `//tiger:batched`, which no longer waives a loop bound.)*
+accepting a verified variant are built, ADR-0013. ADR-0014 closes the ENG-183 clash with
+`//tiger:batched`, which no longer waives a loop bound; that part is not built.)*
 
 **`TS-V02` Functions are total.**
 Why. Total means it returns for all inputs satisfying its preconditions. With `TS-S01` and `TS-V01`
@@ -1716,7 +1738,7 @@ changes what it checks), or **not built**.
 | Analyzer | Rules | Approach | Status |
 | --- | --- | --- | --- |
 | `contracts` | TS-V03 | Abstract interpretation over nil-ness, integer ranges, length relations, invariant IDs | built |
-| `variant` | TS-V01, V02 | `buildssa`; synthesizes variants for fixed steps, constant division and shifts, slicing by a part shown non-empty, struct fields no call receives, and `&&` conditions; matches variables by identity; verifies pinned ones at loop head and back edges | built; changes decided (ADR-0013) |
+| `variant` | TS-V01, V02 | AST and `go/types`; synthesizes variants for fixed steps, constant division and shifts, slicing by a part shown non-empty, struct fields no call receives, and `&&` conditions; matches variables by identity; verifies pinned ones at loop head and back edges; its verified loops are the result `boundedloop` reads | built (ADR-0013) |
 | `surfaces` | TS-I01, I03, I05, I07 | Not planned. TS-I01's direct half is `TS-T01`'s bans, the rest is review with `tiger changed`; I03, I05, I07 are review | not built |
 | `canonical` | TS-K01, K02, K04, K05 | AST, with auto-fix | not built |
 | `surfacediff` | TS-R02 | Serialize the exported surface, diff against a checked-in file | not built |
@@ -1724,8 +1746,9 @@ changes what it checks), or **not built**.
 | `invariantrefs` | TS-A07 | Group `assert.Invariant` calls by constant, count referencing functions | built |
 | `invariantsymmetry` | TS-A08 | Pair functions by naming convention, compare invariant sets | not built (ENG-182) |
 | `invariantnegative` | TS-A09 | Require `assert.Violates` per declared invariant | built |
-| `norecursion` | TS-S01 | `buildssa`, CHA callgraph, report any cycle | built |
-| `boundedloop` | TS-S02, S03, S23 | AST, classify every loop; unclassifiable loops are findings and no directive waives TS-S02. Checks counter soundness and cap reporting, and traces each loop limit to where it enters the program; whether the trace is a separate analyzer is left to the build ticket | built; changes decided (ADR-0013, ADR-0014, ADR-0020) |
+| `norecursion` | TS-S01 | `buildssa`, static call graph (`ssalib.StaticCalls`), report any strongly connected component that is a cycle | built |
+| `boundedloop` | TS-S02, S03, S23 | AST, classify every loop; unclassifiable loops are findings and no directive waives TS-S02, except the `//tiger:batched` cursor waiver, which stays until ADR-0014 is built. Checks counter soundness and cap reporting, accepts a loop whose variant `variant` verified, and treats a range over a non-standard-library iterator as a finding | built; changes decided (ADR-0014, ADR-0020) |
+| `limitflow` | TS-S02 (limit) | `go/types` and cross-package facts; traces each loop limit through parameters, fields, locals and function results back to where it enters the program; a value must be a constant, a length, another bounded limit, or clamped against a declared maximum | built (ADR-0013) |
 | `compoundcond` | TS-S06, S07, S08 | AST, count binary logical operators per condition | built |
 | `assertdensity` | TS-A01, A02 | AST plus `types`, count assert calls per function and package | not built |
 | `quantitycast` | TS-Q01, Q03 | `types`, forbid direct conversions outside the quantity package | not built |
@@ -1976,7 +1999,7 @@ TS-V01: variant len(data) not monotone: ranking not strictly decreasing on back 
 After:
 
 ```
-TS-V01: //tiger:variant len(data) doesn't provably shrink on every pass (len(data) cannot be shown to move consistently) — add a cap (for tries := 0; tries < max; tries++) that fails when hit, or name an expression that does shrink
+TS-V01: //tiger:variant len(data) doesn't provably shrink on every pass (len(data) has no step tiger recognizes) — add a cap (for tries := 0; tries < max; tries++) that fails when hit, or name an expression that does shrink
 ```
 
 The checklist an author runs before committing a message:

@@ -9,6 +9,9 @@ import (
 	"maps"
 	"slices"
 	"strings"
+
+	"github.com/kapetan-io/tiger/assert"
+	"github.com/kapetan-io/tiger/internal/worklist"
 )
 
 // ModuleToken marks the spot in a baseline value where the audited project's
@@ -422,9 +425,11 @@ type substituteTask struct {
 func SubstituteModule(want any, module string) any {
 	var substituted any
 	work := []substituteTask{{want: want, slot: func(v any) { substituted = v }}}
-	for i := 0; i < len(work); i++ {
+	i := 0
+	for ; i < len(work) && i < worklist.NodesMax; i++ {
 		work = substituteOne(work, i, module)
 	}
+	assert.Ok(i == len(work), "SubstituteModule: worklist reached worklist.NodesMax")
 	return substituted
 }
 

@@ -7,6 +7,9 @@ import (
 	"strings"
 
 	"golang.org/x/tools/go/analysis"
+
+	"github.com/kapetan-io/tiger/assert"
+	"github.com/kapetan-io/tiger/internal/worklist"
 )
 
 // orderedSorts sort a slice by the values themselves, so the result is
@@ -92,7 +95,8 @@ func appendTargets(pass *analysis.Pass, loop *ast.RangeStmt) []types.Object {
 func collectShape(pass *analysis.Pass, loop *ast.RangeStmt, carried *carry) map[types.Object]bool {
 	targets := map[types.Object]bool{}
 	work := append([]ast.Stmt{}, loop.Body.List...)
-	for i := 0; i < len(work); i++ {
+	i := 0
+	for ; i < len(work) && i < worklist.NodesMax; i++ {
 		switch stmt := work[i].(type) {
 		case *ast.AssignStmt:
 			if target := appendTarget(pass, loop, stmt, carried); target != nil {
@@ -113,6 +117,7 @@ func collectShape(pass *analysis.Pass, loop *ast.RangeStmt, carried *carry) map[
 		}
 		work = append(work, next...)
 	}
+	assert.Ok(i == len(work), "collectShape: worklist reached worklist.NodesMax")
 	if len(targets) == 0 {
 		return nil
 	}

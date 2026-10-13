@@ -7,6 +7,9 @@ import (
 	"slices"
 
 	"golang.org/x/tools/go/analysis"
+
+	"github.com/kapetan-io/tiger/assert"
+	"github.com/kapetan-io/tiger/internal/worklist"
 )
 
 // The allowlist is tiger's maporder allowlist with two changes. First, when
@@ -177,13 +180,15 @@ func readsAny(pass *analysis.Pass, expr ast.Expr, objs map[types.Object]bool) bo
 // into, so the whole walk stays iterative.
 func bodyAllowed(pass *analysis.Pass, loop *ast.RangeStmt, carried *carry) bool {
 	work := append([]ast.Stmt{}, loop.Body.List...)
-	for i := 0; i < len(work); i++ {
+	i := 0
+	for ; i < len(work) && i < worklist.NodesMax; i++ {
 		next, ok := stmtAllowed(pass, loop, work[i], carried)
 		if !ok {
 			return false
 		}
 		work = append(work, next...)
 	}
+	assert.Ok(i == len(work), "bodyAllowed: worklist reached worklist.NodesMax")
 	return true
 }
 

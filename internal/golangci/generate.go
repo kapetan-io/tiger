@@ -12,7 +12,9 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/kapetan-io/tiger/assert"
 	"github.com/kapetan-io/tiger/internal/rules"
+	"github.com/kapetan-io/tiger/internal/worklist"
 )
 
 // Generate derives the baseline golangci-lint configuration from the
@@ -147,9 +149,11 @@ type encodeTask struct {
 func encode(fragment any) *yaml.Node {
 	root := &yaml.Node{}
 	work := []encodeTask{{fragment: fragment, node: root}}
-	for i := 0; i < len(work); i++ {
+	i := 0
+	for ; i < len(work) && i < worklist.NodesMax; i++ {
 		work = fillNode(work, i)
 	}
+	assert.Ok(i == len(work), "encode: worklist reached worklist.NodesMax")
 	return root
 }
 

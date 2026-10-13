@@ -19,6 +19,7 @@ import (
 
 	"github.com/kapetan-io/tiger/assert"
 	"github.com/kapetan-io/tiger/internal/rules"
+	"github.com/kapetan-io/tiger/internal/worklist"
 )
 
 // ErrConfigExists reports an --init refused because the project already has
@@ -210,9 +211,11 @@ func (b baseline) matches(got any) bool {
 	root := &matchNode{}
 	tree := &matchState{nodes: []*matchNode{root}}
 	tree.work = []matchTask{{want: b.want, got: got, node: root}}
-	for i := 0; i < len(tree.work); i++ {
+	i := 0
+	for ; i < len(tree.work) && i < worklist.NodesMax; i++ {
 		tree.expand(i)
 	}
+	assert.Ok(i == len(tree.work), "matches: worklist reached worklist.NodesMax")
 	for i := len(tree.nodes) - 1; i >= 0; i-- {
 		evalNode(tree.nodes[i])
 	}

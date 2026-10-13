@@ -21,6 +21,9 @@ import (
 	"strings"
 
 	"golang.org/x/tools/go/analysis"
+
+	"github.com/kapetan-io/tiger/assert"
+	"github.com/kapetan-io/tiger/internal/worklist"
 )
 
 // Analyzer enforces TS-S22: a limit constant's stated derivation evaluates
@@ -126,7 +129,8 @@ func derivationLine(doc *ast.CommentGroup, name string) (string, bool) {
 // reverse so every node's operands are ready before the node itself.
 func evalConst(pass *analysis.Pass, expr ast.Expr) (constant.Value, bool) {
 	work := []ast.Expr{expr}
-	for i := 0; i < len(work); i++ {
+	i := 0
+	for ; i < len(work) && i < worklist.NodesMax; i++ {
 		switch node := work[i].(type) {
 		case *ast.ParenExpr:
 			work = append(work, node.X)
@@ -136,6 +140,7 @@ func evalConst(pass *analysis.Pass, expr ast.Expr) (constant.Value, bool) {
 			work = append(work, node.X, node.Y)
 		}
 	}
+	assert.Ok(i == len(work), "evalConst: worklist reached worklist.NodesMax")
 	evaluated := map[ast.Expr]constant.Value{}
 	for i := len(work) - 1; i >= 0; i-- {
 		if !evalNode(pass, work[i], evaluated) {
