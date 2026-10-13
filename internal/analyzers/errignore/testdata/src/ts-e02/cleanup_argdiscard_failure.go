@@ -1,6 +1,5 @@
 // Discards in the immediately evaluated arguments of defer or Cleanup are
-// not deferred cleanup. The analyzer skips the whole defer/Cleanup subtree,
-// so these are expected to fail until it inspects only the deferred body.
+// not deferred cleanup. The analyzer still reports them.
 package fixture
 
 import (
