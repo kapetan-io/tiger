@@ -2,7 +2,7 @@
 // join checks with &&.
 package fixture
 
-import "assert"
+import "github.com/kapetan-io/tiger/assert"
 
 // checkPairOk joins two checks with && inside assert.Ok's condition.
 func checkPairOk(a, b bool) {

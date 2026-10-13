@@ -4,8 +4,8 @@
 package closuresite
 
 import (
-	"fixture.example/invariantrefs/assert"
-	"fixture.example/invariantrefs/inv"
+	"github.com/kapetan-io/tiger/assert"
+	"github.com/kapetan-io/tiger/inv"
 )
 
 // Recheck is a second call site for AssertedOnce's ID type, exercising

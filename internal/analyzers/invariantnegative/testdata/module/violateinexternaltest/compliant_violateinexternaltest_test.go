@@ -3,8 +3,8 @@ package violateinexternaltest_test
 import (
 	"testing"
 
-	"fixture.example/invariantnegative/assert"
-	"fixture.example/invariantnegative/inv"
+	"github.com/kapetan-io/tiger/assert"
+	"github.com/kapetan-io/tiger/inv"
 )
 
 // TestViolatesFromExternalPackage violates ViolatedInExternalTest from an

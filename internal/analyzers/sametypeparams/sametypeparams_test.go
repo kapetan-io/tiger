@@ -22,6 +22,7 @@ func TestCorpus(t *testing.T) {
 		sametypeparams.Analyzer,
 		"ts-n07",
 		"ts-n08",
-		"assert",
+		"github.com/kapetan-io/tiger/assert",
+		"lookalike/assert",
 	)
 }

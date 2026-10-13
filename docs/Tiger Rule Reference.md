@@ -85,10 +85,6 @@ code to the statement.
 | `//tiger:variant <expr>` | pin | TS-V01 |
 | `//tiger:requires <cond>` | pin | TS-V03 |
 | `//tiger:ensures <cond>` | pin | TS-V03 |
-| `//tiger:restrict <axes>` | intent | TS-P01, TS-P02, TS-K03 |
-| `//tiger:hot` | intent | validated today; no rule consumes it yet |
-| `//tiger:wire` | intent | validated today; no rule consumes it yet |
-| `//tiger:owner` | intent | validated today; no rule consumes it yet |
 
 ## Bounds and control flow
 
@@ -1622,141 +1618,7 @@ bare nil or a constant out of range. When the bad value comes from earlier code,
 stays silent and the check falls back to the callee's own runtime assertion.
 
 
-## Package restrictions
-
-<!-- rule: TS-P01 -->
-### TS-P01 — declared package restrictions hold against the package's own imports
-
-**Severity:** blocking — a finding fails the run.
-
-Go can only restrict imports and dispatch at the package level, not per function. So
-tiger asks for one declaration per package, written once in its doc comment. Leaving an
-axis undeclared is never an error; it just takes a safe default. Declaring an axis and
-then contradicting it with your own imports is a finding.
-
-Code that fires it:
-
-```go
-// Package ledger applies entries to the account state machine.
-//
-//tiger:restrict no-reflect
-package ledger
-
-import "reflect"
-
-func TypeOf(v int) reflect.Type {
-	return reflect.TypeOf(v)
-}
-```
-
-```
-ledger.go:6:8: TS-P01: package ledger declares //tiger:restrict no-reflect but imports reflect — remove the reflect import or drop no-reflect from the directive
-```
-
-The compliant rewrite drops the `reflect` import (or the claim).
-
-```go
-// Package ledger applies entries to the account state machine.
-//
-//tiger:restrict no-reflect
-package ledger
-
-const Marker = "ledger"
-```
-
-**Directives:** `//tiger:restrict <axes>` declares a package's restriction set
-(`closed-dispatch`, `no-reflect`, or `imports(<path>...)`) as a comma-separated list in
-the package doc comment, at most one directive per package.
-
-<!-- rule: TS-P02 -->
-### TS-P02 — every transitive dependency supports each restriction axis a package claims
-
-**Severity:** blocking — a finding fails the run.
-
-Claiming closed dispatch means nothing if a dependency you call into still dispatches
-dynamically. Tiger checks the whole chain. Every axis your package claims must also hold
-in everything it imports, and a dependency that declares nothing counts as weakest on
-every axis. That is an honest default, not a free pass, and the finding names the edit.
-
-Code that fires it (`billing` claims an axis; its dependency `legacy` declares nothing):
-
-```go
-//tiger:restrict closed-dispatch
-package billing
-
-import "fixture.example/legacy"
-
-func Use() string {
-	return legacy.Marker
-}
-```
-
-```
-billing.go:2:1: TS-P02: package billing claims closed-dispatch but imports legacy, which declares nothing — add //tiger:restrict closed-dispatch to legacy, or drop closed-dispatch from billing's declaration
-```
-
-The compliant rewrite makes `legacy` claim the same axis.
-
-```go
-//tiger:restrict closed-dispatch
-package legacy
-
-const Marker = "legacy"
-```
-
-**Directives:** The same `//tiger:restrict <axes>` directive as TS-P01, one hop further.
-A third-party package declares nothing and so counts as weakest on every axis, which
-means claiming an axis while importing one fails until the dependency goes.
-
-<!-- rule: TS-K03 -->
-### TS-K03 — no dynamic dispatch in a package that declares closed-dispatch
-
-**Severity:** blocking — a finding fails the run.
-
-Effects, frames, and preconditions are only precise when tiger knows exactly which
-function a call reaches. Dynamic dispatch (calling a method through an interface that
-could resolve to more than one type) breaks that certainty. A package that declares
-closed dispatch promises every such call resolves to one concrete method. A package
-that skips the declaration is not exempt from the other rules; it just gets
-lower-confidence results from them.
-
-Code that fires it:
-
-```go
-//tiger:restrict closed-dispatch
-package store
-
-type Storage interface{ Write(entry string) }
-
-type diskStorage struct{}
-type memStorage struct{}
-
-func (diskStorage) Write(string) {}
-func (memStorage) Write(string)  {}
-
-func FromParameter(s Storage) {
-	s.Write("x")
-}
-```
-
-```
-storage.go:13:9: TS-K03: s.Write is called through interface Storage in a package that declares //tiger:restrict closed-dispatch — call the concrete type's method, or drop closed-dispatch
-```
-
-The compliant rewrite resolves the call to one concrete type.
-
-```go
-func FromParameter() {
-	var s Storage = diskStorage{}
-	s.Write("x")
-}
-```
-
-**Directives:** Applies only inside a package that declares `closed-dispatch` via
-`//tiger:restrict`.
-
-
-## Invariants and interfaces
+## Invariants
 
 <!-- rule: TS-A07 -->
 ### TS-A07 — every invariant is asserted in a function outside _test.go files
@@ -1852,56 +1714,6 @@ func TestHeaderChecksumViolates(t *testing.T) {
 ```
 
 **Directives:** The same invariant vocabulary as TS-A07.
-
-<!-- rule: TS-X01 -->
-### TS-X01 — no interface with exactly one implementation outside _test.go files
-
-**Severity:** blocking — a finding fails the run.
-
-Every abstraction has a cost and a chance of leaking the details it was meant to hide.
-An interface with only one implementation has paid that cost and gained nothing in
-return. That is the exact shape of an abstraction added just in case, not because it was
-needed. Evidence for this rule spans packages that do not import each other, so only the
-`tiger` CLI reports it; the golangci-lint plugin cannot.
-
-Code that fires it:
-
-```go
-type Storage interface {
-	Get(key string) (string, bool)
-}
-
-type diskStorage struct {
-	data map[string]string
-}
-
-func (d *diskStorage) Get(key string) (string, bool) {
-	v, ok := d.data[key]
-	return v, ok
-}
-```
-
-```
-storage.go:3:6: TS-X01: interface Storage has one implementation, diskStorage — use diskStorage directly and delete the interface, or add a second implementation outside _test.go files
-```
-
-The compliant rewrite deletes the interface and uses the concrete type directly (or, if
-the second implementation genuinely exists, adds it in a non-test package).
-
-```go
-type DiskStorage struct {
-	data map[string]string
-}
-
-func (d *DiskStorage) Get(key string) (string, bool) {
-	v, ok := d.data[key]
-	return v, ok
-}
-```
-
-**Directives:** A type declared in a `_test.go` file never counts as an implementation.
-A fake that should count needs to live in a non-test package.
-
 
 ## Budget accounting
 
@@ -2026,7 +1838,7 @@ golangci-lint findings fail its run.
 | TS-L09 | every suppression carries a reason | nolintlint |
 | TS-L11 | imports grouped standard, external, internal | gci |
 | TS-T01 | time and randomness are injected | forbidigo |
-| TS-D01 | the standard library, and nothing else, where restrictions permit | depguard |
+| TS-D01 | the standard library, and nothing else, in internal/domain packages | depguard |
 
 ## Computed facts
 

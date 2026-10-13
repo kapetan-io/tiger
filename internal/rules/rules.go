@@ -19,7 +19,6 @@ import (
 
 	"github.com/kapetan-io/tiger/internal/analyzers/boundedloop"
 	"github.com/kapetan-io/tiger/internal/analyzers/chandecl"
-	"github.com/kapetan-io/tiger/internal/analyzers/closedworld"
 	"github.com/kapetan-io/tiger/internal/analyzers/compoundcond"
 	"github.com/kapetan-io/tiger/internal/analyzers/contracts"
 	"github.com/kapetan-io/tiger/internal/analyzers/declorder"
@@ -40,11 +39,9 @@ import (
 	"github.com/kapetan-io/tiger/internal/analyzers/paniccheck"
 	"github.com/kapetan-io/tiger/internal/analyzers/participle"
 	"github.com/kapetan-io/tiger/internal/analyzers/poolzero"
-	"github.com/kapetan-io/tiger/internal/analyzers/restrictions"
 	"github.com/kapetan-io/tiger/internal/analyzers/returnarity"
 	"github.com/kapetan-io/tiger/internal/analyzers/sametypeparams"
 	"github.com/kapetan-io/tiger/internal/analyzers/selectctx"
-	"github.com/kapetan-io/tiger/internal/analyzers/singleimpl"
 	"github.com/kapetan-io/tiger/internal/analyzers/skipcheck"
 	"github.com/kapetan-io/tiger/internal/analyzers/tablename"
 	"github.com/kapetan-io/tiger/internal/analyzers/testdoc"
@@ -307,21 +304,6 @@ var customRules = []CustomRule{
 		Title:    "preconditions are declared and discharged at call sites",
 	},
 	{
-		Category: "TS-P01", RuleID: "TS-P01", Analyzer: restrictions.Analyzer,
-		Severity: SeverityBlocking,
-		Title:    "declared package restrictions hold against the package's own imports",
-	},
-	{
-		Category: "TS-P02", RuleID: "TS-P02", Analyzer: restrictions.Analyzer,
-		Severity: SeverityBlocking,
-		Title:    "every transitive dependency supports each restriction axis a package claims",
-	},
-	{
-		Category: "TS-K03", RuleID: "TS-K03", Analyzer: closedworld.Analyzer,
-		Severity: SeverityBlocking,
-		Title:    "no dynamic dispatch in a package that declares closed-dispatch",
-	},
-	{
 		Category: "TS-A07", RuleID: "TS-A07", Analyzer: invariantrefs.Analyzer,
 		Severity: SeverityBlocking,
 		Title:    "every invariant is asserted in a function outside _test.go files",
@@ -332,12 +314,6 @@ var customRules = []CustomRule{
 		Severity: SeverityBlocking,
 		Title:    "every invariant has a test that violates it",
 		Finish:   invariantnegative.Finish,
-	},
-	{
-		Category: "TS-X01", RuleID: "TS-X01", Analyzer: singleimpl.Analyzer,
-		Severity: SeverityBlocking,
-		Title:    "no interface with exactly one implementation outside _test.go files",
-		Finish:   singleimpl.Finish,
 	},
 }
 

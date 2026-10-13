@@ -3,9 +3,9 @@ package unasserted_test
 import (
 	"testing"
 
-	"fixture.example/invariants/assert"
-	"fixture.example/invariants/unasserted"
-	"fixture.example/invariants/unasserted/inv"
+	"github.com/kapetan-io/tiger/assert"
+	"github.com/kapetan-io/tiger/unasserted"
+	"github.com/kapetan-io/tiger/unasserted/inv"
 )
 
 // TestEncodeDecodeRoundTrip frames a header and reads it back.

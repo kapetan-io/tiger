@@ -3,8 +3,8 @@
 package methodsite
 
 import (
-	"fixture.example/invariantrefs/assert"
-	"fixture.example/invariantrefs/inv"
+	"github.com/kapetan-io/tiger/assert"
+	"github.com/kapetan-io/tiger/inv"
 )
 
 // Checker asserts its invariant from a method body.

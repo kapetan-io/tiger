@@ -20,7 +20,6 @@ func TestRoundTripEveryVerb(t *testing.T) {
 		"reason",
 		"provider offers no bulk endpoint; rate limiter caps us at 10 rps",
 		"ENG-147 flaky on windows",
-		"closed-dispatch, no-reflect, imports(internal/domain/...)",
 		"mutate(r.log, r.checkpoint), io(disk)",
 		"len(pending)",
 		"internal  double  spaces",
@@ -62,9 +61,9 @@ func TestParseKnownVerbs(t *testing.T) {
 			want: directive.Directive{Verb: "effects", Args: "mutate(r.log), io(disk)"},
 		},
 		{
-			name: "HotWithNoArguments",
-			text: "//tiger:hot",
-			want: directive.Directive{Verb: "hot", Args: ""},
+			name: "OpenEnumWithReason",
+			text: "//tiger:openenum peers add codes before we upgrade",
+			want: directive.Directive{Verb: "openenum", Args: "peers add codes before we upgrade"},
 		},
 		{
 			name: "TrailingWhitespaceIsTrimmed",
@@ -163,8 +162,8 @@ func TestIsRecognizesThePrefixExactly(t *testing.T) {
 
 // TestVocabularyKinds covers the declaration-model classification.
 //
-// Goal: batched and openenum are the escape verbs, and the pin and intent
-// verbs later waves enforce are present for well-formedness validation.
+// Goal: batched and openenum are the escape verbs, and the pin verbs are
+// present for well-formedness validation.
 func TestVocabularyKinds(t *testing.T) {
 	escapes := []string{}
 	for _, spec := range directive.Verbs() {

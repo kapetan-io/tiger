@@ -8,10 +8,8 @@
 // Parse(Format(d)) == d. When later waves print computed facts, the same
 // contract guarantees report output is byte-identical to pin syntax.
 //
-// Wave 1 validates verb identity and each verb's minimal argument shape (an
-// escape needs a reason). Richer per-verb argument grammars — effect
-// lattices, frame sets — belong to later waves, and this package is where
-// they will live.
+// Parse validates verb identity and each verb's argument shape: an escape
+// needs a reason, and a pin takes its verb's grammar.
 package directive
 
 import (
@@ -80,8 +78,8 @@ func (e *MissingReasonError) Error() string {
 	return Prefix + e.Verb + " requires a reason"
 }
 
-// MalformedArgsError reports a pin directive — or the restrict intent
-// directive — whose arguments fail the verb's grammar. The detail names the
+// MalformedArgsError reports a pin directive whose arguments fail the
+// verb's grammar. The detail names the
 // offending token, so the TS-L09 finding can point at exactly what to fix
 // (invariant 2: a name outside the closed lattice is a parse error, never a
 // silently meaningless string).
@@ -95,8 +93,7 @@ func (e *MalformedArgsError) Error() string {
 }
 
 // vocabulary is the closed verb set, in declaration-model order: the
-// escapes, then the pin and intent verbs later waves enforce
-// (validated for well-formedness from wave 1).
+// escapes, then the pin verbs.
 var vocabulary = []Verb{
 	{Name: "batched", Kind: KindEscape},
 	{Name: "effects", Kind: KindPin},
@@ -104,10 +101,6 @@ var vocabulary = []Verb{
 	{Name: "requires", Kind: KindPin},
 	{Name: "ensures", Kind: KindPin},
 	{Name: "variant", Kind: KindPin},
-	{Name: "restrict", Kind: KindIntent},
-	{Name: "hot", Kind: KindIntent},
-	{Name: "wire", Kind: KindIntent},
-	{Name: "owner", Kind: KindIntent},
 	{Name: "openenum", Kind: KindEscape},
 }
 
@@ -143,7 +136,7 @@ func Parse(text string) (Directive, error) {
 	if spec.Kind == KindEscape && parsed.Args == "" {
 		return parsed, &MissingReasonError{Verb: parsed.Verb}
 	}
-	if spec.Kind == KindPin || parsed.Verb == "restrict" {
+	if spec.Kind == KindPin {
 		if err := validateArgs(parsed); err != nil {
 			return parsed, &MalformedArgsError{Verb: parsed.Verb, Detail: err.Error()}
 		}
@@ -151,14 +144,9 @@ func Parse(text string) (Directive, error) {
 	return parsed, nil
 }
 
-// validateArgs applies the per-verb argument grammar to a pin, and to
-// restrict — the one intent verb an analyzer reads. The other intent verbs
-// stay free-form until the waves that enforce them arrive.
+// validateArgs applies the per-verb argument grammar to a pin.
 func validateArgs(parsed Directive) error {
 	switch parsed.Verb {
-	case "restrict":
-		_, err := ParseRestrict(parsed.Args)
-		return err
 	case "effects":
 		_, err := ParseEffects(parsed.Args)
 		return err

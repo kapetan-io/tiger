@@ -22,5 +22,6 @@ func TestCorpus(t *testing.T) {
 		"ts-s06",
 		"ts-s07",
 		"ts-s08",
+		"lookalikeuse",
 	)
 }

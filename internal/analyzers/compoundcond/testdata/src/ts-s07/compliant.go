@@ -2,7 +2,7 @@
 // exemption.
 package fixture
 
-import "assert"
+import "github.com/kapetan-io/tiger/assert"
 
 // checkPairSplitCompliant splits the pair into two assertions so a failure
 // names which half broke.

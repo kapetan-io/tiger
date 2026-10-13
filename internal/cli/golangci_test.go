@@ -40,6 +40,9 @@ func TestGolangciInitThenVerifyRoundTrip(t *testing.T) {
 	generated, err := os.ReadFile(filepath.Join(dir, ".golangci.yml"))
 	require.NoError(t, err)
 	assert.Contains(t, string(generated), "prefix(roundtrip.example/project)")
+	assert.Contains(t, string(generated), "pkg: reflect")
+	assert.NotContains(t, string(generated), "restrict")
+	assert.NotContains(t, string(generated), "TS-P01")
 
 	verified := run(t, "golangci", "-C", dir)
 	assert.Equal(t, cli.ExitClean, verified.code)

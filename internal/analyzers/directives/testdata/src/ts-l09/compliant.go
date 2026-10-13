@@ -1,15 +1,13 @@
-// The compliant forms: well-formed pins and intent declarations parse
-// silently (they carry expressions, not excuses), and prose that merely
+// The compliant forms: well-formed pins parse silently (they carry
+// expressions, not excuses), and prose that merely
 // resembles a directive is not one.
 package fixture
 
-// Package-shaped pin and intent directives later waves enforce are already
-// well-formed under the wave-1 grammar.
+// Pin directives are well-formed.
 //
 //tiger:effects mutate(r.log, r.checkpoint), io(disk)
 //tiger:frame r.log, r.checkpoint
 //tiger:variant len(pending)
-//tiger:hot
 func pinnedShapes(pending []int) int {
 	drained := 0
 	for range pending {

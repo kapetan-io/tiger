@@ -373,7 +373,7 @@ const (
 var (
 	ruleCodePattern = regexp.MustCompile(`TS-[A-Z]+[0-9]+`)
 	directiveVerbs  = regexp.MustCompile(
-		`\b(effects|frame|variant|requires|ensures|batched|restrict)\b`)
+		`\b(effects|frame|variant|requires|ensures|batched|openenum)\b`)
 )
 
 // bannedPattern matches word as a whole word, case-insensitively.
@@ -481,4 +481,16 @@ func readCorpusFile(t *testing.T, path string) string {
 	raw, err := os.ReadFile(path)
 	require.NoError(t, err)
 	return string(raw)
+}
+
+// TestRegistryOmitsRetiredRules verifies the rules removed with their
+// analyzers (ADR-0016, ADR-0024) are not in the registry.
+func TestRegistryOmitsRetiredRules(t *testing.T) {
+	ids := rules.RuleIDs()
+	for _, retired := range []string{"TS-X01", "TS-P01", "TS-P02", "TS-P03", "TS-K03"} {
+		assert.NotContains(t, ids, retired)
+	}
+	for _, analyzer := range rules.Analyzers() {
+		assert.NotContains(t, []string{"restrictions", "closedworld", "singleimpl"}, analyzer.Name)
+	}
 }

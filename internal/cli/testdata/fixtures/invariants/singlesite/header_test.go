@@ -3,9 +3,9 @@ package singlesite_test
 import (
 	"testing"
 
-	"fixture.example/invariants/assert"
-	"fixture.example/invariants/singlesite"
-	"fixture.example/invariants/singlesite/inv"
+	"github.com/kapetan-io/tiger/assert"
+	"github.com/kapetan-io/tiger/singlesite"
+	"github.com/kapetan-io/tiger/singlesite/inv"
 )
 
 // TestEncodeDecodeRoundTrip frames a header and reads it back.

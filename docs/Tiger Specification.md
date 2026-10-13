@@ -1762,8 +1762,8 @@ changes what it checks), or **not built**.
 | `testdoc` | TS-T06 | AST, Test functions need a doc comment | built |
 | `skipcheck` | TS-D07 | AST, every `t.Skip` is counted against the budget | built |
 
-The `effects`, `frames`, `restrictions`, `closedworld`, and `singleimpl` analyzers exist today and are
-removed by ADR-0024, ADR-0026, and ADR-0016. `refactor`, `ownership`, `hotpath`, and `wiretypes` were
+The `effects` and `frames` analyzers exist today and are removed by ADR-0026. The `restrictions`,
+`closedworld`, and `singleimpl` analyzers are removed (ADR-0024, ADR-0016). `refactor`, `ownership`, `hotpath`, and `wiretypes` were
 never built and are dropped with their rules (ADR-0027, ADR-0028).
 
 Most rows are AST or `types` checks and are cheap. The `buildssa` analyzers and `contracts` carry the
@@ -2053,4 +2053,5 @@ ENG-191 retired eighteen more, each recorded in an ADR, and none of the IDs is r
 | `TS-R01` | Proving a refactor preserves behavior rested on computed frames | ADR-0027 |
 
 `TS-X01` keeps its ID as a review maxim; its single-implementation check is removed (ADR-0016). The
-built analyzers behind retired rules are removed in their build tickets.
+built analyzers behind retired rules are removed in their build tickets; the `restrictions`,
+`closedworld`, and `singleimpl` analyzers and the `restrict`, `hot`, `wire`, and `owner` verbs are gone.
