@@ -773,7 +773,7 @@ instead, which is worse. Make the reason visible.
 Enforce. `errignore` (custom). A discard inside a `defer` statement's call, or inside a function
 literal passed to `t.Cleanup`, is not a finding; every other discard is, including non-deferred
 cleanup such as `_ = resp.Body.Close()`. The comment's text is not checked, so review still reads
-it. *(Amended 2026-10-12: cleanup exemption decided and not built, ADR-0017.)*
+it. *(Amended 2026-10-12: cleanup exemption, ADR-0017.)*
 
 **`TS-E03` Wrap once with `%w`, compare with `errors.Is` and `errors.As`.**
 Why. String comparison breaks the first time someone reformats a message. Double wrapping produces
@@ -876,7 +876,7 @@ request. Accept into a bounded queue, then drain at a rate you control. Batching
 bound on work per unit time all fall out of the same decision.
 Enforce. `nogoroutine` (custom) structurally; the design is `review`. `_test.go` files are not
 checked: a concurrency test fans out on purpose, and a single-worker queue would defeat it. *(Amended
-2026-10-12: test-file exemption decided and not built, ADR-0019.)*
+2026-10-12: test-file exemption, ADR-0019.)*
 
 **`TS-C11` No exported method returns a pointer, slice, or map that aliases an internal field.**
 Why. This is where single ownership actually leaks in Go. `func (s *State) Entries() []Entry` hands
@@ -1221,7 +1221,7 @@ the compiler cannot help you and a swapped pair is a silent bug.
 Enforce. `sametypeparams` (custom). Flags adjacent identical types and functions over four parameters.
 A leading `testing.TB`, `*testing.T`, or `*testing.B`, and a `context.Context` that comes first or
 right after it, do not count toward the four; the adjacent-same-type half is unchanged.
-*(Amended 2026-10-12: the leading-parameter exemption is decided and not built, ADR-0018.)*
+*(Amended 2026-10-12: the leading-parameter exemption, ADR-0018.)*
 
 **`TS-N08` A boolean parameter is a lie. Use a named type.**
 Why. `Save(true)` means nothing at the call site. `Save(SyncImmediate)` means something.
@@ -1729,7 +1729,7 @@ changes what it checks), or **not built**.
 | `assertdensity` | TS-A01, A02 | AST plus `types`, count assert calls per function and package | not built |
 | `quantitycast` | TS-Q01, Q03 | `types`, forbid direct conversions outside the quantity package | not built |
 | `domaintypes` | TS-Q02 | `types`, exported signatures may not take bare primitives | not built |
-| `sametypeparams` | TS-N07, N08 | `types`, adjacent identical types, bool params, arity; a leading `t` or `ctx` is not counted | built; changes decided (ADR-0018) |
+| `sametypeparams` | TS-N07, N08 | `types`, adjacent identical types, bool params, arity; a leading `t` or `ctx` is not counted | built |
 | `participle` | TS-N14 | Suffix check plus allowlist | built |
 | `unitsuffix` | TS-N03 | AST plus token dictionary and a position rule | not built |
 | `noabbrev` | TS-N02 | AST plus dictionary; the dictionary is the work | not built |
@@ -1737,7 +1737,7 @@ changes what it checks), or **not built**.
 | `paradigm` | TS-C13 | `types`, mutex fields versus channel fields per package | not built |
 | `chandecl` | TS-C12 | AST, channel type declarations per package | built |
 | `selectctx` | TS-C05 | AST, every blocking select needs a `default` or a stop case: `ctx.Done()` on a context that is not `Background` or `TODO`, or a channel the package closes or sends on | built; changes decided (ADR-0020) |
-| `nogoroutine` | TS-C02, C03, C09 | AST, only `errgroup.Group.Go` and `sync.WaitGroup.Go` start goroutines, with `Wait` reached; a goleak harness in `TestMain` where goroutines start; `_test.go` files skipped for TS-C09 | built; changes decided (ADR-0019, ADR-0020) |
+| `nogoroutine` | TS-C02, C03, C09 | AST, only `errgroup.Group.Go` and `sync.WaitGroup.Go` start goroutines, with `Wait` reached; a goleak harness in `TestMain` where goroutines start; `_test.go` files skipped for TS-C09 | built; changes decided (ADR-0020) |
 | `queuebound` | TS-C04 | AST, slice-backed queues with unbounded append | not built |
 | `ioinloop` | TS-M10 | `types`, IO calls inside loop bodies | built |
 | `poolzero` | TS-M05 | `buildssa`, the `sync.Pool.Put` argument must be zeroed with `*b = T{}` | built; changes decided (ADR-0020) |
@@ -1745,7 +1745,7 @@ changes what it checks), or **not built**.
 | `limitrelate` | TS-S21 | AST, every Max/Min constant appears in a relational assertion | built |
 | `passthrough` | TS-X02 | AST, body is a single forwarding call | not built |
 | `adapters` | TS-I06 | Deleted with TS-I06 | deleted |
-| `errignore` | TS-E02 | AST plus `types`, `_ =` on error requires a comment, except inside `defer` or `t.Cleanup` | built; changes decided (ADR-0017) |
+| `errignore` | TS-E02 | AST plus `types`, `_ =` on error requires a comment, except inside `defer` or `t.Cleanup` | built |
 | `returnarity` | TS-E06 | `types`, result count and composition | built |
 | `paniccheck` | TS-S18 | AST, panic outside the assert package | built |
 | `nogoto` | TS-S09 | AST, `BranchStmt` with Goto or a label | built |
