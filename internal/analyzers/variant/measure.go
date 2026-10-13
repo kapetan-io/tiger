@@ -390,7 +390,8 @@ func (f *loopFacts) resolve(pinned directive.Variant) (ranking, error) {
 	for _, pinTerm := range pinned.Terms {
 		found, ok := f.resolveAtom(pinTerm.Atom)
 		if !ok {
-			return nil, errors.New(atomText(pinTerm.Atom) + " isn't a variable, field or length in scope")
+			return nil, errors.New(
+				atomText(pinTerm.Atom) + " isn't a variable, field or length in scope")
 		}
 		resolved = append(resolved, term{operand: found, minus: pinTerm.Minus})
 	}
@@ -406,7 +407,8 @@ func (f *loopFacts) resolveAtom(atom directive.Atom) (operand, bool) {
 		return operand{}, false
 	}
 	names := strings.Split(atom.Ref, ".")
-	_, object := f.pass.Pkg.Scope().Innermost(f.loop.Body.Pos()).LookupParent(names[0], f.loop.Body.Pos())
+	pos := f.loop.Body.Pos()
+	_, object := f.pass.Pkg.Scope().Innermost(pos).LookupParent(names[0], pos)
 	root, ok := object.(*types.Var)
 	if !ok || len(names) > 2 {
 		return operand{}, false

@@ -39,6 +39,7 @@
 package boundedloop
 
 import (
+	"errors"
 	"go/ast"
 	"go/constant"
 	"go/token"
@@ -101,7 +102,10 @@ type checker struct {
 }
 
 func run(pass *analysis.Pass) (any, error) {
-	verified, _ := pass.ResultOf[variant.Analyzer].(variant.Verified)
+	verified, ok := pass.ResultOf[variant.Analyzer].(variant.Verified)
+	if !ok {
+		return nil, errors.New("boundedloop: the variant result is missing")
+	}
 	for _, scope := range mutation.Declarations(pass) {
 		decl := scope.Root()
 		check := &checker{

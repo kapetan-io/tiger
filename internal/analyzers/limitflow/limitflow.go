@@ -44,8 +44,8 @@ import (
 )
 
 const (
-	msgUnbounded = "TS-S02: this value reaches a loop limit with no upper bound where it enters — " +
-		"clamp it there, for example min(x, xMax), or reject it with if x > xMax"
+	msgUnbounded = "TS-S02: this value reaches a loop limit with no upper bound where it " +
+		"enters — clamp it there, for example min(x, xMax), or reject it with if x > xMax"
 	msgHuge = "TS-S02: this value is too large for the loop to ever reach, so it bounds " +
 		"nothing — pass a declared maximum instead"
 )
@@ -152,7 +152,8 @@ func standardLibrary(pass *analysis.Pass) bool {
 		return false
 	}
 	name := pass.Fset.File(pass.Files[0].Pos()).Name()
-	return strings.HasPrefix(name, filepath.Join(build.Default.GOROOT, "src")+string(filepath.Separator))
+	root := filepath.Join(build.Default.GOROOT, "src") + string(filepath.Separator)
+	return strings.HasPrefix(name, root)
 }
 
 // collect gathers the declarations with bodies and the places in each where
@@ -172,7 +173,10 @@ func (s *state) collect() {
 			obj: obj, decl: decl, scope: scope, params: map[*types.Var]int{},
 			literalParams: scope.Parameters(),
 		}
-		signature, _ := obj.Type().(*types.Signature)
+		signature, ok := obj.Type().(*types.Signature)
+		if !ok {
+			continue
+		}
 		for i := 0; i < signature.Params().Len(); i++ {
 			fn.params[signature.Params().At(i)] = i
 			delete(fn.literalParams, signature.Params().At(i))
@@ -246,8 +250,9 @@ func (s *state) learn(fn *function, result traceResult) bool {
 // learnResult records whether fn returns a value bounded whenever some of
 // its parameters are.
 func (s *state) learnResult(fn *function) bool {
-	signature, _ := fn.obj.Type().(*types.Signature)
-	if signature.Results().Len() != 1 || !intrange.IsInteger(signature.Results().At(0).Type()) {
+	signature, ok := fn.obj.Type().(*types.Signature)
+	if !ok || signature.Results().Len() != 1 ||
+		!intrange.IsInteger(signature.Results().At(0).Type()) {
 		return false
 	}
 	var depends []int
@@ -291,7 +296,8 @@ func (s *state) returnedValue(fn *function, stmt *ast.ReturnStmt) ast.Expr {
 		return stmt.Results[0]
 	}
 	results := fn.decl.Type.Results
-	if len(stmt.Results) == 0 && results != nil && len(results.List) == 1 && len(results.List[0].Names) == 1 {
+	if len(stmt.Results) == 0 && results != nil && len(results.List) == 1 &&
+		len(results.List[0].Names) == 1 {
 		return results.List[0].Names[0]
 	}
 	return nil

@@ -14,11 +14,11 @@ import (
 type sinkKind int
 
 const (
-	// loopLimit is the limit in a loop's own header.
+	// The sink is the limit in a loop's own header.
 	loopLimit sinkKind = iota
-	// callArg is an argument passed to a parameter that bounds a loop.
+	// The sink is an argument passed to a parameter that bounds a loop.
 	callArg
-	// fieldWrite is a value written into a field that bounds a loop.
+	// The sink is a value written into a field that bounds a loop.
 	fieldWrite
 )
 
@@ -156,7 +156,9 @@ func (s *state) literalFields(literal *ast.CompositeLit) []sink {
 			continue
 		}
 		if field, isVar := s.pass.TypesInfo.Uses[key].(*types.Var); isVar && field.IsField() {
-			found = append(found, sink{kind: fieldWrite, expr: pair.Value, mode: downstream, field: field})
+			found = append(found, sink{
+				kind: fieldWrite, expr: pair.Value, mode: downstream, field: field,
+			})
 		}
 	}
 	return found
@@ -178,7 +180,9 @@ func (s *state) assignedFields(assign *ast.AssignStmt) []sink {
 			continue
 		}
 		if field, isVar := selection.Obj().(*types.Var); isVar {
-			found = append(found, sink{kind: fieldWrite, expr: assign.Rhs[i], mode: downstream, field: field})
+			found = append(found, sink{
+				kind: fieldWrite, expr: assign.Rhs[i], mode: downstream, field: field,
+			})
 		}
 	}
 	return found

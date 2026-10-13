@@ -7,6 +7,7 @@ import (
 
 	"golang.org/x/tools/go/analysis"
 
+	"github.com/kapetan-io/tiger/assert"
 	"github.com/kapetan-io/tiger/internal/analyzers/internal/assertpkg"
 	"github.com/kapetan-io/tiger/internal/analyzers/internal/condition"
 	"github.com/kapetan-io/tiger/internal/analyzers/internal/counter"
@@ -243,7 +244,8 @@ func (c *checker) pairsWith(binary *ast.BinaryExpr, term counter.Term) bool {
 		}
 	}
 	ident, ok := ast.Unparen(binary.Y).(*ast.Ident)
-	return ok && c.pass.TypesInfo.ObjectOf(ident) == term.Counter && c.readsLikeLimit(binary.X, term)
+	return ok && c.pass.TypesInfo.ObjectOf(ident) == term.Counter &&
+		c.readsLikeLimit(binary.X, term)
 }
 
 // readsLikeLimit reports whether expr is term's limit, written the same way
@@ -293,7 +295,9 @@ func (c *checker) returnsError(stmt *ast.ReturnStmt) bool {
 
 // errorInterface returns the predeclared error interface.
 func errorInterface() *types.Interface {
-	return types.Universe.Lookup("error").Type().Underlying().(*types.Interface)
+	iface, ok := types.Universe.Lookup("error").Type().Underlying().(*types.Interface)
+	assert.Ok(ok, "errorInterface: the universe error type is not an interface")
+	return iface
 }
 
 // assertsOrPanics reports whether call is the panic builtin or a function

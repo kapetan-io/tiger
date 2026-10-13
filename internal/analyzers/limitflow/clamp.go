@@ -260,9 +260,9 @@ type ordering struct {
 }
 
 var (
-	// below is true while a value is under, or at, its maximum.
+	// The value is below its maximum, or at it.
 	below = ordering{strict: token.LSS, loose: token.LEQ}
-	// above is true once a value is over, or at, its maximum.
+	// The value is above its maximum, or at it.
 	above = ordering{strict: token.GTR, loose: token.GEQ}
 )
 

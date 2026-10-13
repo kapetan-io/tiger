@@ -47,7 +47,9 @@ func (f *loopFacts) verify(expression ranking, limits lowHigh) verdict {
 			return verdict{reason: name + " has no step tiger recognizes"}
 		}
 		if t.minus && step.trend == trendDecreasing {
-			return verdict{reason: name + " decreases, so the expression grows instead of shrinking"}
+			return verdict{
+				reason: name + " decreases, so the expression grows instead of shrinking",
+			}
 		}
 		if !t.minus && step.trend == trendIncreasing {
 			return verdict{reason: name + " increases instead of decreasing"}
@@ -239,7 +241,8 @@ func (f *loopFacts) classifyShrink(node ast.Node, measured operand) movement {
 		return movement{}
 	}
 	slice, ok := ast.Unparen(stmt.Rhs[0]).(*ast.SliceExpr)
-	if !ok || slice.Slice3 || !f.isPlace(stmt.Lhs[0], measured.place) || !f.isPlace(slice.X, measured.place) {
+	if !ok || slice.Slice3 || !f.isPlace(stmt.Lhs[0], measured.place) ||
+		!f.isPlace(slice.X, measured.place) {
 		return movement{}
 	}
 	switch {

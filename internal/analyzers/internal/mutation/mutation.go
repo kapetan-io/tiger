@@ -164,7 +164,10 @@ func DerefNamed(t types.Type) *types.Named {
 	if pointer, ok := t.(*types.Pointer); ok {
 		t = pointer.Elem()
 	}
-	named, _ := t.(*types.Named)
+	named, ok := t.(*types.Named)
+	if !ok {
+		return nil
+	}
 	return named
 }
 
@@ -251,8 +254,8 @@ func (s Scope) insertsInto(lhs ast.Expr, match func(ast.Expr) bool) bool {
 	if !ok || !match(index.X) {
 		return false
 	}
-	mapType, _ := s.info.TypeOf(index.X).Underlying().(*types.Map)
-	return mapType != nil
+	_, isMap := s.info.TypeOf(index.X).Underlying().(*types.Map)
+	return isMap
 }
 
 // addressTaken reports whether &target appears anywhere in scope, or a
@@ -309,7 +312,8 @@ func (s Scope) closureWrites(match func(ast.Expr) bool, declared token.Pos) bool
 		if !ok {
 			return !found
 		}
-		ownsTarget := declared != token.NoPos && literal.Pos() <= declared && declared < literal.End()
+		ownsTarget := declared != token.NoPos &&
+			literal.Pos() <= declared && declared < literal.End()
 		if !ownsTarget && len(s.collect(literal.Body, match, CountInserts)) > 0 {
 			found = true
 		}

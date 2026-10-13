@@ -19,14 +19,14 @@ const termsMax = 1 << 16
 
 const _ = uint(1<<20 - termsMax)
 
-// Conjuncts splits expr on top-level && into its terms, looking through
-// parentheses but not through ! or ||.
+// Conjuncts splits expr on top-level && into its terms. It looks through
+// parentheses, and stops at a negation or a disjunction.
 func Conjuncts(expr ast.Expr) []ast.Expr {
 	return split(expr, token.LAND)
 }
 
-// Disjuncts splits expr on top-level || into its terms, looking through
-// parentheses but not through ! or &&.
+// Disjuncts splits expr on top-level || into its terms. It looks through
+// parentheses, and stops at a negation or a conjunction.
 func Disjuncts(expr ast.Expr) []ast.Expr {
 	return split(expr, token.LOR)
 }

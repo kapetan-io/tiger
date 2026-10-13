@@ -134,5 +134,6 @@ func TestCheckPassesTigerItself(t *testing.T) {
 func TestCheckBlocksAnIteratorFromAModuleWithoutADotInItsPath(t *testing.T) {
 	got := run(t, "check", "-C", "testdata/fixtures/loopdotless", "./...")
 	assert.Equal(t, cli.ExitFindings, got.code)
-	assert.Contains(t, got.stdout, "loop.go:8:2: TS-S02: this loop ranges over an iterator tiger can't see into")
+	assert.Contains(t, got.stdout,
+		"loop.go:8:2: TS-S02: this loop ranges over an iterator tiger can't see into")
 }

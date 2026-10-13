@@ -386,8 +386,9 @@ func (t *tracer) assigned(parent int, v *types.Var, stmt *ast.AssignStmt) {
 	}
 }
 
-// assignedValue adds the node for the value assigned into v. v = v + x adds
-// x to a running total, and any other value that reads v feeds itself.
+// assignedValue adds the node for the value assigned into v. The form
+// v = v + x adds x to a running total, and any other value that reads v
+// feeds itself.
 func (t *tracer) assignedValue(parent int, v *types.Var, value ast.Expr) {
 	if !t.fn.scope.Mentions(value, v) {
 		t.child(parent, value, downstream)
@@ -405,8 +406,8 @@ func (t *tracer) assignedValue(parent int, v *types.Var, value ast.Expr) {
 	t.leaf(parent, nodeUnbounded, value)
 }
 
-// clampsItself reports whether value is min(...) with an argument that is a
-// constant or a length, as in spins = min(spins, spinsMax). The variable
+// clampsItself reports whether value is a call to min with an argument that is
+// a constant or a length, as in "spins = min(spins, spinsMax)". The variable
 // reads itself on purpose, to be cut down.
 func (t *tracer) clampsItself(value ast.Expr) bool {
 	call, ok := ast.Unparen(value).(*ast.CallExpr)
@@ -446,7 +447,8 @@ func (t *tracer) declared(parent int, v *types.Var, spec *ast.ValueSpec, use *as
 func (t *tracer) ranged(parent int, v *types.Var, stmt *ast.RangeStmt) {
 	key, isKey := stmt.Key.(*ast.Ident)
 	if !isKey || t.s.pass.TypesInfo.ObjectOf(key) != v {
-		if literal, ok := ast.Unparen(stmt.X).(*ast.CompositeLit); ok && t.constantElements(literal) {
+		literal, ok := ast.Unparen(stmt.X).(*ast.CompositeLit)
+		if ok && t.constantElements(literal) {
 			t.constantList(parent, literal)
 			return
 		}
