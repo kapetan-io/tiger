@@ -50,6 +50,7 @@ import (
 
 	"github.com/kapetan-io/tiger/assert"
 	"github.com/kapetan-io/tiger/internal/analyzers/internal/attach"
+	"github.com/kapetan-io/tiger/internal/analyzers/internal/cancel"
 	"github.com/kapetan-io/tiger/internal/analyzers/internal/counter"
 	"github.com/kapetan-io/tiger/internal/analyzers/internal/mutation"
 	"github.com/kapetan-io/tiger/internal/analyzers/internal/shutdown"
@@ -104,7 +105,7 @@ func run(pass *analysis.Pass) (any, error) {
 		decl := scope.Root()
 		check := &checker{
 			pass: pass, scope: scope, verified: verified,
-			following: followingStatements(decl), params: parameters(pass.TypesInfo, decl),
+			following: followingStatements(decl), params: cancel.Parameters(pass.TypesInfo, decl),
 		}
 		ast.Inspect(decl, func(node ast.Node) bool {
 			switch loop := node.(type) {
@@ -148,32 +149,6 @@ func followingStatements(decl ast.Node) map[ast.Stmt][]ast.Stmt {
 		return true
 	})
 	return following
-}
-
-// parameters collects every function parameter declared in decl, so a
-// context the caller handed in can be told from one built locally.
-func parameters(info *types.Info, decl ast.Node) map[*types.Var]bool {
-	found := map[*types.Var]bool{}
-	ast.Inspect(decl, func(node ast.Node) bool {
-		var signature *ast.FuncType
-		switch fn := node.(type) {
-		case *ast.FuncDecl:
-			signature = fn.Type
-		case *ast.FuncLit:
-			signature = fn.Type
-		default:
-			return true
-		}
-		for _, field := range signature.Params.List {
-			for _, name := range field.Names {
-				if v, ok := info.Defs[name].(*types.Var); ok {
-					found[v] = true
-				}
-			}
-		}
-		return true
-	})
-	return found
 }
 
 // checkRange fires TS-S02 for a range over a channel or an iterator outside
@@ -277,61 +252,10 @@ func (c *checker) bounded(loop *ast.ForStmt) bool {
 	if c.verified[loop] {
 		return true
 	}
-	if c.cancellable(loop.Cond) {
+	if cancel.Waits(c.pass.TypesInfo, c.params, loop.Cond) {
 		return true
 	}
 	return condBounded(c.pass, loop, loop.Cond, plainContext)
-}
-
-// cancellable reports whether cond has a top-level ctx.Err() == nil term on
-// a context parameter, which ends the loop when the caller cancels.
-func (c *checker) cancellable(cond ast.Expr) bool {
-	for _, term := range counter.Conjuncts(cond) {
-		binary, ok := term.(*ast.BinaryExpr)
-		if !ok || binary.Op != token.EQL {
-			continue
-		}
-		call, ok := ast.Unparen(binary.X).(*ast.CallExpr)
-		other := binary.Y
-		if !ok {
-			call, ok = ast.Unparen(binary.Y).(*ast.CallExpr)
-			other = binary.X
-		}
-		if ok && isNil(c.pass.TypesInfo, other) && c.contextErr(call) {
-			return true
-		}
-	}
-	return false
-}
-
-// isNil reports whether expr is the predeclared nil.
-func isNil(info *types.Info, expr ast.Expr) bool {
-	ident, ok := ast.Unparen(expr).(*ast.Ident)
-	if !ok {
-		return false
-	}
-	_, isNilObject := info.Uses[ident].(*types.Nil)
-	return isNilObject
-}
-
-// contextErr reports whether call is Err() on a parameter of type
-// context.Context.
-func (c *checker) contextErr(call *ast.CallExpr) bool {
-	selector, ok := call.Fun.(*ast.SelectorExpr)
-	if !ok || selector.Sel.Name != "Err" {
-		return false
-	}
-	receiver, ok := ast.Unparen(selector.X).(*ast.Ident)
-	if !ok {
-		return false
-	}
-	v, ok := c.pass.TypesInfo.Uses[receiver].(*types.Var)
-	if !ok || !c.params[v] {
-		return false
-	}
-	named, ok := v.Type().(*types.Named)
-	return ok && named.Obj().Pkg() != nil &&
-		named.Obj().Pkg().Path() == "context" && named.Obj().Name() == "Context"
 }
 
 // checkEventLoop handles a for{} with no condition: the TS-S03 shape (a

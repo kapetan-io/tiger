@@ -59,18 +59,21 @@
 // Scope is AST and go/types only, mirroring boundedloop's structural
 // model: a RangeStmt is structurally terminating and out of scope (a stray
 // pin on one is itself the finding); a ForStmt with Cond == nil is
-// boundedloop's TS-S02/TS-S03 territory; a counted ForStmt (a sound counter
+// boundedloop's TS-S02/TS-S03 territory, as is a loop that runs until a
+// context parameter is cancelled; a counted ForStmt (a sound counter
 // in its condition) is bounded by boundedloop, not ranked here.
 package variant
 
 import (
 	"fmt"
 	"go/ast"
+	"go/types"
 	"reflect"
 
 	"golang.org/x/tools/go/analysis"
 
 	"github.com/kapetan-io/tiger/assert"
+	"github.com/kapetan-io/tiger/internal/analyzers/internal/cancel"
 	"github.com/kapetan-io/tiger/internal/analyzers/internal/counter"
 	"github.com/kapetan-io/tiger/internal/analyzers/internal/mutation"
 	"github.com/kapetan-io/tiger/internal/directive"
@@ -109,13 +112,17 @@ type checker struct {
 	set      pins.Set
 	verified Verified
 	function string
+	params   map[*types.Var]bool
 }
 
 func run(pass *analysis.Pass) (any, error) {
 	set := pins.Collect(pass.Fset, pass.Files)
 	verified := Verified{}
 	for _, scope := range mutation.Declarations(pass.TypesInfo, pass.Files) {
-		inspectDecl(&checker{pass: pass, scope: scope, set: set, verified: verified})
+		inspectDecl(&checker{
+			pass: pass, scope: scope, set: set, verified: verified,
+			params: cancel.Parameters(pass.TypesInfo, scope.Root()),
+		})
 	}
 	return verified, nil
 }
@@ -167,6 +174,10 @@ func (c *checker) checkFor(loop *ast.ForStmt) {
 		return
 	}
 	if len(counter.Terms(c.scope, c.sizes(), loop)) > 0 {
+		c.checkOutOfScopePin(loop)
+		return
+	}
+	if cancel.Waits(c.pass.TypesInfo, c.params, loop.Cond) {
 		c.checkOutOfScopePin(loop)
 		return
 	}

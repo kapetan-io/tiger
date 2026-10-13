@@ -8,6 +8,7 @@ import (
 
 	"golang.org/x/tools/go/analysis"
 
+	"github.com/kapetan-io/tiger/internal/analyzers/internal/cancel"
 	"github.com/kapetan-io/tiger/internal/analyzers/internal/counter"
 )
 
@@ -194,11 +195,13 @@ func insideBreakTarget(body *ast.BlockStmt, branch *ast.BranchStmt) bool {
 }
 
 // silentWhenHit reports whether nothing after the loop reports the cap being
-// reached. Two shapes report. One is an if statement that compares the
-// counter with the limit and asserts, panics, or returns an error. The other
-// is an assert or panic statement on its own, which states what the loop was
-// waiting for; tiger can't tell what the assertion is about, so it trusts the
-// author that it covers the cap.
+// reached. Three shapes report. One is an if statement that compares the
+// counter with the limit and asserts, panics, or returns an error. Another
+// is an if statement on a variable the loop assigns, which fails when the
+// loop gave up without the outcome it waited for. The last is an assert or
+// panic statement on its own, which states what the loop was waiting for;
+// tiger can't tell what the assertion is about, so it trusts the author that
+// it covers the cap.
 func (c *checker) silentWhenHit(loop *ast.ForStmt, caps []counter.Term) bool {
 	for _, stmt := range c.following[loop] {
 		switch next := stmt.(type) {
@@ -207,14 +210,36 @@ func (c *checker) silentWhenHit(loop *ast.ForStmt, caps []counter.Term) bool {
 				return false
 			}
 		case *ast.IfStmt:
+			if !c.fails(next.Body) {
+				continue
+			}
+			if c.readsOutcome(next.Cond, loop) {
+				return false
+			}
 			for _, term := range caps {
-				if c.comparesAtLimit(next.Cond, term) && c.fails(next.Body) {
+				if c.comparesAtLimit(next.Cond, term) {
 					return false
 				}
 			}
 		}
 	}
 	return true
+}
+
+// readsOutcome reports whether cond reads a variable the loop assigns.
+func (c *checker) readsOutcome(cond ast.Expr, loop *ast.ForStmt) bool {
+	found := false
+	ast.Inspect(cond, func(n ast.Node) bool {
+		ident, ok := n.(*ast.Ident)
+		if !ok {
+			return !found
+		}
+		if v, isVar := c.pass.TypesInfo.ObjectOf(ident).(*types.Var); isVar {
+			found = len(c.scope.Writes(loop, v)) > 0
+		}
+		return !found
+	})
+	return found
 }
 
 // comparesAtLimit reports whether cond holds a comparison of term's counter
@@ -278,7 +303,7 @@ func (c *checker) fails(body *ast.BlockStmt) bool {
 func (c *checker) returnsError(stmt *ast.ReturnStmt) bool {
 	for _, result := range stmt.Results {
 		resultType := c.pass.TypesInfo.TypeOf(result)
-		if resultType == nil || isNil(c.pass.TypesInfo, result) {
+		if resultType == nil || cancel.IsNil(c.pass.TypesInfo, result) {
 			continue
 		}
 		if types.Implements(resultType, errorInterface()) {
