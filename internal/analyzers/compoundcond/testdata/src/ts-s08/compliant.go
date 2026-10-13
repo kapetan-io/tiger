@@ -113,7 +113,7 @@ func taglessCompliant(n int) string {
 // on git-server's PackReason: the wire can carry a value this package
 // hasn't named yet, so the set is deliberately open.
 //
-//tiger:openenum
+//tiger:openenum peers on the wire add codes before we upgrade
 type PackReason string
 
 const (
