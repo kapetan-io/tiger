@@ -2,6 +2,7 @@ package limitflow
 
 import (
 	"go/ast"
+	"go/constant"
 	"go/token"
 	"go/types"
 	"math/big"
@@ -233,9 +234,9 @@ func (t *tracer) builtin(current task, call *ast.CallExpr, name string) {
 
 // binary fills the node from arithmetic on two operands. A subtrahend must be
 // a constant or a length, because subtracting a clamped value that is very
-// negative gives a very large result. A remainder is as
-// bounded as its divisor, a quotient or right shift as bounded as its
-// dividend, and a mask as bounded as either side.
+// negative gives a very large result. A remainder is as bounded as its
+// divisor, a quotient or right shift as bounded as its dividend, and a mask as
+// bounded as either side.
 func (t *tracer) binary(current task, expr *ast.BinaryExpr) {
 	if expr.Op == token.REM {
 		t.nodes[current.index].kind = nodeAll
@@ -252,13 +253,42 @@ func (t *tracer) binary(current task, expr *ast.BinaryExpr) {
 		t.set(current.index, nodeUnbounded, expr)
 		return
 	}
-	if expr.Op == token.SUB && !t.declaredMaximum(expr.Y) {
+	if !t.signSafe(expr) {
 		t.set(current.index, nodeUnbounded, expr)
 		return
 	}
 	t.nodes[current.index].kind = kind
 	t.child(current.index, expr.X, current.mode)
 	t.child(current.index, expr.Y, current.mode)
+}
+
+// signSafe reports whether an operator keeps its result bounded when the
+// operands are, though a clamp leaves each operand free to be very negative.
+// A subtraction needs a subtrahend that is a constant or a length. A product
+// and an exclusive or turn two very negative operands into a large positive
+// result, so one must be a length or a constant that is not negative. A
+// bit-clear is safe when its second operand is such a value.
+func (t *tracer) signSafe(expr *ast.BinaryExpr) bool {
+	if expr.Op == token.SUB {
+		return t.declaredMaximum(expr.Y)
+	}
+	if expr.Op == token.MUL || expr.Op == token.XOR {
+		return t.nonNegative(expr.X) || t.nonNegative(expr.Y)
+	}
+	if expr.Op == token.AND_NOT {
+		return t.nonNegative(expr.Y)
+	}
+	return true
+}
+
+// nonNegative reports whether expr is a constant of at least 0, a len or a
+// cap.
+func (t *tracer) nonNegative(expr ast.Expr) bool {
+	if known := t.s.pass.TypesInfo.Types[expr].Value; known != nil {
+		return constant.Sign(known) >= 0
+	}
+	call, ok := ast.Unparen(expr).(*ast.CallExpr)
+	return ok && (t.isBuiltin(call, "len") || t.isBuiltin(call, "cap"))
 }
 
 // unary fills the node from a sign or complement of one operand.

@@ -75,10 +75,19 @@ func lengthLimit(info *types.Info, limit ast.Expr) bool {
 // lengthBuiltins are the builtins that read a length the data sets.
 var lengthBuiltins = map[string]bool{"len": true, "cap": true}
 
-// reachedComparisons are the comparisons a cap check makes between the
-// counter and the limit.
-var reachedComparisons = map[token.Token]bool{
-	token.EQL: true, token.GEQ: true, token.GTR: true, token.LEQ: true, token.LSS: true,
+// reachedComparisons are the comparisons, written with the counter on the
+// left, that are true when a counter of that direction stops at its limit.
+// An exclusive loop stops with the counter at the limit. An inclusive loop
+// stops one step past it.
+var reachedComparisons = map[bool]map[bool]map[token.Token]bool{
+	false: {
+		false: {token.EQL: true, token.GEQ: true, token.LEQ: true},
+		true:  {token.GEQ: true, token.GTR: true},
+	},
+	true: {
+		false: {token.EQL: true, token.LEQ: true, token.GEQ: true},
+		true:  {token.LEQ: true, token.LSS: true},
+	},
 }
 
 // otherExits returns the top-level terms of cond besides term's own
@@ -228,7 +237,11 @@ func (c *checker) comparesAtLimit(cond ast.Expr, term counter.Term) bool {
 	found := false
 	ast.Inspect(cond, func(n ast.Node) bool {
 		binary, ok := n.(*ast.BinaryExpr)
-		if ok && reachedComparisons[binary.Op] && c.pairsWith(binary, term) {
+		if !ok {
+			return !found
+		}
+		if op, pairs := c.counterOnLeft(binary, term); pairs &&
+			reachedComparisons[term.Down][term.Inclusive][op] {
 			found = true
 		}
 		return !found
@@ -236,17 +249,26 @@ func (c *checker) comparesAtLimit(cond ast.Expr, term counter.Term) bool {
 	return found
 }
 
-// pairsWith reports whether one side of binary names term's counter and the
-// other reads like its limit.
-func (c *checker) pairsWith(binary *ast.BinaryExpr, term counter.Term) bool {
+// counterOnLeft returns binary's comparison written with term's counter on
+// the left, and reports whether one side names the counter and the other
+// reads like its limit.
+func (c *checker) counterOnLeft(binary *ast.BinaryExpr, term counter.Term) (token.Token, bool) {
 	if ident, ok := ast.Unparen(binary.X).(*ast.Ident); ok {
 		if c.pass.TypesInfo.ObjectOf(ident) == term.Counter && c.readsLikeLimit(binary.Y, term) {
-			return true
+			return binary.Op, true
 		}
 	}
 	ident, ok := ast.Unparen(binary.Y).(*ast.Ident)
-	return ok && c.pass.TypesInfo.ObjectOf(ident) == term.Counter &&
-		c.readsLikeLimit(binary.X, term)
+	if !ok || c.pass.TypesInfo.ObjectOf(ident) != term.Counter {
+		return token.ILLEGAL, false
+	}
+	if !c.readsLikeLimit(binary.X, term) {
+		return token.ILLEGAL, false
+	}
+	if binary.Op == token.EQL {
+		return token.EQL, true
+	}
+	return condition.Mirror(binary.Op)
 }
 
 // readsLikeLimit reports whether expr is term's limit, written the same way

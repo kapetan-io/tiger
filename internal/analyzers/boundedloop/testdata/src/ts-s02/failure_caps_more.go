@@ -101,3 +101,38 @@ func checksTheCounterAgainstZero(done func() bool, limit int) error {
 	}
 	return nil
 }
+
+// lessThanTheLimit fails when the loop stopped early. At the cap the counter
+// equals the limit, so the comparison is false and the cap stays silent.
+func lessThanTheLimit(done func() bool, limit int) error {
+	i := 0
+	for ; i < limit && !done(); i++ { // want `TS-S02: this counter cap ends the loop without saying so`
+	}
+	if i < limit {
+		return errors.New("stopped early")
+	}
+	return nil
+}
+
+// limitAboveTheCounter is the same comparison with the operands swapped.
+func limitAboveTheCounter(done func() bool, limit int) error {
+	i := 0
+	for ; i < limit && !done(); i++ { // want `TS-S02: this counter cap ends the loop without saying so`
+	}
+	if limit > i {
+		return errors.New("stopped early")
+	}
+	return nil
+}
+
+// pastTheLimitAfterAnExclusiveLoop compares with greater-than, which is
+// false when the counter stops at the limit.
+func pastTheLimitAfterAnExclusiveLoop(done func() bool, limit int) error {
+	i := 0
+	for ; i < limit && !done(); i++ { // want `TS-S02: this counter cap ends the loop without saying so`
+	}
+	if i > limit {
+		return errors.New("past the limit")
+	}
+	return nil
+}

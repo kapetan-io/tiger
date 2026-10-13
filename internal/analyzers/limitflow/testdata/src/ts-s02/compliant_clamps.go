@@ -55,3 +55,17 @@ func Wrapped(tuning Tuning, done func() bool) error {
 func Masked(tuning Tuning, done func() bool) error {
 	return lib.SpinReported(done, tuning.Spins&0xff)
 }
+
+// SpinClampedTimesTwo scales a clamped offset by a constant that is not
+// negative, which cannot turn it into a large positive count.
+func SpinClampedTimesTwo(tuning Tuning, done func() bool) error {
+	spins := min(tuning.Spins, spinsMax)
+	return lib.SpinReported(done, spins*2)
+}
+
+// SpinClampedExclusiveOrMask masks a clamped offset with a constant that is
+// not negative.
+func SpinClampedExclusiveOrMask(tuning Tuning, done func() bool) error {
+	spins := min(tuning.Spins, spinsMax)
+	return lib.SpinReported(done, spins^7)
+}

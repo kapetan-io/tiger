@@ -41,3 +41,26 @@ func SpinParameterReassigned(done func() bool, spins int, tuning Tuning) error {
 	spins = tuning.Spins // want `TS-S02: this value reaches a loop limit with no upper bound where it enters`
 	return lib.SpinReported(done, spins)
 }
+
+// SpinExclusiveOrClamped takes the exclusive or of a clamped offset and -1,
+// which turns a large negative offset into a large positive count.
+func SpinExclusiveOrClamped(window Window, done func() bool) error {
+	offset := min(window.Offset, spinsMax)
+	return lib.SpinReported(done, offset^-1) // want `TS-S02: this value reaches a loop limit with no upper bound where it enters`
+}
+
+// SpinProductOfClamped multiplies two clamped offsets, so two large negative
+// offsets give a large positive count.
+func SpinProductOfClamped(window Window, done func() bool) error {
+	first := min(window.Offset, spinsMax)
+	second := min(window.Offset, spinsMax)
+	return lib.SpinReported(done, first*second) // want `TS-S02: this value reaches a loop limit with no upper bound where it enters`
+}
+
+// SpinBitClearedByClamped clears the bits of a clamped offset with another,
+// which can clear the sign bit.
+func SpinBitClearedByClamped(window Window, done func() bool) error {
+	first := min(window.Offset, spinsMax)
+	second := min(window.Offset, spinsMax)
+	return lib.SpinReported(done, first&^second) // want `TS-S02: this value reaches a loop limit with no upper bound where it enters`
+}
