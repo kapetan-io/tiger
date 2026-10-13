@@ -96,10 +96,14 @@ type candidate struct {
 // is judged.
 type loopFacts struct {
 	*checker
-	loop       *ast.ForStmt
+	loop *ast.ForStmt
+	// alwaysRuns holds the statements that run on every pass: the Post
+	// clause and the body's direct statements.
 	alwaysRuns map[ast.Node]bool
-	positive   map[place]bool
-	nonEmpty   map[place]bool
+	// positive holds the variables the condition keeps above zero.
+	positive map[place]bool
+	// nonEmpty holds the slices the condition keeps from being empty.
+	nonEmpty map[place]bool
 }
 
 // factsOf collects the guards every top-level && term of the condition
