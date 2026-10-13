@@ -9,8 +9,9 @@
 // bugs into liveness bugs, which is the trade we want. The fast path is a
 // predictable branch and inlines away to almost nothing.
 //
-// Copy this package to internal/assert in your project so it cannot leak
-// into your public API. This is the canonical, tested source.
+// Import it as github.com/kapetan-io/tiger/assert. Tiger recognizes the
+// package by that import path alone, so a copy under another path is
+// treated as an ordinary package.
 package assert
 
 import (

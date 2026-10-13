@@ -8,10 +8,8 @@
 // Parse(Format(d)) == d. When later waves print computed facts, the same
 // contract guarantees report output is byte-identical to pin syntax.
 //
-// Wave 1 validates verb identity and each verb's minimal argument shape (an
-// escape needs a reason). Richer per-verb argument grammars — effect
-// lattices, frame sets — belong to later waves, and this package is where
-// they will live.
+// Parse validates verb identity and each verb's argument shape: an escape
+// needs a reason, and a pin takes its verb's grammar.
 package directive
 
 import (
@@ -95,8 +93,7 @@ func (e *MalformedArgsError) Error() string {
 }
 
 // vocabulary is the closed verb set, in declaration-model order: the sole
-// wave-1 escape, then the pin and intent verbs later waves enforce
-// (validated for well-formedness from wave 1).
+// escape, then the pin verbs, then the intent verb.
 var vocabulary = []Verb{
 	{Name: "batched", Kind: KindEscape},
 	{Name: "effects", Kind: KindPin},

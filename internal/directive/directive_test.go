@@ -162,8 +162,8 @@ func TestIsRecognizesThePrefixExactly(t *testing.T) {
 
 // TestVocabularyKinds covers the declaration-model classification.
 //
-// Goal: batched is the only escape verb in wave 1, and the pin and intent
-// verbs later waves enforce are present for well-formedness validation.
+// Goal: batched is the only escape verb, and the pin verbs and the
+// openenum intent verb are present for well-formedness validation.
 func TestVocabularyKinds(t *testing.T) {
 	escapes := 0
 	for _, spec := range directive.Verbs() {

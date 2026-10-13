@@ -165,10 +165,15 @@ linters:
           deny:
             - pkg: unsafe
               desc: TS-S12. Allowed only in internal/sys.
-            - pkg: reflect
-              desc: TS-S12. Reflection moves errors to run time and allocates doing it.
             - pkg: github.com/pkg/errors
               desc: TS-E03. Use the standard library, wrap with %w.
+        reflect:
+          # TS-S12. Banned in every package, internal/sys included.
+          files:
+            - $all
+          deny:
+            - pkg: reflect
+              desc: TS-S12. Reflection moves errors to run time and allocates doing it.
 
     forbidigo:
       # TS-C08, TS-T01, TS-T04. depguard works on packages, forbidigo works on

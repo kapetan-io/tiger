@@ -141,8 +141,8 @@ func reportMixedLogic(pass *analysis.Pass, cond ast.Expr) {
 }
 
 // calleeName resolves call's function to a *types.Func and reports its
-// unqualified name, but only when that function belongs to a package named
-// tiger's assert package — the sanctioned home for Ok, Invariant, and Unreachable.
+// unqualified name, but only when that function belongs to tiger's assert
+// package, the sanctioned home for Ok, Invariant, and Unreachable.
 func calleeName(pass *analysis.Pass, call *ast.CallExpr) (string, bool) {
 	var ident *ast.Ident
 	if plain, ok := call.Fun.(*ast.Ident); ok {

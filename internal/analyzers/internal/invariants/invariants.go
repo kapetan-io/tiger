@@ -5,9 +5,8 @@
 // An invariant const is a package-level const whose declared type is a
 // named string type that some assert.Invariant or assert.Violates call in
 // the module takes as its ID — defined by use, not by living in a package
-// named inv. The assert package is recognized by shape (package name
-// assert, function name Invariant or Violates), because adopters copy it
-// into their own tree. Each package contributes what it declares and what
+// named inv. The assert package is recognized by import path (assertpkg)
+// and function name Invariant or Violates. Each package contributes what it declares and what
 // it calls; only the finish step, seeing every contribution, can tell
 // which consts are invariants and which of those go undefended.
 package invariants
@@ -177,8 +176,8 @@ func calls(pass *analysis.Pass, at site) []Call {
 	return found
 }
 
-// assertKind recognizes a call to assert.Invariant or assert.Violates by
-// shape: a selector on tiger's assert package.
+// assertKind recognizes a call to assert.Invariant or assert.Violates: a
+// selector resolving to a function in tiger's assert package.
 func assertKind(pass *analysis.Pass, call *ast.CallExpr) (Kind, bool) {
 	selector, ok := call.Fun.(*ast.SelectorExpr)
 	if !ok {

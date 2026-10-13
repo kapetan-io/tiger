@@ -1767,7 +1767,7 @@ golangci-lint findings fail its run.
 | TS-L09 | every suppression carries a reason | nolintlint |
 | TS-L11 | imports grouped standard, external, internal | gci |
 | TS-T01 | time and randomness are injected | forbidigo |
-| TS-D01 | the standard library, and nothing else, where restrictions permit | depguard |
+| TS-D01 | the standard library, and nothing else, in internal/domain packages | depguard |
 
 ## Computed facts
 

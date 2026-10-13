@@ -1,6 +1,6 @@
-// Package assert is the module's local copy of the always-on assertion
-// vocabulary, matched by shape (package name assert, function names
-// Invariant and Violates) rather than by import path.
+// Package assert is the fixture's copy of tiger's assert package. The
+// fixture module takes tiger's module path, so this directory has the import
+// path tiger recognizes.
 package assert
 
 // Invariant panics when cond is false, naming id.

@@ -3,8 +3,7 @@
 // resembles a directive is not one.
 package fixture
 
-// Package-shaped pin and intent directives later waves enforce are already
-// well-formed under the wave-1 grammar.
+// Pin directives and the openenum intent directive are well-formed.
 //
 //tiger:effects mutate(r.log, r.checkpoint), io(disk)
 //tiger:frame r.log, r.checkpoint
