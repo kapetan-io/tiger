@@ -13,10 +13,10 @@ import (
 // Goal: every range over a map whose body falls outside the closed
 // order-insensitive allowlist fires TS-T02, every allowlisted shape (map
 // writes, integer accumulation, integer min/max in both forms,
-// delete, and a boolean short-circuit) stays silent, and the sorted-keys
-// rewrite the finding names ranges over a slice instead of a map and so is
-// never inspected. The documented known-miss (order escaping through an
-// unsorted key collection that never ranges over a map) stays silent too.
+// delete, and a boolean short-circuit) stays silent, a collect-then-sort
+// passes only when the sort fixes the order, and a maps.Keys, maps.Values
+// or maps.All result fires unless it is sorted, collected into a map, or
+// ranged over like a map. The five documented known misses stay silent.
 func TestCorpus(t *testing.T) {
-	analysistest.Run(t, analysistest.TestData(), maporder.Analyzer, "ts-t02")
+	analysistest.Run(t, analysistest.TestData(), maporder.Analyzer, "keys", "ts-t02")
 }

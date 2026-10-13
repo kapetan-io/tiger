@@ -1,27 +1,21 @@
 // Package maporder enforces TS-T02: map iteration order never reaches an
 // output.
 //
-// The spec's own enforcement text traces map order to a sink — "range over a
-// map whose body appends or writes" — which is undecidable in general: any
-// non-builtin call, however many frames deep, might eventually write what it
-// receives somewhere order-visible, and proving it does not is a whole-program
-// problem this analyzer does not have the machinery for. A heuristic sink
-// trace would either miss real order dependence or fire on maybes, and a
-// maybe on a blocking rule is a bug (the wave's correctness constraint).
+// A range over a map is a finding unless its body matches a closed
+// allowlist of order-insensitive shapes (allowlist.go), with these
+// additions recorded in ADR-0021:
 //
-// This analyzer inverts the rule instead: it bans every range over a map
-// unless the loop body is provably order-insensitive, matched against a
-// closed allowlist of shapes (map-to-map writes, commutative integer
-// accumulation, delete, and pure per-element boolean short-circuits — plus
-// the structurally neutral declarations and nested control flow those shapes
-// need). Every other body is a finding, whether or not it is actually order
-// dependent. This is exact in the direction that matters: every finding is
-// either a real order dependence or a loop the closed allowlist cannot
-// prove safe, and the compliant rewrite (collect the keys, sort them,
-// range over the sorted slice) is always available. The cost is a small
-// amount of sorted-iteration busywork on loops that happen to be safe in a
-// shape the allowlist does not yet recognize — traded deliberately for zero
-// false-positive risk on a blocking rule.
+//  1. Collect-then-sort: a map loop that only appends into a local slice
+//     passes when the slice's first use after the loop is sort.Strings,
+//     sort.Ints or slices.Sort on string or integer elements.
+//  2. Full coverage: slices.SortFunc and slices.SortStableFunc after such a
+//     loop, and slices.SortedFunc over maps.Keys or maps.Values, pass when
+//     the comparator compares every leaf of the element (coverage.go).
+//  3. Every maps.Keys, maps.Values and maps.All result is checked; one that
+//     reaches anything but a sort that fixes its order, a map, or a range is
+//     a finding (iterators.go).
+//  4. No read in an allowlisted loop body may see state an earlier visit
+//     wrote, so a counter can no longer pick which entries are handled.
 //
 // The allowlist is closed and versioned with this analyzer: extending it to
 // a new provably-safe shape is an analyzer change with its own corpus case,
@@ -51,24 +45,41 @@ const (
 	msgChannelSend = "TS-T02: this loop sends on a channel while ranging over a map, and Go " +
 		"visits map entries in a different order every run, so the receiver's order varies" +
 		msgSortedKeys
+	msgCarried = "TS-T02: this loop reads state it changed while visiting earlier map entries, " +
+		"and Go visits entries in a different order every run, so which ones it " +
+		"handles varies" + msgSortedKeys
+	msgSortTies = "TS-T02: this sort can find two different map entries equal, and equal entries " +
+		"keep the map's order — compare every field with cmp.Compare, or use " +
+		"slices.Sorted(maps.Keys(m)), then slices.SortStableFunc"
 	msgGeneric = "TS-T02: this loop's body may depend on the order of map entries, which Go " +
 		"changes every run" + msgSortedKeys
 )
 
-// Analyzer enforces TS-T02: every range over a map is order-insensitive by
-// construction, or it is a finding.
+// Analyzer enforces TS-T02.
 var Analyzer = &analysis.Analyzer{
-	Name: "maporder",
-	Doc:  "TS-T02: map iteration order never reaches an output.",
-	Run:  run,
+	Name:      "maporder",
+	Doc:       "TS-T02: map iteration order never reaches an output.",
+	Run:       run,
+	FactTypes: []analysis.Fact{new(totalFact)},
+}
+
+// sortSite is the verdict on a map loop that collects into a slice sorted
+// afterward. The bodyImpure field is set when the loop body does more than
+// collect, so no sort can make it order-free.
+type sortSite struct {
+	bodyImpure bool
+	accepted   bool
 }
 
 func run(pass *analysis.Pass) (any, error) {
+	exportTotalFacts(pass)
 	for _, file := range pass.Files {
+		checkIterators(pass, file)
+		after := statementsAfter(file)
 		ast.Inspect(file, func(node ast.Node) bool {
 			loop, ok := node.(*ast.RangeStmt)
 			if ok {
-				checkRange(pass, loop)
+				checkRange(pass, loop, after[loop])
 			}
 			return true
 		})
@@ -76,25 +87,60 @@ func run(pass *analysis.Pass) (any, error) {
 	return nil, nil
 }
 
-// checkRange fires TS-T02 when loop ranges over a map and its body is not
-// provably order-insensitive.
-func checkRange(pass *analysis.Pass, loop *ast.RangeStmt) {
+// statementsAfter maps every range statement to the statements that follow
+// it in its enclosing statement list.
+func statementsAfter(file *ast.File) map[*ast.RangeStmt][]ast.Stmt {
+	after := map[*ast.RangeStmt][]ast.Stmt{}
+	ast.Inspect(file, func(node ast.Node) bool {
+		var list []ast.Stmt
+		switch block := node.(type) {
+		case *ast.BlockStmt:
+			list = block.List
+		case *ast.CaseClause:
+			list = block.Body
+		case *ast.CommClause:
+			list = block.Body
+		}
+		for i, stmt := range list {
+			if loop, ok := stmt.(*ast.RangeStmt); ok {
+				after[loop] = list[i+1:]
+			}
+		}
+		return true
+	})
+	return after
+}
+
+// checkRange fires TS-T02 when loop ranges over a map and its body is
+// neither allowlisted nor a collect-then-sort the sort makes order-free.
+func checkRange(pass *analysis.Pass, loop *ast.RangeStmt, after []ast.Stmt) {
 	if !isMapRange(pass, loop) {
 		return
 	}
-	if bodyAllowed(pass, loop) {
+	carried := carriedState(pass, loop)
+	if bodyAllowed(pass, loop, carried) {
+		return
+	}
+	site := collectSite(pass, loop, after, carried)
+	if site != nil && site.accepted {
 		return
 	}
 	pass.Report(analysis.Diagnostic{
 		Pos:      loop.Pos(),
 		Category: "TS-T02",
-		Message:  classifyMessage(pass, loop),
+		Message:  classifyMessage(pass, loop, site),
 	})
 }
 
-// isMapRange reports whether loop's range target is a map (through any
-// named type whose underlying type is a map).
+// isMapRange reports whether loop ranges over a map (through any named type
+// whose underlying type is a map) or over maps.Keys, maps.Values or maps.All
+// of one.
 func isMapRange(pass *analysis.Pass, loop *ast.RangeStmt) bool {
+	if call, ok := ast.Unparen(loop.X).(*ast.CallExpr); ok {
+		if _, ok := mapIterator(pass, call); ok {
+			return true
+		}
+	}
 	rangeType := pass.TypesInfo.TypeOf(loop.X)
 	if rangeType == nil {
 		return false
@@ -103,440 +149,18 @@ func isMapRange(pass *analysis.Pass, loop *ast.RangeStmt) bool {
 	return mapped
 }
 
-// bodyAllowed walks loop's body against the closed allowlist. Nested
-// if/block statements are expanded onto the worklist rather than recursed
-// into, so the whole walk stays iterative.
-func bodyAllowed(pass *analysis.Pass, loop *ast.RangeStmt) bool {
-	work := append([]ast.Stmt{}, loop.Body.List...)
-	for i := 0; i < len(work); i++ {
-		switch stmt := work[i].(type) {
-		case *ast.AssignStmt:
-			if !assignAllowed(pass, loop, stmt) {
-				return false
-			}
-		case *ast.IncDecStmt:
-			if !incDecAllowed(pass, stmt) {
-				return false
-			}
-		case *ast.ExprStmt:
-			if !exprStmtAllowed(pass, stmt) {
-				return false
-			}
-		case *ast.DeclStmt:
-			if !declStmtAllowed(pass, loop, stmt) {
-				return false
-			}
-		case *ast.BranchStmt:
-			if !branchAllowed(stmt) {
-				return false
-			}
-		case *ast.ReturnStmt:
-			if !returnAllowed(pass, stmt) {
-				return false
-			}
-		case *ast.BlockStmt:
-			work = append(work, stmt.List...)
-		case *ast.IfStmt:
-			next, ok := ifAllowed(pass, stmt)
-			if !ok {
-				return false
-			}
-			work = append(work, next...)
-		default:
-			return false
-		}
-	}
-	return true
-}
-
-// assignAllowed classifies an assignment against the map-write, integer
-// accumulation, min/max reduction, boolean-constant, and local-declaration
-// arms of the allowlist.
-func assignAllowed(pass *analysis.Pass, loop *ast.RangeStmt, assign *ast.AssignStmt) bool {
-	if mapWriteAssign(pass, assign) {
-		return true
-	}
-	if intAccumAssign(pass, assign) {
-		return true
-	}
-	if minMaxAssign(pass, assign) {
-		return true
-	}
-	if boolConstAssign(pass, assign) {
-		return true
-	}
-	return localAssign(pass, loop, assign)
-}
-
-// mapWriteAssign reports whether every LHS of assign indexes into a map —
-// category 1: writes into another map, including set-building and
-// accumulation into a map value.
-func mapWriteAssign(pass *analysis.Pass, assign *ast.AssignStmt) bool {
-	for _, lhs := range assign.Lhs {
-		if !isMapIndex(pass, lhs) {
-			return false
-		}
-	}
-	return true
-}
-
-// isMapIndex reports whether expr is an index expression into a map.
-func isMapIndex(pass *analysis.Pass, expr ast.Expr) bool {
-	index, ok := expr.(*ast.IndexExpr)
-	if !ok {
-		return false
-	}
-	indexed := pass.TypesInfo.TypeOf(index.X)
-	if indexed == nil {
-		return false
-	}
-	_, mapped := indexed.Underlying().(*types.Map)
-	return mapped
-}
-
-// intAccumAssign reports whether assign is x += e or x -= e for an integer
-// x — category 2's commutative accumulation.
-func intAccumAssign(pass *analysis.Pass, assign *ast.AssignStmt) bool {
-	if assign.Tok != token.ADD_ASSIGN && assign.Tok != token.SUB_ASSIGN {
-		return false
-	}
-	if len(assign.Lhs) != 1 {
-		return false
-	}
-	return isIntIdent(pass, assign.Lhs[0])
-}
-
-// isIntIdent reports whether expr is an identifier of integer type.
-func isIntIdent(pass *analysis.Pass, expr ast.Expr) bool {
-	ident, ok := expr.(*ast.Ident)
-	if !ok {
-		return false
-	}
-	identType := pass.TypesInfo.TypeOf(ident)
-	if identType == nil {
-		return false
-	}
-	basic, ok := identType.Underlying().(*types.Basic)
-	return ok && basic.Info()&types.IsInteger != 0
-}
-
-// minMaxAssign reports whether assign is x = min(x, v) or x = max(x, v) for
-// an integer x — category 2's min/max reduction form.
-func minMaxAssign(pass *analysis.Pass, assign *ast.AssignStmt) bool {
-	if assign.Tok != token.ASSIGN || len(assign.Lhs) != 1 || len(assign.Rhs) != 1 {
-		return false
-	}
-	ident, ok := assign.Lhs[0].(*ast.Ident)
-	if !ok || !isIntIdent(pass, ident) {
-		return false
-	}
-	call, ok := assign.Rhs[0].(*ast.CallExpr)
-	if !ok || !isMinMaxBuiltin(pass, call) {
-		return false
-	}
-	return argContainsIdent(pass, call, ident)
-}
-
-// isMinMaxBuiltin reports whether call invokes the builtin min or max.
-func isMinMaxBuiltin(pass *analysis.Pass, call *ast.CallExpr) bool {
-	ident, ok := call.Fun.(*ast.Ident)
-	if !ok {
-		return false
-	}
-	builtin, ok := pass.TypesInfo.Uses[ident].(*types.Builtin)
-	if !ok {
-		return false
-	}
-	return builtin.Name() == "min" || builtin.Name() == "max"
-}
-
-// argContainsIdent reports whether one of call's arguments is ident,
-// resolved by object identity.
-func argContainsIdent(pass *analysis.Pass, call *ast.CallExpr, ident *ast.Ident) bool {
-	obj := pass.TypesInfo.ObjectOf(ident)
-	for _, arg := range call.Args {
-		argIdent, ok := arg.(*ast.Ident)
-		if ok && pass.TypesInfo.ObjectOf(argIdent) == obj {
-			return true
-		}
-	}
-	return false
-}
-
-// boolConstAssign reports whether assign sets a boolean identifier to the
-// constant true or false — half of category 4's short-circuit shape.
-func boolConstAssign(pass *analysis.Pass, assign *ast.AssignStmt) bool {
-	if assign.Tok != token.ASSIGN && assign.Tok != token.DEFINE {
-		return false
-	}
-	if len(assign.Lhs) != 1 || len(assign.Rhs) != 1 {
-		return false
-	}
-	ident, ok := assign.Lhs[0].(*ast.Ident)
-	if !ok || !isBoolIdent(pass, ident) {
-		return false
-	}
-	return isBoolConst(pass, assign.Rhs[0])
-}
-
-// isBoolIdent reports whether ident has boolean type.
-func isBoolIdent(pass *analysis.Pass, ident *ast.Ident) bool {
-	identType := pass.TypesInfo.TypeOf(ident)
-	if identType == nil {
-		return false
-	}
-	basic, ok := identType.Underlying().(*types.Basic)
-	return ok && basic.Info()&types.IsBoolean != 0
-}
-
-// isBoolConst reports whether expr is the predeclared constant true or
-// false.
-func isBoolConst(pass *analysis.Pass, expr ast.Expr) bool {
-	ident, ok := expr.(*ast.Ident)
-	if !ok {
-		return false
-	}
-	if ident.Name != "true" && ident.Name != "false" {
-		return false
-	}
-	obj, ok := pass.TypesInfo.Uses[ident].(*types.Const)
-	return ok && obj.Pkg() == nil
-}
-
-// localAssign reports whether assign declares or reassigns only identifiers
-// declared inside loop's body, with an initializer free of non-builtin
-// calls — category 5's structurally neutral locals.
-func localAssign(pass *analysis.Pass, loop *ast.RangeStmt, assign *ast.AssignStmt) bool {
-	if assign.Tok != token.ASSIGN && assign.Tok != token.DEFINE {
-		return false
-	}
-	for _, lhs := range assign.Lhs {
-		ident, ok := lhs.(*ast.Ident)
-		if !ok || ident.Name == "_" {
-			continue
-		}
-		if !declaredWithin(pass, loop, ident) {
-			return false
-		}
-	}
-	for _, rhs := range assign.Rhs {
-		if !pureExpr(pass, rhs) {
-			return false
-		}
-	}
-	return true
-}
-
-// declaredWithin reports whether ident's declaration lies inside loop's
-// body, so it is a fresh per-iteration local rather than state carried
-// across iterations.
-func declaredWithin(pass *analysis.Pass, loop *ast.RangeStmt, ident *ast.Ident) bool {
-	obj := pass.TypesInfo.ObjectOf(ident)
-	if obj == nil {
-		return true
-	}
-	return obj.Pos() >= loop.Body.Pos() && obj.Pos() < loop.Body.End()
-}
-
-// incDecAllowed reports whether stmt increments or decrements a map index
-// (category 1) or an integer identifier (category 2).
-func incDecAllowed(pass *analysis.Pass, stmt *ast.IncDecStmt) bool {
-	if isMapIndex(pass, stmt.X) {
-		return true
-	}
-	return isIntIdent(pass, stmt.X)
-}
-
-// exprStmtAllowed reports whether stmt is a bare call to the builtin
-// delete — category 3.
-func exprStmtAllowed(pass *analysis.Pass, stmt *ast.ExprStmt) bool {
-	call, ok := stmt.X.(*ast.CallExpr)
-	if !ok {
-		return false
-	}
-	ident, ok := call.Fun.(*ast.Ident)
-	if !ok {
-		return false
-	}
-	builtin, ok := pass.TypesInfo.Uses[ident].(*types.Builtin)
-	return ok && builtin.Name() == "delete"
-}
-
-// declStmtAllowed reports whether stmt is a var declaration of locals
-// declared inside loop's body with pure initializers — category 5.
-func declStmtAllowed(pass *analysis.Pass, loop *ast.RangeStmt, stmt *ast.DeclStmt) bool {
-	gen, ok := stmt.Decl.(*ast.GenDecl)
-	if !ok || gen.Tok != token.VAR {
-		return false
-	}
-	for _, entry := range gen.Specs {
-		named, ok := entry.(*ast.ValueSpec)
-		if !ok {
-			return false
-		}
-		if !specAllowed(pass, loop, named) {
-			return false
-		}
-	}
-	return true
-}
-
-// specAllowed reports whether every name named declares is local to loop's
-// body and every initializer is pure.
-func specAllowed(pass *analysis.Pass, loop *ast.RangeStmt, named *ast.ValueSpec) bool {
-	for _, name := range named.Names {
-		if name.Name == "_" {
-			continue
-		}
-		if !declaredWithin(pass, loop, name) {
-			return false
-		}
-	}
-	for _, init := range named.Values {
-		if !pureExpr(pass, init) {
-			return false
-		}
-	}
-	return true
-}
-
-// branchAllowed reports whether stmt is an unlabeled break or continue.
-func branchAllowed(stmt *ast.BranchStmt) bool {
-	if stmt.Label != nil {
-		return false
-	}
-	return stmt.Tok == token.BREAK || stmt.Tok == token.CONTINUE
-}
-
-// returnAllowed reports whether stmt returns only constant booleans (or
-// nothing) — the other half of category 4's short-circuit shape.
-func returnAllowed(pass *analysis.Pass, stmt *ast.ReturnStmt) bool {
-	for _, result := range stmt.Results {
-		if !isBoolConst(pass, result) {
-			return false
-		}
-	}
-	return true
-}
-
-// ifAllowed reports whether ifStmt is the min/max if-form (a leaf, nothing
-// further to check) or a structurally neutral if whose condition is pure;
-// in the latter case it returns the body and else statements to enqueue.
-func ifAllowed(pass *analysis.Pass, ifStmt *ast.IfStmt) ([]ast.Stmt, bool) {
-	if minMaxIfForm(pass, ifStmt) {
-		return nil, true
-	}
-	if ifStmt.Init != nil {
-		return nil, false
-	}
-	if !pureExpr(pass, ifStmt.Cond) {
-		return nil, false
-	}
-	next := append([]ast.Stmt{}, ifStmt.Body.List...)
-	switch elseClause := ifStmt.Else.(type) {
-	case nil:
-	case *ast.BlockStmt:
-		next = append(next, elseClause.List...)
-	case *ast.IfStmt:
-		next = append(next, elseClause)
-	default:
-		return nil, false
-	}
-	return next, true
-}
-
-// minMaxIfForm reports whether ifStmt is `if v > x { x = v }` or
-// `if v < x { x = v }` (or the symmetric operand order) — the if-form half
-// of category 2's min/max reduction.
-func minMaxIfForm(pass *analysis.Pass, ifStmt *ast.IfStmt) bool {
-	if ifStmt.Init != nil || ifStmt.Else != nil {
-		return false
-	}
-	if len(ifStmt.Body.List) != 1 {
-		return false
-	}
-	binary, ok := ifStmt.Cond.(*ast.BinaryExpr)
-	if !ok {
-		return false
-	}
-	if binary.Op != token.GTR && binary.Op != token.LSS {
-		return false
-	}
-	assign, ok := ifStmt.Body.List[0].(*ast.AssignStmt)
-	if !ok || assign.Tok != token.ASSIGN || len(assign.Lhs) != 1 || len(assign.Rhs) != 1 {
-		return false
-	}
-	return matchesMinMaxUpdate(pass, binary, assign)
-}
-
-// matchesMinMaxUpdate reports whether assign sets the identifier on one
-// side of binary to the expression on the other side.
-func matchesMinMaxUpdate(pass *analysis.Pass, binary *ast.BinaryExpr, assign *ast.AssignStmt) bool {
-	ident, ok := assign.Lhs[0].(*ast.Ident)
-	if !ok || !isIntIdent(pass, ident) {
-		return false
-	}
-	target := pass.TypesInfo.ObjectOf(ident)
-	left := identDecl(pass, binary.X)
-	right := identDecl(pass, binary.Y)
-	rhs := identDecl(pass, assign.Rhs[0])
-	if rhs == nil {
-		return false
-	}
-	if left == target && right == rhs {
-		return true
-	}
-	return right == target && left == rhs
-}
-
-// identDecl returns the object expr resolves to when expr is an
-// identifier, or nil otherwise.
-func identDecl(pass *analysis.Pass, expr ast.Expr) types.Object {
-	ident, ok := expr.(*ast.Ident)
-	if !ok {
-		return nil
-	}
-	return pass.TypesInfo.ObjectOf(ident)
-}
-
-// pureExpr reports whether expr contains no calls other than the builtins
-// len, cap, min, and max — the conservative purity category 4 and 5 require
-// of conditions and initializers.
-func pureExpr(pass *analysis.Pass, expr ast.Expr) bool {
-	pure := true
-	ast.Inspect(expr, func(node ast.Node) bool {
-		call, ok := node.(*ast.CallExpr)
-		if ok && !isAllowedPureCall(pass, call) {
-			pure = false
-		}
-		return true
-	})
-	return pure
-}
-
-// isAllowedPureCall reports whether call invokes one of the builtins a
-// pure expression may still call: len, cap, min, max.
-func isAllowedPureCall(pass *analysis.Pass, call *ast.CallExpr) bool {
-	ident, ok := call.Fun.(*ast.Ident)
-	if !ok {
-		return false
-	}
-	builtin, ok := pass.TypesInfo.Uses[ident].(*types.Builtin)
-	if !ok {
-		return false
-	}
-	switch builtin.Name() {
-	case "len", "cap", "min", "max":
-		return true
-	default:
-		return false
-	}
-}
-
 // classifyMessage picks the finding message that best names what loop's
-// body does that lets order escape, falling back to a generic message when
-// no specific shape is found.
-func classifyMessage(pass *analysis.Pass, loop *ast.RangeStmt) string {
+// body does that lets order escape.
+func classifyMessage(pass *analysis.Pass, loop *ast.RangeStmt, site *sortSite) string {
+	if site != nil && !site.bodyImpure {
+		return msgSortTies
+	}
+	if bodyAllowed(pass, loop, nil) {
+		return msgCarried
+	}
+	if site != nil && collectShape(pass, loop, nil) != nil {
+		return msgCarried
+	}
 	found := ""
 	ast.Inspect(loop.Body, func(node ast.Node) bool {
 		if found != "" {
@@ -550,7 +174,7 @@ func classifyMessage(pass *analysis.Pass, loop *ast.RangeStmt) string {
 				found = msgStringBuild
 			}
 		case *ast.CallExpr:
-			if isAppendCall(pass, signal) {
+			if isBuiltin(pass, signal.Fun, "append") {
 				found = msgAppend
 			} else if isPlainCall(pass, signal) {
 				found = msgCall
@@ -564,33 +188,15 @@ func classifyMessage(pass *analysis.Pass, loop *ast.RangeStmt) string {
 	return found
 }
 
-// isAppendCall reports whether call invokes the builtin append.
-func isAppendCall(pass *analysis.Pass, call *ast.CallExpr) bool {
-	ident, ok := call.Fun.(*ast.Ident)
-	if !ok {
-		return false
-	}
-	builtin, ok := pass.TypesInfo.Uses[ident].(*types.Builtin)
-	return ok && builtin.Name() == "append"
-}
-
 // isPlainCall reports whether call invokes anything other than the
 // allowlisted builtins len, cap, min, max, delete, and append.
 func isPlainCall(pass *analysis.Pass, call *ast.CallExpr) bool {
-	ident, ok := call.Fun.(*ast.Ident)
-	if !ok {
-		return true
+	for _, name := range []string{"len", "cap", "min", "max", "delete", "append"} {
+		if isBuiltin(pass, call.Fun, name) {
+			return false
+		}
 	}
-	builtin, ok := pass.TypesInfo.Uses[ident].(*types.Builtin)
-	if !ok {
-		return true
-	}
-	switch builtin.Name() {
-	case "len", "cap", "min", "max", "delete", "append":
-		return false
-	default:
-		return true
-	}
+	return true
 }
 
 // isStringType reports whether expr has string type.
@@ -601,4 +207,61 @@ func isStringType(pass *analysis.Pass, expr ast.Expr) bool {
 	}
 	basic, ok := exprType.Underlying().(*types.Basic)
 	return ok && basic.Info()&types.IsString != 0
+}
+
+// isBuiltin reports whether fun names the predeclared builtin name.
+func isBuiltin(pass *analysis.Pass, fun ast.Expr, name string) bool {
+	ident, ok := ast.Unparen(fun).(*ast.Ident)
+	if !ok {
+		return false
+	}
+	builtin, ok := pass.TypesInfo.Uses[ident].(*types.Builtin)
+	return ok && builtin.Name() == name
+}
+
+// isFunc reports whether fun names the package-level function qualified,
+// written "pkg.Name".
+func isFunc(pass *analysis.Pass, fun ast.Expr, qualified string) bool {
+	fn := calledFunc(pass, fun)
+	return fn != nil && fn.Pkg() != nil && fn.Pkg().Path()+"."+fn.Name() == qualified
+}
+
+// maxInstantiation bounds how many nested instantiations calledFunc unwraps.
+const maxInstantiation = 8
+
+func calledFunc(pass *analysis.Pass, fun ast.Expr) *types.Func {
+	for range maxInstantiation {
+		switch f := ast.Unparen(fun).(type) {
+		case *ast.IndexExpr: // explicit instantiation
+			fun = f.X
+		case *ast.IndexListExpr:
+			fun = f.X
+		case *ast.SelectorExpr:
+			fn, ok := pass.TypesInfo.Uses[f.Sel].(*types.Func)
+			if !ok {
+				return nil
+			}
+			return fn
+		case *ast.Ident:
+			fn, ok := pass.TypesInfo.Uses[f].(*types.Func)
+			if !ok {
+				return nil
+			}
+			return fn
+		default:
+			return nil
+		}
+	}
+	return nil
+}
+
+// orderedLeaf reports whether two values of t that compare equal are
+// indistinguishable: integers and strings. Floats are left out because -0
+// and +0 compare equal and print differently.
+func orderedLeaf(t types.Type) bool {
+	if t == nil {
+		return false
+	}
+	basic, ok := t.Underlying().(*types.Basic)
+	return ok && basic.Info()&(types.IsInteger|types.IsString) != 0
 }
