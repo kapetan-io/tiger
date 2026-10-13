@@ -309,8 +309,8 @@ where whichever key is visited last overwrites the other in the result. The
 others are a map write whose value calls a function (`labels[k] =
 fmt.Sprint(v)`), `golang.org/x/exp/maps.Keys`, `reflect.Value.MapKeys`, and a
 range over a type parameter constrained to a map. TS-T11 runs the test suite
-twice and diffs the output, which catches an order leak on any path the tests
-exercise.
+twice and diffs the output, which can catch an order leak on a path the tests
+exercise, though two runs sometimes visit entries in the same order.
 
 Deterministic simulation found the bugs that made TigerBeetle worth imitating.
 Their simulator, the

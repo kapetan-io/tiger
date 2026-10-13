@@ -432,3 +432,24 @@ func collectBigPartial(m map[int]Big) []Big {
 	})
 	return out
 }
+
+// Wrapper.Compare calls Part.Compare, which is declared after it. The verdict
+// must not depend on declaration order.
+type Wrapper struct {
+	Part  Part
+	Count int
+}
+
+func (w Wrapper) Compare(o Wrapper) int { // want Compare:"total"
+	return cmp.Or(w.Part.Compare(o.Part), cmp.Compare(w.Count, o.Count))
+}
+
+type Part struct{ ID int }
+
+func (p Part) Compare(o Part) int { // want Compare:"total"
+	return cmp.Compare(p.ID, o.ID)
+}
+
+func sortedWrapperKeys(m map[Wrapper]bool) []Wrapper {
+	return slices.SortedFunc(maps.Keys(m), Wrapper.Compare)
+}

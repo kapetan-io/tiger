@@ -1242,7 +1242,7 @@ count as covered. A key type's `Compare` method that passes the same check count
 names `slices.Sorted(maps.Keys(m))` followed by `slices.SortStableFunc`.
 
 A result of `maps.Keys`, `maps.Values`, or `maps.All` fires unless it goes to `slices.Sorted`, a
-full-coverage `SortedFunc`, `maps.Collect`, `maps.Insert`, or a range checked like a map range, so
+full-coverage `SortedFunc` or `SortedStableFunc`, `maps.Collect`, `maps.Insert`, or a range checked like a map range, so
 `slices.Collect(maps.Keys(m))` is a finding. A map write gated by a counter, such as copying the
 first three entries visited, fires too.
 
@@ -1252,7 +1252,8 @@ A finding means the loop's shape is outside the allowlist, not that the output v
 (`inverse[v] = k` when two keys share a value). A map write whose value calls a function
 (`labels[k] = fmt.Sprint(v)`). `golang.org/x/exp/maps.Keys`. `reflect.Value.MapKeys`. A range over
 a type parameter constrained to a map. TS-T11, which runs the tests twice and compares the output,
-backs these up on every path the tests exercise.
+can catch these on the paths the tests exercise, though two runs sometimes visit entries in the same
+order.
 
 <!-- rule: TS-T06 -->
 ### TS-T06 — test functions have a doc comment

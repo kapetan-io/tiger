@@ -1419,7 +1419,8 @@ finding means the loop's shape is outside the allowlist, not that the output var
 Five shapes pass despite depending on order: last writer wins (`inverse[v] = k` when two keys share
 a value), a map write whose value calls a function (`labels[k] = fmt.Sprint(v)`),
 `golang.org/x/exp/maps.Keys`, `reflect.Value.MapKeys`, and a range over a type parameter constrained
-to a map. `TS-T11` backs them up on every path the tests exercise. Pattern: sorted map output when
+to a map. `TS-T11` can catch them on the paths the tests exercise, though two runs sometimes visit entries
+in the same order. Pattern: sorted map output when
 the key has no order.
 *(Amended 2026-10-12: plain sorts, full coverage, the closed escape, and the carried-state check are
 decided and not built, ADR-0021.)*

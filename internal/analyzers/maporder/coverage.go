@@ -34,9 +34,40 @@ type totalFact struct{}
 func (*totalFact) AFact()         {}
 func (*totalFact) String() string { return "total" }
 
+// totalCandidate is a method that has the shape of a comparator over its
+// receiver type: func (k K) M(o K) int with a single return.
+type totalCandidate struct {
+	method *types.Func
+	result ast.Expr
+	ops    comparands
+	typ    types.Type
+}
+
 // exportTotalFacts records a totalFact on every method in the package whose
-// body passes totalOver, so other packages can sort by it.
+// body passes totalOver, so other packages can sort by it. A method can
+// compare through another method of the package, so it repeats until a pass
+// adds nothing, which makes the result independent of declaration order.
 func exportTotalFacts(pass *analysis.Pass) {
+	candidates := totalCandidates(pass)
+	for range len(candidates) {
+		added := false
+		for i, cand := range candidates {
+			if cand.method == nil || !totalOver(pass, cand.typ, cand.result, cand.ops) {
+				continue
+			}
+			pass.ExportObjectFact(cand.method, &totalFact{})
+			candidates[i].method = nil
+			added = true
+		}
+		if !added {
+			return
+		}
+	}
+}
+
+// totalCandidates lists the comparator-shaped methods declared in the package.
+func totalCandidates(pass *analysis.Pass) []totalCandidate {
+	var found []totalCandidate
 	for _, file := range pass.Files {
 		for _, decl := range file.Decls {
 			fd, ok := decl.(*ast.FuncDecl)
@@ -52,14 +83,15 @@ func exportTotalFacts(pass *analysis.Pass) {
 				continue
 			}
 			a, b := pass.TypesInfo.Defs[recv], pass.TypesInfo.Defs[param]
-			if a == nil || b == nil || !types.Identical(a.Type(), b.Type()) {
+			method, isFunc := pass.TypesInfo.Defs[fd.Name].(*types.Func)
+			if a == nil || b == nil || !isFunc || !types.Identical(a.Type(), b.Type()) {
 				continue
 			}
-			if totalOver(pass, a.Type(), ret.Results[0], comparands{a, b}) {
-				pass.ExportObjectFact(pass.TypesInfo.Defs[fd.Name], &totalFact{})
-			}
+			ops := comparands{a, b}
+			found = append(found, totalCandidate{method, ret.Results[0], ops, a.Type()})
 		}
 	}
+	return found
 }
 
 func soleName(fields *ast.FieldList) *ast.Ident {
