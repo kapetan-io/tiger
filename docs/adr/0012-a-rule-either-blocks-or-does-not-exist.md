@@ -6,6 +6,10 @@ Date: 2026-08-28
 
 Accepted
 
+Amended by [ADR-0024](0024-packages-declare-no-restrictions.md), which removes TS-P02, and by
+[ADR-0026](0026-tiger-changed-replaces-effect-and-frame-pins.md), which removes effect sets and
+frames as computed facts. The two-severity model stands.
+
 ## Context
 
 Tiger is a Go subset for AI-written mission-critical software. Its value is a binary verdict:

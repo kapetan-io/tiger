@@ -1,0 +1,12 @@
+=== RUN   TestSortedIDsNeverVaries
+--- PASS: TestSortedIDsNeverVaries (0.00s)
+=== RUN   TestUnsortedIDsVaries
+--- PASS: TestUnsortedIDsVaries (0.00s)
+=== RUN   TestFirstThreeVaries
+--- PASS: TestFirstThreeVaries (0.00s)
+=== RUN   TestRankByValueVaries
+--- PASS: TestRankByValueVaries (0.00s)
+=== RUN   TestSortedValuesVaries
+--- PASS: TestSortedValuesVaries (0.00s)
+PASS
+ok  	maporder	1.317s

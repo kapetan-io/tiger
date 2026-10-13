@@ -1,0 +1,582 @@
+=== RUN   TestVerdicts
+=== RUN   TestVerdicts/oid.Original
+=== RUN   TestVerdicts/oid.Bare
+=== RUN   TestVerdicts/oid.S2
+=== RUN   TestVerdicts/oid.S2Keep
+=== RUN   TestVerdicts/oid.S2Partial
+=== RUN   TestVerdicts/oid.S3
+=== RUN   TestVerdicts/oid.S4
+=== RUN   TestVerdicts/oid.S6Hex
+=== RUN   TestVerdicts/linecount.Original
+=== RUN   TestVerdicts/linecount.S1
+=== RUN   TestVerdicts/linecount.S1Unstable
+=== RUN   TestVerdicts/linecount.S3
+=== RUN   TestVerdicts/linecount.S4
+=== RUN   TestVerdicts/linecount.S6
+=== RUN   TestVerdicts/mount.Original
+=== RUN   TestVerdicts/mount.S1
+=== RUN   TestVerdicts/mount.S3
+=== RUN   TestVerdicts/mount.S4
+=== RUN   TestVerdicts/mount.S6
+=== RUN   TestVerdicts/images.Original
+=== RUN   TestVerdicts/images.S1
+=== RUN   TestVerdicts/images.S1Unstable
+=== RUN   TestVerdicts/images.S4
+=== RUN   TestVerdicts/commentmap.Original
+=== RUN   TestVerdicts/commentmap.S2
+=== RUN   TestVerdicts/commentmap.S2Type
+=== RUN   TestVerdicts/commentmap.S4
+=== RUN   TestVerdicts/commentmap.S5
+=== RUN   TestVerdicts/tsidp.Original
+=== RUN   TestVerdicts/tsidp.S1
+=== RUN   TestVerdicts/tsidp.S1Stable
+=== RUN   TestVerdicts/tsidp.S4
+=== RUN   TestVerdicts/tsidp.S6
+=== RUN   TestVerdicts/compose.Original
+=== RUN   TestVerdicts/compose.S1
+=== RUN   TestVerdicts/compose.S4
+=== RUN   TestVerdicts/compose.S6
+=== RUN   TestVerdicts/checker.Original
+=== RUN   TestVerdicts/checker.S2
+=== RUN   TestVerdicts/checker.S4
+=== RUN   TestVerdicts/checker.S5
+=== RUN   TestVerdicts/gitwants.Original
+=== RUN   TestVerdicts/gitwants.Sorted
+=== RUN   TestVerdicts/gitwants.S2
+=== RUN   TestVerdicts/gitwants.S3
+=== RUN   TestVerdicts/gitwants.S5
+=== RUN   TestVerdicts/gitwants.S6
+=== RUN   TestVerdicts/gaps.FirstThree
+=== RUN   TestVerdicts/gaps.RankByValue
+=== RUN   TestVerdicts/gaps.SortedValues
+=== RUN   TestVerdicts/gaps.SortedIDs
+=== RUN   TestVerdicts/gaps.UnsortedIDs
+=== RUN   TestVerdicts/boundary.PartialArray
+=== RUN   TestVerdicts/boundary.WholeArray
+=== RUN   TestVerdicts/boundary.OneField
+=== RUN   TestVerdicts/boundary.EveryField
+=== RUN   TestVerdicts/boundary.StringMethod
+=== RUN   TestVerdicts/boundary.PointerLeaf
+=== RUN   TestVerdicts/boundary.InterfaceLeaf
+=== RUN   TestVerdicts/boundary.FloatLeaf
+=== RUN   TestVerdicts/boundary.BoolLeaf
+=== RUN   TestVerdicts/boundary.TimeField
+=== RUN   TestVerdicts/boundary.AsymmetricTieBreak
+=== RUN   TestVerdicts/boundary.CallingTieBreak
+=== RUN   TestVerdicts/boundary.TotalItems
+=== RUN   TestVerdicts/boundary.VisitRank
+=== RUN   TestVerdicts/boundary.GroupByValue
+=== RUN   TestVerdicts/boundary.CollectEscape
+=== RUN   TestVerdicts/boundary.PromotedFields
+=== RUN   TestVerdicts/boundary.StoredComparator
+=== RUN   TestVerdicts/boundary.IndexComparator
+=== RUN   TestVerdicts/boundary.Invert
+=== RUN   TestVerdicts/unlisted/boundary.AsymmetricTieBreak
+=== RUN   TestVerdicts/unlisted/boundary.BoolLeaf
+=== RUN   TestVerdicts/unlisted/boundary.CallingTieBreak
+=== RUN   TestVerdicts/unlisted/boundary.CollectEscape
+=== RUN   TestVerdicts/unlisted/boundary.EveryField
+=== RUN   TestVerdicts/unlisted/boundary.FloatLeaf
+=== RUN   TestVerdicts/unlisted/boundary.GroupByValue
+=== RUN   TestVerdicts/unlisted/boundary.IndexComparator
+=== RUN   TestVerdicts/unlisted/boundary.InterfaceLeaf
+=== RUN   TestVerdicts/unlisted/boundary.Invert
+=== RUN   TestVerdicts/unlisted/boundary.OneField
+=== RUN   TestVerdicts/unlisted/boundary.PartialArray
+=== RUN   TestVerdicts/unlisted/boundary.PointerLeaf
+=== RUN   TestVerdicts/unlisted/boundary.PromotedFields
+=== RUN   TestVerdicts/unlisted/boundary.StoredComparator
+=== RUN   TestVerdicts/unlisted/boundary.StringMethod
+=== RUN   TestVerdicts/unlisted/boundary.TimeField
+=== RUN   TestVerdicts/unlisted/boundary.TotalItems
+=== RUN   TestVerdicts/unlisted/boundary.VisitRank
+=== RUN   TestVerdicts/unlisted/boundary.WholeArray
+=== RUN   TestVerdicts/unlisted/boundary.counts
+=== RUN   TestVerdicts/unlisted/boundary.flags
+=== RUN   TestVerdicts/unlisted/boundary.hashes
+=== RUN   TestVerdicts/unlisted/boundary.hosts
+=== RUN   TestVerdicts/unlisted/boundary.labelled
+=== RUN   TestVerdicts/unlisted/boundary.labels
+=== RUN   TestVerdicts/unlisted/boundary.members
+=== RUN   TestVerdicts/unlisted/boundary.scores
+=== RUN   TestVerdicts/unlisted/boundary.shapes
+=== RUN   TestVerdicts/unlisted/boundary.stamps
+=== RUN   TestVerdicts/unlisted/checker.Original
+=== RUN   TestVerdicts/unlisted/checker.S2
+=== RUN   TestVerdicts/unlisted/checker.S4
+=== RUN   TestVerdicts/unlisted/checker.S5
+=== RUN   TestVerdicts/unlisted/checker.fixture
+=== RUN   TestVerdicts/unlisted/checker.render
+=== RUN   TestVerdicts/unlisted/commentmap.Original
+=== RUN   TestVerdicts/unlisted/commentmap.S2
+=== RUN   TestVerdicts/unlisted/commentmap.S2Type
+=== RUN   TestVerdicts/unlisted/commentmap.S4
+=== RUN   TestVerdicts/unlisted/commentmap.S5
+=== RUN   TestVerdicts/unlisted/commentmap.fixture
+=== RUN   TestVerdicts/unlisted/commentmap.line
+=== RUN   TestVerdicts/unlisted/commentmap.render
+=== RUN   TestVerdicts/unlisted/compose.Original
+=== RUN   TestVerdicts/unlisted/compose.S1
+=== RUN   TestVerdicts/unlisted/compose.S4
+=== RUN   TestVerdicts/unlisted/compose.S6
+=== RUN   TestVerdicts/unlisted/compose.fixture
+=== RUN   TestVerdicts/unlisted/compose.render
+=== RUN   TestVerdicts/unlisted/gaps.FirstThree
+=== RUN   TestVerdicts/unlisted/gaps.RankByValue
+=== RUN   TestVerdicts/unlisted/gaps.SortedIDs
+=== RUN   TestVerdicts/unlisted/gaps.SortedValues
+=== RUN   TestVerdicts/unlisted/gaps.UnsortedIDs
+=== RUN   TestVerdicts/unlisted/gaps.ranks
+=== RUN   TestVerdicts/unlisted/gaps.users
+=== RUN   TestVerdicts/unlisted/gaps.zeros
+=== RUN   TestVerdicts/unlisted/gitwants.HashesSort
+=== RUN   TestVerdicts/unlisted/gitwants.Original
+=== RUN   TestVerdicts/unlisted/gitwants.S2
+=== RUN   TestVerdicts/unlisted/gitwants.S3
+=== RUN   TestVerdicts/unlisted/gitwants.S5
+=== RUN   TestVerdicts/unlisted/gitwants.S6
+=== RUN   TestVerdicts/unlisted/gitwants.Sorted
+=== RUN   TestVerdicts/unlisted/gitwants.fixture
+=== RUN   TestVerdicts/unlisted/gitwants.render
+=== RUN   TestVerdicts/unlisted/images.Original
+=== RUN   TestVerdicts/unlisted/images.S1
+=== RUN   TestVerdicts/unlisted/images.S1Unstable
+=== RUN   TestVerdicts/unlisted/images.S4
+=== RUN   TestVerdicts/unlisted/images.fixture
+=== RUN   TestVerdicts/unlisted/images.render
+=== RUN   TestVerdicts/unlisted/linecount.Original
+=== RUN   TestVerdicts/unlisted/linecount.S1
+=== RUN   TestVerdicts/unlisted/linecount.S1Unstable
+=== RUN   TestVerdicts/unlisted/linecount.S3
+=== RUN   TestVerdicts/unlisted/linecount.S4
+=== RUN   TestVerdicts/unlisted/linecount.S6
+=== RUN   TestVerdicts/unlisted/linecount.fixture
+=== RUN   TestVerdicts/unlisted/linecount.render
+=== RUN   TestVerdicts/unlisted/mount.Original
+=== RUN   TestVerdicts/unlisted/mount.S1
+=== RUN   TestVerdicts/unlisted/mount.S3
+=== RUN   TestVerdicts/unlisted/mount.S4
+=== RUN   TestVerdicts/unlisted/mount.S6
+=== RUN   TestVerdicts/unlisted/mount.fixture
+=== RUN   TestVerdicts/unlisted/mount.render
+=== RUN   TestVerdicts/unlisted/oid.Bare
+=== RUN   TestVerdicts/unlisted/oid.Original
+=== RUN   TestVerdicts/unlisted/oid.S2
+=== RUN   TestVerdicts/unlisted/oid.S2Keep
+=== RUN   TestVerdicts/unlisted/oid.S2Partial
+=== RUN   TestVerdicts/unlisted/oid.S3
+=== RUN   TestVerdicts/unlisted/oid.S4
+=== RUN   TestVerdicts/unlisted/oid.S6Hex
+=== RUN   TestVerdicts/unlisted/oid.fixture
+=== RUN   TestVerdicts/unlisted/oid.parseTime
+=== RUN   TestVerdicts/unlisted/oid.render
+=== RUN   TestVerdicts/unlisted/tsidp.Original
+=== RUN   TestVerdicts/unlisted/tsidp.S1
+=== RUN   TestVerdicts/unlisted/tsidp.S1Stable
+=== RUN   TestVerdicts/unlisted/tsidp.S4
+=== RUN   TestVerdicts/unlisted/tsidp.S6
+=== RUN   TestVerdicts/unlisted/tsidp.fixture
+=== RUN   TestVerdicts/unlisted/tsidp.render
+--- PASS: TestVerdicts (1.52s)
+    --- PASS: TestVerdicts/oid.Original (0.00s)
+    --- PASS: TestVerdicts/oid.Bare (0.00s)
+    --- PASS: TestVerdicts/oid.S2 (0.00s)
+    --- PASS: TestVerdicts/oid.S2Keep (0.00s)
+    --- PASS: TestVerdicts/oid.S2Partial (0.00s)
+    --- PASS: TestVerdicts/oid.S3 (0.00s)
+    --- PASS: TestVerdicts/oid.S4 (0.00s)
+    --- PASS: TestVerdicts/oid.S6Hex (0.00s)
+    --- PASS: TestVerdicts/linecount.Original (0.00s)
+    --- PASS: TestVerdicts/linecount.S1 (0.00s)
+    --- PASS: TestVerdicts/linecount.S1Unstable (0.00s)
+    --- PASS: TestVerdicts/linecount.S3 (0.00s)
+    --- PASS: TestVerdicts/linecount.S4 (0.00s)
+    --- PASS: TestVerdicts/linecount.S6 (0.00s)
+    --- PASS: TestVerdicts/mount.Original (0.00s)
+    --- PASS: TestVerdicts/mount.S1 (0.00s)
+    --- PASS: TestVerdicts/mount.S3 (0.00s)
+    --- PASS: TestVerdicts/mount.S4 (0.00s)
+    --- PASS: TestVerdicts/mount.S6 (0.00s)
+    --- PASS: TestVerdicts/images.Original (0.00s)
+    --- PASS: TestVerdicts/images.S1 (0.00s)
+    --- PASS: TestVerdicts/images.S1Unstable (0.00s)
+    --- PASS: TestVerdicts/images.S4 (0.00s)
+    --- PASS: TestVerdicts/commentmap.Original (0.00s)
+    --- PASS: TestVerdicts/commentmap.S2 (0.00s)
+    --- PASS: TestVerdicts/commentmap.S2Type (0.00s)
+    --- PASS: TestVerdicts/commentmap.S4 (0.00s)
+    --- PASS: TestVerdicts/commentmap.S5 (0.00s)
+    --- PASS: TestVerdicts/tsidp.Original (0.00s)
+    --- PASS: TestVerdicts/tsidp.S1 (0.00s)
+    --- PASS: TestVerdicts/tsidp.S1Stable (0.00s)
+    --- PASS: TestVerdicts/tsidp.S4 (0.00s)
+    --- PASS: TestVerdicts/tsidp.S6 (0.00s)
+    --- PASS: TestVerdicts/compose.Original (0.00s)
+    --- PASS: TestVerdicts/compose.S1 (0.00s)
+    --- PASS: TestVerdicts/compose.S4 (0.00s)
+    --- PASS: TestVerdicts/compose.S6 (0.00s)
+    --- PASS: TestVerdicts/checker.Original (0.00s)
+    --- PASS: TestVerdicts/checker.S2 (0.00s)
+    --- PASS: TestVerdicts/checker.S4 (0.00s)
+    --- PASS: TestVerdicts/checker.S5 (0.00s)
+    --- PASS: TestVerdicts/gitwants.Original (0.00s)
+    --- PASS: TestVerdicts/gitwants.Sorted (0.00s)
+    --- PASS: TestVerdicts/gitwants.S2 (0.00s)
+    --- PASS: TestVerdicts/gitwants.S3 (0.00s)
+    --- PASS: TestVerdicts/gitwants.S5 (0.00s)
+    --- PASS: TestVerdicts/gitwants.S6 (0.00s)
+    --- PASS: TestVerdicts/gaps.FirstThree (0.00s)
+    --- PASS: TestVerdicts/gaps.RankByValue (0.00s)
+    --- PASS: TestVerdicts/gaps.SortedValues (0.00s)
+    --- PASS: TestVerdicts/gaps.SortedIDs (0.00s)
+    --- PASS: TestVerdicts/gaps.UnsortedIDs (0.00s)
+    --- PASS: TestVerdicts/boundary.PartialArray (0.00s)
+    --- PASS: TestVerdicts/boundary.WholeArray (0.00s)
+    --- PASS: TestVerdicts/boundary.OneField (0.00s)
+    --- PASS: TestVerdicts/boundary.EveryField (0.00s)
+    --- PASS: TestVerdicts/boundary.StringMethod (0.00s)
+    --- PASS: TestVerdicts/boundary.PointerLeaf (0.00s)
+    --- PASS: TestVerdicts/boundary.InterfaceLeaf (0.00s)
+    --- PASS: TestVerdicts/boundary.FloatLeaf (0.00s)
+    --- PASS: TestVerdicts/boundary.BoolLeaf (0.00s)
+    --- PASS: TestVerdicts/boundary.TimeField (0.00s)
+    --- PASS: TestVerdicts/boundary.AsymmetricTieBreak (0.00s)
+    --- PASS: TestVerdicts/boundary.CallingTieBreak (0.00s)
+    --- PASS: TestVerdicts/boundary.TotalItems (0.00s)
+    --- PASS: TestVerdicts/boundary.VisitRank (0.00s)
+    --- PASS: TestVerdicts/boundary.GroupByValue (0.00s)
+    --- PASS: TestVerdicts/boundary.CollectEscape (0.00s)
+    --- PASS: TestVerdicts/boundary.PromotedFields (0.00s)
+    --- PASS: TestVerdicts/boundary.StoredComparator (0.00s)
+    --- PASS: TestVerdicts/boundary.IndexComparator (0.00s)
+    --- PASS: TestVerdicts/boundary.Invert (0.00s)
+    --- PASS: TestVerdicts/unlisted/boundary.AsymmetricTieBreak (0.00s)
+    --- PASS: TestVerdicts/unlisted/boundary.BoolLeaf (0.00s)
+    --- PASS: TestVerdicts/unlisted/boundary.CallingTieBreak (0.00s)
+    --- PASS: TestVerdicts/unlisted/boundary.CollectEscape (0.00s)
+    --- PASS: TestVerdicts/unlisted/boundary.EveryField (0.00s)
+    --- PASS: TestVerdicts/unlisted/boundary.FloatLeaf (0.00s)
+    --- PASS: TestVerdicts/unlisted/boundary.GroupByValue (0.00s)
+    --- PASS: TestVerdicts/unlisted/boundary.IndexComparator (0.00s)
+    --- PASS: TestVerdicts/unlisted/boundary.InterfaceLeaf (0.00s)
+    --- PASS: TestVerdicts/unlisted/boundary.Invert (0.00s)
+    --- PASS: TestVerdicts/unlisted/boundary.OneField (0.00s)
+    --- PASS: TestVerdicts/unlisted/boundary.PartialArray (0.00s)
+    --- PASS: TestVerdicts/unlisted/boundary.PointerLeaf (0.00s)
+    --- PASS: TestVerdicts/unlisted/boundary.PromotedFields (0.00s)
+    --- PASS: TestVerdicts/unlisted/boundary.StoredComparator (0.00s)
+    --- PASS: TestVerdicts/unlisted/boundary.StringMethod (0.00s)
+    --- PASS: TestVerdicts/unlisted/boundary.TimeField (0.00s)
+    --- PASS: TestVerdicts/unlisted/boundary.TotalItems (0.00s)
+    --- PASS: TestVerdicts/unlisted/boundary.VisitRank (0.00s)
+    --- PASS: TestVerdicts/unlisted/boundary.WholeArray (0.00s)
+    --- PASS: TestVerdicts/unlisted/boundary.counts (0.00s)
+    --- PASS: TestVerdicts/unlisted/boundary.flags (0.00s)
+    --- PASS: TestVerdicts/unlisted/boundary.hashes (0.00s)
+    --- PASS: TestVerdicts/unlisted/boundary.hosts (0.00s)
+    --- PASS: TestVerdicts/unlisted/boundary.labelled (0.00s)
+    --- PASS: TestVerdicts/unlisted/boundary.labels (0.00s)
+    --- PASS: TestVerdicts/unlisted/boundary.members (0.00s)
+    --- PASS: TestVerdicts/unlisted/boundary.scores (0.00s)
+    --- PASS: TestVerdicts/unlisted/boundary.shapes (0.00s)
+    --- PASS: TestVerdicts/unlisted/boundary.stamps (0.00s)
+    --- PASS: TestVerdicts/unlisted/checker.Original (0.00s)
+    --- PASS: TestVerdicts/unlisted/checker.S2 (0.00s)
+    --- PASS: TestVerdicts/unlisted/checker.S4 (0.00s)
+    --- PASS: TestVerdicts/unlisted/checker.S5 (0.00s)
+    --- PASS: TestVerdicts/unlisted/checker.fixture (0.00s)
+    --- PASS: TestVerdicts/unlisted/checker.render (0.00s)
+    --- PASS: TestVerdicts/unlisted/commentmap.Original (0.00s)
+    --- PASS: TestVerdicts/unlisted/commentmap.S2 (0.00s)
+    --- PASS: TestVerdicts/unlisted/commentmap.S2Type (0.00s)
+    --- PASS: TestVerdicts/unlisted/commentmap.S4 (0.00s)
+    --- PASS: TestVerdicts/unlisted/commentmap.S5 (0.00s)
+    --- PASS: TestVerdicts/unlisted/commentmap.fixture (0.00s)
+    --- PASS: TestVerdicts/unlisted/commentmap.line (0.00s)
+    --- PASS: TestVerdicts/unlisted/commentmap.render (0.00s)
+    --- PASS: TestVerdicts/unlisted/compose.Original (0.00s)
+    --- PASS: TestVerdicts/unlisted/compose.S1 (0.00s)
+    --- PASS: TestVerdicts/unlisted/compose.S4 (0.00s)
+    --- PASS: TestVerdicts/unlisted/compose.S6 (0.00s)
+    --- PASS: TestVerdicts/unlisted/compose.fixture (0.00s)
+    --- PASS: TestVerdicts/unlisted/compose.render (0.00s)
+    --- PASS: TestVerdicts/unlisted/gaps.FirstThree (0.00s)
+    --- PASS: TestVerdicts/unlisted/gaps.RankByValue (0.00s)
+    --- PASS: TestVerdicts/unlisted/gaps.SortedIDs (0.00s)
+    --- PASS: TestVerdicts/unlisted/gaps.SortedValues (0.00s)
+    --- PASS: TestVerdicts/unlisted/gaps.UnsortedIDs (0.00s)
+    --- PASS: TestVerdicts/unlisted/gaps.ranks (0.00s)
+    --- PASS: TestVerdicts/unlisted/gaps.users (0.00s)
+    --- PASS: TestVerdicts/unlisted/gaps.zeros (0.00s)
+    --- PASS: TestVerdicts/unlisted/gitwants.HashesSort (0.00s)
+    --- PASS: TestVerdicts/unlisted/gitwants.Original (0.00s)
+    --- PASS: TestVerdicts/unlisted/gitwants.S2 (0.00s)
+    --- PASS: TestVerdicts/unlisted/gitwants.S3 (0.00s)
+    --- PASS: TestVerdicts/unlisted/gitwants.S5 (0.00s)
+    --- PASS: TestVerdicts/unlisted/gitwants.S6 (0.00s)
+    --- PASS: TestVerdicts/unlisted/gitwants.Sorted (0.00s)
+    --- PASS: TestVerdicts/unlisted/gitwants.fixture (0.00s)
+    --- PASS: TestVerdicts/unlisted/gitwants.render (0.00s)
+    --- PASS: TestVerdicts/unlisted/images.Original (0.00s)
+    --- PASS: TestVerdicts/unlisted/images.S1 (0.00s)
+    --- PASS: TestVerdicts/unlisted/images.S1Unstable (0.00s)
+    --- PASS: TestVerdicts/unlisted/images.S4 (0.00s)
+    --- PASS: TestVerdicts/unlisted/images.fixture (0.00s)
+    --- PASS: TestVerdicts/unlisted/images.render (0.00s)
+    --- PASS: TestVerdicts/unlisted/linecount.Original (0.00s)
+    --- PASS: TestVerdicts/unlisted/linecount.S1 (0.00s)
+    --- PASS: TestVerdicts/unlisted/linecount.S1Unstable (0.00s)
+    --- PASS: TestVerdicts/unlisted/linecount.S3 (0.00s)
+    --- PASS: TestVerdicts/unlisted/linecount.S4 (0.00s)
+    --- PASS: TestVerdicts/unlisted/linecount.S6 (0.00s)
+    --- PASS: TestVerdicts/unlisted/linecount.fixture (0.00s)
+    --- PASS: TestVerdicts/unlisted/linecount.render (0.00s)
+    --- PASS: TestVerdicts/unlisted/mount.Original (0.00s)
+    --- PASS: TestVerdicts/unlisted/mount.S1 (0.00s)
+    --- PASS: TestVerdicts/unlisted/mount.S3 (0.00s)
+    --- PASS: TestVerdicts/unlisted/mount.S4 (0.00s)
+    --- PASS: TestVerdicts/unlisted/mount.S6 (0.00s)
+    --- PASS: TestVerdicts/unlisted/mount.fixture (0.00s)
+    --- PASS: TestVerdicts/unlisted/mount.render (0.00s)
+    --- PASS: TestVerdicts/unlisted/oid.Bare (0.00s)
+    --- PASS: TestVerdicts/unlisted/oid.Original (0.00s)
+    --- PASS: TestVerdicts/unlisted/oid.S2 (0.00s)
+    --- PASS: TestVerdicts/unlisted/oid.S2Keep (0.00s)
+    --- PASS: TestVerdicts/unlisted/oid.S2Partial (0.00s)
+    --- PASS: TestVerdicts/unlisted/oid.S3 (0.00s)
+    --- PASS: TestVerdicts/unlisted/oid.S4 (0.00s)
+    --- PASS: TestVerdicts/unlisted/oid.S6Hex (0.00s)
+    --- PASS: TestVerdicts/unlisted/oid.fixture (0.00s)
+    --- PASS: TestVerdicts/unlisted/oid.parseTime (0.00s)
+    --- PASS: TestVerdicts/unlisted/oid.render (0.00s)
+    --- PASS: TestVerdicts/unlisted/tsidp.Original (0.00s)
+    --- PASS: TestVerdicts/unlisted/tsidp.S1 (0.00s)
+    --- PASS: TestVerdicts/unlisted/tsidp.S1Stable (0.00s)
+    --- PASS: TestVerdicts/unlisted/tsidp.S4 (0.00s)
+    --- PASS: TestVerdicts/unlisted/tsidp.S6 (0.00s)
+    --- PASS: TestVerdicts/unlisted/tsidp.fixture (0.00s)
+    --- PASS: TestVerdicts/unlisted/tsidp.render (0.00s)
+=== RUN   TestDeterminism
+=== RUN   TestDeterminism/oid.Original
+=== RUN   TestDeterminism/oid.Bare
+=== RUN   TestDeterminism/oid.S2
+=== RUN   TestDeterminism/oid.S2Keep
+=== RUN   TestDeterminism/oid.S2Partial
+=== RUN   TestDeterminism/oid.S3
+=== RUN   TestDeterminism/oid.S4
+=== RUN   TestDeterminism/oid.S6Hex
+=== RUN   TestDeterminism/linecount.Original
+=== RUN   TestDeterminism/linecount.S1
+=== RUN   TestDeterminism/linecount.S1Unstable
+=== RUN   TestDeterminism/linecount.S3
+=== RUN   TestDeterminism/linecount.S4
+=== RUN   TestDeterminism/linecount.S6
+=== RUN   TestDeterminism/mount.Original
+=== RUN   TestDeterminism/mount.S1
+=== RUN   TestDeterminism/mount.S3
+=== RUN   TestDeterminism/mount.S4
+=== RUN   TestDeterminism/mount.S6
+=== RUN   TestDeterminism/images.Original
+=== RUN   TestDeterminism/images.S1
+=== RUN   TestDeterminism/images.S1Unstable
+=== RUN   TestDeterminism/images.S4
+=== RUN   TestDeterminism/commentmap.Original
+=== RUN   TestDeterminism/commentmap.S2
+=== RUN   TestDeterminism/commentmap.S2Type
+=== RUN   TestDeterminism/commentmap.S4
+=== RUN   TestDeterminism/commentmap.S5
+=== RUN   TestDeterminism/tsidp.Original
+=== RUN   TestDeterminism/tsidp.S1
+=== RUN   TestDeterminism/tsidp.S1Stable
+=== RUN   TestDeterminism/tsidp.S4
+=== RUN   TestDeterminism/tsidp.S6
+=== RUN   TestDeterminism/compose.Original
+=== RUN   TestDeterminism/compose.S1
+=== RUN   TestDeterminism/compose.S4
+=== RUN   TestDeterminism/compose.S6
+=== RUN   TestDeterminism/checker.Original
+=== RUN   TestDeterminism/checker.S2
+=== RUN   TestDeterminism/checker.S4
+=== RUN   TestDeterminism/checker.S5
+=== RUN   TestDeterminism/gitwants.Original
+=== RUN   TestDeterminism/gitwants.Sorted
+=== RUN   TestDeterminism/gitwants.S2
+=== RUN   TestDeterminism/gitwants.S3
+=== RUN   TestDeterminism/gitwants.S5
+=== RUN   TestDeterminism/gitwants.S6
+=== RUN   TestDeterminism/gaps.FirstThree
+=== RUN   TestDeterminism/gaps.RankByValue
+=== RUN   TestDeterminism/gaps.SortedValues
+=== RUN   TestDeterminism/gaps.SortedIDs
+=== RUN   TestDeterminism/gaps.UnsortedIDs
+=== RUN   TestDeterminism/boundary.PartialArray
+=== RUN   TestDeterminism/boundary.WholeArray
+=== RUN   TestDeterminism/boundary.OneField
+=== RUN   TestDeterminism/boundary.EveryField
+=== RUN   TestDeterminism/boundary.StringMethod
+=== RUN   TestDeterminism/boundary.PointerLeaf
+=== RUN   TestDeterminism/boundary.InterfaceLeaf
+=== RUN   TestDeterminism/boundary.FloatLeaf
+=== RUN   TestDeterminism/boundary.BoolLeaf
+=== RUN   TestDeterminism/boundary.TimeField
+=== RUN   TestDeterminism/boundary.AsymmetricTieBreak
+=== RUN   TestDeterminism/boundary.CallingTieBreak
+=== RUN   TestDeterminism/boundary.TotalItems
+=== RUN   TestDeterminism/boundary.VisitRank
+=== RUN   TestDeterminism/boundary.GroupByValue
+=== RUN   TestDeterminism/boundary.CollectEscape
+=== RUN   TestDeterminism/boundary.PromotedFields
+=== RUN   TestDeterminism/boundary.StoredComparator
+=== RUN   TestDeterminism/boundary.IndexComparator
+=== RUN   TestDeterminism/boundary.Invert
+--- PASS: TestDeterminism (0.55s)
+    --- PASS: TestDeterminism/oid.Original (0.01s)
+    --- PASS: TestDeterminism/oid.Bare (0.01s)
+    --- PASS: TestDeterminism/oid.S2 (0.02s)
+    --- PASS: TestDeterminism/oid.S2Keep (0.01s)
+    --- PASS: TestDeterminism/oid.S2Partial (0.01s)
+    --- PASS: TestDeterminism/oid.S3 (0.01s)
+    --- PASS: TestDeterminism/oid.S4 (0.01s)
+    --- PASS: TestDeterminism/oid.S6Hex (0.04s)
+    --- PASS: TestDeterminism/linecount.Original (0.01s)
+    --- PASS: TestDeterminism/linecount.S1 (0.00s)
+    --- PASS: TestDeterminism/linecount.S1Unstable (0.00s)
+    --- PASS: TestDeterminism/linecount.S3 (0.00s)
+    --- PASS: TestDeterminism/linecount.S4 (0.00s)
+    --- PASS: TestDeterminism/linecount.S6 (0.01s)
+    --- PASS: TestDeterminism/mount.Original (0.00s)
+    --- PASS: TestDeterminism/mount.S1 (0.00s)
+    --- PASS: TestDeterminism/mount.S3 (0.00s)
+    --- PASS: TestDeterminism/mount.S4 (0.00s)
+    --- PASS: TestDeterminism/mount.S6 (0.00s)
+    --- PASS: TestDeterminism/images.Original (0.01s)
+    --- PASS: TestDeterminism/images.S1 (0.01s)
+    --- PASS: TestDeterminism/images.S1Unstable (0.01s)
+    --- PASS: TestDeterminism/images.S4 (0.01s)
+    --- PASS: TestDeterminism/commentmap.Original (0.02s)
+    --- PASS: TestDeterminism/commentmap.S2 (0.02s)
+    --- PASS: TestDeterminism/commentmap.S2Type (0.02s)
+    --- PASS: TestDeterminism/commentmap.S4 (0.02s)
+    --- PASS: TestDeterminism/commentmap.S5 (0.02s)
+    --- PASS: TestDeterminism/tsidp.Original (0.01s)
+    --- PASS: TestDeterminism/tsidp.S1 (0.01s)
+    --- PASS: TestDeterminism/tsidp.S1Stable (0.01s)
+    --- PASS: TestDeterminism/tsidp.S4 (0.01s)
+    --- PASS: TestDeterminism/tsidp.S6 (0.01s)
+    --- PASS: TestDeterminism/compose.Original (0.00s)
+    --- PASS: TestDeterminism/compose.S1 (0.00s)
+    --- PASS: TestDeterminism/compose.S4 (0.00s)
+    --- PASS: TestDeterminism/compose.S6 (0.00s)
+    --- PASS: TestDeterminism/checker.Original (0.01s)
+    --- PASS: TestDeterminism/checker.S2 (0.01s)
+    --- PASS: TestDeterminism/checker.S4 (0.01s)
+    --- PASS: TestDeterminism/checker.S5 (0.01s)
+    --- PASS: TestDeterminism/gitwants.Original (0.00s)
+    --- PASS: TestDeterminism/gitwants.Sorted (0.00s)
+    --- PASS: TestDeterminism/gitwants.S2 (0.00s)
+    --- PASS: TestDeterminism/gitwants.S3 (0.00s)
+    --- PASS: TestDeterminism/gitwants.S5 (0.00s)
+    --- PASS: TestDeterminism/gitwants.S6 (0.00s)
+    --- PASS: TestDeterminism/gaps.FirstThree (0.00s)
+    --- PASS: TestDeterminism/gaps.RankByValue (0.00s)
+    --- PASS: TestDeterminism/gaps.SortedValues (0.00s)
+    --- PASS: TestDeterminism/gaps.SortedIDs (0.00s)
+    --- PASS: TestDeterminism/gaps.UnsortedIDs (0.00s)
+    --- PASS: TestDeterminism/boundary.PartialArray (0.01s)
+    --- PASS: TestDeterminism/boundary.WholeArray (0.01s)
+    --- PASS: TestDeterminism/boundary.OneField (0.01s)
+    --- PASS: TestDeterminism/boundary.EveryField (0.01s)
+    --- PASS: TestDeterminism/boundary.StringMethod (0.02s)
+    --- PASS: TestDeterminism/boundary.PointerLeaf (0.00s)
+    --- PASS: TestDeterminism/boundary.InterfaceLeaf (0.00s)
+    --- PASS: TestDeterminism/boundary.FloatLeaf (0.01s)
+    --- PASS: TestDeterminism/boundary.BoolLeaf (0.01s)
+    --- PASS: TestDeterminism/boundary.TimeField (0.01s)
+    --- PASS: TestDeterminism/boundary.AsymmetricTieBreak (0.00s)
+    --- PASS: TestDeterminism/boundary.CallingTieBreak (0.00s)
+    --- PASS: TestDeterminism/boundary.TotalItems (0.00s)
+    --- PASS: TestDeterminism/boundary.VisitRank (0.00s)
+    --- PASS: TestDeterminism/boundary.GroupByValue (0.00s)
+    --- PASS: TestDeterminism/boundary.CollectEscape (0.00s)
+    --- PASS: TestDeterminism/boundary.PromotedFields (0.01s)
+    --- PASS: TestDeterminism/boundary.StoredComparator (0.01s)
+    --- PASS: TestDeterminism/boundary.IndexComparator (0.00s)
+    --- PASS: TestDeterminism/boundary.Invert (0.00s)
+=== RUN   TestSoundness
+=== RUN   TestSoundness/boundary.EveryField
+=== RUN   TestSoundness/boundary.Invert
+=== RUN   TestSoundness/boundary.PromotedFields
+=== RUN   TestSoundness/boundary.TotalItems
+=== RUN   TestSoundness/boundary.WholeArray
+=== RUN   TestSoundness/checker.S5
+=== RUN   TestSoundness/commentmap.S5
+=== RUN   TestSoundness/compose.S1
+=== RUN   TestSoundness/compose.S4
+=== RUN   TestSoundness/compose.S6
+=== RUN   TestSoundness/gaps.SortedIDs
+=== RUN   TestSoundness/gitwants.S2
+=== RUN   TestSoundness/gitwants.S3
+=== RUN   TestSoundness/gitwants.S5
+=== RUN   TestSoundness/images.S1
+=== RUN   TestSoundness/images.S1Unstable
+=== RUN   TestSoundness/linecount.S1
+=== RUN   TestSoundness/linecount.S1Unstable
+=== RUN   TestSoundness/linecount.S3
+=== RUN   TestSoundness/linecount.S4
+=== RUN   TestSoundness/linecount.S6
+=== RUN   TestSoundness/mount.S1
+=== RUN   TestSoundness/mount.S3
+=== RUN   TestSoundness/mount.S4
+=== RUN   TestSoundness/mount.S6
+=== RUN   TestSoundness/oid.S2Keep
+=== RUN   TestSoundness/tsidp.S1
+=== RUN   TestSoundness/tsidp.S1Stable
+--- PASS: TestSoundness (1.63s)
+    --- PASS: TestSoundness/boundary.EveryField (0.01s)
+    --- PASS: TestSoundness/boundary.Invert (0.00s)
+    --- PASS: TestSoundness/boundary.PromotedFields (0.01s)
+    --- PASS: TestSoundness/boundary.TotalItems (0.00s)
+    --- PASS: TestSoundness/boundary.WholeArray (0.01s)
+    --- PASS: TestSoundness/checker.S5 (0.01s)
+    --- PASS: TestSoundness/commentmap.S5 (0.02s)
+    --- PASS: TestSoundness/compose.S1 (0.00s)
+    --- PASS: TestSoundness/compose.S4 (0.00s)
+    --- PASS: TestSoundness/compose.S6 (0.00s)
+    --- PASS: TestSoundness/gaps.SortedIDs (0.00s)
+    --- PASS: TestSoundness/gitwants.S2 (0.00s)
+    --- PASS: TestSoundness/gitwants.S3 (0.00s)
+    --- PASS: TestSoundness/gitwants.S5 (0.00s)
+    --- PASS: TestSoundness/images.S1 (0.01s)
+    --- PASS: TestSoundness/images.S1Unstable (0.01s)
+    --- PASS: TestSoundness/linecount.S1 (0.00s)
+    --- PASS: TestSoundness/linecount.S1Unstable (0.00s)
+    --- PASS: TestSoundness/linecount.S3 (0.00s)
+    --- PASS: TestSoundness/linecount.S4 (0.00s)
+    --- PASS: TestSoundness/linecount.S6 (0.00s)
+    --- PASS: TestSoundness/mount.S1 (0.00s)
+    --- PASS: TestSoundness/mount.S3 (0.00s)
+    --- PASS: TestSoundness/mount.S4 (0.00s)
+    --- PASS: TestSoundness/mount.S6 (0.00s)
+    --- PASS: TestSoundness/oid.S2Keep (0.01s)
+    --- PASS: TestSoundness/tsidp.S1 (0.01s)
+    --- PASS: TestSoundness/tsidp.S1Stable (0.04s)
+PASS
+ok  	fullcoverage/cases	5.104s
+?   	fullcoverage/cases/boundary	[no test files]
+?   	fullcoverage/cases/checker	[no test files]
+?   	fullcoverage/cases/commentmap	[no test files]
+?   	fullcoverage/cases/compose	[no test files]
+?   	fullcoverage/cases/gaps	[no test files]
+?   	fullcoverage/cases/gitwants	[no test files]
+?   	fullcoverage/cases/images	[no test files]
+?   	fullcoverage/cases/linecount	[no test files]
+?   	fullcoverage/cases/mount	[no test files]
+?   	fullcoverage/cases/oid	[no test files]
+?   	fullcoverage/cases/tsidp	[no test files]
+?   	fullcoverage/cases/variant	[no test files]
+?   	fullcoverage/cmd/fullcoverage	[no test files]
+?   	fullcoverage/cmd/scan	[no test files]
+=== RUN   TestCorpus
+--- PASS: TestCorpus (1.52s)
+PASS
+ok  	fullcoverage/fullcoverage	3.139s

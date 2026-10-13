@@ -6,6 +6,9 @@ Date: 2026-08-28
 
 Accepted
 
+Amended by [ADR-0016](0016-remove-the-single-implementation-interface-rule.md), which removes
+TS-X01. The finish step stands for TS-A07 and TS-A09.
+
 ## Context
 
 Tiger's custom rules are `golang.org/x/tools/go/analysis` passes, one package at a time, and

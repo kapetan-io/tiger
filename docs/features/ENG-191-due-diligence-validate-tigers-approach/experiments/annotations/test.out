@@ -1,0 +1,14 @@
+=== RUN   TestDrainEnds
+--- PASS: TestDrainEnds (0.00s)
+=== RUN   TestDrainRefillCanRunForever
+--- PASS: TestDrainRefillCanRunForever (0.30s)
+=== RUN   TestDrainSkipCanRunForever
+--- PASS: TestDrainSkipCanRunForever (0.30s)
+=== RUN   TestListEndsWhenRowsEnd
+--- PASS: TestListEndsWhenRowsEnd (0.00s)
+=== RUN   TestCountEndlessRunsForever
+--- PASS: TestCountEndlessRunsForever (0.30s)
+=== RUN   TestListRestatedEndsOnEndlessRows
+--- PASS: TestListRestatedEndsOnEndlessRows (0.00s)
+PASS
+ok  	annotations	1.200s

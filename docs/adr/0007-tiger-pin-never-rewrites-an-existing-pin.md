@@ -6,6 +6,9 @@ Date: 2026-08-26
 
 Accepted
 
+Amended by [ADR-0026](0026-tiger-changed-replaces-effect-and-frame-pins.md): effect and frame pins
+are removed, so this decision now covers variant pins only.
+
 ## Context
 
 A pin freezes an analyzer-computed fact — an effect set, a frame, a variant — into a blocking

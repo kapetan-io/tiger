@@ -1,0 +1,12 @@
+=== RUN   TestPluginReportsBoth
+--- PASS: TestPluginReportsBoth (0.26s)
+=== RUN   TestNewFromRevHidesOldFinding
+--- PASS: TestNewFromRevHidesOldFinding (0.25s)
+=== RUN   TestNewFromRevPassesEverything
+--- PASS: TestNewFromRevPassesEverything (0.25s)
+=== RUN   TestNewFromRevThroughSymlinkHidesEverything
+--- PASS: TestNewFromRevThroughSymlinkHidesEverything (0.25s)
+=== RUN   TestTigerCheckReportsBoth
+--- PASS: TestTigerCheckReportsBoth (0.11s)
+PASS
+ok  	newfromrev	2.546s

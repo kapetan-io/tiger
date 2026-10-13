@@ -1,0 +1,4 @@
+newfromrev_test.go:39:35: TS-N07: adjacent parameters share type string, so a caller can swap them and nothing complains — use an options struct, or give each a distinct named type
+newfromrev_test.go:53:29: TS-N07: adjacent parameters share type string, so a caller can swap them and nothing complains — use an options struct, or give each a distinct named type
+newfromrev_test.go:53:69: TS-E06: this function's second result is int, but a second result must be error or bool — return (T, error) or (T, bool)
+tiger: 3 blocking

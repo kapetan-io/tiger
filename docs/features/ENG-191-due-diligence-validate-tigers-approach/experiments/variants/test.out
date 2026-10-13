@@ -1,0 +1,18 @@
+=== RUN   TestCountdownEnds
+--- PASS: TestCountdownEnds (0.00s)
+=== RUN   TestEveryOtherEnds
+--- PASS: TestEveryOtherEnds (0.00s)
+=== RUN   TestReverseEnds
+--- PASS: TestReverseEnds (0.00s)
+=== RUN   TestPopAllEnds
+--- PASS: TestPopAllEnds (0.00s)
+=== RUN   TestDrainQueueEnds
+--- PASS: TestDrainQueueEnds (0.00s)
+=== RUN   TestWrongWayRunsForever
+--- PASS: TestWrongWayRunsForever (0.30s)
+=== RUN   TestVarintEnds
+--- PASS: TestVarintEnds (0.00s)
+=== RUN   TestChunksEnds
+--- PASS: TestChunksEnds (0.00s)
+PASS
+ok  	variants	0.626s

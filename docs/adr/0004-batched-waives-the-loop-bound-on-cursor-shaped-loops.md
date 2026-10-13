@@ -6,6 +6,9 @@ Date: 2026-08-17
 
 Accepted
 
+Superseded in part by [ADR-0014](0014-a-store-loop-states-its-limit-instead-of-batched.md):
+`//tiger:batched` no longer waives TS-S02. Its waiver of TS-M10 stands.
+
 ## Context
 
 TS-S02 requires every loop to state a bound the analyzer can verify: a constant, a `len`/`cap`,

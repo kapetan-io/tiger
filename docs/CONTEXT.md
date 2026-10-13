@@ -28,8 +28,10 @@ hatches.
 _Avoid_: annotation, pragma
 
 **Pin**:
-An optional directive that freezes an analyzer-computed fact (effect set, frame, variant) into a
-blocking contract; absence of a pin never means the fact is absent.
+A directive stating a claim tiger proves, blocking once written: a loop variant
+(`//tiger:variant`) or a function contract (`//tiger:requires`, `//tiger:ensures`). A variant has a
+computed baseline, so its pin is optional where tiger can synthesize one; absence of a pin never
+means the fact is absent. Effect and frame pins are removed (ADR-0026).
 _Avoid_: declaration (pins are one kind of declaration, not the only kind)
 
 **Placement**:
@@ -39,16 +41,17 @@ writes it (insertion, for `tiger pin`); a pin written by the tool and a pin type
 indistinguishable afterward.
 
 **Intent declaration**:
-A directive stating something no analyzer can compute (invariants, restrictions, `hot`, `wire`,
-`owner`, `openenum`); stated first, enforced after.
+A directive stating something no analyzer can compute (`openenum`); stated first, enforced after.
+Invariants and the `TS-X03` layer file are intent too, declared outside a directive. `//tiger:restrict`
+and the `hot`, `wire`, and `owner` verbs are removed (ADR-0024, ADR-0028).
 
 **Escape hatch**:
 A directive loosening one rule at one site, always carrying a reason; admitted only where no
-in-subset code shape can accomplish the task — still, through wave 1.5, `//tiger:batched
-<reason>` alone. Wave 1 validated and surfaced it with nothing consuming it; wave 1.5 consumes it
-in `ioinloop` (TS-M10) and, on the cursor shape only, in `boundedloop` (TS-S02 — see Cursor
-shape). Shape is machine-checked, truth is human-reviewed, and every escape is counted against
-its package's budget on every run regardless of which rule it waives.
+in-subset code shape can accomplish the task. `//tiger:batched <reason>` is the only one, and it
+waives only TS-M10 in `ioinloop`; ADR-0014 removed its waiver of the TS-S02 loop bound. Shape is
+machine-checked, truth is human-reviewed, and every escape is counted against its package's budget
+on every run, printing when the package goes over. `//tiger:openenum` carries a reason and is
+counted the same way.
 _Avoid_: suppression, nolint (the golangci mechanism, not ours)
 
 **Severity**:
@@ -61,34 +64,35 @@ analyzer.
 _Avoid_: reported (the removed tier; computed facts are not rules and carry no severity)
 
 **Fact (computed)**:
-The current value of something a pin can freeze — an effect set, a frame, a synthesized loop
-variant. Not a rule: registered in the facts table, printed only under `--show-facts` in pin
-syntax, never counted, and what `tiger pin` freezes.
+The current value of something a pin can freeze: a synthesized loop variant. Not a rule:
+registered in the facts table, printed only under `--show-facts` in pin syntax, never counted, and
+what `tiger pin` freezes. Effect sets and frames were computed facts until ADR-0026.
 
-**Effect set**:
-The analyzer-computed summary of what a function does, over the closed lattice `alloc`, `io(q)`,
-`block`, `panic`, `rand`, `time`, `mutate(x)`, `spawn`; the empty set is purity, spelled `none`
-in pin syntax. Transitive by construction — a function's set includes everything reachable
-beneath it.
+**Effect set, frame** (removed):
+The analyzer-computed summary of what a function does, and the set of locations it writes. ADR-0026
+removed both, with their pins, the stdlib effects table, and the `effects` and `frames` analyzers,
+because they missed every call through an interface or a library.
 
-**Frame**:
-The analyzer-computed set of locations reachable from a function's parameters and receiver that
-the function writes. A pinned frame makes writes outside it blocking.
+**`tiger changed`**:
+The report, not a rule, that lists for each struct or free function the types and functions it
+calls now that it did not call at a base revision. It replaces effect and frame pins (ADR-0026).
+Decided, not built.
+
+**Pattern**:
+A runnable Go package under `patterns/<name>/` showing the correct shape where a rule stops short
+and a real bug lived in the gap, printed by `tiger pattern <name>` (ADR-0025). Not a reusable
+runtime package. Decided, not built.
 
 **Variant**:
 A ranking expression for a loop, required to strictly decrease on every back edge and be bounded
-below — the standard termination argument. Synthesized by the analyzer where it can (linear
-integer expressions over locals), pinned where it cannot.
+below, the standard termination argument. Synthesized by the analyzer where it can (fixed steps,
+constant division and shifts, slicing by a part shown non-empty, struct fields, `&&` conditions),
+pinned where it cannot.
 
 **Fact**:
-The `go/analysis` mechanism carrying one package's computed results (effect sets, frames) to the
-packages that import it; how transitivity crosses package boundaries within a module. In-memory
+The `go/analysis` mechanism carrying one package's computed results to the packages that import
+it; how transitivity crosses package boundaries within a module. In-memory
 per run, never serialized.
-
-**Stdlib effects table**:
-The curated, committed mapping from standard-library functions to their effects (`os.(*File).Write`
-→ `io(disk)`); the source of built-in io qualifiers. Data with tests; its coverage gaps are
-known-misses.
 
 **Registry**:
 The closed set of every rule — custom rules bound to their analyzer and severity,
@@ -119,15 +123,16 @@ and analyzers count (TS-A07..A09).
 
 **Cursor shape**:
 A loop whose condition is a boolean method call on an identifier that a method call advances
-(`for it.Valid()`, `for rows.Next()`); finite only because the backing store is finite. The one
-loop shape where `//tiger:batched` waives the TS-S02 bound.
+(`for it.Valid()`, `for rows.Next()`). `//tiger:batched` no longer waives its TS-S02 bound
+(ADR-0014): a store loop restates the limit its query declares in its header, and a loop that
+filters rows has a page limit and a scan limit.
 
-**Shutdown channel**:
-A channel TS-S03/TS-C05 recognize as a termination signal alongside `ctx.Done()`: element type
-`struct{}` (closed-channel broadcast), or a name containing shutdown/stop/quit/done (the
-shutdown-request shape). Select cases accept either recognition; a bare receive or send outside
-a select is exempt only under the name recognition — a neutral-named `struct{}` channel there is
-a completion wait, the missing-cancellation bug itself.
+**Stop case**:
+A select case TS-S03/TS-C05 accept as ending a wait on shutdown: a receive from `ctx.Done()` on a
+context that does not trace to `context.Background()` or `context.TODO()`, or a receive from or
+send on a channel the package itself closes or sends on (ADR-0020). A channel's name or `struct{}`
+element type no longer counts; today's analyzers still recognize both until the change is built.
+_Avoid_: shutdown channel (the name-based recognition ADR-0020 removes)
 
 **Open enum**:
 A named type marked `//tiger:openenum` whose vocabulary is deliberately extensible; switches
@@ -142,7 +147,8 @@ evidence on at least two real codebases; demotion is the same edit in reverse.
 
 **Whole-program rule**:
 A custom rule whose finding cannot be decided inside any one package because its evidence is
-spread across packages that do not import each other (TS-A07, TS-A09, TS-X01). Its analyzer's
+spread across packages that do not import each other (TS-A07, TS-A09; TS-X01 until ADR-0016's
+removal lands). Its analyzer's
 per-package pass exports a package fact describing what the package contributes; the finish
 step reads every such fact and reports. Runs only under the tiger CLI.
 _Avoid_: cross-package rule (facts already cross packages; the distinguishing property is the
@@ -150,7 +156,7 @@ finish step)
 
 **Per-package rule**:
 A custom rule decided entirely inside one `go/analysis` pass over one package, reading facts its
-dependencies exported. Every rule before ENG-152, plus `restrictions` and `closedworld`.
+dependencies exported. Every rule before ENG-152.
 
 **Finish step**:
 The driver's call, once after every package has been visited, to each registered finish
@@ -162,15 +168,6 @@ _Avoid_: post-pass, module pass
 A package-level const of a named string type that some `assert.Invariant` or `assert.Violates`
 call in the module takes as its ID. Defined by use, not by living in a package named `inv`; a
 const of that type never passed anywhere is still one (and fails TS-A07 with zero references).
-
-**Test double (TS-X01)**:
-A type declared in a `_test.go` file. It never counts as an implementation for `singleimpl`; a
-fake that must count lives in a non-test package.
-
-**Restriction set**:
-The parsed `//tiger:restrict` declaration of a package: the `closed-dispatch`, `no-reflect`, and
-`imports(...)` axes. Absent directive or axis means the axis takes its stated default and is not
-checked.
 
 **Diagnostic prefix**:
 The `path:line:col: TS-XXX:` head of a finding line — position rendered by the CLI, rule code
@@ -233,8 +230,8 @@ in the budget file's diff, lowered by `tiger budget --write`.
 > **Domain expert:** "No — there is no `bounded` **escape hatch** in the tool. Give the loop an
 > explicit cap and assert on exhaustion, or use the event-loop shape TS-S03 describes. The only
 > escape tiger has is `//tiger:batched`, because a provider without a bulk endpoint is a fact
-> of the world the code can't restructure away — and unless your loop is a **cursor shape**, it
-> waives nothing here either. It still counts against the package's **budget** on every run,
+> of the world the code can't restructure away, and it waives only the rule against IO inside a
+> loop, never a loop bound. It still counts against the package's **budget** on every run,
 > whether it waives anything or not, and prints as a blocking finding once the package is over. If you think the finding itself is wrong, that's a false
 > positive on a **blocking** rule, which is a bug in the analyzer: file it, and the case lands in
 > the **corpus** so it can't regress."
@@ -247,5 +244,5 @@ in the budget file's diff, lowered by `tiger budget --write`.
 - "linter" vs "analyzer": golangci-lint linters enforce auto rules; tiger analyzers enforce custom
   rules. Do not use the words interchangeably.
 - "declaration" was used loosely during design for both pins and intent declarations — resolved:
-  **pin** (computed fact, frozen) and **intent declaration** (stated fact, enforced) are distinct
+  **pin** (a claim tiger proves) and **intent declaration** (stated fact, enforced) are distinct
   lifecycles under the umbrella term **directive**.
