@@ -634,6 +634,11 @@ func drain(queue []string) {
 }
 ```
 
+**Not checked in tests:** `_test.go` files are skipped for this rule. A concurrency test
+starts one goroutine per request on purpose, and a single-worker queue would defeat it.
+The same loop in a non-test file still fires. A goroutine started outside a loop in a test
+is still TS-C02.
+
 <!-- rule: TS-C12 -->
 ### TS-C12 — channel types are declared in one file per package
 
@@ -707,6 +712,11 @@ func closeQuiet(f *os.File) {
 	_ = f.Close() // best-effort cleanup; callers already check write errors
 }
 ```
+
+**Cleanup is exempt:** a discarded error inside a `defer` statement's call, or inside a
+function literal passed to `t.Cleanup`, is not a finding. Closing something on the way out
+has no better answer than dropping the error, so a comment there would add nothing.
+Cleanup that is not deferred, like `_ = resp.Body.Close()`, still fires.
 
 **Known miss:** The check verifies a comment exists next to the discard, not that it is
 true. `_ = f.Close() // ok` satisfies it; the truth of the reason is review's job.
@@ -1104,6 +1114,11 @@ func connect(options connectOptions) {
 	_ = options
 }
 ```
+
+**Leading `t` and `ctx` are free:** a leading `*testing.T`, `*testing.B` or `testing.TB`
+does not count toward the four-parameter limit, and neither does a `context.Context` that
+comes first or right after it. A `t` or `ctx` anywhere else still counts. The
+adjacent-same-type check counts every parameter.
 
 **Known miss:** Only parameters directly next to each other are flagged. Two same-typed
 parameters separated by a different type stay silent. Function literals are exempt too,
