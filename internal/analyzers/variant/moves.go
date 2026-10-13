@@ -304,7 +304,7 @@ func (f *loopFacts) partNotEmpty(stmt *ast.AssignStmt, sub subject, part ast.Exp
 			}
 			continue
 		}
-		if !f.cutsToFront(assign, length.root) {
+		if !f.cutsToFront(assign, length.root, sub.place) {
 			return false
 		}
 	}
@@ -323,16 +323,17 @@ func (f *loopFacts) startsAsPartOf(define *ast.AssignStmt, sub subject) bool {
 	return f.frontOf(define.Rhs[0], sub.place)
 }
 
-// cutsToFront reports whether assign is chunk = chunk[:k] with k a positive
-// constant.
-func (f *loopFacts) cutsToFront(assign *ast.AssignStmt, chunk *types.Var) bool {
+// cutsToFront reports whether assign is chunk = chunk[:k] or chunk =
+// whole[:k] with k a positive constant, where whole is the slice the loop
+// consumes.
+func (f *loopFacts) cutsToFront(assign *ast.AssignStmt, chunk *types.Var, whole place) bool {
 	if assign.Tok != token.ASSIGN || len(assign.Lhs) != 1 || len(assign.Rhs) != 1 {
 		return false
 	}
-	if where, ok := f.placeOf(assign.Lhs[0]); !ok || where != (place{root: chunk}) {
+	if !f.isPlace(assign.Lhs[0], place{root: chunk}) {
 		return false
 	}
-	return f.frontOf(assign.Rhs[0], place{root: chunk})
+	return f.frontOf(assign.Rhs[0], place{root: chunk}) || f.frontOf(assign.Rhs[0], whole)
 }
 
 // frontOf reports whether expr is held[:k] with k a positive constant.

@@ -96,3 +96,17 @@ func stepPastTop(n uint8) int {
 	}
 	return count
 }
+
+// framesFromWhole cuts the part from the whole slice, not from the part.
+func framesFromWhole(data []byte) int {
+	packets := 0
+	for len(data) > 0 { // want `TS-V01: this loop in framesFromWhole ends because len\(data\) shrinks on every pass — nothing to fix; to make tiger fail the build if that changes, add //tiger:variant len\(data\)`
+		chunk := data
+		if len(chunk) > frameMax {
+			chunk = data[:frameMax]
+		}
+		data = data[len(chunk):]
+		packets++
+	}
+	return packets
+}

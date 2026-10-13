@@ -205,7 +205,8 @@ A counter is sound only when all of this holds:
 - nothing in the body writes the counter or its limit, whether through a helper, a method,
   a pointer, a closure, or a map insert when the limit is `len(m)`
 - the counter arrives at the limit before it wraps around its type's range, so
-  `for i := uint8(0); i <= 255; i++` is not sound
+  `for i := uint8(0); i <= 255; i++` is not sound (TS-V01 blocks that loop; TS-S02 alone
+  takes the constant `255` as a stated bound)
 
 A limit may call only `len`, `cap`, `min`, `max`, conversions, and declared functions or
 methods such as `tuple.Len()`. A function value could return something larger on every
@@ -213,7 +214,7 @@ pass.
 
 A counter cap that stands in for a proof must report when it is hit. A counter is a
 safety cap when its limit is not a `len` or `cap` and the loop has another way out: a
-second `&&` term or a `break`. The loop must then assert, or return an error, when the
+second `&&` term or a `break`. A `return` from the body is a result, so it does not count. The loop must then assert, or return an error, when the
 counter reaches the limit:
 
 ```go
@@ -277,7 +278,9 @@ function results, across packages. Every value written into it must be a constan
 length, another bounded limit, or a value clamped against a declared maximum, such as
 `min(config.Spins, spinsMax)` or an `if count > objectsMax` that rejects. A function that
 returns a clamped value carries the bound to its callers. A constant at least half of the
-type's maximum, such as `math.MaxInt`, is a finding too, because no loop reaches it.
+type's maximum, such as `math.MaxInt`, is a finding too, because no loop reaches it. That
+applies to integer types of 32 bits or wider. Standard library packages and `_test.go` files
+are not traced, and a running total (`n += len(x)`, `n++`) counts as bounded.
 
 A loop that fires it:
 
@@ -288,7 +291,7 @@ func spin(config Config, done func() bool) error {
 ```
 
 ```
-spin.go:2:36: TS-S02: this value bounds a loop but has no upper bound where it enters — clamp it there, for example min(x, xMax), or reject it with if x > xMax
+spin.go:2:28: TS-S02: this value bounds a loop but has no upper bound where it enters — clamp it there, for example min(x, xMax), or reject it with if x > xMax
 ```
 
 The compliant rewrite:

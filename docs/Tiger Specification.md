@@ -402,21 +402,30 @@ finding, and no directive waives it. A bound is a constant, a `len`, a sound cou
 A counter is sound only when its comparison is a top-level `&&` term of the condition, not inside
 `||` or behind `!`. It pairs `<` or `<=` with `++` or `+=`, or `>` or `>=` with `--`, never `!=`.
 Nothing in the body writes the counter or its limit, whether through a helper, a method, a pointer,
-or a map insert when the limit is `len(m)`. The limit sits below the counter type's maximum.
+or a map insert when the limit is `len(m)`. The counter arrives at the limit before it wraps around the
+counter type's range, so `for i := uint8(0); i <= 255; i++` is not sound. A step by `+=` or `-=` is a
+constant of at least 1. A limit may call only `len`, `cap`, `min`, `max`, conversions, and declared
+functions or methods such as `tuple.Len()`; a function value could return something larger on every pass.
 
 A counter cap is a page size, and needs no report, only when its limit is not a constant and every
 other way out of the loop drains a stream whose type is declared outside the module (`rows.Next()`,
 `scanner.Scan()`, `decoder.More()`). Reaching a page size means the page is full. Any other way out,
 an internal condition or a `break`, makes the counter a safety cap, and the loop must assert or
 return an error when the counter reaches the limit, whether the limit is a constant, a parameter, or
-a field. The finding's message says so.
+a field. A `len` or `cap` limit is a bound the data sets, so it is never a safety cap. A `return` from
+the body is a result, not a silent stop, so it does not make a safety cap either. The report is an
+`if` after the loop that compares the counter with the limit, or reads a variable the loop assigns,
+and then asserts, panics, or returns an error; a bare assert or panic statement after the loop counts
+too. The finding's message says so.
 
 Every loop limit is bounded where it enters the program. The analyzer traces a limit back through
 parameters, fields, and function results, across packages. Every value written into it must be a
 constant, a length, another bounded limit, or a value clamped against a declared maximum, such as
 `min(config.Spins, spinsMax)` or an `if count > objectsMax` that rejects. A function that returns a
 clamped value carries the bound to its callers. A call that passes `math.MaxInt`, the type's
-maximum, or a constant at least half of it is a finding.
+maximum, or a constant at least half of it is a finding, on integer types of 32 bits or wider, where
+no loop reaches half the range. A running total (`n += len(x)`, `n++`) is as bounded as what is added,
+because every loop tiger accepts ends. Standard library packages and `_test.go` files are not traced.
 
 `for ctx.Err() == nil` on a `context.Context` parameter is the event-loop shape, the same as a
 `select` on `ctx.Done()`. On a context from `context.Background()` or `context.TODO()` it is not.
@@ -937,7 +946,7 @@ A proof is sound: variables are matched by identity, not by name, so a shadowing
 count. Growth through a pointer or a closure made before the loop defeats a proof, and so does a
 bound at the counter type's maximum (`i <= math.MaxInt`).
 
-Enforce. `variant` (custom, `buildssa`). Blocking when a loop has neither a synthesized nor a pinned
+Enforce. `variant` (custom, AST and `go/types`). Blocking when a loop has neither a synthesized nor a pinned
 variant, and when a pinned variant fails to decrease. A loop whose termination argument is beyond
 the analyzer's predicate language takes a counter cap that reports when it is hit (`TS-S02`).
 `TS-S02` accepts a loop whose variant this rule verified, whether synthesized or pinned.

@@ -431,7 +431,7 @@ bugs/worker.go:4:2: TS-C02: this go statement starts a goroutine nobody owns: no
 tiger: 4 blocking
 ```
 
-TS-S02 requires a loop's header to state a bound, built from a constant, a `len`, or a counter. A counter counts as a bound only when its comparison is a top-level `&&` term in the condition, not inside `||` or behind a `!`. It must also pair `<` or `<=` with `++` or `+=`, or `>` or `>=` with `--`, never `!=`. Nothing in the loop body may write to the counter or its limit, whether through a helper function, a method, a pointer, or an insertion into a map whose length is the limit. The limit must also stay below the counter type's maximum value.
+TS-S02 requires a loop's header to state a bound, built from a constant, a `len`, or a counter. A counter counts as a bound only when its comparison is a top-level `&&` term in the condition, not inside `||` or behind a `!`. It must also pair `<` or `<=` with `++` or `+=`, or `>` or `>=` with `--`, never `!=`. Nothing in the loop body may write to the counter or its limit, whether through a helper function, a method, a pointer, or an insertion into a map whose length is the limit. The counter must also arrive at the limit before it wraps around the counter type's range.
 
 A bound says only that the loop could end, not that it does. TS-V01 also requires a variant, an expression that strictly decreases on every pass and stays bounded below, [the standard argument for why a loop terminates](https://doi.org/10.1090/psapm/019/0235771). Tiger synthesizes this variant itself for several familiar shapes.
 
@@ -455,7 +455,7 @@ Every loop limit is also checked at its source. Tiger traces the limit backward 
 
 A few loop shapes have fixed answers. Ranging over a standard-library iterator such as `maps.Keys` counts as bounded, while ranging over any other iterator is a finding, the same as ranging over a channel. A `for` loop testing `ctx.Err() == nil` against a `context.Context` parameter counts as running until cancelled, the same as a `select` on `ctx.Done()`. Testing `context.Background()` does not.
 
-A loop pulling rows from a store cursor restates the limit its query already declared, as in `for count := 0; count < opts.Limit && rows.Next(); count++`. A loop that filters rows before keeping them needs two separate limits instead, a page size that counts the rows it keeps and a scan maximum that counts every row it reads, returning an error if that maximum is reached. These changes to the loop rules are decided but not yet built, so today's tiger still accepts some loops that run forever.
+A loop pulling rows from a store cursor restates the limit its query already declared, as in `for count := 0; count < opts.Limit && rows.Next(); count++`. A loop that filters rows before keeping them needs two separate limits instead, a page size that counts the rows it keeps and a scan maximum that counts every row it reads, returning an error if that maximum is reached. These changes to the loop rules are built. The one exception is `//tiger:batched`, which still waives a store-cursor loop until ADR-0014 is built (ENG-183).
 
 A `switch` over a type with a fixed, closed set of values must cover every value and end
 in a `default` arm that calls `assert.Unreachable`. Go's compiler cannot check that such a
