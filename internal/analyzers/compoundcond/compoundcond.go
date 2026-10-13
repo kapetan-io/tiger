@@ -12,6 +12,7 @@ import (
 
 	"golang.org/x/tools/go/analysis"
 
+	"github.com/kapetan-io/tiger/internal/analyzers/internal/assertpkg"
 	"github.com/kapetan-io/tiger/internal/analyzers/internal/attach"
 )
 
@@ -141,7 +142,7 @@ func reportMixedLogic(pass *analysis.Pass, cond ast.Expr) {
 
 // calleeName resolves call's function to a *types.Func and reports its
 // unqualified name, but only when that function belongs to a package named
-// "assert" — the sanctioned home for Ok, Invariant, and Unreachable.
+// tiger's assert package — the sanctioned home for Ok, Invariant, and Unreachable.
 func calleeName(pass *analysis.Pass, call *ast.CallExpr) (string, bool) {
 	var ident *ast.Ident
 	if plain, ok := call.Fun.(*ast.Ident); ok {
@@ -154,7 +155,7 @@ func calleeName(pass *analysis.Pass, call *ast.CallExpr) (string, bool) {
 		return "", false
 	}
 	callee, ok := pass.TypesInfo.Uses[ident].(*types.Func)
-	if !ok || callee.Pkg() == nil || callee.Pkg().Name() != "assert" {
+	if !ok || callee.Pkg() == nil || !assertpkg.Is(callee.Pkg().Path()) {
 		return "", false
 	}
 	return callee.Name(), true

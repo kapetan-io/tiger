@@ -6,8 +6,8 @@ import (
 	"encoding/binary"
 	"hash/crc32"
 
-	"fixture.example/invariants/assert"
-	"fixture.example/invariants/unviolated/inv"
+	"github.com/kapetan-io/tiger/assert"
+	"github.com/kapetan-io/tiger/unviolated/inv"
 )
 
 // HeaderSizeBytes = 4 checksum + 4 length + 4 sequence.

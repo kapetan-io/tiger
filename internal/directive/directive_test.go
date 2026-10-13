@@ -20,7 +20,6 @@ func TestRoundTripEveryVerb(t *testing.T) {
 		"reason",
 		"provider offers no bulk endpoint; rate limiter caps us at 10 rps",
 		"ENG-147 flaky on windows",
-		"closed-dispatch, no-reflect, imports(internal/domain/...)",
 		"mutate(r.log, r.checkpoint), io(disk)",
 		"len(pending)",
 		"internal  double  spaces",
@@ -62,9 +61,9 @@ func TestParseKnownVerbs(t *testing.T) {
 			want: directive.Directive{Verb: "effects", Args: "mutate(r.log), io(disk)"},
 		},
 		{
-			name: "HotWithNoArguments",
-			text: "//tiger:hot",
-			want: directive.Directive{Verb: "hot", Args: ""},
+			name: "OpenEnumWithNoArguments",
+			text: "//tiger:openenum",
+			want: directive.Directive{Verb: "openenum", Args: ""},
 		},
 		{
 			name: "TrailingWhitespaceIsTrimmed",

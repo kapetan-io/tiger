@@ -110,6 +110,12 @@ var autoRules = []AutoRule{
 	{
 		RuleID: "TS-S12", Linter: "depguard", Section: SectionLinters,
 		Title: "no unsafe, no cgo, no reflection",
+		Settings: []Setting{
+			{
+				Path: []string{"linters", "settings", "depguard", "rules", "baseline", "deny"},
+				Want: []any{map[string]any{"pkg": "reflect"}},
+			},
+		},
 	},
 	{
 		RuleID: "TS-S13", Linter: "ineffassign", Section: SectionLinters,

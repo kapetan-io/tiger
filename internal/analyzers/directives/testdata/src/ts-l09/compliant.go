@@ -9,7 +9,7 @@ package fixture
 //tiger:effects mutate(r.log, r.checkpoint), io(disk)
 //tiger:frame r.log, r.checkpoint
 //tiger:variant len(pending)
-//tiger:hot
+//tiger:openenum
 func pinnedShapes(pending []int) int {
 	drained := 0
 	for range pending {

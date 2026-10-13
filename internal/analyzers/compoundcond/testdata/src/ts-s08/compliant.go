@@ -3,7 +3,7 @@
 // stay silent.
 package fixture
 
-import "assert"
+import "github.com/kapetan-io/tiger/assert"
 
 // Level is a named int type with no declared constants: not a closed set,
 // so a missing default stays silent.

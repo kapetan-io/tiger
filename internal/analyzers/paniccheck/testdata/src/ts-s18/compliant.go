@@ -2,7 +2,7 @@
 // a shadowed identifier named panic is not the builtin.
 package fixture
 
-import "assert"
+import "github.com/kapetan-io/tiger/assert"
 
 // applyEntryCompliant asserts the precondition instead of panicking.
 func applyEntryCompliant(size int) {

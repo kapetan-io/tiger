@@ -373,7 +373,7 @@ const (
 var (
 	ruleCodePattern = regexp.MustCompile(`TS-[A-Z]+[0-9]+`)
 	directiveVerbs  = regexp.MustCompile(
-		`\b(effects|frame|variant|requires|ensures|batched|restrict)\b`)
+		`\b(effects|frame|variant|requires|ensures|batched|openenum)\b`)
 )
 
 // bannedPattern matches word as a whole word, case-insensitively.

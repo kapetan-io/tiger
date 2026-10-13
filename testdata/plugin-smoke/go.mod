@@ -1,3 +1,3 @@
-module smoke.example/plugin
+module github.com/kapetan-io/tiger
 
 go 1.26

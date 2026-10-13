@@ -47,3 +47,15 @@ func escapeWithoutReason(hooks []string) {
 func withdrawnSkipVerb() {}
 
 func notifyOne() {}
+
+// retiredVerbs carry directives tiger once parsed and no longer does.
+func retiredVerbs() {
+	// want +1 `TS-L09: //tiger:restrict is not a directive tiger recognizes`
+	//tiger:restrict no-reflect
+	// want +1 `TS-L09: //tiger:hot is not a directive tiger recognizes`
+	//tiger:hot
+	// want +1 `TS-L09: //tiger:wire is not a directive tiger recognizes`
+	//tiger:wire
+	// want +1 `TS-L09: //tiger:owner is not a directive tiger recognizes`
+	//tiger:owner
+}

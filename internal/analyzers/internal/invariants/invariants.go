@@ -21,6 +21,7 @@ import (
 
 	"golang.org/x/tools/go/analysis"
 
+	"github.com/kapetan-io/tiger/internal/analyzers/internal/assertpkg"
 	"github.com/kapetan-io/tiger/internal/finish"
 )
 
@@ -177,14 +178,14 @@ func calls(pass *analysis.Pass, at site) []Call {
 }
 
 // assertKind recognizes a call to assert.Invariant or assert.Violates by
-// shape: a selector on a package named assert.
+// shape: a selector on tiger's assert package.
 func assertKind(pass *analysis.Pass, call *ast.CallExpr) (Kind, bool) {
 	selector, ok := call.Fun.(*ast.SelectorExpr)
 	if !ok {
 		return "", false
 	}
 	callee, ok := pass.TypesInfo.Uses[selector.Sel].(*types.Func)
-	if !ok || callee.Pkg() == nil || callee.Pkg().Name() != "assert" {
+	if !ok || callee.Pkg() == nil || !assertpkg.Is(callee.Pkg().Path()) {
 		return "", false
 	}
 	switch callee.Name() {

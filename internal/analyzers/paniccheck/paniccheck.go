@@ -14,6 +14,8 @@ import (
 	"go/types"
 
 	"golang.org/x/tools/go/analysis"
+
+	"github.com/kapetan-io/tiger/internal/analyzers/internal/assertpkg"
 )
 
 // Analyzer enforces TS-S18: no naked panic outside the assert package.
@@ -24,7 +26,7 @@ var Analyzer = &analysis.Analyzer{
 }
 
 func run(pass *analysis.Pass) (any, error) {
-	if pass.Pkg.Name() == "assert" || pass.Pkg.Name() == "assert_test" {
+	if assertpkg.Is(pass.Pkg.Path()) {
 		return nil, nil
 	}
 	for _, file := range pass.Files {

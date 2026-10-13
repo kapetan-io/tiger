@@ -11,8 +11,8 @@
 // parameter or receiver. Aliasing the chase cannot follow — a pointer
 // laundered through a function's return value, a value copied into a
 // package global, an interface method call — is silently absent from the
-// computed frame, never a finding: TS-P02 bounds precision, and
-// correctness constraint 7 forbids a maybe on a blocking rule.
+// computed frame, never a finding, because correctness constraint 7
+// forbids a maybe on a blocking rule.
 //
 // Enforcement applies only to pinned frames, and only on exported functions
 // and methods (invariant 3): a computed write outside the pin and a pinned

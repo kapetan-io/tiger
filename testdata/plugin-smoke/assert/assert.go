@@ -1,8 +1,6 @@
-// Package assert is the fixture's copy of the always-on assertion package,
-// matched by shape (package name and function name), as adopters' copies
-// are. It declares no-reflect so it weakens nothing smoke claims.
-//
-//tiger:restrict no-reflect
+// Package assert is the fixture's copy of the always-on assertion package.
+// The fixture module takes tiger's module path, so this directory is the
+// import path tiger recognizes as its assert package.
 package assert
 
 // Invariant panics unless cond holds, naming the invariant.

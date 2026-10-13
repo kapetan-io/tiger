@@ -3,7 +3,7 @@
 // container, or an explicit cap with an assert on exhaustion.
 package fixture
 
-import "assert"
+import "github.com/kapetan-io/tiger/assert"
 
 const retriesMax = 5
 

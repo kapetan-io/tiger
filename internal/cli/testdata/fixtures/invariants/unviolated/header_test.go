@@ -3,9 +3,9 @@ package unviolated_test
 import (
 	"testing"
 
-	"fixture.example/invariants/assert"
-	"fixture.example/invariants/unviolated"
-	"fixture.example/invariants/unviolated/inv"
+	"github.com/kapetan-io/tiger/assert"
+	"github.com/kapetan-io/tiger/unviolated"
+	"github.com/kapetan-io/tiger/unviolated/inv"
 )
 
 // TestEncodeDecodeRoundTrip frames a header and reads it back.

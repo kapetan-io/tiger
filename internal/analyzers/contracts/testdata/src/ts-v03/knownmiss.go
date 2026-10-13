@@ -4,7 +4,7 @@
 // callee's own runtime assertion (TS-A02), the spec's stated default.
 package fixture
 
-import "assert"
+import "github.com/kapetan-io/tiger/assert"
 
 // flowNilOnlyKnownMiss passes p to needsPointer; p is nil only because
 // nothing below ever assigns it, a fact only data-flow analysis can see.

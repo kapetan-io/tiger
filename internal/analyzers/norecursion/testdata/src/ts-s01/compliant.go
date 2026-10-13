@@ -6,7 +6,7 @@
 // call graph they induce has no cycle.
 package fixture
 
-import "assert"
+import "github.com/kapetan-io/tiger/assert"
 
 // listStepsMax bounds sumBounded's walk down the linked list.
 const listStepsMax = 1000

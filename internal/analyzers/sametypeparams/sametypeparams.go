@@ -20,6 +20,8 @@ import (
 	"go/types"
 
 	"golang.org/x/tools/go/analysis"
+
+	"github.com/kapetan-io/tiger/internal/analyzers/internal/assertpkg"
 )
 
 // Analyzer enforces TS-N07 and TS-N08: no adjacent same-type parameters, no bool parameters.
@@ -39,8 +41,7 @@ type paramSlot struct {
 }
 
 func run(pass *analysis.Pass) (any, error) {
-	pkg := pass.Pkg.Name()
-	if pkg == "assert" || pkg == "assert_test" {
+	if assertpkg.Is(pass.Pkg.Path()) {
 		return nil, nil
 	}
 	for _, file := range pass.Files {

@@ -147,8 +147,7 @@ evidence on at least two real codebases; demotion is the same edit in reverse.
 
 **Whole-program rule**:
 A custom rule whose finding cannot be decided inside any one package because its evidence is
-spread across packages that do not import each other (TS-A07, TS-A09; TS-X01 until ADR-0016's
-removal lands). Its analyzer's
+spread across packages that do not import each other (TS-A07, TS-A09). Its analyzer's
 per-package pass exports a package fact describing what the package contributes; the finish
 step reads every such fact and reports. Runs only under the tiger CLI.
 _Avoid_: cross-package rule (facts already cross packages; the distinguishing property is the
