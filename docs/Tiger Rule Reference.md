@@ -63,10 +63,11 @@ A directive is a `//tiger:<verb>` comment. It binds to the code that starts on t
 after its comment group. The vocabulary is closed. An unknown verb is a blocking finding
 (TS-L09), so a typo cannot silently disable anything. There are three kinds.
 
-**Escape hatches** loosen one rule at one site and always carry a reason. There is exactly
-one, and it exists because some external systems only accept one item at a time (a fact of
-the world no rewrite removes). Every escape is counted against its package's budget on
-every run, whether it waives anything or not.
+**Escape hatches** loosen a rule at one site, or state a claim tiger cannot check, and
+always carry a reason. `batched` exists because some external systems only accept one item
+at a time (a fact of the world no rewrite removes). `openenum` claims a type's set of values
+is open to growth, which no analyzer can verify. Every escape is counted against its
+package's budget on every run, whether it waives anything or not.
 
 **Pins** freeze a fact tiger computed (what a function does, what it writes, why a loop
 ends) into a contract. Absence of a pin is never a finding. `tiger pin <Name>` writes one;
@@ -78,13 +79,13 @@ code to the statement.
 | Verb | Kind | Rules it affects |
 |---|---|---|
 | `//tiger:batched <reason>` | escape | TS-M10 (per-item IO in a loop); TS-S02 (cursor-shaped loops only); counted by TS-L09 |
+| `//tiger:openenum <reason>` | escape | TS-S08 (default arm instead of `assert.Unreachable`); counted by TS-L09 |
 | `//tiger:effects <set>` | pin | TS-F01, TS-F02 |
 | `//tiger:frame <set>` | pin | TS-F07 |
 | `//tiger:variant <expr>` | pin | TS-V01 |
 | `//tiger:requires <cond>` | pin | TS-V03 |
 | `//tiger:ensures <cond>` | pin | TS-V03 |
 | `//tiger:restrict <axes>` | intent | TS-P01, TS-P02, TS-K03 |
-| `//tiger:openenum` | intent | TS-S08 (default arm instead of `assert.Unreachable`) |
 | `//tiger:hot` | intent | validated today; no rule consumes it yet |
 | `//tiger:wire` | intent | validated today; no rule consumes it yet |
 | `//tiger:owner` | intent | validated today; no rule consumes it yet |
@@ -354,9 +355,10 @@ func classify(status Status) string {
 }
 ```
 
-**Directives:** `//tiger:openenum` marks a type's set of values as deliberately open to
+**Directives:** `//tiger:openenum <reason>` marks a type's set of values as deliberately open to
 growth. A switch over that type still needs a default arm, just not one ending in
-`assert.Unreachable`. Tiger recognizes the directive only when the switch is in the same
+`assert.Unreachable`. The directive needs a reason and counts against its package's budget
+(TS-L09); one without a reason does not parse, so it waives nothing. Tiger recognizes the directive only when the switch is in the same
 package as the marked type.
 
 **Known miss:** A switch over an `//tiger:openenum` type in a different package from the
@@ -831,13 +833,36 @@ func notifyAll(hooks []string) {
 **Directives:** This rule validates every directive in the file. A well-formed escape is
 not blocking on its own; the entry below counts it instead.
 
+**Banning `//nolint`:** tiger never honors `//nolint`, and does not ban it by default. A
+team that wants every `//nolint` gone turns the ban on in `tiger.yaml`:
+
+```yaml
+version: 1
+nolint:
+  forbid: true
+  reason: agents must fix findings, not silence them
+```
+
+With the entry on, `tiger check` reports every `//nolint` in a checked package as a blocking
+TS-L09 finding at the file's `package` line, where a `//nolint` on the original line cannot
+cover it:
+
+```
+store.go:2:1: TS-L09: line 14 has a //nolint, and this repository's tiger.yaml forbids them (nolint.forbid) — fix the finding it silences instead
+```
+
+The ban holds under `tiger check` only. Under the golangci-lint plugin, a file-wide
+`//nolint:tiger` above the `package` clause or an `exclusions` rule in `.golangci.yml` drops
+the finding, so CI relies on `tiger check`.
+
 <!-- rule: TS-L09-escape -->
 ### TS-L09 (escape accounting) — every escape directive is counted
 
 **Severity:** advisory — findings are counted against the package's row in tiger.budget.yaml: silent under budget; on overrun they print as blocking lines under a TS-D06 line. See [Budgets and the ratchet](#budgets-and-the-ratchet).
 
 An escape like `//tiger:batched <reason>` waives one rule at one spot, and sometimes
-that is the right call. But every escape loosens a rule, so tiger counts each one
+that is the right call. `//tiger:openenum <reason>` is counted the same way, because tiger
+cannot check that an enum really is open. But every escape loosens a rule, so tiger counts each one
 instead of letting it vanish once approved. The count sits in the package's budget,
 where a team can see exactly how many escapes it carries and a raise needs review.
 

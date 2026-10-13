@@ -163,17 +163,16 @@ func TestIsRecognizesThePrefixExactly(t *testing.T) {
 
 // TestVocabularyKinds covers the declaration-model classification.
 //
-// Goal: batched is the only escape verb in wave 1, and the pin and intent
+// Goal: batched and openenum are the escape verbs, and the pin and intent
 // verbs later waves enforce are present for well-formedness validation.
 func TestVocabularyKinds(t *testing.T) {
-	escapes := 0
+	escapes := []string{}
 	for _, spec := range directive.Verbs() {
 		if spec.Kind == directive.KindEscape {
-			escapes++
-			assert.Equal(t, "batched", spec.Name)
+			escapes = append(escapes, spec.Name)
 		}
 	}
-	assert.Equal(t, 1, escapes)
+	assert.Equal(t, []string{"batched", "openenum"}, escapes)
 
 	batched, ok := directive.Lookup("batched")
 	require.True(t, ok)
@@ -189,33 +188,37 @@ func TestVocabularyKinds(t *testing.T) {
 }
 
 // TestOpenEnumParsesFormatsAndRoundTrips covers the openenum verb TS-S08
-// consumes: a same-package intent declaration with no reason argument.
+// consumes: a same-package escape declaration that carries a reason.
 //
-// Goal: //tiger:openenum parses to the bare verb, Format reprints it
-// canonically, and Parse(Format(d)) returns the identical directive.
+// Goal: //tiger:openenum <reason> parses to the verb and reason, Format
+// reprints it canonically, and Parse(Format(d)) returns the identical directive.
 func TestOpenEnumParsesFormatsAndRoundTrips(t *testing.T) {
-	parsed, err := directive.Parse("//tiger:openenum")
+	parsed, err := directive.Parse("//tiger:openenum wire peers add codes before we upgrade")
 	require.NoError(t, err)
-	assert.Equal(t, directive.Directive{Verb: "openenum", Args: ""}, parsed)
+	assert.Equal(t, directive.Directive{
+		Verb: "openenum", Args: "wire peers add codes before we upgrade",
+	}, parsed)
 
-	assert.Equal(t, "//tiger:openenum", directive.Format(parsed))
+	assert.Equal(t, "//tiger:openenum wire peers add codes before we upgrade",
+		directive.Format(parsed))
 
 	roundTripped, err := directive.Parse(directive.Format(parsed))
 	require.NoError(t, err)
 	assert.Equal(t, parsed, roundTripped)
 }
 
-// TestOpenEnumIsKindIntentAndRequiresNoReason covers the openenum verb's
-// vocabulary entry: it is an intent declaration, not an escape, so it
-// parses without a reason argument.
+// TestOpenEnumIsKindEscapeAndRequiresAReason covers the openenum verb's
+// vocabulary entry: tiger cannot check that an enum is open, so it is an
+// escape and needs a reason.
 //
-// Goal: Lookup reports KindIntent for openenum, and a bare //tiger:openenum
-// with no arguments parses without error.
-func TestOpenEnumIsKindIntentAndRequiresNoReason(t *testing.T) {
+// Goal: Lookup reports KindEscape for openenum, and a bare //tiger:openenum
+// fails with a missing-reason error.
+func TestOpenEnumIsKindEscapeAndRequiresAReason(t *testing.T) {
 	spec, ok := directive.Lookup("openenum")
 	require.True(t, ok)
-	assert.Equal(t, directive.KindIntent, spec.Kind)
+	assert.Equal(t, directive.KindEscape, spec.Kind)
 
 	_, err := directive.Parse("//tiger:openenum")
-	assert.NoError(t, err)
+	var missing *directive.MissingReasonError
+	assert.ErrorAs(t, err, &missing)
 }
