@@ -427,6 +427,10 @@ clamped value carries the bound to its callers. A call that passes `math.MaxInt`
 maximum, or a constant at least half of it is a finding, on integer types of 32 bits or wider, where
 no loop reaches half the range. A running total (`n += len(x)`, `n++`) is as bounded as what is added,
 because every loop tiger accepts ends. Standard library packages and `_test.go` files are not traced.
+Three more things are recorded misses: a limit read through a declared getter such as `q.Len()` while
+the body grows `q` through another method; a struct field changed through a global pointer or an
+interface method that the loop never passes the struct to; and a cap whose report is any failing `if`
+on a variable the loop assigns.
 
 `for ctx.Err() == nil` on a `context.Context` parameter is the event-loop shape, the same as a
 `select` on `ctx.Done()`. On a context from `context.Background()` or `context.TODO()` it is not.
@@ -453,7 +457,8 @@ Patterns: capped worklist, page over an outside stream, clamp a limit, filtered 
 admission test, since a reason is shape-checkable but not truth-checkable and every terminating
 loop can state a cap. See "Declarations at a glance".)*
 *(Amended 2026-10-12: ADR-0014 supersedes the 2026-08-17 amendment that let `//tiger:batched`
-waive this rule on cursor-shaped loops; no directive waives it. ADR-0013 is built: the counter,
+waive this rule on cursor-shaped loops. ADR-0014 decides that no directive waives it; that part is
+not built. ADR-0013 is built: the counter,
 cap, limit, `ctx.Err()` and iterator requirements above. The store-loop requirement is decided and
 not built (ADR-0014, ENG-183).)*
 
@@ -1986,7 +1991,7 @@ TS-V01: variant len(data) not monotone: ranking not strictly decreasing on back 
 After:
 
 ```
-TS-V01: //tiger:variant len(data) doesn't provably shrink on every pass (len(data) cannot be shown to move consistently) — add a cap (for tries := 0; tries < max; tries++) that fails when hit, or name an expression that does shrink
+TS-V01: //tiger:variant len(data) doesn't provably shrink on every pass (len(data) has no step tiger recognizes) — add a cap (for tries := 0; tries < max; tries++) that fails when hit, or name an expression that does shrink
 ```
 
 The checklist an author runs before committing a message:

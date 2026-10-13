@@ -87,8 +87,7 @@ func normalize(binary *ast.BinaryExpr) (lowHigh, bool) {
 	return lowHigh{low: binary.Y, high: binary.X, op: mirrored}, true
 }
 
-// candidate pairs a ranking with the condition term that supplies its lower
-// bound.
+// candidate pairs a ranking with the comparison it was derived from.
 type candidate struct {
 	ranking ranking
 	limits  lowHigh
@@ -335,7 +334,7 @@ func (c *checker) verifyPinned(loop *ast.ForStmt, pinned directive.Variant) verd
 			continue
 		}
 		if !facts.accounts(found, resolved) {
-			reason = "leaves out a variable the loop changes"
+			reason = "the expression leaves out a variable the loop changes"
 			continue
 		}
 		return facts.verify(resolved, found.limits)
@@ -391,7 +390,7 @@ func (f *loopFacts) resolve(pinned directive.Variant) (ranking, error) {
 	for _, pinTerm := range pinned.Terms {
 		found, ok := f.resolveAtom(pinTerm.Atom)
 		if !ok {
-			return nil, errors.New(atomText(pinTerm.Atom) + " has no step tiger recognizes")
+			return nil, errors.New(atomText(pinTerm.Atom) + " isn't a variable, field or length in scope")
 		}
 		resolved = append(resolved, term{operand: found, minus: pinTerm.Minus})
 	}

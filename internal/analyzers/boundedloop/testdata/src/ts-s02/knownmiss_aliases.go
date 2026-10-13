@@ -74,3 +74,14 @@ func capWithUnrelatedCheck(max int, read func() (int, error)) error {
 	}
 	return nil
 }
+
+// growsThroughACopy inserts into a map through a second name for it.
+//
+// known-miss: the check follows writes to the variable named in the limit,
+// and a copy of a map is a new variable for the same map.
+func growsThroughACopy(entries map[int]int) {
+	copied := entries
+	for i := 0; i < len(entries); i++ {
+		copied[i+1000] = 1
+	}
+}

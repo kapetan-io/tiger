@@ -45,7 +45,7 @@ type step struct {
 // Terms returns the comparisons in loop's condition that bound the loop
 // soundly. It is empty when the loop has no counter, the counter is
 // disturbed, or no comparison qualifies.
-func Terms(scope mutation.Scope, sizes types.Sizes, loop *ast.ForStmt) []Term {
+func Terms(scope mutation.Scope, loop *ast.ForStmt) []Term {
 	if loop.Cond == nil {
 		return nil
 	}
@@ -59,22 +59,37 @@ func Terms(scope mutation.Scope, sizes types.Sizes, loop *ast.ForStmt) []Term {
 	var terms []Term
 	for _, conjunct := range condition.Conjuncts(loop.Cond) {
 		term, sound := compare(scope, loop, conjunct, moved)
-		if sound && Reaches(scope, sizes, term) {
+		if sound && Reaches(scope, term) {
 			terms = append(terms, term)
 		}
 	}
 	return terms
 }
 
+// addsOrSubtracts are the compound assignments that step a counter.
+var addsOrSubtracts = map[token.Token]bool{token.ADD_ASSIGN: true, token.SUB_ASSIGN: true}
+
 // Counted reports whether the loop advances a counter its condition reads,
-// sound or not. Such a loop is judged by whether the counter bounds it, and
-// not by the shape of its condition.
+// by ++, --, += or -= of any step, sound or not. Such a loop is judged by
+// whether the counter bounds it, and not by the shape of its condition.
 func Counted(scope mutation.Scope, loop *ast.ForStmt) bool {
 	if loop.Cond == nil {
 		return false
 	}
-	moved, ok := advance(scope.Info(), loop.Post)
-	return ok && scope.Mentions(loop.Cond, moved.counter)
+	var target ast.Expr
+	switch post := loop.Post.(type) {
+	case *ast.IncDecStmt:
+		target = post.X
+	case *ast.AssignStmt:
+		if len(post.Lhs) == 1 && addsOrSubtracts[post.Tok] {
+			target = post.Lhs[0]
+		}
+	}
+	if target == nil {
+		return false
+	}
+	counted, ok := integerVar(scope.Info(), target)
+	return ok && scope.Mentions(loop.Cond, counted)
 }
 
 // advance reads the counter and the constant step a Post clause applies.
@@ -188,19 +203,6 @@ func stable(scope mutation.Scope, loop *ast.ForStmt, limit ast.Expr) bool {
 	return holds
 }
 
-// uninstantiated returns the function named by fun without the type
-// arguments of an explicit instantiation.
-func uninstantiated(fun ast.Expr) ast.Expr {
-	fun = ast.Unparen(fun)
-	switch instantiated := fun.(type) {
-	case *ast.IndexExpr:
-		return ast.Unparen(instantiated.X)
-	case *ast.IndexListExpr:
-		return ast.Unparen(instantiated.X)
-	}
-	return fun
-}
-
 // limitBuiltins are the builtins whose result a loop body cannot grow from
 // the outside.
 var limitBuiltins = map[string]bool{"len": true, "cap": true, "min": true, "max": true}
@@ -238,7 +240,7 @@ func staysPut(info *types.Info, call *ast.CallExpr) bool {
 		return true
 	}
 	var callee types.Object
-	switch fun := uninstantiated(call.Fun).(type) {
+	switch fun := condition.Uninstantiated(call.Fun).(type) {
 	case *ast.Ident:
 		callee = info.Uses[fun]
 	case *ast.SelectorExpr:
@@ -263,10 +265,20 @@ func variableHolds(scope mutation.Scope, loop *ast.ForStmt, ident *ast.Ident) bo
 	if len(scope.Writes(loop.Body, v)) > 0 {
 		return false
 	}
-	if _, isMap := v.Type().Underlying().(*types.Map); isMap && scope.PassedToCall(loop.Body, v) {
+	if growable(v.Type()) && scope.PassedToCall(loop.Body, v) {
 		return false
 	}
 	return !scope.Escapes(v)
+}
+
+// growable reports whether t is a map or a channel, which a function handed
+// one can grow.
+func growable(t types.Type) bool {
+	switch t.Underlying().(type) {
+	case *types.Map, *types.Chan:
+		return true
+	}
+	return false
 }
 
 // fieldHolds reports whether the field a selector reads is unwritten by the
@@ -311,8 +323,8 @@ func trusted(typed intrange.Span, term Term) bool {
 
 // Reaches reports whether the counter arrives at the limit before it wraps
 // around the end of its type.
-func Reaches(scope mutation.Scope, sizes types.Sizes, term Term) bool {
-	typed, ok := intrange.Of(term.Counter.Type(), sizes)
+func Reaches(scope mutation.Scope, term Term) bool {
+	typed, ok := intrange.Of(term.Counter.Type(), scope.Sizes())
 	if !ok {
 		return false
 	}

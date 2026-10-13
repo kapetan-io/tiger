@@ -113,6 +113,7 @@ type state struct {
 	funcs       []*function
 	limitParams map[*types.Func]map[int]bool
 	limitFields map[string]bool
+	sizes       types.Sizes
 	// ownFields is the part of limitFields this package learned, and the
 	// only part it exports.
 	ownFields map[string]bool
@@ -166,6 +167,7 @@ func (s *state) collect() {
 		if !ok {
 			continue
 		}
+		s.sizes = scope.Sizes()
 		fn := &function{
 			obj: obj, decl: decl, scope: scope, params: map[*types.Var]int{},
 			literalParams: scope.Parameters(),

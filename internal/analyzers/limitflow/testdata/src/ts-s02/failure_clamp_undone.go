@@ -36,3 +36,23 @@ func SpinClampedOtherVariable(tuning, other Tuning, done func() bool) error {
 		return lib.SpinReported(done, spins)
 	}
 }
+
+// SpinGuardedThenReplaced only runs while the setting is under the maximum,
+// then replaces the setting before the call.
+func SpinGuardedThenReplaced(tuning, later Tuning, done func() bool) error {
+	spins := tuning.Spins // want `TS-S02: this value reaches a loop limit with no upper bound where it enters`
+	if spins < spinsMax {
+		spins = later.Spins // want `TS-S02: this value reaches a loop limit with no upper bound where it enters`
+		return lib.SpinReported(done, spins)
+	}
+	return nil
+}
+
+// SpinCheckedAsAByte rejects a value that does not fit a byte after the byte
+// is cut from it, which says nothing about the value.
+func SpinCheckedAsAByte(tuning Tuning, done func() bool) error {
+	if int8(tuning.Spins) > 10 {
+		return nil
+	}
+	return lib.SpinReported(done, tuning.Spins) // want `TS-S02: this value reaches a loop limit with no upper bound where it enters`
+}

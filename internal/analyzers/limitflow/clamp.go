@@ -10,6 +10,7 @@ import (
 
 	"github.com/kapetan-io/tiger/assert"
 	"github.com/kapetan-io/tiger/internal/analyzers/internal/condition"
+	"github.com/kapetan-io/tiger/internal/analyzers/internal/intrange"
 )
 
 // clamped reports whether a statement that dominates expr keeps it below a
@@ -85,7 +86,7 @@ func (t *tracer) dominated(step pathStep, target ast.Expr, want string) bool {
 	case *ast.CaseClause:
 		list = p.Body
 	case *ast.IfStmt:
-		return t.guardedBy(p, step.node, want)
+		return t.guardedBy(p, step.node, target)
 	}
 	clamped := false
 	for _, stmt := range list {
@@ -170,16 +171,31 @@ func (t *tracer) writesVariable(stmt ast.Stmt, expr ast.Expr) bool {
 
 // guardedBy reports whether current is the branch of an if that only runs
 // while the expression named want is at most a declared maximum.
-func (t *tracer) guardedBy(check *ast.IfStmt, current ast.Node, want string) bool {
+func (t *tracer) guardedBy(check *ast.IfStmt, current ast.Node, target ast.Expr) bool {
+	want := t.s.identity(target)
 	if current == check.Body {
 		for _, conjunct := range condition.Conjuncts(check.Cond) {
 			if t.comparesWithMaximum(conjunct, want, below) {
-				return true
+				return !t.writtenBefore(check.Body, target)
 			}
 		}
 	}
 	if current == check.Else {
 		return t.exceeds(check.Cond, want)
+	}
+	return false
+}
+
+// writtenBefore reports whether a statement of body that comes before the use
+// of target writes it, which undoes the check the body is guarded by.
+func (t *tracer) writtenBefore(body *ast.BlockStmt, target ast.Expr) bool {
+	for _, stmt := range body.List {
+		if stmt.Pos() >= target.Pos() {
+			return false
+		}
+		if t.writesTo(stmt, target) {
+			return true
+		}
 	}
 	return false
 }
@@ -202,19 +218,7 @@ func (t *tracer) assignsMin(assign *ast.AssignStmt, want string) bool {
 	if len(assign.Lhs) != 1 || len(assign.Rhs) != 1 || t.s.identity(assign.Lhs[0]) != want {
 		return false
 	}
-	call, ok := assign.Rhs[0].(*ast.CallExpr)
-	if !ok {
-		return false
-	}
-	if !t.isBuiltin(call, "min") {
-		return false
-	}
-	for _, arg := range call.Args {
-		if t.declaredMaximum(arg) {
-			return true
-		}
-	}
-	return false
+	return t.clampsItself(assign.Rhs[0])
 }
 
 // isBuiltin reports whether call is to the named predeclared function, not a
@@ -326,7 +330,9 @@ func (s *state) identity(expr ast.Expr) string {
 	return s.qualified(s.withoutConversions(expr))
 }
 
-// withoutConversions removes parentheses and conversions around expr.
+// withoutConversions removes parentheses and conversions around expr. A
+// conversion that narrows, such as int8(x), stays: a check on the narrowed
+// value says nothing about x.
 func (s *state) withoutConversions(expr ast.Expr) ast.Expr {
 	for steps := 0; steps < unwrapMax; steps++ {
 		expr = ast.Unparen(expr)
@@ -334,10 +340,24 @@ func (s *state) withoutConversions(expr ast.Expr) ast.Expr {
 		if !ok || len(call.Args) != 1 || !s.pass.TypesInfo.Types[call.Fun].IsType() {
 			return expr
 		}
+		if s.narrows(call) {
+			return expr
+		}
 		expr = call.Args[0]
 	}
 	assert.Fail("withoutConversions: more than unwrapMax nested conversions")
 	return expr
+}
+
+// narrows reports whether a conversion can lose values: its target is not an
+// integer type that holds every value of its operand's type.
+func (s *state) narrows(conversion *ast.CallExpr) bool {
+	to, toOK := intrange.Of(s.pass.TypesInfo.TypeOf(conversion), s.sizes)
+	from, fromOK := intrange.Of(s.pass.TypesInfo.TypeOf(conversion.Args[0]), s.sizes)
+	if !toOK || !fromOK {
+		return true
+	}
+	return to.Low.Cmp(from.Low) > 0 || to.High.Cmp(from.High) < 0
 }
 
 // qualified prints a chain of field selectors over a variable, naming the

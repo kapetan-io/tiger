@@ -39,3 +39,33 @@ func growsThroughHelper(entries map[int]int) {
 		grow(entries, i+1000)
 	}
 }
+
+// registry holds a map that a loop measures.
+type registry struct{ entries map[int]int }
+
+// growsMapField inserts into the map field whose length is the limit.
+func growsMapField(r *registry) {
+	for i := 0; i < len(r.entries); i++ { // want `TS-S02: this counter does not bound the loop`
+		r.entries[i+1000] = 1
+	}
+}
+
+// index is a named map type with a method that inserts.
+type index map[int]int
+
+func (x index) add(key int) { x[key] = 1 }
+
+// growsThroughMethod inserts into the map whose length is the limit by calling
+// a method on it.
+func growsThroughMethod(x index) {
+	for i := 0; i < len(x); i++ { // want `TS-S02: this counter does not bound the loop`
+		x.add(i + 1000)
+	}
+}
+
+// fillsChannel sends on the channel whose length is the limit.
+func fillsChannel(ch chan int) {
+	for i := 0; i < len(ch); i++ { // want `TS-S02: this counter does not bound the loop`
+		ch <- i
+	}
+}

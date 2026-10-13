@@ -52,6 +52,7 @@ import (
 	"github.com/kapetan-io/tiger/internal/analyzers/internal/attach"
 	"github.com/kapetan-io/tiger/internal/analyzers/internal/cancel"
 	"github.com/kapetan-io/tiger/internal/analyzers/internal/counter"
+	"github.com/kapetan-io/tiger/internal/analyzers/internal/intrange"
 	"github.com/kapetan-io/tiger/internal/analyzers/internal/mutation"
 	"github.com/kapetan-io/tiger/internal/analyzers/internal/shutdown"
 	"github.com/kapetan-io/tiger/internal/analyzers/variant"
@@ -112,7 +113,7 @@ func run(pass *analysis.Pass) (any, error) {
 			case *ast.RangeStmt:
 				check.checkRange(loop)
 			case *ast.ForStmt:
-				check.checkFor(pass.Files, loop)
+				check.checkFor(loop)
 			}
 			return true
 		})
@@ -198,12 +199,12 @@ func (c *checker) standardIterator(expr ast.Expr) bool {
 // checkFor classifies a for statement: the event-loop shape (no Cond), a
 // loop a sound counter bounds, a bounded or verified loop, a waived
 // cursor-shaped loop, or a TS-S02 finding.
-func (c *checker) checkFor(files []*ast.File, loop *ast.ForStmt) {
+func (c *checker) checkFor(loop *ast.ForStmt) {
 	if loop.Cond == nil {
 		checkEventLoop(c.pass, loop)
 		return
 	}
-	terms := counter.Terms(c.scope, c.scope.Sizes(), loop)
+	terms := counter.Terms(c.scope, loop)
 	if len(terms) > 0 {
 		c.checkCap(loop, terms)
 		return
@@ -212,14 +213,14 @@ func (c *checker) checkFor(files []*ast.File, loop *ast.ForStmt) {
 		return
 	}
 	if cursorShape(c.pass, loop) {
-		if file := fileOf(files, loop); file != nil {
+		if file := fileOf(c.pass.Files, loop); file != nil {
 			if _, ok := attach.Directive(c.pass.Fset, file, loop, "batched"); ok {
 				return
 			}
 		}
 	}
 	message := msgUnbounded
-	if postCounter(loop.Post) != "" {
+	if counter.Counted(c.scope, loop) {
 		message = msgCounterUnsound
 	}
 	c.pass.Report(analysis.Diagnostic{
@@ -710,11 +711,11 @@ func isConstAtLeast(pass *analysis.Pass, expr ast.Expr, min int64) bool {
 // can stop shrinking.
 func tuplePostReversal(pass *analysis.Pass, loop *ast.ForStmt, binary *ast.BinaryExpr) bool {
 	loIdent, ok := binary.X.(*ast.Ident)
-	if !ok || !integerTyped(pass, loIdent) {
+	if !ok || !intrange.IsInteger(pass.TypesInfo.TypeOf(loIdent)) {
 		return false
 	}
 	hiIdent, ok := binary.Y.(*ast.Ident)
-	if !ok || !integerTyped(pass, hiIdent) {
+	if !ok || !intrange.IsInteger(pass.TypesInfo.TypeOf(hiIdent)) {
 		return false
 	}
 	assign, ok := loop.Post.(*ast.AssignStmt)
@@ -854,16 +855,6 @@ func assignmentsTo(pass *analysis.Pass, target *types.Var, node ast.Node) []ast.
 	return found
 }
 
-// integerTyped reports whether ident resolves to an integer-typed value.
-func integerTyped(pass *analysis.Pass, ident *ast.Ident) bool {
-	identType := pass.TypesInfo.TypeOf(ident)
-	if identType == nil {
-		return false
-	}
-	basic, ok := identType.Underlying().(*types.Basic)
-	return ok && basic.Info()&types.IsInteger != 0
-}
-
 // cursorShape reports whether loop's Cond is a method call on a plain
 // identifier — the it.Valid() / rows.Next() store-cursor pattern the
 // //tiger:batched waiver recognizes. A package-qualified call such as
@@ -884,27 +875,6 @@ func cursorShape(pass *analysis.Pass, loop *ast.ForStmt) bool {
 	}
 	_, isPkg := pass.TypesInfo.Uses[ident].(*types.PkgName)
 	return !isPkg
-}
-
-// postCounter returns the identifier name a Post clause advances by
-// IncDecStmt or by += / -=, or "" when Post proves no counter.
-func postCounter(post ast.Stmt) string {
-	switch stmt := post.(type) {
-	case *ast.IncDecStmt:
-		if ident, ok := stmt.X.(*ast.Ident); ok {
-			return ident.Name
-		}
-	case *ast.AssignStmt:
-		if stmt.Tok != token.ADD_ASSIGN && stmt.Tok != token.SUB_ASSIGN {
-			return ""
-		}
-		if len(stmt.Lhs) == 1 {
-			if ident, ok := stmt.Lhs[0].(*ast.Ident); ok {
-				return ident.Name
-			}
-		}
-	}
-	return ""
 }
 
 // isBoundOperand reports whether expr is a literal, a resolved constant, or

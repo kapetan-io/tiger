@@ -25,8 +25,8 @@ import (
 	"github.com/kapetan-io/tiger/internal/analyzers/internal/intrange"
 )
 
-// Inserts says whether a map insert counts as a write. It does when the
-// target is a whole variable whose length a loop may be measuring.
+// Inserts says whether growing a map or channel counts as a write. It does
+// when the target is something whose length a loop may be measuring.
 type Inserts bool
 
 const (
@@ -42,12 +42,10 @@ type Kind int
 const (
 	// Assign is a plain, compound, or define assignment to the variable.
 	Assign Kind = iota
-	// IncDec is a ++ or -- statement.
-	IncDec
 	// Range is a range clause that reassigns the variable on each pass.
 	Range
-	// MapInsert stores into a map variable, growing its length.
-	MapInsert
+	// Insert stores into a map or sends on a channel, growing its length.
+	Insert
 	// Closure is a write inside a function literal.
 	Closure
 )
@@ -91,7 +89,7 @@ func (s Scope) Writes(node ast.Node, v *types.Var) []Write {
 // FieldWrites collects every write to the struct field in node, whatever
 // value holds the struct.
 func (s Scope) FieldWrites(node ast.Node, field *types.Var) []Write {
-	return s.collect(node, func(expr ast.Expr) bool { return s.isField(expr, field) }, IgnoreInserts)
+	return s.collect(node, func(expr ast.Expr) bool { return s.isField(expr, field) }, CountInserts)
 }
 
 // Escapes reports whether something outside the loop body could write v: it
@@ -218,7 +216,7 @@ func (s Scope) targets(n ast.Node, match func(ast.Expr) bool, inserts Inserts) [
 				found = append(found, Write{Node: stmt, Kind: Assign})
 			}
 			if inserts == CountInserts && s.insertsInto(lhs, match) {
-				found = append(found, Write{Node: stmt, Kind: MapInsert})
+				found = append(found, Write{Node: stmt, Kind: Insert})
 			}
 		}
 	case *ast.ValueSpec:
@@ -227,9 +225,13 @@ func (s Scope) targets(n ast.Node, match func(ast.Expr) bool, inserts Inserts) [
 				found = append(found, Write{Node: stmt, Kind: Assign})
 			}
 		}
+	case *ast.SendStmt:
+		if inserts == CountInserts && match(stmt.Chan) {
+			found = append(found, Write{Node: stmt, Kind: Insert})
+		}
 	case *ast.IncDecStmt:
 		if match(stmt.X) {
-			found = append(found, Write{Node: stmt, Kind: IncDec})
+			found = append(found, Write{Node: stmt, Kind: Assign})
 		}
 	case *ast.RangeStmt:
 		if stmt.Key != nil && match(stmt.Key) {
@@ -449,9 +451,9 @@ func (s Scope) Mentions(expr ast.Expr, v *types.Var) bool {
 	return found
 }
 
-// PassedToCall reports whether a call in node takes v as an argument. A map
-// handed to a function can be inserted into there, unlike a slice, whose
-// length the callee cannot change.
+// PassedToCall reports whether a call in node takes v as an argument or as the
+// receiver of a method. A map handed to a function can be inserted into there,
+// unlike a slice, whose length the callee cannot change.
 func (s Scope) PassedToCall(node ast.Node, v *types.Var) bool {
 	found := false
 	ast.Inspect(node, func(n ast.Node) bool {
@@ -469,6 +471,11 @@ func (s Scope) PassedToCall(node ast.Node, v *types.Var) bool {
 		}
 		for _, arg := range call.Args {
 			if s.IsVar(arg, v) {
+				found = true
+			}
+		}
+		if selector, isSelector := ast.Unparen(call.Fun).(*ast.SelectorExpr); isSelector {
+			if s.IsVar(selector.X, v) && s.info.Selections[selector] != nil {
 				found = true
 			}
 		}

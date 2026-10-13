@@ -492,7 +492,8 @@ func (t *tracer) constantList(parent int, literal *ast.CompositeLit) {
 
 // evaluate settles every node bottom-up. Children sit after their parents in
 // creation order except a shared variable's node, so the pass repeats until
-// the root is settled; a cycle never settles and counts as unbounded.
+// len(nodes)+1 passes have run. A node that depends on a cycle never settles,
+// so a trace that does not settle counts as unbounded.
 func (t *tracer) evaluate(root ast.Expr) traceResult {
 	rounds := len(t.nodes)
 	for round := 0; round <= rounds; round++ {

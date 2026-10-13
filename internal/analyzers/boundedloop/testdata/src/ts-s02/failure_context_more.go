@@ -22,3 +22,13 @@ func untilWatcherEnds(w watcher, frame func()) {
 		frame()
 	}
 }
+
+// untilDerivedBackgroundEnds waits on a context derived from one nobody can
+// cancel from outside.
+func untilDerivedBackgroundEnds(frame func()) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	for ctx.Err() == nil { // want `TS-S02: tiger can't tell how many times this loop runs`
+		frame()
+	}
+}

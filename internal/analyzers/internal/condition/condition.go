@@ -1,6 +1,8 @@
-// Package condition reads the shape of boolean conditions the loop rules look
-// at: the terms joined by && or by ||, which comparison reads the same with
-// its operands swapped, and whether an expression is the predeclared nil.
+// Package condition reads the shape of the expressions the loop rules look
+// at: the terms of a boolean condition joined by && or by ||, which comparison
+// reads the same with its operands swapped, whether an expression is the
+// predeclared nil, and which function a call names once the type arguments of
+// an instantiation are set aside.
 package condition
 
 import (
@@ -69,4 +71,17 @@ func IsNil(info *types.Info, expr ast.Expr) bool {
 	}
 	_, isNilObject := info.Uses[ident].(*types.Nil)
 	return isNilObject
+}
+
+// Uninstantiated returns the function named by fun without the type arguments
+// of an explicit instantiation, so f[int](x) resolves like f(x).
+func Uninstantiated(fun ast.Expr) ast.Expr {
+	fun = ast.Unparen(fun)
+	switch instantiated := fun.(type) {
+	case *ast.IndexExpr:
+		return ast.Unparen(instantiated.X)
+	case *ast.IndexListExpr:
+		return ast.Unparen(instantiated.X)
+	}
+	return fun
 }

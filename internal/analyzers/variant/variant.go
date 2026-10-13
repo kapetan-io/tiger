@@ -44,9 +44,10 @@
 // A loop with neither a synthesized nor a verified pinned variant is
 // blocking, and the finding always names the same rewrite: an explicit
 // iteration cap whose own counter is itself a synthesizable variant, with an
-// assert on exhaustion. No //tiger:variant deviation exists, because that
-// rewrite is always available, so a finding always names code, never a
-// directive.
+// assert on exhaustion. That rewrite is always available, so no
+// //tiger:variant waiver exists. The finding leads with the cap, and offers a
+// pin only as a way to state the loop's own ranking, which the analyzer then
+// verifies.
 //
 // The loops with a verified variant, synthesized or pinned, are this
 // analyzer's result: boundedloop (TS-S02) accepts them as bounded.
@@ -160,15 +161,16 @@ func (c *checker) inspectLoops(root ast.Node) {
 	})
 }
 
-// checkFor classifies a for statement: out of scope (no Cond, or counted —
-// a stray pin there is itself a finding), pinned (verify the pin), or
-// unpinned (attempt synthesis).
+// checkFor classifies a for statement: out of scope (no Cond, counted, or
+// running until a context parameter is cancelled — a stray pin on any of
+// these is itself a finding), pinned (verify the pin), or unpinned (attempt
+// synthesis).
 func (c *checker) checkFor(loop *ast.ForStmt) {
 	if loop.Cond == nil {
 		c.checkOutOfScopePin(loop)
 		return
 	}
-	if len(counter.Terms(c.scope, c.scope.Sizes(), loop)) > 0 {
+	if len(counter.Terms(c.scope, loop)) > 0 {
 		c.checkOutOfScopePin(loop)
 		return
 	}
@@ -185,7 +187,8 @@ func (c *checker) checkFor(loop *ast.ForStmt) {
 }
 
 // checkOutOfScopePin reports a variant pin bound to a loop that needs no
-// variant: a RangeStmt, a ForStmt with no Cond, or a counted ForStmt.
+// variant: a RangeStmt, a ForStmt with no Cond, a counted ForStmt, or one that
+// runs until a context parameter is cancelled.
 func (c *checker) checkOutOfScopePin(loop ast.Node) {
 	if len(c.set.At(loop, "variant")) == 0 {
 		return

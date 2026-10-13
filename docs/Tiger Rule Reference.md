@@ -206,8 +206,7 @@ A counter is sound only when all of this holds:
 - nothing in the body writes the counter or its limit, whether through a helper, a method,
   a pointer, a closure, or a map insert when the limit is `len(m)`
 - the counter arrives at the limit before it wraps around its type's range, so
-  `for i := uint8(0); i <= 255; i++` is not sound (TS-V01 blocks that loop; TS-S02 alone
-  takes the constant `255` as a stated bound)
+  `for i := uint8(0); i <= 255; i++` is not sound
 
 A limit may call only `len`, `cap`, `min`, `max`, conversions, and declared functions or
 methods such as `tuple.Len()`. A function value could return something larger on every
@@ -310,9 +309,19 @@ func spin(config Config, done func() bool) error {
 
 A constant no loop reaches gets its own message:
 
+```go
+func spin(done func() bool) error {
+	return spinReported(done, math.MaxInt)
+}
 ```
-spin.go:2:34: TS-S02: this value is too large for the loop to ever reach, so it bounds nothing — pass a declared maximum instead
+
 ```
+spin.go:2:28: TS-S02: this value is too large for the loop to ever reach, so it bounds nothing — pass a declared maximum instead
+```
+
+Facts from other packages are read only when those packages are part of the run: a
+clamp in another package counts under `tiger check ./...` and is missed under
+`tiger check ./one/package`.
 
 **Known misses:** A limit passed through a function value or an interface method is not
 followed. A constant below half the type's maximum, such as `1 << 40`, passes. A clamp

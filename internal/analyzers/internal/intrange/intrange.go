@@ -27,6 +27,9 @@ const _ = uint(1<<20 - termsMax)
 // IsInteger reports whether t is an integer type, or a type parameter whose
 // constraint allows only integer types.
 func IsInteger(t types.Type) bool {
+	if t == nil {
+		return false
+	}
 	basics, ok := basicsOf(t)
 	if !ok {
 		return false

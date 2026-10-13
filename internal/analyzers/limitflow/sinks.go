@@ -5,6 +5,7 @@ import (
 	"go/types"
 	"slices"
 
+	"github.com/kapetan-io/tiger/internal/analyzers/internal/condition"
 	"github.com/kapetan-io/tiger/internal/analyzers/internal/counter"
 	"github.com/kapetan-io/tiger/internal/analyzers/internal/intrange"
 )
@@ -81,7 +82,7 @@ func (s *state) sinksIn(fn *function) []sink {
 // limitsOf returns the limit of each sound counter comparison in a loop.
 func (s *state) limitsOf(fn *function, loop *ast.ForStmt) []sink {
 	var found []sink
-	for _, term := range counter.Terms(fn.scope, fn.scope.Sizes(), loop) {
+	for _, term := range counter.Terms(fn.scope, loop) {
 		found = append(found, sink{kind: loopLimit, expr: term.Limit, mode: atHeader})
 	}
 	return found
@@ -127,7 +128,7 @@ func (s *state) receiverArguments(call *ast.CallExpr) int {
 // miss.
 func (s *state) callee(call *ast.CallExpr) *types.Func {
 	var name *ast.Ident
-	switch fun := genericBase(call.Fun).(type) {
+	switch fun := condition.Uninstantiated(call.Fun).(type) {
 	case *ast.Ident:
 		name = fun
 	case *ast.SelectorExpr:
@@ -140,19 +141,6 @@ func (s *state) callee(call *ast.CallExpr) *types.Func {
 		return nil
 	}
 	return fn.Origin()
-}
-
-// genericBase returns the function named by fun without the type arguments of
-// an explicit instantiation, so f[int](x) resolves like f(x).
-func genericBase(fun ast.Expr) ast.Expr {
-	fun = ast.Unparen(fun)
-	switch instantiated := fun.(type) {
-	case *ast.IndexExpr:
-		return ast.Unparen(instantiated.X)
-	case *ast.IndexListExpr:
-		return ast.Unparen(instantiated.X)
-	}
-	return fun
 }
 
 // literalFields returns each keyed value of a struct literal.

@@ -185,7 +185,7 @@ func unsignedByTwo(n, floor uint) {
 // and the loop moves both.
 func pinMissesTheVariableThatMoves(a, b int) {
 	//tiger:variant b
-	for a < b { // want `TS-V01: //tiger:variant b doesn't provably shrink on every pass \(leaves out a variable the loop changes\)`
+	for a < b { // want `TS-V01: //tiger:variant b doesn't provably shrink on every pass \(the expression leaves out a variable the loop changes\)`
 		a -= 5
 		b--
 	}
@@ -194,7 +194,7 @@ func pinMissesTheVariableThatMoves(a, b int) {
 // pinLeavesOutTheGrowingBound pins -a, but b grows by two on every pass.
 func pinLeavesOutTheGrowingBound(a, b int) {
 	//tiger:variant 0 - a
-	for a < b { // want `TS-V01: //tiger:variant 0 - a doesn't provably shrink on every pass \(leaves out a variable the loop changes\)`
+	for a < b { // want `TS-V01: //tiger:variant 0 - a doesn't provably shrink on every pass \(the expression leaves out a variable the loop changes\)`
 		a++
 		b += 2
 	}

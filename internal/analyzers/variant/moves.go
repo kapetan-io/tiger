@@ -37,7 +37,7 @@ type verdict struct {
 // and no mover wraps around the end of its type before reaching its limit.
 func (f *loopFacts) verify(expression ranking, limits lowHigh) verdict {
 	if f.skipsMove() {
-		return verdict{reason: "a continue can skip the loop's decrease"}
+		return verdict{reason: "a continue or goto can skip the loop's decrease"}
 	}
 	moved := false
 	for _, t := range expression {
@@ -95,7 +95,7 @@ func (f *loopFacts) wraps(mover operand, step movement, limits lowHigh) bool {
 	default:
 		return false
 	}
-	return !counter.Reaches(f.scope, f.scope.Sizes(), march)
+	return !counter.Reaches(f.scope, march)
 }
 
 // movementOf classifies one ranking operand: constant when nothing writes it,
@@ -118,7 +118,7 @@ func (f *loopFacts) movementOf(measured operand) movement {
 	if writes[0].Kind == mutation.Closure || writes[0].Kind == mutation.Range {
 		return movement{}
 	}
-	if writes[0].Kind == mutation.MapInsert {
+	if writes[0].Kind == mutation.Insert {
 		return movement{}
 	}
 	return f.classify(writes[0].Node, measured)
@@ -232,7 +232,7 @@ func (f *loopFacts) isPlace(expr ast.Expr, want place) bool {
 }
 
 // classifyShrink reads s = s[k:], s = s[:len(s)-k] and s = s[len(part):]
-// with part shown not empty, the moves that shorten a slice, map or string.
+// with part shown not empty, the moves that shorten a slice or string.
 func (f *loopFacts) classifyShrink(node ast.Node, measured operand) movement {
 	stmt, ok := node.(*ast.AssignStmt)
 	if !ok || stmt.Tok != token.ASSIGN || len(stmt.Lhs) != 1 || len(stmt.Rhs) != 1 {
