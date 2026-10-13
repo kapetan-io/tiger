@@ -47,7 +47,7 @@ func (f *loopFacts) verify(candidate ranking, limits bounds) verdict {
 			return verdict{reason: name + " cannot be shown to move consistently"}
 		}
 		if t.minus && step.trend == trendDecreasing {
-			return verdict{reason: name + " decreases, growing the ranking instead of shrinking it"}
+			return verdict{reason: name + " decreases, so the expression grows instead of shrinking"}
 		}
 		if !t.minus && step.trend == trendIncreasing {
 			return verdict{reason: name + " increases instead of decreasing"}

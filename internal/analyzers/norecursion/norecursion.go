@@ -45,9 +45,9 @@ import (
 	"github.com/kapetan-io/tiger/internal/worklist"
 )
 
-const msgRewrite = " is a cycle of calls (recursion) — replace it with a loop over an explicit " +
-	"worklist: for i := 0; i < len(work); i++ { work = append(work, next...) }, or a capped " +
-	"loop that fails when the cap is hit"
+const msgRewrite = " is a cycle of calls (recursion) — replace it with a capped worklist loop " +
+	"(for i := 0; i < len(work) && i < max; i++ { work = append(work, next...) }) that returns " +
+	"an error when it stops at max with nodes left"
 
 // Analyzer enforces TS-S01: no cycle in the package's static call graph.
 var Analyzer = &analysis.Analyzer{

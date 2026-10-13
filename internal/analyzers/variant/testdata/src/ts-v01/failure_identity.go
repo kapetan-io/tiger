@@ -203,7 +203,7 @@ func wrongPin(n int) int {
 	steps := 0
 	i := 0
 	//tiger:variant n - i
-	for i < n { // want `TS-V01: //tiger:variant n - i doesn't provably shrink on every pass \(i decreases, growing the ranking instead of shrinking it\)`
+	for i < n { // want `TS-V01: //tiger:variant n - i doesn't provably shrink on every pass \(i decreases, so the expression grows instead of shrinking\)`
 		i--
 		steps++
 	}

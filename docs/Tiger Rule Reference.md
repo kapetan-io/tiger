@@ -119,23 +119,37 @@ func chase(n *Node, visit func(*Node)) {
 ```
 
 ```
-tree.go:4:1: TS-S01: chase → chase is a cycle of calls (recursion) — replace it with a loop over an explicit worklist: for i := 0; i < len(work); i++ { work = append(work, next...) }, or a capped loop that fails when the cap is hit
+tree.go:4:1: TS-S01: chase → chase is a cycle of calls (recursion) — replace it with a capped worklist loop (for i := 0; i < len(work) && i < max; i++ { work = append(work, next...) }) that returns an error when it stops at max with nodes left
 ```
 
 The compliant rewrite:
 
 ```go
-func chaseIterative(root *Node, visit func(*Node)) {
+const nodesMax = 1 << 20
+
+var errTooManyNodes = errors.New("walk reached nodesMax")
+
+func chaseIterative(root *Node, visit func(*Node)) error {
 	if root == nil {
-		return
+		return nil
 	}
 	stack := []*Node{root}
-	for i := 0; i < len(stack); i++ {
+	i := 0
+	for ; i < len(stack) && i < nodesMax; i++ {
 		visit(stack[i])
 		stack = append(stack, stack[i].Children...)
 	}
+	if i == nodesMax && i < len(stack) {
+		return errTooManyNodes
+	}
+	return nil
 }
 ```
+
+The worklist grows the slice it walks, so on a graph with a cycle it never ends.
+TS-S02 and TS-V01 both block the uncapped form `for i := 0; i < len(stack); i++`, and
+accept the capped one. The report is `i == nodesMax && i < len(stack)`: a graph with
+exactly `nodesMax` nodes ends here too, with nothing left to visit, and must pass.
 
 <!-- rule: TS-S02 -->
 ### TS-S02 — every loop has an upper bound
@@ -180,14 +194,75 @@ func newton(estimate float64) float64 {
 }
 ```
 
+A bound is a constant, a `len`, a sound counter, or a variant that TS-V01 verified
+(whether tiger found it or a developer pinned it).
+
+A counter is sound only when all of this holds:
+
+- its comparison is a top-level `&&` term of the condition, not inside `||` or behind `!`
+- it pairs `<` or `<=` with `++` or `+= <constant>`, or `>` or `>=` with `--` or
+  `-= <constant>`, never `!=`
+- nothing in the body writes the counter or its limit, whether through a helper, a method,
+  a pointer, a closure, or a map insert when the limit is `len(m)`
+- the counter arrives at the limit before it wraps around its type's range, so
+  `for i := uint8(0); i <= 255; i++` is not sound
+
+A limit may call only `len`, `cap`, `min`, `max`, conversions, and declared functions or
+methods such as `tuple.Len()`. A function value could return something larger on every
+pass.
+
+A counter cap that stands in for a proof must report when it is hit. A counter is a
+safety cap when its limit is not a `len` or `cap` and the loop has another way out: a
+second `&&` term or a `break`. The loop must then assert, or return an error, when the
+counter reaches the limit:
+
+```go
+func spinCapped(done func() bool, limit int) {
+	for i := 0; i < limit && !done(); i++ {
+	}
+}
+```
+
+```
+spin.go:2:14: TS-S02: this counter cap ends the loop without saying so, so a truncated result passes as complete — declare the counter before the loop and return an error or assert when it reaches the limit
+```
+
+```go
+func spinReported(done func() bool, limit int) error {
+	i := 0
+	for ; i < limit && !done(); i++ {
+	}
+	if i == limit {
+		return errSpinCapHit
+	}
+	return nil
+}
+```
+
+The report is an `if` after the loop that compares the counter with the limit, or reads a
+variable the loop assigns, and then asserts, panics, or returns an error. A bare assert or
+panic statement after the loop counts too.
+
+A counter cap is a page size, and needs no report, when its limit is not a constant and
+every other way out of the loop drains a stream whose type is declared outside the module
+(`rows.Next()`, `scanner.Scan()`). Reaching a page size means the page is full.
+
+`for ctx.Err() == nil` on a `context.Context` parameter is a forever loop, like a
+`select` on `ctx.Done()`. On a context built inside the function, such as
+`context.Background()`, it is a finding. Ranging over an iterator is bounded only when it
+comes from the standard library.
+
 **Directives:** `//tiger:batched <reason>` waives this rule only on a cursor-shaped
 loop. That is one whose condition is a boolean method call that advances itself, like
 `for it.Valid()` or `for rows.Next()`. The store behind it is finite, which is why the
 waiver applies. Every use still counts against the package's escape-directive budget.
 
-**Known miss:** A loop that looks bounded, like `for len(queue) > 0`, can still run
-forever if its body re-fills the queue. Tiger checks the condition's shape, not whether
-the body actually shrinks it.
+**Known misses:** A limit passed through a function value or an interface method is not
+traced. A constant below half the type's maximum, such as `1 << 40`, passes as a limit. A
+standard library stream over an endless in-program source counts as an outside stream.
+Ranging over a slice while appending to it ends, so it stays a correctness bug for
+tests, not a loop rule. A limit read through a declared method (`q.Len()`) is trusted, so a
+body that grows `q` through another method goes unseen.
 
 <!-- rule: TS-S03 -->
 ### TS-S03 — an unbounded event loop selects on ctx.Done()
@@ -1495,6 +1570,25 @@ func drain(pending []int) int {
 	return drained
 }
 ```
+
+Tiger finds a shrinking expression for these shapes:
+
+- a fixed step, such as `i--`, `i += 2`, or `s = s[1:]`
+- division by a constant greater than 1, or a shift by a constant of at least 1, under a
+  strict `> 0` condition, as in `for size > 0 { size >>= 7 }`
+- slicing by the length of a part tiger can show is not empty, as in
+  `data = data[len(chunk):]` where `chunk` is `data` or `data[:max]` with `max` a
+  constant above 0, and `chunk` is not reassigned before the slice
+- a struct field in the condition, such as `len(q.Items) > 0`, when no call in the body
+  receives `q` or a pointer to it
+- a condition joined with `&&` where one part shrinks, as in
+  `for x > 0 && y > 0 { x--; y-- }`; a negated condition does not count
+
+A proof is sound. Variables are matched by identity, not by name, so a shadowing copy does
+not count. Growth through a pointer or a closure made before the loop defeats a proof,
+and so does a counter that wraps around at the end of its type (`i <= math.MaxInt`). A
+`continue`, a labeled `continue`, or a `goto` that can skip the shrink defeats it too.
+TS-S02 accepts a loop whose variant this rule verified.
 
 **Directives:** This rule fires only where tiger cannot synthesize a shrinking
 expression on its own; most loops need no pin at all. Where synthesis fails,
