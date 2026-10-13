@@ -4,7 +4,6 @@ import (
 	"go/ast"
 	"go/token"
 	"go/types"
-	"strings"
 
 	"golang.org/x/tools/go/analysis"
 
@@ -126,7 +125,7 @@ func (c *checker) drainsOutsideStream(expr ast.Expr) bool {
 		return false
 	}
 	named := receiverNamed(selection.Recv())
-	return named != nil && c.outsideModule(named.Obj().Pkg())
+	return named != nil && c.scope.External(named.Obj().Pkg())
 }
 
 // receiverNamed returns the named type behind a receiver or a pointer to
@@ -137,20 +136,6 @@ func receiverNamed(t types.Type) *types.Named {
 	}
 	named, _ := t.(*types.Named)
 	return named
-}
-
-// outsideModule reports whether pkg is declared outside the module under
-// analysis. Without module information, any package but the one under
-// analysis counts as outside.
-func (c *checker) outsideModule(pkg *types.Package) bool {
-	if pkg == nil || pkg == c.pass.Pkg {
-		return false
-	}
-	if c.pass.Module == nil || c.pass.Module.Path == "" {
-		return true
-	}
-	path := c.pass.Module.Path
-	return pkg.Path() != path && !strings.HasPrefix(pkg.Path(), path+"/")
 }
 
 // breaksOut reports whether the loop body has a break that ends this loop:

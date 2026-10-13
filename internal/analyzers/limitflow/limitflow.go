@@ -148,9 +148,9 @@ func standardLibrary(pass *analysis.Pass) bool {
 // collect gathers the declarations with bodies and the places in each where
 // a value can become a loop limit.
 func (s *state) collect() {
-	for _, scope := range mutation.Declarations(s.pass.TypesInfo, s.pass.Files) {
+	for _, scope := range mutation.Declarations(s.pass) {
 		decl, ok := scope.Root().(*ast.FuncDecl)
-		if !ok || decl.Body == nil {
+		if !ok || decl.Body == nil || s.inTestFile(decl) {
 			continue
 		}
 		obj, ok := s.pass.TypesInfo.Defs[decl.Name].(*types.Func)
@@ -165,6 +165,12 @@ func (s *state) collect() {
 		s.funcs = append(s.funcs, fn)
 		s.sinks[fn] = s.sinksIn(fn)
 	}
+}
+
+// inTestFile reports whether decl sits in a _test.go file. A test's table
+// values are not input from outside, so no limit in one is traced.
+func (s *state) inTestFile(decl *ast.FuncDecl) bool {
+	return strings.HasSuffix(s.pass.Fset.File(decl.Pos()).Name(), "_test.go")
 }
 
 // settle repeats the trace until no new limit parameter, limit field, or

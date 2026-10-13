@@ -101,7 +101,7 @@ type checker struct {
 
 func run(pass *analysis.Pass) (any, error) {
 	verified, _ := pass.ResultOf[variant.Analyzer].(variant.Verified)
-	for _, scope := range mutation.Declarations(pass.TypesInfo, pass.Files) {
+	for _, scope := range mutation.Declarations(pass) {
 		decl := scope.Root()
 		check := &checker{
 			pass: pass, scope: scope, verified: verified,

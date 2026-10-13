@@ -118,7 +118,7 @@ type checker struct {
 func run(pass *analysis.Pass) (any, error) {
 	set := pins.Collect(pass.Fset, pass.Files)
 	verified := Verified{}
-	for _, scope := range mutation.Declarations(pass.TypesInfo, pass.Files) {
+	for _, scope := range mutation.Declarations(pass) {
 		inspectDecl(&checker{
 			pass: pass, scope: scope, set: set, verified: verified,
 			params: cancel.Parameters(pass.TypesInfo, scope.Root()),

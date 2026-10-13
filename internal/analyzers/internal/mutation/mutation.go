@@ -16,6 +16,9 @@ import (
 	"go/token"
 	"go/types"
 	"math/big"
+	"strings"
+
+	"golang.org/x/tools/go/analysis"
 
 	"github.com/kapetan-io/tiger/internal/analyzers/internal/intrange"
 )
@@ -56,13 +59,23 @@ type Write struct {
 // Scope is the declaration a loop sits in, the widest place a pointer or
 // closure that outlives the loop body could be made.
 type Scope struct {
-	info *types.Info
-	root ast.Node
+	info   *types.Info
+	root   ast.Node
+	home   *types.Package
+	module string
 }
 
-// NewScope returns the scope rooted at the declaration holding the loop.
-func NewScope(info *types.Info, root ast.Node) Scope {
-	return Scope{info: info, root: root}
+// External reports whether pkg is declared outside the module under
+// analysis. Without module information, any package but the one under
+// analysis counts as outside.
+func (s Scope) External(pkg *types.Package) bool {
+	if pkg == nil || pkg == s.home {
+		return false
+	}
+	if s.module == "" {
+		return true
+	}
+	return pkg.Path() != s.module && !strings.HasPrefix(pkg.Path(), s.module+"/")
 }
 
 // Writes collects every write to v in node. A write inside a function
@@ -89,22 +102,24 @@ func (s Scope) Escapes(v *types.Var) bool {
 		return true
 	}
 	return s.addressTaken(func(expr ast.Expr) bool { return s.isVar(expr, v) }) ||
-		s.closureWrites(func(expr ast.Expr) bool { return s.isVar(expr, v) })
+		s.closureWrites(func(expr ast.Expr) bool { return s.isVar(expr, v) }, v.Pos())
 }
 
 // FieldEscapes reports whether something outside the loop body could write
 // the field: its address is taken or a function literal in scope writes it.
 func (s Scope) FieldEscapes(field *types.Var) bool {
 	return s.addressTaken(func(expr ast.Expr) bool { return s.isField(expr, field) }) ||
-		s.closureWrites(func(expr ast.Expr) bool { return s.isField(expr, field) })
+		s.closureWrites(func(expr ast.Expr) bool { return s.isField(expr, field) }, token.NoPos)
 }
 
 // ReceivesOwner reports whether a call in node receives a value of the
 // struct type that owns a field, or a pointer to one. The call may write the
-// field through it, so the field cannot be trusted across the call.
+// field through it, so the field cannot be trusted across the call. A struct
+// declared outside the module is the exception: its own code does not reach
+// into the fields a caller reads, such as testing.B's N.
 func (s Scope) ReceivesOwner(node ast.Node, owner types.Type) bool {
 	want := derefNamed(owner)
-	if want == nil {
+	if want == nil || s.External(want.Obj().Pkg()) {
 		return false
 	}
 	found := false
@@ -279,15 +294,18 @@ func (s Scope) pointerMethod(selector *ast.SelectorExpr) bool {
 }
 
 // closureWrites reports whether any function literal in scope writes a
-// target satisfying match.
-func (s Scope) closureWrites(match func(ast.Expr) bool) bool {
+// target satisfying match. A literal that declares the target holds the
+// target's own writes, so it counts only for a target declared outside it;
+// token.NoPos says the target is declared nowhere in scope, as a field is.
+func (s Scope) closureWrites(match func(ast.Expr) bool, declared token.Pos) bool {
 	found := false
 	ast.Inspect(s.root, func(n ast.Node) bool {
 		literal, ok := n.(*ast.FuncLit)
 		if !ok {
 			return !found
 		}
-		if len(s.collect(literal.Body, match, CountInserts)) > 0 {
+		ownsTarget := declared != token.NoPos && literal.Pos() <= declared && declared < literal.End()
+		if !ownsTarget && len(s.collect(literal.Body, match, CountInserts)) > 0 {
 			found = true
 		}
 		return !found
@@ -295,13 +313,19 @@ func (s Scope) closureWrites(match func(ast.Expr) bool) bool {
 	return found
 }
 
-// Declarations returns one scope per top-level declaration in files, the
-// unit a loop's escapes are judged in.
-func Declarations(info *types.Info, files []*ast.File) []Scope {
+// Declarations returns one scope per top-level declaration in the files
+// under analysis, the unit a loop's escapes are judged in.
+func Declarations(pass *analysis.Pass) []Scope {
+	module := ""
+	if pass.Module != nil {
+		module = pass.Module.Path
+	}
 	var scopes []Scope
-	for _, file := range files {
+	for _, file := range pass.Files {
 		for _, decl := range file.Decls {
-			scopes = append(scopes, NewScope(info, decl))
+			scopes = append(scopes, Scope{
+				info: pass.TypesInfo, root: decl, home: pass.Pkg, module: module,
+			})
 		}
 	}
 	return scopes
