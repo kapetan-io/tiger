@@ -1,6 +1,7 @@
 package limitflow
 
 import (
+	"fmt"
 	"go/ast"
 	"go/token"
 	"go/types"
@@ -20,10 +21,10 @@ func (t *tracer) clamped(expr ast.Expr) bool {
 	if file == nil {
 		return false
 	}
-	want := t.s.spelled(expr)
+	want := t.s.identity(expr)
 	path, _ := astutil.PathEnclosingInterval(file, expr.Pos(), expr.End())
 	for i := 0; i < len(path)-1; i++ {
-		if t.dominated(pathStep{node: path[i], parent: path[i+1]}, want) {
+		if t.dominated(pathStep{node: path[i], parent: path[i+1]}, expr, want) {
 			return true
 		}
 	}
@@ -38,8 +39,9 @@ type pathStep struct {
 }
 
 // dominated reports whether the statements before node in its parent, or
-// the parent's own condition, keep the expression named want bounded.
-func (t *tracer) dominated(step pathStep, want string) bool {
+// the parent's own condition, keep the expression named want bounded. A write
+// to the expression after the clamp undoes it.
+func (t *tracer) dominated(step pathStep, target ast.Expr, want string) bool {
 	var list []ast.Stmt
 	switch p := step.parent.(type) {
 	case *ast.BlockStmt:
@@ -49,15 +51,39 @@ func (t *tracer) dominated(step pathStep, want string) bool {
 	case *ast.IfStmt:
 		return t.guardedBy(p, step.node, want)
 	}
+	clamped := false
 	for _, stmt := range list {
 		if stmt.Pos() >= step.node.Pos() {
 			break
 		}
 		if t.clampsBefore(stmt, want) {
-			return true
+			clamped = true
+		} else if t.writesTo(stmt, target) {
+			clamped = false
 		}
 	}
-	return false
+	return clamped
+}
+
+// writesTo reports whether stmt assigns the variable or field expr names.
+func (t *tracer) writesTo(stmt ast.Stmt, expr ast.Expr) bool {
+	expr = t.s.withoutConversions(expr)
+	if selector, ok := expr.(*ast.SelectorExpr); ok {
+		selection := t.s.pass.TypesInfo.Selections[selector]
+		if selection != nil && selection.Kind() == types.FieldVal {
+			field, isField := selection.Obj().(*types.Var)
+			if isField && len(t.fn.scope.FieldWrites(stmt, field)) > 0 {
+				return true
+			}
+		}
+		expr = ast.Unparen(selector.X)
+	}
+	ident, ok := expr.(*ast.Ident)
+	if !ok {
+		return false
+	}
+	v, ok := t.s.pass.TypesInfo.ObjectOf(ident).(*types.Var)
+	return ok && len(t.fn.scope.Writes(stmt, v)) > 0
 }
 
 // guardedBy reports whether current is the branch of an if that only runs
@@ -91,7 +117,7 @@ func (t *tracer) clampsBefore(stmt ast.Stmt, want string) bool {
 // assignsMin reports whether assign is want = min(want, bound) with a bound
 // that is a constant or a length.
 func (t *tracer) assignsMin(assign *ast.AssignStmt, want string) bool {
-	if len(assign.Lhs) != 1 || len(assign.Rhs) != 1 || t.s.spelled(assign.Lhs[0]) != want {
+	if len(assign.Lhs) != 1 || len(assign.Rhs) != 1 || t.s.identity(assign.Lhs[0]) != want {
 		return false
 	}
 	call, ok := assign.Rhs[0].(*ast.CallExpr)
@@ -162,11 +188,11 @@ func (t *tracer) atMost(term ast.Expr, want string, how ordering) bool {
 	}
 	left, right := binary.X, binary.Y
 	op := binary.Op
-	if t.s.spelled(left) != want {
+	if t.s.identity(left) != want {
 		left, right = right, left
 		op = flipped[op]
 	}
-	if t.s.spelled(left) != want {
+	if t.s.identity(left) != want {
 		return false
 	}
 	if op != how.strict && op != how.loose {
@@ -211,7 +237,8 @@ const unwrapMax = 1 << 6
 const _ = uint(1<<20 - unwrapMax)
 
 // leaves reports whether body ends by leaving the code that follows the if:
-// a return, a break or continue, a panic, or an assignment to want.
+// a return, a break or continue, a panic, or an assignment of a declared
+// maximum to want.
 func (t *tracer) leaves(body *ast.BlockStmt, want string) bool {
 	if len(body.List) == 0 {
 		return false
@@ -222,7 +249,10 @@ func (t *tracer) leaves(body *ast.BlockStmt, want string) bool {
 	case *ast.BranchStmt:
 		return true
 	case *ast.AssignStmt:
-		return len(last.Lhs) == 1 && t.s.spelled(last.Lhs[0]) == want
+		if len(last.Lhs) != 1 || len(last.Rhs) != 1 || t.s.identity(last.Lhs[0]) != want {
+			return false
+		}
+		return t.declaredMaximum(last.Rhs[0]) || t.clampsItself(last.Rhs[0])
 	case *ast.ExprStmt:
 		call, ok := last.X.(*ast.CallExpr)
 		if !ok {
@@ -234,18 +264,47 @@ func (t *tracer) leaves(body *ast.BlockStmt, want string) bool {
 	return false
 }
 
-// spelled prints expr with conversions and parentheses removed, so a clamp
-// on req.Limit matches a use written int(req.Limit).
-func (s *state) spelled(expr ast.Expr) string {
+// identity prints expr with conversions and parentheses removed and its
+// variable named by where it is declared, so a shadow that is spelled the
+// same is a different expression and a clamp on req.Limit matches a use
+// written int(req.Limit).
+func (s *state) identity(expr ast.Expr) string {
+	return s.qualified(s.withoutConversions(expr))
+}
+
+// withoutConversions removes parentheses and conversions around expr.
+func (s *state) withoutConversions(expr ast.Expr) ast.Expr {
 	for steps := 0; steps < unwrapMax; steps++ {
 		expr = ast.Unparen(expr)
 		call, ok := expr.(*ast.CallExpr)
 		if !ok || len(call.Args) != 1 || !s.pass.TypesInfo.Types[call.Fun].IsType() {
-			return types.ExprString(expr)
+			return expr
 		}
 		expr = call.Args[0]
 	}
-	assert.Fail("spelled: more than unwrapMax nested conversions")
+	assert.Fail("withoutConversions: more than unwrapMax nested conversions")
+	return expr
+}
+
+// qualified prints a chain of field selectors over a variable, naming the
+// variable by its declaration, and any other expression as written.
+func (s *state) qualified(expr ast.Expr) string {
+	var fields string
+	for steps := 0; steps < unwrapMax; steps++ {
+		selector, ok := expr.(*ast.SelectorExpr)
+		if !ok {
+			text := types.ExprString(expr)
+			if ident, isIdent := expr.(*ast.Ident); isIdent {
+				if object := s.pass.TypesInfo.ObjectOf(ident); object != nil {
+					text = fmt.Sprintf("%s@%d", ident.Name, object.Pos())
+				}
+			}
+			return text + fields
+		}
+		fields = "." + selector.Sel.Name + fields
+		expr = ast.Unparen(selector.X)
+	}
+	assert.Fail("qualified: more than unwrapMax nested selectors")
 	return ""
 }
 

@@ -145,6 +145,9 @@ func followingStatements(decl ast.Node) map[ast.Stmt][]ast.Stmt {
 		}
 		for i, stmt := range list {
 			following[stmt] = list[i+1:]
+			if labeled, ok := stmt.(*ast.LabeledStmt); ok {
+				following[labeled.Stmt] = list[i+1:]
+			}
 		}
 		return true
 	})

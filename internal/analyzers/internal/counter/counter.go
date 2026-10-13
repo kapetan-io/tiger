@@ -123,8 +123,7 @@ func integerVar(info *types.Info, expr ast.Expr) (*types.Var, bool) {
 	if !ok || v.IsField() {
 		return nil, false
 	}
-	basic, ok := v.Type().Underlying().(*types.Basic)
-	return v, ok && basic.Info()&types.IsInteger != 0
+	return v, intrange.IsInteger(v.Type())
 }
 
 // smallConstant returns expr's value when it is an integer constant that
@@ -163,6 +162,9 @@ func compare(
 	default:
 		return Term{}, false
 	}
+	if mentions(scope.Info(), limit, moved.counter) {
+		return Term{}, false
+	}
 	toward := op == token.LSS || op == token.LEQ
 	if moved.down {
 		toward = op == token.GTR || op == token.GEQ
@@ -183,6 +185,19 @@ var mirrored = map[token.Token]token.Token{
 	token.LSS: token.GTR, token.LEQ: token.GEQ, token.GTR: token.LSS, token.GEQ: token.LEQ,
 }
 
+// mentions reports whether expr reads v.
+func mentions(info *types.Info, expr ast.Expr, v *types.Var) bool {
+	found := false
+	ast.Inspect(expr, func(n ast.Node) bool {
+		ident, ok := n.(*ast.Ident)
+		if ok && info.ObjectOf(ident) == v {
+			found = true
+		}
+		return !found
+	})
+	return found
+}
+
 func isVar(info *types.Info, expr ast.Expr, v *types.Var) bool {
 	ident, ok := ast.Unparen(expr).(*ast.Ident)
 	return ok && info.ObjectOf(ident) == v
@@ -197,6 +212,10 @@ func stable(scope mutation.Scope, loop *ast.ForStmt, limit ast.Expr) bool {
 			holds = holds && staysPut(scope.Info(), expr)
 		case *ast.FuncLit:
 			holds = false
+		case *ast.StarExpr:
+			holds = holds && !writesText(loop.Body, expr)
+		case *ast.IndexExpr:
+			holds = holds && !writesText(loop.Body, expr)
 		case *ast.UnaryExpr:
 			holds = holds && valueOperators[expr.Op]
 		case *ast.Ident:
@@ -215,6 +234,26 @@ var limitBuiltins = map[string]bool{"len": true, "cap": true, "min": true, "max"
 
 // valueOperators are the unary operators that leave a limit a plain value.
 var valueOperators = map[token.Token]bool{token.SUB: true, token.ADD: true, token.XOR: true}
+
+// writesText reports whether the body assigns an expression written exactly
+// like expr, which is how a write through a dereference or an element shows.
+func writesText(body *ast.BlockStmt, expr ast.Expr) bool {
+	want := types.ExprString(expr)
+	found := false
+	ast.Inspect(body, func(n ast.Node) bool {
+		assign, ok := n.(*ast.AssignStmt)
+		if !ok {
+			return !found
+		}
+		for _, lhs := range assign.Lhs {
+			if types.ExprString(lhs) == want {
+				found = true
+			}
+		}
+		return !found
+	})
+	return found
+}
 
 // staysPut reports whether a call in a limit is trusted to hold still: a
 // conversion, a builtin that reads its operands, or a call to a declared
@@ -275,10 +314,25 @@ func fieldHolds(scope mutation.Scope, loop *ast.ForStmt, selector *ast.SelectorE
 	return !scope.ReceivesOwner(loop.Body, selection.Recv())
 }
 
+// trusted reports whether a counter is taken to arrive at a limit nobody can
+// reduce to a constant. The limit may sit at the edge of the type, so the
+// counter is trusted when one step cannot overshoot it, a step of one toward
+// an exclusive limit, or when the type is wide enough that its far edge is out
+// of reach. Counting down on an unsigned type reaches its edge at zero, which
+// is close.
+func trusted(typed intrange.Span, term Term) bool {
+	if term.Size == 1 && !term.Inclusive {
+		return true
+	}
+	wide := typed.High.Cmp(big.NewInt(1<<31-1)) >= 0
+	if term.Down {
+		return wide && typed.Low.Sign() < 0
+	}
+	return wide
+}
+
 // Reaches reports whether the counter arrives at the limit before it wraps
-// around the end of its type. A limit the analyzer cannot reduce to a
-// constant is trusted, since only a constant at the type's edge is a proof
-// of the wrap.
+// around the end of its type.
 func Reaches(scope mutation.Scope, sizes types.Sizes, term Term) bool {
 	typed, ok := intrange.Of(term.Counter.Type(), sizes)
 	if !ok {
@@ -286,7 +340,7 @@ func Reaches(scope mutation.Scope, sizes types.Sizes, term Term) bool {
 	}
 	limit, known := scope.ConstantRange(term.Limit)
 	if !known {
-		return true
+		return trusted(typed, term)
 	}
 	size := big.NewInt(term.Size)
 	if term.Down {

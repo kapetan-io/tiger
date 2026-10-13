@@ -37,6 +37,8 @@ import (
 	"golang.org/x/tools/go/analysis"
 
 	"github.com/kapetan-io/tiger/assert"
+	"github.com/kapetan-io/tiger/internal/analyzers/internal/cancel"
+	"github.com/kapetan-io/tiger/internal/analyzers/internal/intrange"
 	"github.com/kapetan-io/tiger/internal/analyzers/internal/mutation"
 )
 
@@ -97,6 +99,10 @@ type function struct {
 	decl   *ast.FuncDecl
 	scope  mutation.Scope
 	params map[*types.Var]int
+	// literalParams are the parameters of function literals inside the
+	// declaration. A literal is called through a function value, which the
+	// trace does not follow, so what arrives in them is not judged.
+	literalParams map[*types.Var]bool
 }
 
 // state is everything the trace knows about the package under analysis and,
@@ -157,10 +163,14 @@ func (s *state) collect() {
 		if !ok {
 			continue
 		}
-		fn := &function{obj: obj, decl: decl, scope: scope, params: map[*types.Var]int{}}
+		fn := &function{
+			obj: obj, decl: decl, scope: scope, params: map[*types.Var]int{},
+			literalParams: cancel.Parameters(s.pass.TypesInfo, decl),
+		}
 		signature, _ := obj.Type().(*types.Signature)
 		for i := 0; i < signature.Params().Len(); i++ {
 			fn.params[signature.Params().At(i)] = i
+			delete(fn.literalParams, signature.Params().At(i))
 		}
 		s.funcs = append(s.funcs, fn)
 		s.sinks[fn] = s.sinksIn(fn)
@@ -219,7 +229,7 @@ func (s *state) learn(fn *function, outcome outcome) bool {
 	}
 	for _, field := range outcome.fields {
 		key := s.fieldKey(field)
-		if !s.limitFields[key] {
+		if key != "" && !s.limitFields[key] {
 			s.limitFields[key] = true
 			s.ownFields[key] = true
 			grew = true
@@ -339,8 +349,7 @@ func (s *state) resultOf(fn *types.Func) ([]int, bool) {
 
 // isInteger reports whether t is an integer type.
 func isInteger(t types.Type) bool {
-	basic, ok := t.Underlying().(*types.Basic)
-	return ok && basic.Info()&types.IsInteger != 0
+	return intrange.IsInteger(t)
 }
 
 // sizes returns the target's type sizes, falling back to the common 64-bit

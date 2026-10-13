@@ -49,7 +49,8 @@ func (s *state) active(found sink) bool {
 		return slices.Contains(s.limitParamsOf(found.callee), found.index)
 	}
 	if found.kind == fieldWrite {
-		return s.limitFields[s.fieldKey(found.field)]
+		key := s.fieldKey(found.field)
+		return key != "" && s.limitFields[key]
 	}
 	return true
 }
@@ -93,13 +94,32 @@ func (s *state) argumentsOf(call *ast.CallExpr) []sink {
 	if callee == nil || call.Ellipsis.IsValid() {
 		return nil
 	}
+	offset := s.receiverArguments(call)
 	var found []sink
 	for i, arg := range call.Args {
+		if i < offset {
+			continue
+		}
 		found = append(found, sink{
-			kind: callArg, expr: arg, mode: indirect, callee: callee, index: i,
+			kind: callArg, expr: arg, mode: indirect, callee: callee, index: i - offset,
 		})
 	}
 	return found
+}
+
+// receiverArguments returns how many leading arguments of a call are the
+// receiver rather than a parameter: one for a method expression such as
+// Spinner.Spin(s, limit), none for any other call.
+func (s *state) receiverArguments(call *ast.CallExpr) int {
+	selector, ok := ast.Unparen(call.Fun).(*ast.SelectorExpr)
+	if !ok {
+		return 0
+	}
+	selection := s.pass.TypesInfo.Selections[selector]
+	if selection != nil && selection.Kind() == types.MethodExpr {
+		return 1
+	}
+	return 0
 }
 
 // callee resolves a call to the declared function or method it names. A call
@@ -165,10 +185,12 @@ func (s *state) assignedFields(assign *ast.AssignStmt) []sink {
 
 // fieldKey names a struct field the same way in every package: the path of
 // the package that declares the struct, the struct's name, the field's name.
+// A field of an anonymous or function-local struct has no such name, so it
+// gets none and no fact is kept for it.
 func (s *state) fieldKey(field *types.Var) string {
 	field = field.Origin()
 	if field.Pkg() == nil {
-		return field.Name()
+		return ""
 	}
 	scope := field.Pkg().Scope()
 	for _, name := range scope.Names() {
@@ -186,5 +208,5 @@ func (s *state) fieldKey(field *types.Var) string {
 			}
 		}
 	}
-	return field.Pkg().Path() + ".?." + field.Name()
+	return ""
 }

@@ -358,7 +358,9 @@ func (s Scope) ConstantRange(expr ast.Expr) (intrange.Span, bool) {
 		return intrange.Span{}, false
 	}
 	var span intrange.Span
+	defined := false
 	for _, write := range s.Writes(s.root, v) {
+		defined = defined || s.defines(write)
 		value, known := s.assigned(write, v)
 		if !known {
 			return intrange.Span{}, false
@@ -370,7 +372,18 @@ func (s Scope) ConstantRange(expr ast.Expr) (intrange.Span, bool) {
 			span.High = value
 		}
 	}
-	return span, span.Low != nil
+	return span, defined && span.Low != nil
+}
+
+// defines reports whether a write declares its variable, as opposed to
+// assigning one declared elsewhere, such as a parameter that arrives with a
+// value of its own.
+func (s Scope) defines(write Write) bool {
+	if assign, ok := write.Node.(*ast.AssignStmt); ok {
+		return assign.Tok == token.DEFINE
+	}
+	_, isSpec := write.Node.(*ast.ValueSpec)
+	return isSpec
 }
 
 // assigned returns the constant a write stores into v.

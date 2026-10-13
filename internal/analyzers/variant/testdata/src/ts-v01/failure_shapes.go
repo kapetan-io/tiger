@@ -145,3 +145,38 @@ func byteDownWraps(size uint8) int {
 	}
 	return count
 }
+
+// pinOnUnrelatedVariable pins n, which the condition i < m says nothing about.
+func pinOnUnrelatedVariable(i, m, n int) {
+	//tiger:variant n
+	for i < m { // want `TS-V01: //tiger:variant n doesn't provably shrink on every pass \(the expression is about variables the loop's condition does not compare\)`
+		n--
+	}
+}
+
+// growsThroughPointer grows the slice behind a pointer, which is the limit.
+func growsThroughPointer(p *[]int) {
+	for i := 0; i < len(*p); i++ { // want `TS-V01: tiger can't prove this loop ends`
+		*p = append(*p, 1)
+	}
+}
+
+// growsAnElement grows the slice held in an element, which is the limit.
+func growsAnElement(rows [][]int) {
+	for i := 0; i < len(rows[0]); i++ { // want `TS-V01: tiger can't prove this loop ends`
+		rows[0] = append(rows[0], 1)
+	}
+}
+
+// byteToParameter counts a byte up to a parameter that may be 255.
+func byteToParameter(n uint8) {
+	for i := uint8(0); i <= n; i++ { // want `TS-V01: tiger can't prove this loop ends`
+	}
+}
+
+// unsignedByTwo counts down by two toward a parameter and wraps past zero.
+func unsignedByTwo(n, floor uint) {
+	for floor < n { // want `TS-V01: tiger can't prove this loop ends`
+		n -= 2
+	}
+}

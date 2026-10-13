@@ -11,6 +11,7 @@ import (
 
 	"github.com/kapetan-io/tiger/assert"
 	"github.com/kapetan-io/tiger/internal/analyzers/internal/counter"
+	"github.com/kapetan-io/tiger/internal/analyzers/internal/intrange"
 	"github.com/kapetan-io/tiger/internal/directive"
 )
 
@@ -234,11 +235,7 @@ func (c *checker) placeOf(expr ast.Expr) (place, bool) {
 // isInteger reports whether expr has an integer type.
 func (c *checker) isInteger(expr ast.Expr) bool {
 	found := c.pass.TypesInfo.TypeOf(expr)
-	if found == nil {
-		return false
-	}
-	basic, ok := found.Underlying().(*types.Basic)
-	return ok && basic.Info()&types.IsInteger != 0
+	return found != nil && intrange.IsInteger(found)
 }
 
 // lenable reports whether t is a slice, map, or string, the len subjects the
@@ -328,22 +325,48 @@ func (f *loopFacts) linearMeasure(limits bounds) (ranking, bool) {
 }
 
 // verifyPinned resolves the pin's names against the loop and verifies the
-// ranking against a recognized condition term, which supplies the lower
-// bound.
+// ranking against the top-level && terms of the condition. A term supplies
+// the lower bound only when the pin is about the same variables the term
+// compares, so a pin on n cannot ride on a condition about i and m.
 func (c *checker) verifyPinned(loop *ast.ForStmt, pinned directive.Variant) verdict {
 	facts := c.factsOf(loop)
+	resolved, err := facts.resolve(pinned)
+	if err != nil {
+		return verdict{reason: err.Error()}
+	}
+	reason := "no top-level && term of the loop's condition is a recognized comparison"
 	for _, conjunct := range counter.Conjuncts(loop.Cond) {
 		found, ok := facts.measure(conjunct)
 		if !ok {
 			continue
 		}
-		resolved, err := facts.resolve(pinned)
-		if err != nil {
-			return verdict{reason: err.Error()}
+		if !found.ranking.covers(resolved) {
+			reason = "the expression is about variables the loop's condition does not compare"
+			continue
 		}
 		return facts.verify(resolved, found.limits)
 	}
-	return verdict{reason: "the loop's condition is not one of the recognized comparison forms"}
+	return verdict{reason: reason}
+}
+
+// covers reports whether every variable or field the pinned ranking names is
+// one this ranking names.
+func (r ranking) covers(pinned ranking) bool {
+	for _, t := range pinned {
+		if t.constant {
+			continue
+		}
+		known := false
+		for _, m := range r {
+			if !m.constant && m.place == t.place && m.length == t.length {
+				known = true
+			}
+		}
+		if !known {
+			return false
+		}
+	}
+	return true
 }
 
 // resolve binds the pin's names to the variables and fields they mean where

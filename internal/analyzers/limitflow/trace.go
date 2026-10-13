@@ -74,8 +74,8 @@ type tracer struct {
 // joins maps the arithmetic operators to how their operands combine: all of
 // them must be bounded, or either.
 var joins = map[token.Token]nodeKind{
-	token.ADD: nodeAll, token.SUB: nodeAll, token.MUL: nodeAll, token.QUO: nodeAll,
-	token.SHL: nodeAll, token.SHR: nodeAll, token.OR: nodeAll, token.XOR: nodeAll,
+	token.ADD: nodeAll, token.SUB: nodeAll, token.MUL: nodeAll,
+	token.SHL: nodeAll, token.OR: nodeAll, token.XOR: nodeAll,
 	token.AND_NOT: nodeAll, token.AND: nodeAny,
 }
 
@@ -230,11 +230,17 @@ func (t *tracer) builtin(current task, call *ast.CallExpr, name string) {
 }
 
 // binary fills the node from arithmetic on two operands. A remainder is as
-// bounded as its divisor, and a mask as bounded as either side.
+// bounded as its divisor, a quotient or right shift as bounded as its
+// dividend, and a mask as bounded as either side.
 func (t *tracer) binary(current task, expr *ast.BinaryExpr) {
 	if expr.Op == token.REM {
 		t.nodes[current.index].kind = nodeAll
 		t.child(current.index, expr.Y, current.mode)
+		return
+	}
+	if expr.Op == token.QUO || expr.Op == token.SHR {
+		t.nodes[current.index].kind = nodeAll
+		t.child(current.index, expr.X, current.mode)
 		return
 	}
 	kind, ok := joins[expr.Op]
@@ -259,7 +265,9 @@ func (t *tracer) unary(current task, expr *ast.UnaryExpr) {
 
 // selector fills the node from a struct field read. A field known to bound a
 // loop is another bounded limit. A field read straight into a loop header
-// joins that set. Any other field read is a value from outside.
+// joins that set. A field of a struct with no name has nothing to record a
+// fact against, so one read straight into a loop header is not judged. Any
+// other field read is a value from outside.
 func (t *tracer) selector(current task, expr *ast.SelectorExpr) {
 	selection := t.s.pass.TypesInfo.Selections[expr]
 	if selection == nil || selection.Kind() != types.FieldVal {
@@ -271,7 +279,12 @@ func (t *tracer) selector(current task, expr *ast.SelectorExpr) {
 		t.set(current.index, nodeUnbounded, expr)
 		return
 	}
-	if t.s.limitFields[t.s.fieldKey(field)] {
+	key := t.s.fieldKey(field)
+	if key != "" && t.s.limitFields[key] {
+		t.set(current.index, nodeBounded, expr)
+		return
+	}
+	if current.mode == direct && key == "" {
 		t.set(current.index, nodeBounded, expr)
 		return
 	}
@@ -319,7 +332,11 @@ func (t *tracer) local(current task, v *types.Var, use *ast.Ident) {
 	}
 	writes := t.fn.scope.Writes(t.fn.decl, v)
 	if len(writes) == 0 {
-		t.set(current.index, nodeUnbounded, use)
+		kind := nodeUnbounded
+		if t.fn.literalParams[v] {
+			kind = nodeBounded
+		}
+		t.set(current.index, kind, use)
 		return
 	}
 	for _, write := range writes {
@@ -435,6 +452,10 @@ func (t *tracer) declared(parent int, v *types.Var, spec *ast.ValueSpec, use *as
 func (t *tracer) ranged(parent int, v *types.Var, stmt *ast.RangeStmt) {
 	key, isKey := stmt.Key.(*ast.Ident)
 	if !isKey || t.s.pass.TypesInfo.ObjectOf(key) != v {
+		if t.constantElements(stmt.X) {
+			t.leaf(parent, nodeBounded, stmt.Value)
+			return
+		}
 		t.leaf(parent, nodeUnbounded, stmt.Value)
 		return
 	}
@@ -450,6 +471,21 @@ func (t *tracer) ranged(parent int, v *types.Var, stmt *ast.RangeStmt) {
 	default:
 		t.leaf(parent, nodeUnbounded, key)
 	}
+}
+
+// constantElements reports whether expr is a literal slice or array whose
+// elements are all constants.
+func (t *tracer) constantElements(expr ast.Expr) bool {
+	literal, ok := ast.Unparen(expr).(*ast.CompositeLit)
+	if !ok {
+		return false
+	}
+	for _, element := range literal.Elts {
+		if t.s.pass.TypesInfo.Types[element].Value == nil {
+			return false
+		}
+	}
+	return true
 }
 
 // mentions reports whether expr reads v.
