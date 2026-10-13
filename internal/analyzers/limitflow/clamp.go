@@ -9,7 +9,7 @@ import (
 	"golang.org/x/tools/go/ast/astutil"
 
 	"github.com/kapetan-io/tiger/assert"
-	"github.com/kapetan-io/tiger/internal/analyzers/internal/counter"
+	"github.com/kapetan-io/tiger/internal/analyzers/internal/condition"
 )
 
 // clamped reports whether a statement that dominates expr keeps it below a
@@ -90,8 +90,8 @@ func (t *tracer) writesTo(stmt ast.Stmt, expr ast.Expr) bool {
 // while the expression named want is at most a declared maximum.
 func (t *tracer) guardedBy(check *ast.IfStmt, current ast.Node, want string) bool {
 	if current == check.Body {
-		for _, conjunct := range counter.Conjuncts(check.Cond) {
-			if t.atMost(conjunct, want, below) {
+		for _, conjunct := range condition.Conjuncts(check.Cond) {
+			if t.comparesWithMaximum(conjunct, want, below) {
 				return true
 			}
 		}
@@ -124,8 +124,7 @@ func (t *tracer) assignsMin(assign *ast.AssignStmt, want string) bool {
 	if !ok {
 		return false
 	}
-	ident, ok := call.Fun.(*ast.Ident)
-	if !ok || ident.Name != "min" {
+	if !t.isBuiltin(call, "min") {
 		return false
 	}
 	for _, arg := range call.Args {
@@ -134,6 +133,17 @@ func (t *tracer) assignsMin(assign *ast.AssignStmt, want string) bool {
 		}
 	}
 	return false
+}
+
+// isBuiltin reports whether call is to the named predeclared function, not a
+// function of the same name declared in the package.
+func (t *tracer) isBuiltin(call *ast.CallExpr, name string) bool {
+	ident, ok := ast.Unparen(call.Fun).(*ast.Ident)
+	if !ok {
+		return false
+	}
+	builtin, ok := t.s.pass.TypesInfo.Uses[ident].(*types.Builtin)
+	return ok && builtin.Name() == name
 }
 
 // declaredMaximum reports whether expr is a constant, a len or a cap.
@@ -156,8 +166,8 @@ func (t *tracer) declaredMaximum(expr ast.Expr) bool {
 // exceeds reports whether cond, split on ||, has a term true when the
 // expression named want is above a declared maximum.
 func (t *tracer) exceeds(cond ast.Expr, want string) bool {
-	for _, term := range disjuncts(cond) {
-		if t.atMost(term, want, above) {
+	for _, term := range condition.Disjuncts(cond) {
+		if t.comparesWithMaximum(term, want, above) {
 			return true
 		}
 	}
@@ -178,10 +188,10 @@ var (
 	above = ordering{strict: token.GTR, loose: token.GEQ}
 )
 
-// atMost reports whether term compares the expression named want with a
+// comparesWithMaximum reports whether term compares the expression named want with a
 // declared maximum using one of the ordering's operators, in either operand
 // order.
-func (t *tracer) atMost(term ast.Expr, want string, how ordering) bool {
+func (t *tracer) comparesWithMaximum(term ast.Expr, want string, how ordering) bool {
 	binary, ok := ast.Unparen(term).(*ast.BinaryExpr)
 	if !ok {
 		return false
@@ -190,7 +200,7 @@ func (t *tracer) atMost(term ast.Expr, want string, how ordering) bool {
 	op := binary.Op
 	if t.s.identity(left) != want {
 		left, right = right, left
-		op = flipped[op]
+		op, _ = condition.Mirror(op)
 	}
 	if t.s.identity(left) != want {
 		return false
@@ -200,36 +210,6 @@ func (t *tracer) atMost(term ast.Expr, want string, how ordering) bool {
 	}
 	return t.s.pass.TypesInfo.Types[right].Value != nil
 }
-
-// flipped maps a comparison to the one that reads the same with its operands
-// swapped.
-var flipped = map[token.Token]token.Token{
-	token.LSS: token.GTR, token.LEQ: token.GEQ, token.GTR: token.LSS, token.GEQ: token.LEQ,
-}
-
-// disjuncts splits expr on top-level ||.
-func disjuncts(expr ast.Expr) []ast.Expr {
-	pending := []ast.Expr{expr}
-	var terms []ast.Expr
-	for steps := 0; len(pending) > 0 && steps < disjunctsMax; steps++ {
-		last := len(pending) - 1
-		next := ast.Unparen(pending[last])
-		pending = pending[:last]
-		binary, ok := next.(*ast.BinaryExpr)
-		if ok && binary.Op == token.LOR {
-			pending = append(pending, binary.Y, binary.X)
-			continue
-		}
-		terms = append(terms, next)
-	}
-	assert.Ok(len(pending) == 0, "disjuncts: condition has more than disjunctsMax terms")
-	return terms
-}
-
-// disjunctsMax bounds how many nodes the flattening of one condition visits.
-const disjunctsMax = 1 << 10
-
-const _ = uint(1<<20 - disjunctsMax)
 
 // unwrapMax bounds how many conversions spelled looks through.
 const unwrapMax = 1 << 6

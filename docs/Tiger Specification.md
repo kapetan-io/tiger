@@ -1733,7 +1733,7 @@ changes what it checks), or **not built**.
 | `invariantsymmetry` | TS-A08 | Pair functions by naming convention, compare invariant sets | not built (ENG-182) |
 | `invariantnegative` | TS-A09 | Require `assert.Violates` per declared invariant | built |
 | `norecursion` | TS-S01 | `buildssa`, CHA callgraph, report any cycle | built |
-| `boundedloop` | TS-S02, S03, S23 | AST, classify every loop; unclassifiable loops are findings and no directive waives TS-S02. Checks counter soundness and cap reporting, accepts a loop whose variant `variant` verified, and treats a range over a non-standard-library iterator as a finding | built; changes decided (ADR-0014, ADR-0020) |
+| `boundedloop` | TS-S02, S03, S23 | AST, classify every loop; unclassifiable loops are findings and no directive waives TS-S02. Checks counter soundness and cap reporting, accepts a loop whose variant `variant` verified, and treats a range over a non-standard-library iterator as a finding | built; changes decided (ADR-0014, ADR-0020); the `//tiger:batched` cursor waiver still applies until ADR-0014 is built |
 | `limitflow` | TS-S02 (limit) | `go/types` and cross-package facts; traces each loop limit through parameters, fields, locals and function results back to where it enters the program; a value must be a constant, a length, another bounded limit, or clamped against a declared maximum | built (ADR-0013) |
 | `compoundcond` | TS-S06, S07, S08 | AST, count binary logical operators per condition | built |
 | `assertdensity` | TS-A01, A02 | AST plus `types`, count assert calls per function and package | not built |

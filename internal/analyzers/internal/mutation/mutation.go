@@ -1,6 +1,8 @@
-// Package mutation finds what can change a variable or struct field while a
-// loop runs, for the rules that judge whether a loop measure moves the way
-// the rule claims.
+// Package mutation finds what can change a variable or struct field inside
+// one declaration, for the rules that judge a loop: whether its counter, its
+// limit, or its measure moves the way the rule claims. It also knows what a
+// variable can hold when every write to it is a constant, and which packages
+// sit outside the module under analysis.
 //
 // Variables are matched by object identity, never by name, so a shadowing
 // copy is a different variable. Writes inside the loop come from Writes and
@@ -63,6 +65,7 @@ type Scope struct {
 	root   ast.Node
 	home   *types.Package
 	module string
+	sizes  types.Sizes
 }
 
 // External reports whether pkg is declared outside the module under
@@ -118,7 +121,7 @@ func (s Scope) FieldEscapes(field *types.Var) bool {
 // declared outside the module is the exception: its own code does not reach
 // into the fields a caller reads, such as testing.B's N.
 func (s Scope) ReceivesOwner(node ast.Node, owner types.Type) bool {
-	want := derefNamed(owner)
+	want := DerefNamed(owner)
 	if want == nil || s.External(want.Obj().Pkg()) {
 		return false
 	}
@@ -151,12 +154,12 @@ func (s Scope) receives(call *ast.CallExpr, want *types.Named) bool {
 
 // isType reports whether t is want or a pointer to want.
 func isType(t types.Type, want *types.Named) bool {
-	named := derefNamed(t)
+	named := DerefNamed(t)
 	return named != nil && named.Obj() == want.Obj()
 }
 
-// derefNamed returns the named type behind t or a pointer to t.
-func derefNamed(t types.Type) *types.Named {
+// DerefNamed returns the named type behind t or a pointer to t.
+func DerefNamed(t types.Type) *types.Named {
 	if t == nil {
 		return nil
 	}
@@ -320,15 +323,25 @@ func Declarations(pass *analysis.Pass) []Scope {
 	if pass.Module != nil {
 		module = pass.Module.Path
 	}
+	sizes := pass.TypesSizes
+	if sizes == nil {
+		sizes = types.SizesFor("gc", "amd64")
+	}
 	var scopes []Scope
 	for _, file := range pass.Files {
 		for _, decl := range file.Decls {
 			scopes = append(scopes, Scope{
-				info: pass.TypesInfo, root: decl, home: pass.Pkg, module: module,
+				info: pass.TypesInfo, root: decl, home: pass.Pkg, module: module, sizes: sizes,
 			})
 		}
 	}
 	return scopes
+}
+
+// Sizes returns the target's type sizes, the common 64-bit layout when the
+// driver supplied none.
+func (s Scope) Sizes() types.Sizes {
+	return s.sizes
 }
 
 // Root returns the declaration the scope covers.

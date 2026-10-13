@@ -120,15 +120,6 @@ func run(pass *analysis.Pass) (any, error) {
 	return nil, nil
 }
 
-// sizes returns the target's type sizes, falling back to the common 64-bit
-// layout when the driver supplied none.
-func (c *checker) sizes() types.Sizes {
-	if c.pass.TypesSizes != nil {
-		return c.pass.TypesSizes
-	}
-	return types.SizesFor("gc", "amd64")
-}
-
 // followingStatements maps every statement in decl to the statements after
 // it in the same block, where a cap's report sits.
 func followingStatements(decl ast.Node) map[ast.Stmt][]ast.Stmt {
@@ -212,7 +203,7 @@ func (c *checker) checkFor(files []*ast.File, loop *ast.ForStmt) {
 		checkEventLoop(c.pass, loop)
 		return
 	}
-	terms := counter.Terms(c.scope, c.sizes(), loop)
+	terms := counter.Terms(c.scope, c.scope.Sizes(), loop)
 	if len(terms) > 0 {
 		c.checkCap(loop, terms)
 		return

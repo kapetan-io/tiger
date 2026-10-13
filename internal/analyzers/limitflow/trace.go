@@ -13,18 +13,18 @@ import (
 	"github.com/kapetan-io/tiger/internal/worklist"
 )
 
-// outcome is what tracing one value found: the places it enters with no
+// traceResult is what tracing one value found: the places it enters with no
 // bound, the constants too large to reach, the parameters it depends on, and
 // the limit fields it reads straight into a loop.
-type outcome struct {
+type traceResult struct {
 	bad    []ast.Expr
 	huge   []ast.Expr
 	params []int
 	fields []*types.Var
 }
 
-// bounded reports whether nothing in the outcome is a finding.
-func (o outcome) bounded() bool {
+// bounded reports whether nothing in the traceResult is a finding.
+func (o traceResult) bounded() bool {
 	return len(o.bad) == 0 && len(o.huge) == 0
 }
 
@@ -51,14 +51,14 @@ type node struct {
 	field    *types.Var
 	children []int
 	done     bool
-	found    outcome
+	found    traceResult
 }
 
 // task asks for one expression to be expanded into the node at index.
 type task struct {
 	index int
 	expr  ast.Expr
-	mode  directness
+	mode  reach
 }
 
 // tracer builds and evaluates the tree for one value. The tree is built with
@@ -86,7 +86,7 @@ var addsOrSubtracts = map[token.Token]bool{token.ADD: true, token.SUB: true}
 var unaryJoins = map[token.Token]bool{token.ADD: true, token.SUB: true, token.XOR: true}
 
 // trace follows root back to where it enters the program.
-func (s *state) trace(fn *function, root ast.Expr, mode directness) outcome {
+func (s *state) trace(fn *function, root ast.Expr, mode reach) traceResult {
 	t := &tracer{s: s, fn: fn, vars: map[*types.Var]int{}}
 	t.nodes = []node{{}}
 	t.work = []task{{index: 0, expr: root, mode: mode}}
@@ -99,17 +99,17 @@ func (s *state) trace(fn *function, root ast.Expr, mode directness) outcome {
 }
 
 // child adds a node under parent and queues expr to fill it.
-func (t *tracer) child(parent int, expr ast.Expr, mode directness) {
+func (t *tracer) child(parent int, expr ast.Expr, mode reach) {
 	index := len(t.nodes)
 	t.nodes = append(t.nodes, node{})
 	t.nodes[parent].children = append(t.nodes[parent].children, index)
 	t.work = append(t.work, task{index: index, expr: expr, mode: mode})
 }
 
-// leaf adds a finished node under parent.
+// leaf adds a leaf node under parent, settled with the rest in evaluate.
 func (t *tracer) leaf(parent int, kind nodeKind, expr ast.Expr) {
 	index := len(t.nodes)
-	t.nodes = append(t.nodes, node{kind: kind, expr: expr, done: false})
+	t.nodes = append(t.nodes, node{kind: kind, expr: expr})
 	t.nodes[parent].children = append(t.nodes[parent].children, index)
 }
 
@@ -163,7 +163,9 @@ func (t *tracer) constant(index int, expr ast.Expr) bool {
 // tooLarge reports whether a constant is at least half of its integer type's
 // maximum, on a type wide enough that a loop to that count is out of reach.
 func (t *tracer) tooLarge(known types.TypeAndValue) bool {
-	span, ok := intrange.Of(known.Type, t.s.sizes())
+	span, ok := intrange.Of(known.Type, t.fn.scope.Sizes())
+	// A type that holds fewer values than an int32 does is one a loop can
+	// reach the far half of, so only wider types have constants out of reach.
 	if !ok || span.High.Cmp(big.NewInt(1<<31-1)) < 0 {
 		return false
 	}
@@ -198,11 +200,11 @@ func (t *tracer) call(current task, call *ast.CallExpr) {
 				t.leaf(current.index, nodeUnbounded, call)
 				continue
 			}
-			t.child(current.index, call.Args[index], indirect)
+			t.child(current.index, call.Args[index], downstream)
 		}
 		return
 	}
-	if current.mode == direct {
+	if current.mode == atHeader {
 		t.set(current.index, nodeBounded, call)
 		return
 	}
@@ -284,11 +286,11 @@ func (t *tracer) selector(current task, expr *ast.SelectorExpr) {
 		t.set(current.index, nodeBounded, expr)
 		return
 	}
-	if current.mode == direct && key == "" {
+	if current.mode == atHeader && key == "" {
 		t.set(current.index, nodeBounded, expr)
 		return
 	}
-	if current.mode == direct {
+	if current.mode == atHeader {
 		t.nodes[current.index].field = field
 		t.set(current.index, nodeField, expr)
 		return
@@ -360,11 +362,12 @@ func (t *tracer) written(parent int, v *types.Var, write mutation.Write, use *as
 	}
 }
 
-// assigned adds the node for an assignment into v. A running total of
-// bounded values is as bounded as what is added, because every loop in tiger's
-// code ends. A variable that feeds itself any other way, such as doubling,
-// grows without a bound, and a value that arrives with several results is not
-// followed.
+// assigned adds the node for an assignment into v. It trusts v += x and
+// v = v + x to be as bounded as x: an accumulator runs in loops that are
+// themselves bounded, so it grows by at most bound(x) times the loop's bound.
+// That is a recorded miss. A variable that feeds itself any other way, such
+// as doubling, grows without a bound, and a value that arrives with several
+// results is not followed.
 func (t *tracer) assigned(parent int, v *types.Var, stmt *ast.AssignStmt) {
 	for i, lhs := range stmt.Lhs {
 		ident, ok := lhs.(*ast.Ident)
@@ -372,7 +375,7 @@ func (t *tracer) assigned(parent int, v *types.Var, stmt *ast.AssignStmt) {
 			continue
 		}
 		if stmt.Tok == token.ADD_ASSIGN || stmt.Tok == token.SUB_ASSIGN {
-			t.child(parent, stmt.Rhs[i], indirect)
+			t.child(parent, stmt.Rhs[i], downstream)
 			return
 		}
 		plain := stmt.Tok == token.ASSIGN || stmt.Tok == token.DEFINE
@@ -389,7 +392,7 @@ func (t *tracer) assigned(parent int, v *types.Var, stmt *ast.AssignStmt) {
 // x to a running total, and any other value that reads v feeds itself.
 func (t *tracer) assignedValue(parent int, v *types.Var, value ast.Expr) {
 	if !t.mentions(value, v) {
-		t.child(parent, value, indirect)
+		t.child(parent, value, downstream)
 		return
 	}
 	if t.clampsItself(value) {
@@ -398,7 +401,7 @@ func (t *tracer) assignedValue(parent int, v *types.Var, value ast.Expr) {
 	}
 	binary, ok := ast.Unparen(value).(*ast.BinaryExpr)
 	if ok && addsOrSubtracts[binary.Op] && t.isVar(binary.X, v) {
-		t.child(parent, binary.Y, indirect)
+		t.child(parent, binary.Y, downstream)
 		return
 	}
 	t.leaf(parent, nodeUnbounded, value)
@@ -412,8 +415,7 @@ func (t *tracer) clampsItself(value ast.Expr) bool {
 	if !ok {
 		return false
 	}
-	ident, ok := ast.Unparen(call.Fun).(*ast.Ident)
-	if !ok || ident.Name != "min" {
+	if !t.isBuiltin(call, "min") {
 		return false
 	}
 	for _, arg := range call.Args {
@@ -438,7 +440,7 @@ func (t *tracer) declared(parent int, v *types.Var, spec *ast.ValueSpec, use *as
 	}
 	for i, name := range spec.Names {
 		if t.s.pass.TypesInfo.ObjectOf(name) == v && len(spec.Names) == len(spec.Values) {
-			t.child(parent, spec.Values[i], indirect)
+			t.child(parent, spec.Values[i], downstream)
 			return
 		}
 	}
@@ -464,7 +466,7 @@ func (t *tracer) ranged(parent int, v *types.Var, stmt *ast.RangeStmt) {
 		t.leaf(parent, nodeBounded, key)
 	case *types.Basic:
 		if under.Info()&types.IsInteger != 0 {
-			t.child(parent, stmt.X, indirect)
+			t.child(parent, stmt.X, downstream)
 			return
 		}
 		t.leaf(parent, nodeBounded, key)
@@ -504,21 +506,21 @@ func (t *tracer) mentions(expr ast.Expr, v *types.Var) bool {
 // evaluate settles every node bottom-up. Children sit after their parents in
 // creation order except a shared variable's node, so the pass repeats until
 // the root is settled; a cycle never settles and counts as unbounded.
-func (t *tracer) evaluate(root ast.Expr) outcome {
+func (t *tracer) evaluate(root ast.Expr) traceResult {
 	rounds := len(t.nodes)
 	for round := 0; round <= rounds; round++ {
 		for index := len(t.nodes) - 1; index >= 0; index-- {
-			t.settle(index)
+			t.resolveNode(index)
 		}
 	}
 	if !t.nodes[0].done {
-		return outcome{bad: []ast.Expr{root}}
+		return traceResult{bad: []ast.Expr{root}}
 	}
 	return t.nodes[0].found
 }
 
-// settle computes one node when all of its children are settled.
-func (t *tracer) settle(index int) {
+// resolveNode computes one node when all of its children are settled.
+func (t *tracer) resolveNode(index int) {
 	current := &t.nodes[index]
 	if current.done {
 		return
@@ -548,20 +550,20 @@ func (t *tracer) settle(index int) {
 	}
 }
 
-// joinAll merges the outcomes of children that must all be bounded.
-func (t *tracer) joinAll(children []int) outcome {
-	var merged outcome
+// joinAll merges the results of children that must all be bounded.
+func (t *tracer) joinAll(children []int) traceResult {
+	var merged traceResult
 	for _, child := range children {
-		merged = merged.with(t.nodes[child].found)
+		merged = merged.merge(t.nodes[child].found)
 	}
 	return merged
 }
 
-// joinAny merges the outcomes of children of which one is enough. It takes
+// joinAny merges the results of children of which one is enough. It takes
 // the bounded child that needs the fewest parameters; when none is bounded,
 // everything the children found.
-func (t *tracer) joinAny(children []int) outcome {
-	var best *outcome
+func (t *tracer) joinAny(children []int) traceResult {
+	var best *traceResult
 	for _, child := range children {
 		found := t.nodes[child].found
 		if !found.bounded() {
@@ -577,9 +579,9 @@ func (t *tracer) joinAny(children []int) outcome {
 	return t.joinAll(children)
 }
 
-// with combines two outcomes.
-func (o outcome) with(other outcome) outcome {
-	return outcome{
+// merge combines two results.
+func (o traceResult) merge(other traceResult) traceResult {
+	return traceResult{
 		bad:    append(slices.Clone(o.bad), other.bad...),
 		huge:   append(slices.Clone(o.huge), other.huge...),
 		params: append(slices.Clone(o.params), other.params...),

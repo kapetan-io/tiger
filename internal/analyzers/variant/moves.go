@@ -35,13 +35,13 @@ type verdict struct {
 // skip the move, every positive term is non-increasing, every negative term
 // is non-decreasing, at least one term moves strictly, no term is unknown,
 // and no mover wraps around the end of its type before reaching its limit.
-func (f *loopFacts) verify(candidate ranking, limits bounds) verdict {
+func (f *loopFacts) verify(expression ranking, limits lowHigh) verdict {
 	if f.skipsMove() {
 		return verdict{reason: "a continue can skip the loop's decrease"}
 	}
 	moved := false
-	for _, t := range candidate {
-		step := f.movementOf(t.subject)
+	for _, t := range expression {
+		step := f.movementOf(t.operand)
 		name := atomText(t.atom())
 		if step.trend == trendUnknown {
 			return verdict{reason: name + " cannot be shown to move consistently"}
@@ -56,7 +56,7 @@ func (f *loopFacts) verify(candidate ranking, limits bounds) verdict {
 			continue
 		}
 		moved = true
-		if f.wraps(t.subject, step, limits) {
+		if f.wraps(t.operand, step, limits) {
 			return verdict{reason: name + " can wrap around the end of its type before it stops"}
 		}
 	}
@@ -69,7 +69,7 @@ func (f *loopFacts) verify(candidate ranking, limits bounds) verdict {
 // wraps reports whether the mover steps past the end of its integer type on
 // the way to the other side of the condition. A mover that is not compared
 // with a constant limit directly is trusted.
-func (f *loopFacts) wraps(mover subject, step movement, limits bounds) bool {
+func (f *loopFacts) wraps(mover operand, step movement, limits lowHigh) bool {
 	if mover.length || step.size == 0 {
 		return false
 	}
@@ -93,13 +93,13 @@ func (f *loopFacts) wraps(mover subject, step movement, limits bounds) bool {
 	default:
 		return false
 	}
-	return !counter.Reaches(f.scope, f.sizes(), march)
+	return !counter.Reaches(f.scope, f.scope.Sizes(), march)
 }
 
 // movementOf classifies one ranking operand: constant when nothing writes it,
 // strictly increasing or decreasing when its only write is an unconditional
 // recognized move, unknown otherwise.
-func (f *loopFacts) movementOf(sub subject) movement {
+func (f *loopFacts) movementOf(sub operand) movement {
 	if sub.constant {
 		return movement{trend: trendConstant}
 	}
@@ -110,7 +110,7 @@ func (f *loopFacts) movementOf(sub subject) movement {
 	if len(writes) == 0 {
 		return movement{trend: trendConstant}
 	}
-	if len(writes) != 1 || !f.top[writes[0].Node] {
+	if len(writes) != 1 || !f.alwaysRuns[writes[0].Node] {
 		return movement{}
 	}
 	if writes[0].Kind == mutation.Closure || writes[0].Kind == mutation.Range {
@@ -122,26 +122,26 @@ func (f *loopFacts) movementOf(sub subject) movement {
 	return f.classify(writes[0].Node, sub)
 }
 
-// writesOf collects what writes the subject inside the loop. It reports
+// writesOf collects what writes the operand inside the loop. It reports
 // false when something outside the loop body could write it too: a pointer
 // or closure made before the loop, or a call that receives the struct that
 // holds the field.
-func (f *loopFacts) writesOf(sub subject) ([]mutation.Write, bool) {
+func (f *loopFacts) writesOf(sub operand) ([]mutation.Write, bool) {
 	scope := f.scope
 	if sub.field == nil {
-		return f.within(scope.Writes, sub.root), !scope.Escapes(sub.root)
+		return f.collectIn(scope.Writes, sub.root), !scope.Escapes(sub.root)
 	}
-	if len(f.within(scope.Writes, sub.root)) > 0 || scope.Escapes(sub.root) {
+	if len(f.collectIn(scope.Writes, sub.root)) > 0 || scope.Escapes(sub.root) {
 		return nil, false
 	}
 	if scope.FieldEscapes(sub.field) || scope.ReceivesOwner(f.loop, sub.root.Type()) {
 		return nil, false
 	}
-	return f.within(scope.FieldWrites, sub.field), true
+	return f.collectIn(scope.FieldWrites, sub.field), true
 }
 
-// within runs a collector over the loop's body and Post clause.
-func (f *loopFacts) within(
+// collectIn runs a collector over the loop's body and Post clause.
+func (f *loopFacts) collectIn(
 	collect func(ast.Node, *types.Var) []mutation.Write, v *types.Var,
 ) []mutation.Write {
 	found := collect(f.loop.Body, v)
@@ -151,26 +151,26 @@ func (f *loopFacts) within(
 	return found
 }
 
-// classify reads one write as a move of the subject.
-func (f *loopFacts) classify(node ast.Node, sub subject) movement {
+// classify reads one write as a move of the operand.
+func (f *loopFacts) classify(node ast.Node, sub operand) movement {
 	if sub.length {
 		return f.classifyShrink(node, sub)
 	}
 	switch stmt := node.(type) {
 	case *ast.IncDecStmt:
 		if stmt.Tok == token.DEC {
-			return f.step(stmt.X, sub, movement{trend: trendDecreasing, size: 1})
+			return f.movedBy(stmt.X, sub, movement{trend: trendDecreasing, size: 1})
 		}
-		return f.step(stmt.X, sub, movement{trend: trendIncreasing, size: 1})
+		return f.movedBy(stmt.X, sub, movement{trend: trendIncreasing, size: 1})
 	case *ast.AssignStmt:
 		return f.classifyAssign(stmt, sub)
 	}
 	return movement{}
 }
 
-// step returns the movement when target is the subject and the step moves
+// movedBy returns the movement when target is the operand and the step moves
 // it by at least one.
-func (f *loopFacts) step(target ast.Expr, sub subject, moves movement) movement {
+func (f *loopFacts) movedBy(target ast.Expr, sub operand, moves movement) movement {
 	if !f.isPlace(target, sub.place) || moves.size < 1 {
 		return movement{}
 	}
@@ -194,7 +194,7 @@ var compoundOps = map[token.Token]token.Token{
 // classifyAssign reads x += k, x -= k, x /= k, x >>= k and their x = x op k
 // long forms. A division or shift only shrinks a value known to be above
 // zero.
-func (f *loopFacts) classifyAssign(stmt *ast.AssignStmt, sub subject) movement {
+func (f *loopFacts) classifyAssign(stmt *ast.AssignStmt, sub operand) movement {
 	if len(stmt.Lhs) != 1 || len(stmt.Rhs) != 1 {
 		return movement{}
 	}
@@ -211,10 +211,10 @@ func (f *loopFacts) classifyAssign(stmt *ast.AssignStmt, sub subject) movement {
 		return movement{}
 	}
 	if direction, isStep := stepOps[op]; isStep {
-		return f.step(stmt.Lhs[0], sub, movement{trend: direction, size: amount})
+		return f.movedBy(stmt.Lhs[0], sub, movement{trend: direction, size: amount})
 	}
 	floor, isShrink := shrinkOps[op]
-	if !isShrink || amount < floor || !f.positive[key(sub.place)] {
+	if !isShrink || amount < floor || !f.positive[sub.place] {
 		return movement{}
 	}
 	if !f.isPlace(stmt.Lhs[0], sub.place) {
@@ -231,7 +231,7 @@ func (f *loopFacts) isPlace(expr ast.Expr, want place) bool {
 
 // classifyShrink reads s = s[k:], s = s[:len(s)-k] and s = s[len(part):]
 // with part shown not empty, the moves that shorten a slice, map or string.
-func (f *loopFacts) classifyShrink(node ast.Node, sub subject) movement {
+func (f *loopFacts) classifyShrink(node ast.Node, sub operand) movement {
 	stmt, ok := node.(*ast.AssignStmt)
 	if !ok || stmt.Tok != token.ASSIGN || len(stmt.Lhs) != 1 || len(stmt.Rhs) != 1 {
 		return movement{}
@@ -258,7 +258,7 @@ func (f *loopFacts) classifyShrink(node ast.Node, sub subject) movement {
 
 // trimsConstant reports whether high is len(s) - k with k a positive
 // constant.
-func (f *loopFacts) trimsConstant(high ast.Expr, sub subject) bool {
+func (f *loopFacts) trimsConstant(high ast.Expr, sub operand) bool {
 	binary, ok := ast.Unparen(high).(*ast.BinaryExpr)
 	if !ok || binary.Op != token.SUB {
 		return false
@@ -279,8 +279,8 @@ func (f *loopFacts) trimsConstant(high ast.Expr, sub subject) bool {
 // least one element of sub when stmt runs. The condition guarantees sub is
 // not empty; chunk starts as all of sub, or a constant-sized front of it,
 // and is only ever cut to a constant-sized front before stmt.
-func (f *loopFacts) partNotEmpty(stmt *ast.AssignStmt, sub subject, part ast.Expr) bool {
-	if !f.nonEmpty[key(sub.place)] {
+func (f *loopFacts) partNotEmpty(stmt *ast.AssignStmt, sub operand, part ast.Expr) bool {
+	if !f.nonEmpty[sub.place] {
 		return false
 	}
 	call, ok := ast.Unparen(part).(*ast.CallExpr)
@@ -298,7 +298,7 @@ func (f *loopFacts) partNotEmpty(stmt *ast.AssignStmt, sub subject, part ast.Exp
 			return false
 		}
 		if assign.Tok == token.DEFINE {
-			declared = f.top[assign] && f.startsAsPartOf(assign, sub)
+			declared = f.alwaysRuns[assign] && f.startsAsPartOf(assign, sub)
 			if !declared {
 				return false
 			}
@@ -313,7 +313,7 @@ func (f *loopFacts) partNotEmpty(stmt *ast.AssignStmt, sub subject, part ast.Exp
 
 // startsAsPartOf reports whether define is chunk := s or chunk := s[:k] with
 // k a positive constant.
-func (f *loopFacts) startsAsPartOf(define *ast.AssignStmt, sub subject) bool {
+func (f *loopFacts) startsAsPartOf(define *ast.AssignStmt, sub operand) bool {
 	if len(define.Lhs) != 1 || len(define.Rhs) != 1 {
 		return false
 	}
@@ -375,15 +375,15 @@ func (f *loopFacts) skipsMove() bool {
 			label := f.pass.TypesInfo.ObjectOf(branch.Label)
 			found = label == nil || label.Pos() < f.loop.Body.Pos()
 		default:
-			found = !within(scopes, branch)
+			found = !insideAny(scopes, branch)
 		}
 		return !found
 	})
 	return found
 }
 
-// within reports whether node sits inside one of the nested statements.
-func within(nested []ast.Node, node ast.Node) bool {
+// insideAny reports whether node sits inside one of the nested statements.
+func insideAny(nested []ast.Node, node ast.Node) bool {
 	for _, outer := range nested {
 		if outer.Pos() <= node.Pos() && node.End() <= outer.End() {
 			return true

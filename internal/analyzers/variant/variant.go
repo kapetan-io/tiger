@@ -43,15 +43,10 @@
 //
 // A loop with neither a synthesized nor a verified pinned variant is
 // blocking, and the finding always names the same rewrite: an explicit
-// iteration cap whose own counter is itself a synthesizable variant, with
-// an assert on exhaustion. That rewrite is always available under the rules, so
-// unlike the specification's note that a ranking beyond the predicate
-// language "needs a deviation with a reason," this analyzer implements no
-// //tiger:variant deviation escape — correctness constraint 7 requires
-// every blocking finding to name a code change, never a directive, and the
-// counter-cap form is always that change (ADR-0003's escape admission
-// test: an escape earns its existence only where no compliant rewrite
-// exists, and one always exists here).
+// iteration cap whose own counter is itself a synthesizable variant, with an
+// assert on exhaustion. No //tiger:variant deviation exists, because that
+// rewrite is always available, so a finding always names code, never a
+// directive.
 //
 // The loops with a verified variant, synthesized or pinned, are this
 // analyzer's result: boundedloop (TS-S02) accepts them as bounded.
@@ -173,7 +168,7 @@ func (c *checker) checkFor(loop *ast.ForStmt) {
 		c.checkOutOfScopePin(loop)
 		return
 	}
-	if len(counter.Terms(c.scope, c.sizes(), loop)) > 0 {
+	if len(counter.Terms(c.scope, c.scope.Sizes(), loop)) > 0 {
 		c.checkOutOfScopePin(loop)
 		return
 	}

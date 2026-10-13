@@ -11,7 +11,7 @@ import (
 	"go/token"
 	"go/types"
 
-	"github.com/kapetan-io/tiger/internal/analyzers/internal/counter"
+	"github.com/kapetan-io/tiger/internal/analyzers/internal/condition"
 )
 
 // Parameters collects every function parameter declared in decl.
@@ -42,7 +42,7 @@ func Parameters(info *types.Info, decl ast.Node) map[*types.Var]bool {
 // Waits reports whether a top-level && term of cond is ctx.Err() == nil on
 // one of the parameters.
 func Waits(info *types.Info, params map[*types.Var]bool, cond ast.Expr) bool {
-	for _, term := range counter.Conjuncts(cond) {
+	for _, term := range condition.Conjuncts(cond) {
 		binary, ok := term.(*ast.BinaryExpr)
 		if !ok || binary.Op != token.EQL {
 			continue
@@ -53,21 +53,11 @@ func Waits(info *types.Info, params map[*types.Var]bool, cond ast.Expr) bool {
 			call, ok = ast.Unparen(binary.Y).(*ast.CallExpr)
 			other = binary.X
 		}
-		if ok && IsNil(info, other) && errOnParameter(info, params, call) {
+		if ok && condition.IsNil(info, other) && errOnParameter(info, params, call) {
 			return true
 		}
 	}
 	return false
-}
-
-// IsNil reports whether expr is the predeclared nil.
-func IsNil(info *types.Info, expr ast.Expr) bool {
-	ident, ok := ast.Unparen(expr).(*ast.Ident)
-	if !ok {
-		return false
-	}
-	_, isNilObject := info.Uses[ident].(*types.Nil)
-	return isNilObject
 }
 
 // errOnParameter reports whether call is Err() on a parameter of type

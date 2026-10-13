@@ -4,6 +4,8 @@
 package intrange
 
 import (
+	"go/ast"
+	"go/constant"
 	"go/types"
 	"math/big"
 
@@ -108,4 +110,14 @@ func basicsOf(t types.Type) ([]*types.Basic, bool) {
 	}
 	assert.Ok(len(pending) == 0, "basicsOf: constraint has more than termsMax terms")
 	return basics, len(basics) > 0
+}
+
+// SmallConstant returns expr's value when the compiler folded it to an
+// integer that fits an int64.
+func SmallConstant(info *types.Info, expr ast.Expr) (int64, bool) {
+	value := info.Types[expr].Value
+	if value == nil || value.Kind() != constant.Int {
+		return 0, false
+	}
+	return constant.Int64Val(value)
 }

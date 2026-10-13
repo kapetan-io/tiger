@@ -18,8 +18,9 @@
 // function whose result is bounded whenever the listed parameters are.
 //
 // A limit that reaches a loop through a function value or an interface
-// method is not followed, and a constant below half the type's maximum is
-// trusted. Both are recorded misses (ADR-0013).
+// method is not followed, because there is no body to trace. A constant
+// below half the type's maximum is trusted, because it cannot be told from a
+// legitimate large count. Both are recorded misses.
 package limitflow
 
 import (
@@ -121,7 +122,7 @@ func run(pass *analysis.Pass) (any, error) {
 	if standardLibrary(pass) {
 		return nil, nil
 	}
-	found := &state{
+	flow := &state{
 		pass: pass, limitParams: map[*types.Func]map[int]bool{},
 		limitFields: map[string]bool{}, ownFields: map[string]bool{},
 		results: map[*types.Func][]int{}, sinks: map[*function][]sink{},
@@ -129,14 +130,14 @@ func run(pass *analysis.Pass) (any, error) {
 	for _, fact := range pass.AllPackageFacts() {
 		if fields, ok := fact.Fact.(*LimitFields); ok {
 			for _, key := range fields.Keys {
-				found.limitFields[key] = true
+				flow.limitFields[key] = true
 			}
 		}
 	}
-	found.collect()
-	found.settle()
-	found.report()
-	found.export()
+	flow.collect()
+	flow.settle()
+	flow.report()
+	flow.export()
 	return nil, nil
 }
 
@@ -202,12 +203,12 @@ func (s *state) settle() {
 func (s *state) round() bool {
 	grew := false
 	for _, fn := range s.funcs {
-		for _, found := range s.sinks[fn] {
-			if !s.active(found) {
+		for _, candidate := range s.sinks[fn] {
+			if !s.active(candidate) {
 				continue
 			}
-			outcome := s.trace(fn, found.expr, found.mode)
-			grew = s.learn(fn, outcome) || grew
+			result := s.trace(fn, candidate.expr, candidate.mode)
+			grew = s.learn(fn, result) || grew
 		}
 		grew = s.learnResult(fn) || grew
 	}
@@ -216,9 +217,9 @@ func (s *state) round() bool {
 
 // learn records what a traced sink teaches: the parameters of fn that feed
 // it, and the limit fields it reads.
-func (s *state) learn(fn *function, outcome outcome) bool {
+func (s *state) learn(fn *function, result traceResult) bool {
 	grew := false
-	for _, index := range outcome.params {
+	for _, index := range result.params {
 		if s.limitParams[fn.obj] == nil {
 			s.limitParams[fn.obj] = map[int]bool{}
 		}
@@ -227,7 +228,7 @@ func (s *state) learn(fn *function, outcome outcome) bool {
 			grew = true
 		}
 	}
-	for _, field := range outcome.fields {
+	for _, field := range result.fields {
 		key := s.fieldKey(field)
 		if key != "" && !s.limitFields[key] {
 			s.limitFields[key] = true
@@ -256,11 +257,11 @@ func (s *state) learnResult(fn *function) bool {
 			return true
 		}
 		returns++
-		outcome := s.trace(fn, stmt.Results[0], indirect)
-		if len(outcome.bad) > 0 || len(outcome.huge) > 0 {
+		result := s.trace(fn, stmt.Results[0], downstream)
+		if len(result.bad) > 0 || len(result.huge) > 0 {
 			unbounded = true
 		}
-		depends = append(depends, outcome.params...)
+		depends = append(depends, result.params...)
 		return !unbounded
 	})
 	if returns == 0 || unbounded {
@@ -280,15 +281,15 @@ func (s *state) learnResult(fn *function) bool {
 func (s *state) report() {
 	reported := map[token.Pos]bool{}
 	for _, fn := range s.funcs {
-		for _, found := range s.sinks[fn] {
-			if !s.active(found) {
+		for _, candidate := range s.sinks[fn] {
+			if !s.active(candidate) {
 				continue
 			}
-			outcome := s.trace(fn, found.expr, found.mode)
-			for _, leaf := range outcome.bad {
+			result := s.trace(fn, candidate.expr, candidate.mode)
+			for _, leaf := range result.bad {
 				s.say(reported, leaf, msgUnbounded)
 			}
-			for _, leaf := range outcome.huge {
+			for _, leaf := range result.huge {
 				s.say(reported, leaf, msgHuge)
 			}
 		}
@@ -350,13 +351,4 @@ func (s *state) resultOf(fn *types.Func) ([]int, bool) {
 // isInteger reports whether t is an integer type.
 func isInteger(t types.Type) bool {
 	return intrange.IsInteger(t)
-}
-
-// sizes returns the target's type sizes, falling back to the common 64-bit
-// layout when the driver supplied none.
-func (s *state) sizes() types.Sizes {
-	if s.pass.TypesSizes != nil {
-		return s.pass.TypesSizes
-	}
-	return types.SizesFor("gc", "amd64")
 }

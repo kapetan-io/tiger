@@ -3,26 +3,16 @@ package variant
 import (
 	"errors"
 	"go/ast"
-	"go/constant"
 	"go/token"
 	"go/types"
 	"strconv"
 	"strings"
 
 	"github.com/kapetan-io/tiger/assert"
-	"github.com/kapetan-io/tiger/internal/analyzers/internal/counter"
+	"github.com/kapetan-io/tiger/internal/analyzers/internal/condition"
 	"github.com/kapetan-io/tiger/internal/analyzers/internal/intrange"
 	"github.com/kapetan-io/tiger/internal/directive"
 )
-
-// sizes returns the target's type sizes, falling back to the common 64-bit
-// layout when the driver supplied none.
-func (c *checker) sizes() types.Sizes {
-	if c.pass.TypesSizes != nil {
-		return c.pass.TypesSizes
-	}
-	return types.SizesFor("gc", "amd64")
-}
 
 // place names where a measured value lives: a variable, or a field of one.
 type place struct {
@@ -30,17 +20,18 @@ type place struct {
 	field *types.Var
 }
 
-// subject is one operand of a ranking: a constant, a variable or field, or
-// the length of a variable or field.
-type subject struct {
+// operand is one operand of a ranking: a constant, a variable or field, or
+// the length of a variable or field. Exactly one of constant and length is
+// set, or neither for a plain variable or field.
+type operand struct {
 	place
 	number   int64
 	constant bool
 	length   bool
 }
 
-// atom prints the subject in the predicate language's syntax.
-func (s subject) atom() directive.Atom {
+// atom prints the operand in the predicate language's syntax.
+func (s operand) atom() directive.Atom {
 	if s.constant {
 		return directive.Atom{Kind: directive.AtomNumber, Int: s.number}
 	}
@@ -56,7 +47,7 @@ func (s subject) atom() directive.Atom {
 
 // term is one signed operand of a ranking.
 type term struct {
-	subject
+	operand
 	minus bool
 }
 
@@ -72,9 +63,9 @@ func (r ranking) variant() directive.Variant {
 	return printed
 }
 
-// bounds is a comparison normalized to low OP high, where OP is < or <=: a
+// lowHigh is a comparison normalized to low OP high, where OP is < or <=: a
 // > or >= comparison is rewritten by swapping its operands.
-type bounds struct {
+type lowHigh struct {
 	low  ast.Expr
 	high ast.Expr
 	op   token.Token
@@ -82,36 +73,33 @@ type bounds struct {
 
 // normalize rewrites a comparison into low/high form, or reports the
 // comparison is not one of the four ordering operators.
-func normalize(binary *ast.BinaryExpr) (bounds, bool) {
+func normalize(binary *ast.BinaryExpr) (lowHigh, bool) {
 	if binary.Op == token.LSS || binary.Op == token.LEQ {
-		return bounds{low: binary.X, high: binary.Y, op: binary.Op}, true
+		return lowHigh{low: binary.X, high: binary.Y, op: binary.Op}, true
 	}
 	swapped, ok := swappedOrdering[binary.Op]
-	return bounds{low: binary.Y, high: binary.X, op: swapped}, ok
+	return lowHigh{low: binary.Y, high: binary.X, op: swapped}, ok
 }
 
 // swappedOrdering maps > and >= to the < and <= that read the same with the
 // operands swapped.
 var swappedOrdering = map[token.Token]token.Token{token.GTR: token.LSS, token.GEQ: token.LEQ}
 
-// key identifies a place for the guards a condition establishes.
-type key place
-
 // candidate pairs a ranking with the condition term that supplies its lower
 // bound.
 type candidate struct {
 	ranking ranking
-	limits  bounds
+	limits  lowHigh
 }
 
 // loopFacts is what a loop's condition and shape establish before its body
 // is judged.
 type loopFacts struct {
 	*checker
-	loop     *ast.ForStmt
-	top      map[ast.Node]bool
-	positive map[key]bool
-	nonEmpty map[key]bool
+	loop       *ast.ForStmt
+	alwaysRuns map[ast.Node]bool
+	positive   map[place]bool
+	nonEmpty   map[place]bool
 }
 
 // factsOf collects the guards every top-level && term of the condition
@@ -119,16 +107,16 @@ type loopFacts struct {
 // clause and the body's direct statements.
 func (c *checker) factsOf(loop *ast.ForStmt) *loopFacts {
 	found := &loopFacts{
-		checker: c, loop: loop, top: map[ast.Node]bool{},
-		positive: map[key]bool{}, nonEmpty: map[key]bool{},
+		checker: c, loop: loop, alwaysRuns: map[ast.Node]bool{},
+		positive: map[place]bool{}, nonEmpty: map[place]bool{},
 	}
 	for _, stmt := range loop.Body.List {
-		found.top[stmt] = true
+		found.alwaysRuns[stmt] = true
 	}
 	if loop.Post != nil {
-		found.top[loop.Post] = true
+		found.alwaysRuns[loop.Post] = true
 	}
-	for _, conjunct := range counter.Conjuncts(loop.Cond) {
+	for _, conjunct := range condition.Conjuncts(loop.Cond) {
 		found.learn(conjunct)
 	}
 	return found
@@ -160,54 +148,50 @@ func (f *loopFacts) learn(conjunct ast.Expr) {
 		return
 	}
 	if measured.length {
-		f.nonEmpty[key(measured.place)] = true
+		f.nonEmpty[measured.place] = true
 		return
 	}
-	f.positive[key(measured.place)] = true
+	f.positive[measured.place] = true
 }
 
 // smallConstant returns expr's value when the compiler folded it to an
 // integer that fits an int64.
 func (c *checker) smallConstant(expr ast.Expr) (int64, bool) {
-	value := c.pass.TypesInfo.Types[expr].Value
-	if value == nil || value.Kind() != constant.Int {
-		return 0, false
-	}
-	return constant.Int64Val(value)
+	return intrange.SmallConstant(c.pass.TypesInfo, expr)
 }
 
 // subjectOf reads expr as a ranking operand.
-func (c *checker) subjectOf(expr ast.Expr) (subject, bool) {
+func (c *checker) subjectOf(expr ast.Expr) (operand, bool) {
 	expr = ast.Unparen(expr)
 	if number, ok := c.smallConstant(expr); ok {
-		return subject{number: number, constant: true}, true
+		return operand{number: number, constant: true}, true
 	}
 	if call, ok := expr.(*ast.CallExpr); ok {
 		return c.lengthOf(call)
 	}
 	where, ok := c.placeOf(expr)
 	if !ok || !c.isInteger(expr) {
-		return subject{}, false
+		return operand{}, false
 	}
-	return subject{place: where}, true
+	return operand{place: where}, true
 }
 
 // lengthOf reads len(x) as a ranking operand when x is a slice, map or
 // string.
-func (c *checker) lengthOf(call *ast.CallExpr) (subject, bool) {
+func (c *checker) lengthOf(call *ast.CallExpr) (operand, bool) {
 	ident, ok := ast.Unparen(call.Fun).(*ast.Ident)
 	if !ok || len(call.Args) != 1 {
-		return subject{}, false
+		return operand{}, false
 	}
 	builtin, ok := c.pass.TypesInfo.Uses[ident].(*types.Builtin)
 	if !ok || builtin.Name() != "len" {
-		return subject{}, false
+		return operand{}, false
 	}
 	where, ok := c.placeOf(call.Args[0])
 	if !ok || !lenable(c.pass.TypesInfo.TypeOf(call.Args[0])) {
-		return subject{}, false
+		return operand{}, false
 	}
-	return subject{place: where, length: true}, true
+	return operand{place: where, length: true}, true
 }
 
 // placeOf resolves expr to a variable or to a field of a variable.
@@ -257,7 +241,7 @@ func lenable(t types.Type) bool {
 // a ranking and returns the first one the body verifies.
 func (c *checker) synthesize(loop *ast.ForStmt) (directive.Variant, bool) {
 	facts := c.factsOf(loop)
-	for _, conjunct := range counter.Conjuncts(loop.Cond) {
+	for _, conjunct := range condition.Conjuncts(loop.Cond) {
 		found, ok := facts.measure(conjunct)
 		if ok && facts.verify(found.ranking, found.limits).ok {
 			return found.ranking.variant(), true
@@ -286,7 +270,7 @@ func (f *loopFacts) measure(conjunct ast.Expr) (candidate, bool) {
 
 // lengthMeasure recognizes low OP len(s) with low a non-negative constant:
 // the ranking is len(s) alone.
-func (f *loopFacts) lengthMeasure(limits bounds) (ranking, bool) {
+func (f *loopFacts) lengthMeasure(limits lowHigh) (ranking, bool) {
 	call, ok := ast.Unparen(limits.high).(*ast.CallExpr)
 	if !ok {
 		return nil, false
@@ -299,13 +283,13 @@ func (f *loopFacts) lengthMeasure(limits bounds) (ranking, bool) {
 	if !ok || floor < 0 {
 		return nil, false
 	}
-	return ranking{{subject: length}}, true
+	return ranking{{operand: length}}, true
 }
 
 // linearMeasure recognizes an integer comparison between two operands, each
 // an integer variable, field, or constant, with at least one not constant.
 // The ranking is high - low, dropping a zero low term.
-func (f *loopFacts) linearMeasure(limits bounds) (ranking, bool) {
+func (f *loopFacts) linearMeasure(limits lowHigh) (ranking, bool) {
 	low, ok := f.subjectOf(limits.low)
 	if !ok || low.length {
 		return nil, false
@@ -317,9 +301,9 @@ func (f *loopFacts) linearMeasure(limits bounds) (ranking, bool) {
 	if low.constant && high.constant {
 		return nil, false
 	}
-	measure := ranking{{subject: high}}
+	measure := ranking{{operand: high}}
 	if !low.constant || low.number != 0 {
-		measure = append(measure, term{subject: low, minus: true})
+		measure = append(measure, term{operand: low, minus: true})
 	}
 	return measure, true
 }
@@ -335,7 +319,7 @@ func (c *checker) verifyPinned(loop *ast.ForStmt, pinned directive.Variant) verd
 		return verdict{reason: err.Error()}
 	}
 	reason := "no top-level && term of the loop's condition is a recognized comparison"
-	for _, conjunct := range counter.Conjuncts(loop.Cond) {
+	for _, conjunct := range condition.Conjuncts(loop.Cond) {
 		found, ok := facts.measure(conjunct)
 		if !ok {
 			continue
@@ -378,44 +362,44 @@ func (f *loopFacts) resolve(pinned directive.Variant) (ranking, error) {
 		if !ok {
 			return nil, errors.New(atomText(pinTerm.Atom) + " cannot be shown to move consistently")
 		}
-		resolved = append(resolved, term{subject: found, minus: pinTerm.Minus})
+		resolved = append(resolved, term{operand: found, minus: pinTerm.Minus})
 	}
 	return resolved, nil
 }
 
-// resolveAtom binds one atom to a subject using the scope at the loop.
-func (f *loopFacts) resolveAtom(atom directive.Atom) (subject, bool) {
+// resolveAtom binds one atom to a operand using the scope at the loop.
+func (f *loopFacts) resolveAtom(atom directive.Atom) (operand, bool) {
 	if atom.Kind == directive.AtomNumber {
-		return subject{number: atom.Int, constant: true}, true
+		return operand{number: atom.Int, constant: true}, true
 	}
 	if atom.Kind != directive.AtomRef && atom.Kind != directive.AtomLen {
-		return subject{}, false
+		return operand{}, false
 	}
 	names := strings.Split(atom.Ref, ".")
 	_, object := f.pass.Pkg.Scope().Innermost(f.loop.Pos()).LookupParent(names[0], f.loop.Pos())
 	root, ok := object.(*types.Var)
 	if !ok || len(names) > 2 {
-		return subject{}, false
+		return operand{}, false
 	}
-	found := subject{place: place{root: root}, length: atom.Kind == directive.AtomLen}
+	found := operand{place: place{root: root}, length: atom.Kind == directive.AtomLen}
 	held := root.Type()
 	if len(names) == 2 {
 		field, ok := fieldNamed(held, names[1], f.pass.Pkg)
 		if !ok {
-			return subject{}, false
+			return operand{}, false
 		}
 		found.field = field
 		held = field.Type()
 	}
 	if found.length != lenable(held) {
-		return subject{}, false
+		return operand{}, false
 	}
 	if found.length {
 		return found, true
 	}
 	basic, isBasic := held.Underlying().(*types.Basic)
 	if !isBasic || basic.Info()&types.IsInteger == 0 {
-		return subject{}, false
+		return operand{}, false
 	}
 	return found, true
 }

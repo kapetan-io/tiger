@@ -7,8 +7,9 @@ import (
 
 	"golang.org/x/tools/go/analysis"
 
-	"github.com/kapetan-io/tiger/internal/analyzers/internal/cancel"
+	"github.com/kapetan-io/tiger/internal/analyzers/internal/condition"
 	"github.com/kapetan-io/tiger/internal/analyzers/internal/counter"
+	"github.com/kapetan-io/tiger/internal/analyzers/internal/mutation"
 )
 
 const msgCapSilent = "TS-S02: this counter cap ends the loop without saying so, so a truncated " +
@@ -82,7 +83,7 @@ var reachedComparisons = map[token.Token]bool{
 // comparison.
 func otherExits(cond ast.Expr, term counter.Term) []ast.Expr {
 	var others []ast.Expr
-	for _, conjunct := range counter.Conjuncts(cond) {
+	for _, conjunct := range condition.Conjuncts(cond) {
 		binary, ok := conjunct.(*ast.BinaryExpr)
 		if !ok {
 			others = append(others, conjunct)
@@ -124,18 +125,8 @@ func (c *checker) drainsOutsideStream(expr ast.Expr) bool {
 	if selection == nil || selection.Kind() != types.MethodVal {
 		return false
 	}
-	named := receiverNamed(selection.Recv())
+	named := mutation.DerefNamed(selection.Recv())
 	return named != nil && c.scope.External(named.Obj().Pkg())
-}
-
-// receiverNamed returns the named type behind a receiver or a pointer to
-// one.
-func receiverNamed(t types.Type) *types.Named {
-	if pointer, ok := t.(*types.Pointer); ok {
-		t = pointer.Elem()
-	}
-	named, _ := t.(*types.Named)
-	return named
 }
 
 // breaksOut reports whether the loop body has a break that ends this loop:
@@ -288,7 +279,7 @@ func (c *checker) fails(body *ast.BlockStmt) bool {
 func (c *checker) returnsError(stmt *ast.ReturnStmt) bool {
 	for _, result := range stmt.Results {
 		resultType := c.pass.TypesInfo.TypeOf(result)
-		if resultType == nil || cancel.IsNil(c.pass.TypesInfo, result) {
+		if resultType == nil || condition.IsNil(c.pass.TypesInfo, result) {
 			continue
 		}
 		if types.Implements(resultType, errorInterface()) {

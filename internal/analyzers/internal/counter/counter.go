@@ -13,19 +13,19 @@ package counter
 
 import (
 	"go/ast"
-	"go/constant"
 	"go/token"
 	"go/types"
 	"math/big"
 
-	"github.com/kapetan-io/tiger/assert"
+	"github.com/kapetan-io/tiger/internal/analyzers/internal/condition"
 	"github.com/kapetan-io/tiger/internal/analyzers/internal/intrange"
 	"github.com/kapetan-io/tiger/internal/analyzers/internal/mutation"
 )
 
 // Term is a counter's march toward a limit: the comparison that bounds it,
 // whether the comparison includes the limit itself, and the constant step
-// the counter takes on each pass toward it.
+// the counter takes on each pass toward it. The counter is a loop counter, or
+// a struct field when TS-V01 checks a measure that is not one.
 type Term struct {
 	Counter   *types.Var
 	Limit     ast.Expr
@@ -56,37 +56,12 @@ func Terms(scope mutation.Scope, sizes types.Sizes, loop *ast.ForStmt) []Term {
 		return nil
 	}
 	var terms []Term
-	for _, conjunct := range Conjuncts(loop.Cond) {
+	for _, conjunct := range condition.Conjuncts(loop.Cond) {
 		term, sound := compare(scope, loop, conjunct, moved)
 		if sound && Reaches(scope, sizes, term) {
 			terms = append(terms, term)
 		}
 	}
-	return terms
-}
-
-// conjunctsMax bounds how many nodes the flattening of one condition visits.
-const conjunctsMax = 1 << 12
-
-const _ = uint(1<<20 - conjunctsMax)
-
-// Conjuncts splits expr on top-level && into its terms, looking through
-// parentheses but not through ! or ||.
-func Conjuncts(expr ast.Expr) []ast.Expr {
-	pending := []ast.Expr{expr}
-	var terms []ast.Expr
-	for steps := 0; len(pending) > 0 && steps < conjunctsMax; steps++ {
-		last := len(pending) - 1
-		next := ast.Unparen(pending[last])
-		pending = pending[:last]
-		binary, ok := next.(*ast.BinaryExpr)
-		if ok && binary.Op == token.LAND {
-			pending = append(pending, binary.Y, binary.X)
-			continue
-		}
-		terms = append(terms, next)
-	}
-	assert.Ok(len(pending) == 0, "condition has more than conjunctsMax terms")
 	return terms
 }
 
@@ -104,7 +79,7 @@ func advance(info *types.Info, post ast.Stmt) (step, bool) {
 			return step{}, false
 		}
 		counter, ok := integerVar(info, stmt.Lhs[0])
-		size, constantStep := smallConstant(info, stmt.Rhs[0])
+		size, constantStep := intrange.SmallConstant(info, stmt.Rhs[0])
 		if !ok || !constantStep || size < 1 {
 			return step{}, false
 		}
@@ -124,16 +99,6 @@ func integerVar(info *types.Info, expr ast.Expr) (*types.Var, bool) {
 		return nil, false
 	}
 	return v, intrange.IsInteger(v.Type())
-}
-
-// smallConstant returns expr's value when it is an integer constant that
-// fits in an int64.
-func smallConstant(info *types.Info, expr ast.Expr) (int64, bool) {
-	value := info.Types[expr].Value
-	if value == nil || value.Kind() != constant.Int {
-		return 0, false
-	}
-	return constant.Int64Val(value)
 }
 
 // disturbed reports whether the body, or something outside it, writes the
@@ -158,7 +123,7 @@ func compare(
 	switch {
 	case isVar(scope.Info(), binary.X, moved.counter):
 	case isVar(scope.Info(), binary.Y, moved.counter):
-		op, limit = mirrored[binary.Op], binary.X
+		op, limit = flipped(binary.Op), binary.X
 	default:
 		return Term{}, false
 	}
@@ -179,10 +144,11 @@ func compare(
 	}, true
 }
 
-// mirrored maps a comparison to the one that reads the same with its
-// operands swapped.
-var mirrored = map[token.Token]token.Token{
-	token.LSS: token.GTR, token.LEQ: token.GEQ, token.GTR: token.LSS, token.GEQ: token.LEQ,
+// flipped returns the comparison that reads the same with its operands
+// swapped.
+func flipped(op token.Token) token.Token {
+	mirrored, _ := condition.Mirror(op)
+	return mirrored
 }
 
 // mentions reports whether expr reads v.

@@ -263,7 +263,10 @@ traced. A constant below half the type's maximum, such as `1 << 40`, passes as a
 standard library stream over an endless in-program source counts as an outside stream.
 Ranging over a slice while appending to it ends, so it stays a correctness bug for
 tests, not a loop rule. A limit read through a declared method (`q.Len()`) is trusted, so a
-body that grows `q` through another method goes unseen.
+body that grows `q` through another method, or a declared function that grows a global it
+returns, goes unseen. A struct field changed through a global pointer or an interface method
+that the loop never passes the struct to goes unseen too. A cap's report is any failing `if`
+on a variable the loop assigns, so an unrelated check such as `if err != nil` counts.
 
 <!-- rule: TS-S02-limit -->
 ### TS-S02 (limit) — every loop limit has an upper bound where it enters the program

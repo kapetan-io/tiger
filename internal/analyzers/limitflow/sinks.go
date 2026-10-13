@@ -20,22 +20,21 @@ const (
 	fieldWrite
 )
 
-// directness says whether a traced value is the loop's own limit or has
-// already passed through a variable, a call, or a write. Only a value read
-// straight into the loop's header teaches the trace which fields bound a
-// loop.
-type directness bool
+// reach says whether a traced value is read straight from a loop's header
+// (atHeader) or arrived through a variable, a call, or a write (downstream).
+// Only a value read atHeader teaches the trace which fields bound a loop.
+type reach bool
 
 const (
-	direct   directness = true
-	indirect directness = false
+	atHeader   reach = true
+	downstream reach = false
 )
 
 // sink is one value that may become a loop limit.
 type sink struct {
 	kind   sinkKind
 	expr   ast.Expr
-	mode   directness
+	mode   reach
 	callee *types.Func
 	index  int
 	field  *types.Var
@@ -44,12 +43,12 @@ type sink struct {
 // active reports whether the sink feeds a loop given the facts so far: a
 // loop's own limit always does, an argument does when its parameter bounds a
 // loop, and a write does when its field bounds one.
-func (s *state) active(found sink) bool {
-	if found.kind == callArg {
-		return slices.Contains(s.limitParamsOf(found.callee), found.index)
+func (s *state) active(candidate sink) bool {
+	if candidate.kind == callArg {
+		return slices.Contains(s.limitParamsOf(candidate.callee), candidate.index)
 	}
-	if found.kind == fieldWrite {
-		key := s.fieldKey(found.field)
+	if candidate.kind == fieldWrite {
+		key := s.fieldKey(candidate.field)
 		return key != "" && s.limitFields[key]
 	}
 	return true
@@ -64,7 +63,7 @@ func (s *state) sinksIn(fn *function) []sink {
 			found = append(found, s.limitsOf(fn, node)...)
 		case *ast.RangeStmt:
 			if isInteger(s.pass.TypesInfo.TypeOf(node.X)) {
-				found = append(found, sink{kind: loopLimit, expr: node.X, mode: direct})
+				found = append(found, sink{kind: loopLimit, expr: node.X, mode: atHeader})
 			}
 		case *ast.CallExpr:
 			found = append(found, s.argumentsOf(node)...)
@@ -81,8 +80,8 @@ func (s *state) sinksIn(fn *function) []sink {
 // limitsOf returns the limit of each sound counter comparison in a loop.
 func (s *state) limitsOf(fn *function, loop *ast.ForStmt) []sink {
 	var found []sink
-	for _, term := range counter.Terms(fn.scope, s.sizes(), loop) {
-		found = append(found, sink{kind: loopLimit, expr: term.Limit, mode: direct})
+	for _, term := range counter.Terms(fn.scope, fn.scope.Sizes(), loop) {
+		found = append(found, sink{kind: loopLimit, expr: term.Limit, mode: atHeader})
 	}
 	return found
 }
@@ -101,7 +100,7 @@ func (s *state) argumentsOf(call *ast.CallExpr) []sink {
 			continue
 		}
 		found = append(found, sink{
-			kind: callArg, expr: arg, mode: indirect, callee: callee, index: i - offset,
+			kind: callArg, expr: arg, mode: downstream, callee: callee, index: i - offset,
 		})
 	}
 	return found
@@ -123,8 +122,8 @@ func (s *state) receiverArguments(call *ast.CallExpr) int {
 }
 
 // callee resolves a call to the declared function or method it names. A call
-// through a function value or an interface method resolves to nothing the
-// trace can follow past the interface, which is a recorded miss.
+// through a function value or an interface method returns nil, a recorded
+// miss.
 func (s *state) callee(call *ast.CallExpr) *types.Func {
 	var name *ast.Ident
 	switch fun := ast.Unparen(call.Fun).(type) {
@@ -155,7 +154,7 @@ func (s *state) literalFields(literal *ast.CompositeLit) []sink {
 			continue
 		}
 		if field, isVar := s.pass.TypesInfo.Uses[key].(*types.Var); isVar && field.IsField() {
-			found = append(found, sink{kind: fieldWrite, expr: pair.Value, mode: indirect, field: field})
+			found = append(found, sink{kind: fieldWrite, expr: pair.Value, mode: downstream, field: field})
 		}
 	}
 	return found
@@ -177,7 +176,7 @@ func (s *state) assignedFields(assign *ast.AssignStmt) []sink {
 			continue
 		}
 		if field, isVar := selection.Obj().(*types.Var); isVar {
-			found = append(found, sink{kind: fieldWrite, expr: assign.Rhs[i], mode: indirect, field: field})
+			found = append(found, sink{kind: fieldWrite, expr: assign.Rhs[i], mode: downstream, field: field})
 		}
 	}
 	return found
