@@ -326,7 +326,9 @@ clamp in another package counts under `tiger check ./...` and is missed under
 **Known misses:** A limit passed through a function value or an interface method is not
 followed. A constant below half the type's maximum, such as `1 << 40`, passes. A clamp
 that sits in another function and rejects there, rather than in the function that
-passes the value, is not seen, so the call is flagged.
+passes the value, is not seen, so the call is flagged. A clamp caps a value's top only, so
+`min(x, max) * 2`, or the sum of two clamped values, wraps to a large positive count when `x`
+is near the bottom of its type. Closing that needs a lower bound on every clamped value.
 
 <!-- rule: TS-S03 -->
 ### TS-S03 — an unbounded event loop selects on ctx.Done()
