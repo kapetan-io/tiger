@@ -1,6 +1,6 @@
 // Package sametypeparams enforces TS-N07 (adjacent parameters of identical
-// type, and more than four parameters not counting a leading t or ctx, need an options struct) and TS-N08
-// (a plain bool parameter needs a named type).
+// type, and more than four parameters not counting a leading t or ctx, need
+// an options struct) and TS-N08 (a plain bool parameter needs a named type).
 //
 // The spec's own assert package — Ok(cond bool, ...), Equal(got, want T) —
 // is tiger infrastructure whose API the spec itself fixes, so the assert

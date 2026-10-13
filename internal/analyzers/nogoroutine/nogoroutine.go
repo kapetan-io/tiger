@@ -1,9 +1,10 @@
 // Package nogoroutine enforces TS-C02 and TS-C09: no bare goroutine spawns
 // outside supervisors.
 //
-// Every GoStmt is a finding, except a loop spawn in a _test.go file. A spawn lexically inside a for or range loop
-// body is the reactive anti-pattern TS-C09 warns about — work started in
-// direct response to each event or item, with no back pressure. Any other
+// Every GoStmt is a finding, except a loop spawn in a _test.go file. A
+// spawn lexically inside a for or range loop body is the reactive
+// anti-pattern TS-C09 warns about — work started in direct response to each
+// event or item, with no back pressure. Any other
 // spawn is TS-C02: a goroutine with no documented owner and no lifetime
 // tied to a context. The compliant path is errgroup.Group.Go or another
 // library that owns the join; there is no allowlist of supervisor
