@@ -32,6 +32,7 @@ import (
 	"github.com/kapetan-io/tiger/internal/analyzers/invariantnegative"
 	"github.com/kapetan-io/tiger/internal/analyzers/invariantrefs"
 	"github.com/kapetan-io/tiger/internal/analyzers/ioinloop"
+	"github.com/kapetan-io/tiger/internal/analyzers/limitflow"
 	"github.com/kapetan-io/tiger/internal/analyzers/limitrelate"
 	"github.com/kapetan-io/tiger/internal/analyzers/maporder"
 	"github.com/kapetan-io/tiger/internal/analyzers/nogoroutine"
@@ -136,6 +137,11 @@ var customRules = []CustomRule{
 		Category: "TS-S02", RuleID: "TS-S02", Analyzer: boundedloop.Analyzer,
 		Severity: SeverityBlocking,
 		Title:    "every loop has an upper bound",
+	},
+	{
+		Category: "TS-S02-limit", RuleID: "TS-S02", Analyzer: limitflow.Analyzer,
+		Severity: SeverityBlocking,
+		Title:    "every loop limit has an upper bound where it enters the program",
 	},
 	{
 		Category: "TS-S03", RuleID: "TS-S03", Analyzer: boundedloop.Analyzer,

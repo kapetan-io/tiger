@@ -4,6 +4,8 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"go/types"
+	"maps"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -23,10 +25,10 @@ var loopFinding = regexp.MustCompile(`^(\S+\.go):(\d+):\d+: (TS-S02|TS-S09|TS-V0
 
 // blockedFunctions names the functions in dir that stdout reports a loop
 // finding in, sorted and without repeats.
-func blockedFunctions(t *testing.T, dir, stdout string) []string {
+func blockedFunctions(t *testing.T, dir string, got outcome) []string {
 	t.Helper()
 	found := map[string]bool{}
-	for _, line := range strings.Split(stdout, "\n") {
+	for _, line := range strings.Split(got.stdout, "\n") {
 		match := loopFinding.FindStringSubmatch(line)
 		if match == nil {
 			continue
@@ -37,12 +39,7 @@ func blockedFunctions(t *testing.T, dir, stdout string) []string {
 		require.NotEmpty(t, name)
 		found[name] = true
 	}
-	names := make([]string, 0, len(found))
-	for name := range found {
-		names = append(names, name)
-	}
-	slices.Sort(names)
-	return names
+	return slices.Sorted(maps.Keys(found))
 }
 
 // functionAt returns the name of the function declared around line in file,
@@ -62,18 +59,7 @@ func functionAt(t *testing.T, file string, line int) string {
 		if fn.Recv == nil {
 			return fn.Name.Name
 		}
-		return strings.TrimPrefix(types(fn.Recv.List[0].Type), "*") + "." + fn.Name.Name
-	}
-	return ""
-}
-
-// types prints a receiver type expression.
-func types(expr ast.Expr) string {
-	switch e := expr.(type) {
-	case *ast.StarExpr:
-		return "*" + types(e.X)
-	case *ast.Ident:
-		return e.Name
+		return strings.TrimPrefix(types.ExprString(fn.Recv.List[0].Type), "*") + "." + fn.Name.Name
 	}
 	return ""
 }
@@ -98,9 +84,10 @@ func TestCheckBlocksEveryLoopThatNeverEndsOrStopsQuietly(t *testing.T) {
 		"CounterUndone", "CountVariant", "DrainRefill", "DrainSkip", "FieldNamedLikeCounter",
 		"GotoLoop", "HelperGrow", "LabeledContinue", "LimitGrows", "MapGrow", "OrCounter",
 		"Overflow", "ParsePackRaw", "RangeNaturals", "ShadowSlice", "Spinner.Spin",
+		"CreateRaw", "ListRaw", "SpinFromConfigRaw",
 		"SpinBreak", "SpinCapped", "SpinLimited", "StepsPastLimit", "Walk", "WalkCapped",
 		"WrongCounter", "WrongWay", "naturals",
-	}, blockedFunctions(t, dir, got.stdout))
+	}, blockedFunctions(t, dir, got))
 }
 
 // TestCheckPassesLoopsThatEndForReasonsTigerCanProve runs tiger over the

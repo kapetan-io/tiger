@@ -264,6 +264,48 @@ Ranging over a slice while appending to it ends, so it stays a correctness bug f
 tests, not a loop rule. A limit read through a declared method (`q.Len()`) is trusted, so a
 body that grows `q` through another method goes unseen.
 
+<!-- rule: TS-S02-limit -->
+### TS-S02 (limit) — every loop limit has an upper bound where it enters the program
+
+**Severity:** blocking — a finding fails the run.
+
+A loop that counts to a number is only as bounded as the number. A page size read from
+a request, a spin count from a config file, or an object count from a binary header lets
+the outside world pick how long the loop runs. Tiger traces each loop limit back to
+where it enters the program, through parameters, struct fields, local variables and
+function results, across packages. Every value written into it must be a constant, a
+length, another bounded limit, or a value clamped against a declared maximum, such as
+`min(config.Spins, spinsMax)` or an `if count > objectsMax` that rejects. A function that
+returns a clamped value carries the bound to its callers. A constant at least half of the
+type's maximum, such as `math.MaxInt`, is a finding too, because no loop reaches it.
+
+A loop that fires it:
+
+```go
+func spin(config Config, done func() bool) error {
+	return spinReported(done, config.Spins)
+}
+```
+
+```
+spin.go:2:36: TS-S02: this value bounds a loop but has no upper bound where it enters — clamp it there, for example min(x, xMax), or reject it with if x > xMax
+```
+
+The compliant rewrite:
+
+```go
+const spinsMax = 10_000
+
+func spin(config Config, done func() bool) error {
+	return spinReported(done, min(config.Spins, spinsMax))
+}
+```
+
+**Known misses:** A limit passed through a function value or an interface method is not
+followed. A constant below half the type's maximum, such as `1 << 40`, passes. A clamp
+that sits in another function and rejects there, rather than in the function that
+passes the value, is not seen, so the call is flagged.
+
 <!-- rule: TS-S03 -->
 ### TS-S03 — an unbounded event loop selects on ctx.Done()
 

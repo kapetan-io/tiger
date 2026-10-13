@@ -15,11 +15,14 @@ type Span struct {
 }
 
 // Of returns the range of values t's integer type holds. It reports false
-// when t is not an integer type.
+// when t is not an integer type. An untyped constant counts as an int.
 func Of(t types.Type, sizes types.Sizes) (Span, bool) {
 	basic, isBasic := t.Underlying().(*types.Basic)
 	if !isBasic || basic.Info()&types.IsInteger == 0 {
 		return Span{}, false
+	}
+	if basic.Info()&types.IsUntyped != 0 {
+		basic = types.Typ[types.Int]
 	}
 	bits := uint(sizes.Sizeof(basic) * 8)
 	one := big.NewInt(1)
