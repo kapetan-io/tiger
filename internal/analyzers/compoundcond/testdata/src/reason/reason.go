@@ -8,7 +8,7 @@ package reason
 // Code is deliberately open: the wire can carry a value this package
 // hasn't named yet.
 //
-//tiger:openenum
+//tiger:openenum peers on the wire add codes before we upgrade
 type Code string
 
 const (

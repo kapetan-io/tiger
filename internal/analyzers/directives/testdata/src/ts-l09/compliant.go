@@ -1,14 +1,13 @@
-// The compliant forms: well-formed pins and intent declarations parse
-// silently (they carry expressions, not excuses), and prose that merely
+// The compliant forms: well-formed pins parse silently (they carry
+// expressions, not excuses), and prose that merely
 // resembles a directive is not one.
 package fixture
 
-// Pin directives and the openenum intent directive are well-formed.
+// Pin directives are well-formed.
 //
 //tiger:effects mutate(r.log, r.checkpoint), io(disk)
 //tiger:frame r.log, r.checkpoint
 //tiger:variant len(pending)
-//tiger:openenum
 func pinnedShapes(pending []int) int {
 	drained := 0
 	for range pending {

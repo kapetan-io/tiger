@@ -23,8 +23,8 @@ import (
 const Prefix = "//tiger:"
 
 // Kind classifies a verb by lifecycle, per the specification's declaration
-// model. Wave 1 has exactly one escape verb, batched — the only verb that
-// surfaces as a standing advisory finding.
+// model. The escape verbs, batched and openenum, are the ones that surface as
+// a standing advisory finding.
 type Kind int
 
 const (
@@ -92,8 +92,8 @@ func (e *MalformedArgsError) Error() string {
 	return Prefix + e.Verb + ": " + e.Detail
 }
 
-// vocabulary is the closed verb set, in declaration-model order: the sole
-// escape, then the pin verbs, then the intent verb.
+// vocabulary is the closed verb set, in declaration-model order: the
+// escapes, then the pin verbs.
 var vocabulary = []Verb{
 	{Name: "batched", Kind: KindEscape},
 	{Name: "effects", Kind: KindPin},
@@ -101,7 +101,7 @@ var vocabulary = []Verb{
 	{Name: "requires", Kind: KindPin},
 	{Name: "ensures", Kind: KindPin},
 	{Name: "variant", Kind: KindPin},
-	{Name: "openenum", Kind: KindIntent},
+	{Name: "openenum", Kind: KindEscape},
 }
 
 // Is reports whether a comment's text is a tiger directive. Text with a

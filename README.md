@@ -121,14 +121,15 @@ Two engines enforce the rules:
 
 Directives share the `//tiger:<verb>` namespace, owned by the grammar package
 (`internal/directive`): an unknown verb is a blocking error, never a silently
-meaningless comment. Tiger admits exactly one escape hatch,
-`//tiger:batched <reason>`, which waives only the rule against IO inside a loop
-(TS-M10, ADR-0014), and it is counted against its package's budget on every
-run, so the debt it carries is a number in `tiger.budget.yaml`'s diff
-(ADR-0003, ADR-0011). `//tiger:openenum` carries a reason and is counted the
-same way. There is deliberately no `//tiger:bounded` and no dismissal
-directive. Tiger has no package-level declarations (ADR-0024), and the
-`hot`, `wire`, and `owner` verbs do not exist (ADR-0028).
+meaningless comment. Tiger admits two escape hatches.
+`//tiger:batched <reason>` waives only the rule against IO inside a loop
+(TS-M10, ADR-0014). `//tiger:openenum <reason>` claims a type's values are open
+to growth, which tiger cannot check. Each is counted against its package's
+budget on every run, so the debt it carries is a number in
+`tiger.budget.yaml`'s diff (ADR-0003, ADR-0011). There is deliberately no
+`//tiger:bounded` and no dismissal directive. Tiger has no package-level
+declarations (ADR-0024), and the `hot`, `wire`, and `owner` verbs do not exist
+(ADR-0028).
 
 ## What is here
 
