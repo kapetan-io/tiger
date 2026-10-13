@@ -845,7 +845,7 @@ nolint:
 
 With the entry on, `tiger check` reports every `//nolint` in a checked package as a blocking
 TS-L09 finding at the file's `package` line, where a `//nolint` on the original line cannot
-cover it:
+cover it. A `//nolint` in a generated file is not reported:
 
 ```
 store.go:2:1: TS-L09: line 14 has a //nolint, and this repository's tiger.yaml forbids them (nolint.forbid) — fix the finding it silences instead
