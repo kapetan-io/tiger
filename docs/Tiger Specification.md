@@ -423,11 +423,14 @@ Every loop limit is bounded where it enters the program. The analyzer traces a l
 parameters, fields, and function results, across packages. Every value written into it must be a
 constant, a length, another bounded limit, or a value clamped against a declared maximum, such as
 `min(config.Spins, spinsMax)` or an `if count > objectsMax` that rejects. A function that returns a
-clamped value carries the bound to its callers. A clamp caps the upper end only, so subtracting
-anything but a non-negative constant, length or unsigned value from a limit, negating it, multiplying or taking an exclusive or of two
-values that may both be negative, or dividing it by a value that may be negative makes it unbounded again, wrap-around at the bottom of
-the type is not modelled, and a
-parameter the function writes carries the written value as well as the caller's. A call that passes `math.MaxInt`, the type's
+clamped value carries the bound to its callers. A clamp caps the upper end only, so a limit becomes
+unbounded again when it is negated, when anything but a non-negative constant, length or unsigned
+value is subtracted from it, when it is multiplied by or combined with an exclusive or against a
+value that may also be negative, when a remainder has a divisor that may be negative, or when a
+quotient has both a dividend and a divisor that may be negative. A quotient with either one known to
+be non-negative, such as `len(items)/step`, stays bounded. Wrap-around at the bottom of the type is
+not modelled. A parameter the function writes carries the written value as well as the caller's. A
+call that passes `math.MaxInt`, the type's
 maximum, or a constant at least half of it is a finding, on integer types of 32 bits or wider, where
 no loop reaches half the range. A running total (`n += len(x)`, `n++`) is as bounded as what is added,
 because every loop tiger accepts ends. Standard library packages and `_test.go` files are not traced.

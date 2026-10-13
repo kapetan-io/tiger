@@ -278,9 +278,13 @@ function results, across packages. Every value written into it must be a constan
 length, another bounded limit, or a value clamped against a declared maximum, such as
 `min(config.Spins, spinsMax)` or an `if count > objectsMax` that rejects. A function that
 returns a clamped value carries the bound to its callers. A clamp caps the upper end only, so
-subtracting anything but a non-negative constant, length or unsigned value from a limit, negating it,
-multiplying or taking an exclusive or of two values that may both be negative, or dividing it by a value that may be negative makes it
-unbounded again. Wrap-around at the bottom of the type is not modelled. A parameter the function writes carries the written value as well as the caller's. A constant at least half of the
+a limit becomes unbounded again when it is negated, when anything but a non-negative constant,
+length or unsigned value is subtracted from it, when it is multiplied by or combined with an
+exclusive or against a value that may also be negative, when a remainder has a divisor that may be
+negative, or when a quotient has both a dividend and a divisor that may be negative. A quotient with
+either one known to be non-negative, such as `len(items)/step`, stays bounded. Wrap-around at the
+bottom of the type is not modelled. A parameter the function writes carries the written value as
+well as the caller's. A constant at least half of the
 type's maximum, such as `math.MaxInt`, is a finding too, because no loop reaches it. That
 applies to integer types of 32 bits or wider. Standard library packages and `_test.go` files
 are not traced, and a running total (`n += len(x)`, `n++`) counts as bounded.
