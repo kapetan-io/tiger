@@ -90,6 +90,28 @@ var reachedComparisons = map[bool]map[bool]map[token.Token]bool{
 	},
 }
 
+// steppedComparisons are the comparisons that stay true when a counter
+// stepping by more than 1 jumps past its limit, so equality is not among them.
+var steppedComparisons = map[bool]map[bool]map[token.Token]bool{
+	false: {
+		false: {token.GEQ: true},
+		true:  {token.GEQ: true, token.GTR: true},
+	},
+	true: {
+		false: {token.LEQ: true},
+		true:  {token.LEQ: true, token.LSS: true},
+	},
+}
+
+// reachedBy reports whether a counter stopping at its limit makes the
+// comparison op, written with the counter on the left, true.
+func reachedBy(term counter.Term, op token.Token) bool {
+	if term.Size > 1 {
+		return steppedComparisons[term.Down][term.Inclusive][op]
+	}
+	return reachedComparisons[term.Down][term.Inclusive][op]
+}
+
 // otherExits returns the top-level terms of cond besides term's own
 // comparison.
 func otherExits(cond ast.Expr, term counter.Term) []ast.Expr {
@@ -240,8 +262,7 @@ func (c *checker) comparesAtLimit(cond ast.Expr, term counter.Term) bool {
 		if !ok {
 			return !found
 		}
-		if op, pairs := c.counterOnLeft(binary, term); pairs &&
-			reachedComparisons[term.Down][term.Inclusive][op] {
+		if op, pairs := c.counterOnLeft(binary, term); pairs && reachedBy(term, op) {
 			found = true
 		}
 		return !found

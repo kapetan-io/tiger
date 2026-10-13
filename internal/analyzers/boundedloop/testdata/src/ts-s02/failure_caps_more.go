@@ -136,3 +136,15 @@ func pastTheLimitAfterAnExclusiveLoop(done func() bool, limit int) error {
 	}
 	return nil
 }
+
+// steppedPastTheLimit steps by 2, so an odd limit is jumped over and equality
+// never holds.
+func steppedPastTheLimit(done func() bool, limit int) error {
+	i := 0
+	for ; i < limit && !done(); i += 2 { // want `TS-S02: this counter cap ends the loop without saying so`
+	}
+	if i == limit {
+		return errors.New("hit the limit")
+	}
+	return nil
+}

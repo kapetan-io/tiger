@@ -424,7 +424,9 @@ parameters, fields, and function results, across packages. Every value written i
 constant, a length, another bounded limit, or a value clamped against a declared maximum, such as
 `min(config.Spins, spinsMax)` or an `if count > objectsMax` that rejects. A function that returns a
 clamped value carries the bound to its callers. A clamp caps the upper end only, so subtracting
-anything but a constant or a length from a limit, or negating it, makes it unbounded again, and a
+anything but a non-negative constant, length or unsigned value from a limit, negating it, multiplying or taking an exclusive or of two
+values that may both be negative, or dividing it by a value that may be negative makes it unbounded again, wrap-around at the bottom of
+the type is not modelled, and a
 parameter the function writes carries the written value as well as the caller's. A call that passes `math.MaxInt`, the type's
 maximum, or a constant at least half of it is a finding, on integer types of 32 bits or wider, where
 no loop reaches half the range. A running total (`n += len(x)`, `n++`) is as bounded as what is added,

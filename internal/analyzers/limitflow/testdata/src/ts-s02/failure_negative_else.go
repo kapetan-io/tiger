@@ -64,3 +64,24 @@ func SpinBitClearedByClamped(window Window, done func() bool) error {
 	second := min(window.Offset, spinsMax)
 	return lib.SpinReported(done, first&^second) // want `TS-S02: this value reaches a loop limit with no upper bound where it enters`
 }
+
+// SpinSubtractsNegativeConstant subtracts a negative constant, which adds its
+// magnitude to the clamped offset.
+func SpinSubtractsNegativeConstant(window Window, done func() bool) error {
+	offset := min(window.Offset, spinsMax)
+	return lib.SpinReported(done, offset-(-1<<40)) // want `TS-S02: this value reaches a loop limit with no upper bound where it enters`
+}
+
+// SpinDividedByMinusOne divides a clamped offset by a negative constant, which
+// flips a large negative offset to a large positive count.
+func SpinDividedByMinusOne(window Window, done func() bool) error {
+	offset := min(window.Offset, spinsMax)
+	return lib.SpinReported(done, offset/-1) // want `TS-S02: this value reaches a loop limit with no upper bound where it enters`
+}
+
+// SpinRemainderOfClamped takes the remainder by a clamped divisor, which can
+// be a large negative number.
+func SpinRemainderOfClamped(window Window, total int, done func() bool) error {
+	divisor := min(window.Offset, spinsMax)
+	return lib.SpinReported(done, total%divisor) // want `TS-S02: this value reaches a loop limit with no upper bound where it enters`
+}

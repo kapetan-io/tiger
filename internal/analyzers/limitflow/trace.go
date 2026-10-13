@@ -232,12 +232,14 @@ func (t *tracer) builtin(current task, call *ast.CallExpr, name string) {
 	}
 }
 
-// binary fills the node from arithmetic on two operands. A subtrahend must be
-// a constant or a length, because subtracting a clamped value that is very
-// negative gives a very large result. A remainder is as bounded as its
-// divisor, a quotient or right shift as bounded as its dividend, and a mask as
-// bounded as either side.
+// binary fills the node from arithmetic on two operands. A remainder is as
+// bounded as its divisor, a quotient or right shift as bounded as its
+// dividend, and a mask as bounded as either side.
 func (t *tracer) binary(current task, expr *ast.BinaryExpr) {
+	if !t.signSafe(expr) {
+		t.set(current.index, nodeUnbounded, expr)
+		return
+	}
 	if expr.Op == token.REM {
 		t.nodes[current.index].kind = nodeAll
 		t.child(current.index, expr.Y, current.mode)
@@ -253,10 +255,6 @@ func (t *tracer) binary(current task, expr *ast.BinaryExpr) {
 		t.set(current.index, nodeUnbounded, expr)
 		return
 	}
-	if !t.signSafe(expr) {
-		t.set(current.index, nodeUnbounded, expr)
-		return
-	}
 	t.nodes[current.index].kind = kind
 	t.child(current.index, expr.X, current.mode)
 	t.child(current.index, expr.Y, current.mode)
@@ -264,13 +262,18 @@ func (t *tracer) binary(current task, expr *ast.BinaryExpr) {
 
 // signSafe reports whether an operator keeps its result bounded when the
 // operands are, though a clamp leaves each operand free to be very negative.
-// A subtraction needs a subtrahend that is a constant or a length. A product
-// and an exclusive or turn two very negative operands into a large positive
+// A subtraction needs a subtrahend that is not negative, and so does a
+// remainder for its divisor. A quotient needs a dividend or divisor that is
+// not negative, because a negative divisor flips a negative dividend. A
+// product and an exclusive or turn two very negative operands into a large positive
 // result, so one must be a length or a constant that is not negative. A
 // bit-clear is safe when its second operand is such a value.
 func (t *tracer) signSafe(expr *ast.BinaryExpr) bool {
-	if expr.Op == token.SUB {
-		return t.declaredMaximum(expr.Y)
+	if expr.Op == token.SUB || expr.Op == token.REM {
+		return t.nonNegative(expr.Y)
+	}
+	if expr.Op == token.QUO {
+		return t.nonNegative(expr.X) || t.nonNegative(expr.Y)
 	}
 	if expr.Op == token.MUL || expr.Op == token.XOR {
 		return t.nonNegative(expr.X) || t.nonNegative(expr.Y)
@@ -281,11 +284,16 @@ func (t *tracer) signSafe(expr *ast.BinaryExpr) bool {
 	return true
 }
 
-// nonNegative reports whether expr is a constant of at least 0, a len or a
-// cap.
+// nonNegative reports whether expr is a constant of at least 0, a len, a cap,
+// or a value of an unsigned type.
 func (t *tracer) nonNegative(expr ast.Expr) bool {
-	if known := t.s.pass.TypesInfo.Types[expr].Value; known != nil {
-		return constant.Sign(known) >= 0
+	known := t.s.pass.TypesInfo.Types[expr]
+	if known.Value != nil {
+		return constant.Sign(known.Value) >= 0
+	}
+	basic, ok := known.Type.Underlying().(*types.Basic)
+	if ok && basic.Info()&types.IsUnsigned != 0 {
+		return true
 	}
 	call, ok := ast.Unparen(expr).(*ast.CallExpr)
 	return ok && (t.isBuiltin(call, "len") || t.isBuiltin(call, "cap"))
