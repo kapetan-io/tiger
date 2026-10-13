@@ -36,6 +36,7 @@ import (
 
 	"github.com/kapetan-io/tiger/assert"
 	"github.com/kapetan-io/tiger/internal/finish"
+	"github.com/kapetan-io/tiger/internal/worklist"
 )
 
 // loadMode requests what every analyzer needs, single-package or SSA:
@@ -154,7 +155,8 @@ func analyzerClosure(requested []*analysis.Analyzer) []*analysis.Analyzer {
 	seen := map[*analysis.Analyzer]bool{}
 	all := []*analysis.Analyzer{}
 	work := append([]*analysis.Analyzer{}, requested...)
-	for i := 0; i < len(work); i++ {
+	i := 0
+	for ; i < len(work) && i < worklist.NodesMax; i++ {
 		next := work[i]
 		if seen[next] {
 			continue
@@ -163,6 +165,7 @@ func analyzerClosure(requested []*analysis.Analyzer) []*analysis.Analyzer {
 		all = append(all, next)
 		work = append(work, next.Requires...)
 	}
+	assert.Ok(i == len(work), "analyzerClosure: worklist reached worklist.NodesMax")
 	return all
 }
 

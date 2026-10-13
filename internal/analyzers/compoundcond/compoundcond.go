@@ -12,7 +12,9 @@ import (
 
 	"golang.org/x/tools/go/analysis"
 
+	"github.com/kapetan-io/tiger/assert"
 	"github.com/kapetan-io/tiger/internal/analyzers/internal/attach"
+	"github.com/kapetan-io/tiger/internal/worklist"
 )
 
 // Analyzer enforces TS-S06, TS-S07, and TS-S08: simple conditions, split
@@ -99,7 +101,8 @@ type logicShape struct {
 func scanLogic(expr ast.Expr) logicShape {
 	shape := logicShape{}
 	work := []ast.Expr{expr}
-	for i := 0; i < len(work); i++ {
+	i := 0
+	for ; i < len(work) && i < worklist.NodesMax; i++ {
 		switch at := work[i].(type) {
 		case *ast.ParenExpr:
 			work = append(work, at.X)
@@ -118,6 +121,7 @@ func scanLogic(expr ast.Expr) logicShape {
 			}
 		}
 	}
+	assert.Ok(i == len(work), "scanLogic: worklist reached worklist.NodesMax")
 	return shape
 }
 

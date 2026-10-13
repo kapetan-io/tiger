@@ -40,6 +40,7 @@ import (
 	"github.com/kapetan-io/tiger/internal/directive"
 	"github.com/kapetan-io/tiger/internal/facts"
 	"github.com/kapetan-io/tiger/internal/pins"
+	"github.com/kapetan-io/tiger/internal/worklist"
 )
 
 // FrameFact is the analyzer's sole exported fact: one exported function's
@@ -95,7 +96,8 @@ func collectFunctions(seed []*ssa.Function) []*ssa.Function {
 	for _, fn := range work {
 		seen[fn] = true
 	}
-	for i := 0; i < len(work); i++ {
+	i := 0
+	for ; i < len(work) && i < worklist.NodesMax; i++ {
 		for _, anon := range work[i].AnonFuncs {
 			if seen[anon] {
 				continue
@@ -104,6 +106,7 @@ func collectFunctions(seed []*ssa.Function) []*ssa.Function {
 			work = append(work, anon)
 		}
 	}
+	assert.Ok(i == len(work), "collectFunctions: worklist reached worklist.NodesMax")
 	return work
 }
 

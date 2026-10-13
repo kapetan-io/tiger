@@ -87,7 +87,7 @@ type nodePair struct {
 // pairs splits a mapping node's content into key/value pairs.
 func pairs(mapping *yaml.Node) []nodePair {
 	listed := []nodePair{}
-	for i := 0; i+1 < len(mapping.Content); i += 2 {
+	for i := 0; i < len(mapping.Content)-1; i += 2 {
 		listed = append(listed, nodePair{key: mapping.Content[i], value: mapping.Content[i+1]})
 	}
 	return listed

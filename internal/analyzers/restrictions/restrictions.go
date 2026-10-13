@@ -19,8 +19,10 @@ import (
 
 	"golang.org/x/tools/go/analysis"
 
+	"github.com/kapetan-io/tiger/assert"
 	"github.com/kapetan-io/tiger/internal/analyzers/internal/restrict"
 	"github.com/kapetan-io/tiger/internal/directive"
+	"github.com/kapetan-io/tiger/internal/worklist"
 )
 
 // Fact carries a package's own declared restriction across the facts
@@ -272,7 +274,8 @@ func reachableModulePackages(pass *analysis.Pass) []*types.Package {
 	seen := map[string]bool{pass.Pkg.Path(): true}
 	work := allImports(pass.Pkg.Imports())
 	reached := []*types.Package{}
-	for i := 0; i < len(work); i++ {
+	i := 0
+	for ; i < len(work) && i < worklist.NodesMax; i++ {
 		pkg := work[i]
 		if seen[pkg.Path()] {
 			continue
@@ -284,6 +287,7 @@ func reachableModulePackages(pass *analysis.Pass) []*types.Package {
 		reached = append(reached, pkg)
 		work = append(work, allImports(pkg.Imports())...)
 	}
+	assert.Ok(i == len(work), "reachableModulePackages: worklist reached worklist.NodesMax")
 	sort.Slice(reached, func(i, j int) bool { return reached[i].Path() < reached[j].Path() })
 	return reached
 }

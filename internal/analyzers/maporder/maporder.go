@@ -34,6 +34,9 @@ import (
 	"go/types"
 
 	"golang.org/x/tools/go/analysis"
+
+	"github.com/kapetan-io/tiger/assert"
+	"github.com/kapetan-io/tiger/internal/worklist"
 )
 
 const (
@@ -108,7 +111,8 @@ func isMapRange(pass *analysis.Pass, loop *ast.RangeStmt) bool {
 // into, so the whole walk stays iterative.
 func bodyAllowed(pass *analysis.Pass, loop *ast.RangeStmt) bool {
 	work := append([]ast.Stmt{}, loop.Body.List...)
-	for i := 0; i < len(work); i++ {
+	i := 0
+	for ; i < len(work) && i < worklist.NodesMax; i++ {
 		switch stmt := work[i].(type) {
 		case *ast.AssignStmt:
 			if !assignAllowed(pass, loop, stmt) {
@@ -146,6 +150,7 @@ func bodyAllowed(pass *analysis.Pass, loop *ast.RangeStmt) bool {
 			return false
 		}
 	}
+	assert.Ok(i == len(work), "bodyAllowed: worklist reached worklist.NodesMax")
 	return true
 }
 

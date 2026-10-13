@@ -2,15 +2,18 @@
 // bound, and an unbounded event loop selects on ctx.Done() or a recognized
 // shutdown channel.
 //
-// A RangeStmt over a slice, array, map, string, integer, or range-over-func
-// iterator is bounded by its own syntax. A RangeStmt over a channel is not:
-// termination depends on another goroutine closing it, so it is a TS-S02
-// finding. A ForStmt with no Cond ("for {}") is either the TS-S03 event-loop
-// shape — a direct SelectStmt with a case receiving from ctx.Done() or a
-// recognized shutdown channel — or a TS-S02 finding.
+// A RangeStmt over a slice, array, map, string, integer, or a standard
+// library iterator is bounded by its own syntax. A RangeStmt over a channel
+// or any other iterator is not: termination depends on code the analyzer
+// cannot see, so it is a TS-S02 finding. A ForStmt with no Cond ("for {}")
+// is either the TS-S03 event-loop shape — a direct SelectStmt with a case
+// receiving from ctx.Done() or a recognized shutdown channel — or a TS-S02
+// finding.
 //
-// A ForStmt with a Cond is bounded when its Post advances a variable that
-// appears in Cond (a counter), or when Cond — walking through parens, !,
+// A ForStmt with a Cond is bounded when its Post advances a sound counter
+// (see internal/analyzers/internal/counter), when TS-V01 verified a variant
+// for it, when it runs until a context parameter is cancelled
+// (ctx.Err() == nil), or when Cond — walking through parens, !,
 // && (either operand bounded), and || (every operand bounded) — reduces to
 // one of: a comparison against a constant, a len(), or a cap(); a
 // monotone-counter comparison against zero (x != 0, with every assignment
@@ -25,6 +28,9 @@
 // against the proof, matching deferdistance's treatment of the same
 // shape.
 //
+// A counter whose limit stands in for a proof is a safety cap, and the loop
+// must report when the cap is hit (see cap.go).
+//
 // Any other Cond is a TS-S02 finding, unless the loop matches the cursor
 // shape — Cond is a boolean method call on a plain identifier (it.Valid(),
 // rows.Next()) — and carries a well-formed //tiger:batched directive: the
@@ -38,12 +44,17 @@ import (
 	"go/token"
 	"go/types"
 	"strconv"
+	"strings"
 
 	"golang.org/x/tools/go/analysis"
 
 	"github.com/kapetan-io/tiger/assert"
 	"github.com/kapetan-io/tiger/internal/analyzers/internal/attach"
+	"github.com/kapetan-io/tiger/internal/analyzers/internal/counter"
+	"github.com/kapetan-io/tiger/internal/analyzers/internal/mutation"
 	"github.com/kapetan-io/tiger/internal/analyzers/internal/shutdown"
+	"github.com/kapetan-io/tiger/internal/analyzers/variant"
+	"github.com/kapetan-io/tiger/internal/worklist"
 )
 
 const (
@@ -56,6 +67,12 @@ const (
 	msgChannelRange = "TS-S02: this loop ranges over a channel, so it ends only when some " +
 		"other goroutine closes the channel — add a counter cap that fails when the cap is " +
 		"hit, or make it an event loop that selects on ctx.Done()"
+	msgCounterUnsound = "TS-S02: this counter does not bound the loop: it must count toward its " +
+		"limit in a top-level && term, and neither it nor the limit may change in the body — add " +
+		"a cap that fails when the cap is hit"
+	msgIterator = "TS-S02: this loop ranges over an iterator tiger can't see into, so nothing " +
+		"says it ends — range over a slice, a map, or a standard library iterator, or add a " +
+		"counter cap that fails when the cap is hit"
 	msgSelectNoDone = "TS-S03: this event loop's select has no case that stops the loop — add " +
 		"case <-ctx.Done(): return, or a case on a shutdown channel (struct{}-typed or named " +
 		"like one), so the loop can end"
@@ -64,19 +81,37 @@ const (
 // Analyzer enforces TS-S02 and TS-S03: every loop has an upper bound, or the
 // event-loop shape.
 var Analyzer = &analysis.Analyzer{
-	Name: "boundedloop",
-	Doc:  "TS-S02 and TS-S03: every loop has an upper bound or the event-loop shape.",
-	Run:  run,
+	Name:     "boundedloop",
+	Doc:      "TS-S02 and TS-S03: every loop has an upper bound or the event-loop shape.",
+	Requires: []*analysis.Analyzer{variant.Analyzer},
+	Run:      run,
+}
+
+// checker holds what judging one loop needs: the declaration it sits in,
+// the loops TS-V01 verified, and the statements that follow each statement
+// in its block.
+type checker struct {
+	pass      *analysis.Pass
+	scope     mutation.Scope
+	verified  variant.Verified
+	following map[ast.Stmt][]ast.Stmt
+	params    map[*types.Var]bool
 }
 
 func run(pass *analysis.Pass) (any, error) {
-	for _, file := range pass.Files {
-		ast.Inspect(file, func(node ast.Node) bool {
+	verified, _ := pass.ResultOf[variant.Analyzer].(variant.Verified)
+	for _, scope := range mutation.Declarations(pass.TypesInfo, pass.Files) {
+		decl := scope.Root()
+		check := &checker{
+			pass: pass, scope: scope, verified: verified,
+			following: followingStatements(decl), params: parameters(pass.TypesInfo, decl),
+		}
+		ast.Inspect(decl, func(node ast.Node) bool {
 			switch loop := node.(type) {
 			case *ast.RangeStmt:
-				checkRange(pass, loop)
+				check.checkRange(loop)
 			case *ast.ForStmt:
-				checkFor(pass, file, loop)
+				check.checkFor(pass.Files, loop)
 			}
 			return true
 		})
@@ -84,43 +119,219 @@ func run(pass *analysis.Pass) (any, error) {
 	return nil, nil
 }
 
-// checkRange fires TS-S02 for a range over a channel; every other range
-// target is bounded by its own syntax.
-func checkRange(pass *analysis.Pass, loop *ast.RangeStmt) {
-	rangeType := pass.TypesInfo.TypeOf(loop.X)
+// sizes returns the target's type sizes, falling back to the common 64-bit
+// layout when the driver supplied none.
+func (c *checker) sizes() types.Sizes {
+	if c.pass.TypesSizes != nil {
+		return c.pass.TypesSizes
+	}
+	return types.SizesFor("gc", "amd64")
+}
+
+// followingStatements maps every statement in decl to the statements after
+// it in the same block, where a cap's report sits.
+func followingStatements(decl ast.Node) map[ast.Stmt][]ast.Stmt {
+	following := map[ast.Stmt][]ast.Stmt{}
+	ast.Inspect(decl, func(node ast.Node) bool {
+		var list []ast.Stmt
+		switch block := node.(type) {
+		case *ast.BlockStmt:
+			list = block.List
+		case *ast.CaseClause:
+			list = block.Body
+		case *ast.CommClause:
+			list = block.Body
+		}
+		for i, stmt := range list {
+			following[stmt] = list[i+1:]
+		}
+		return true
+	})
+	return following
+}
+
+// parameters collects every function parameter declared in decl, so a
+// context the caller handed in can be told from one built locally.
+func parameters(info *types.Info, decl ast.Node) map[*types.Var]bool {
+	found := map[*types.Var]bool{}
+	ast.Inspect(decl, func(node ast.Node) bool {
+		var signature *ast.FuncType
+		switch fn := node.(type) {
+		case *ast.FuncDecl:
+			signature = fn.Type
+		case *ast.FuncLit:
+			signature = fn.Type
+		default:
+			return true
+		}
+		for _, field := range signature.Params.List {
+			for _, name := range field.Names {
+				if v, ok := info.Defs[name].(*types.Var); ok {
+					found[v] = true
+				}
+			}
+		}
+		return true
+	})
+	return found
+}
+
+// checkRange fires TS-S02 for a range over a channel or an iterator outside
+// the standard library; every other range target is bounded by its own
+// syntax.
+func (c *checker) checkRange(loop *ast.RangeStmt) {
+	rangeType := c.pass.TypesInfo.TypeOf(loop.X)
 	if rangeType == nil {
 		return
 	}
-	if _, isChannel := rangeType.Underlying().(*types.Chan); isChannel {
-		pass.Report(analysis.Diagnostic{
+	switch rangeType.Underlying().(type) {
+	case *types.Chan:
+		c.pass.Report(analysis.Diagnostic{
 			Pos:      loop.Pos(),
 			Category: "TS-S02",
 			Message:  msgChannelRange,
 		})
+	case *types.Signature:
+		if !c.standardIterator(loop.X) {
+			c.pass.Report(analysis.Diagnostic{
+				Pos:      loop.Pos(),
+				Category: "TS-S02",
+				Message:  msgIterator,
+			})
+		}
 	}
 }
 
+// standardIterator reports whether expr is a call to a standard library
+// function or method, whose iterators are bounded by what they walk.
+func (c *checker) standardIterator(expr ast.Expr) bool {
+	call, ok := ast.Unparen(expr).(*ast.CallExpr)
+	if !ok {
+		return false
+	}
+	var name *ast.Ident
+	switch fun := ast.Unparen(call.Fun).(type) {
+	case *ast.Ident:
+		name = fun
+	case *ast.SelectorExpr:
+		name = fun.Sel
+	default:
+		return false
+	}
+	fn, ok := c.pass.TypesInfo.Uses[name].(*types.Func)
+	if !ok || fn.Pkg() == nil || fn.Pkg() == c.pass.Pkg {
+		return false
+	}
+	first, _, _ := strings.Cut(fn.Pkg().Path(), "/")
+	return !strings.Contains(first, ".")
+}
+
 // checkFor classifies a for statement: the event-loop shape (no Cond), a
-// bounded three-clause loop, a waived cursor-shaped loop, or a TS-S02
-// finding.
-func checkFor(pass *analysis.Pass, file *ast.File, loop *ast.ForStmt) {
+// loop a sound counter bounds, a bounded or verified loop, a waived
+// cursor-shaped loop, or a TS-S02 finding.
+func (c *checker) checkFor(files []*ast.File, loop *ast.ForStmt) {
 	if loop.Cond == nil {
-		checkEventLoop(pass, loop)
+		checkEventLoop(c.pass, loop)
 		return
 	}
-	if boundedCond(pass, loop) {
+	terms := counter.Terms(c.scope, c.sizes(), loop)
+	if len(terms) > 0 {
+		c.checkCap(loop, terms)
 		return
 	}
-	if cursorShape(pass, loop) {
-		if _, ok := attach.Directive(pass.Fset, file, loop, "batched"); ok {
-			return
+	if c.bounded(loop) {
+		return
+	}
+	if cursorShape(c.pass, loop) {
+		if file := fileOf(files, loop); file != nil {
+			if _, ok := attach.Directive(c.pass.Fset, file, loop, "batched"); ok {
+				return
+			}
 		}
 	}
-	pass.Report(analysis.Diagnostic{
+	message := msgUnbounded
+	if postCounter(loop.Post) != "" {
+		message = msgCounterUnsound
+	}
+	c.pass.Report(analysis.Diagnostic{
 		Pos:      loop.Cond.Pos(),
 		Category: "TS-S02",
-		Message:  msgUnbounded,
+		Message:  message,
 	})
+}
+
+// fileOf returns the file holding node.
+func fileOf(files []*ast.File, node ast.Node) *ast.File {
+	for _, file := range files {
+		if file.Pos() <= node.Pos() && node.End() <= file.End() {
+			return file
+		}
+	}
+	return nil
+}
+
+// bounded reports whether loop's condition proves a bound without a sound
+// counter: a structural bound, a variant TS-V01 verified, or a wait for a
+// context parameter to be cancelled.
+func (c *checker) bounded(loop *ast.ForStmt) bool {
+	if c.verified[loop] {
+		return true
+	}
+	if c.cancellable(loop.Cond) {
+		return true
+	}
+	return condBounded(c.pass, loop, loop.Cond, plainContext)
+}
+
+// cancellable reports whether cond has a top-level ctx.Err() == nil term on
+// a context parameter, which ends the loop when the caller cancels.
+func (c *checker) cancellable(cond ast.Expr) bool {
+	for _, term := range counter.Conjuncts(cond) {
+		binary, ok := term.(*ast.BinaryExpr)
+		if !ok || binary.Op != token.EQL {
+			continue
+		}
+		call, ok := ast.Unparen(binary.X).(*ast.CallExpr)
+		other := binary.Y
+		if !ok {
+			call, ok = ast.Unparen(binary.Y).(*ast.CallExpr)
+			other = binary.X
+		}
+		if ok && isNil(c.pass.TypesInfo, other) && c.contextErr(call) {
+			return true
+		}
+	}
+	return false
+}
+
+// isNil reports whether expr is the predeclared nil.
+func isNil(info *types.Info, expr ast.Expr) bool {
+	ident, ok := ast.Unparen(expr).(*ast.Ident)
+	if !ok {
+		return false
+	}
+	_, isNilObject := info.Uses[ident].(*types.Nil)
+	return isNilObject
+}
+
+// contextErr reports whether call is Err() on a parameter of type
+// context.Context.
+func (c *checker) contextErr(call *ast.CallExpr) bool {
+	selector, ok := call.Fun.(*ast.SelectorExpr)
+	if !ok || selector.Sel.Name != "Err" {
+		return false
+	}
+	receiver, ok := ast.Unparen(selector.X).(*ast.Ident)
+	if !ok {
+		return false
+	}
+	v, ok := c.pass.TypesInfo.Uses[receiver].(*types.Var)
+	if !ok || !c.params[v] {
+		return false
+	}
+	named, ok := v.Type().(*types.Named)
+	return ok && named.Obj().Pkg() != nil &&
+		named.Obj().Pkg().Path() == "context" && named.Obj().Name() == "Context"
 }
 
 // checkEventLoop handles a for{} with no condition: the TS-S03 shape (a
@@ -217,17 +428,6 @@ func doneCall(expr ast.Expr) bool {
 	return ok && selector.Sel.Name == "Done"
 }
 
-// boundedCond reports whether loop's Cond/Post pair proves a bound: a
-// counter advanced in Post that appears anywhere in Cond (the loop-level
-// acceptance, unchanged since wave 1), or a Cond that reduces — through
-// &&, ||, parens, and ! — to a leaf comparison boundedCond can prove.
-func boundedCond(pass *analysis.Pass, loop *ast.ForStmt) bool {
-	if counter := postCounter(loop.Post); counter != "" && identifierAppears(loop.Cond, counter) {
-		return true
-	}
-	return condBounded(pass, loop, loop.Cond, plainContext)
-}
-
 // polarity records whether an enclosing negation operator has inverted
 // the boolean context a condition is judged in; De Morgan flips the
 // &&/|| rules under negation.
@@ -284,7 +484,8 @@ func condBounded(pass *analysis.Pass, loop *ast.ForStmt, expr ast.Expr, p polari
 	root := &condNode{}
 	nodes := []*condNode{root}
 	work := []condTask{{expr: expr, p: p, node: root}}
-	for i := 0; i < len(work); i++ {
+	i := 0
+	for ; i < len(work) && i < worklist.NodesMax; i++ {
 		task := work[i]
 		switch e := task.expr.(type) {
 		case *ast.ParenExpr:
@@ -312,6 +513,7 @@ func condBounded(pass *analysis.Pass, loop *ast.ForStmt, expr ast.Expr, p polari
 				condTask{expr: e.Y, p: task.p, node: condChild(task.node, &nodes)})
 		}
 	}
+	assert.Ok(i == len(work), "condBounded: worklist reached worklist.NodesMax")
 	// Children always sit after their parents in creation order, so the
 	// reverse pass sees every child's verdict before its parent needs it.
 	for i := len(nodes) - 1; i >= 0; i-- {
@@ -780,18 +982,6 @@ func postCounter(post ast.Stmt) string {
 		}
 	}
 	return ""
-}
-
-// identifierAppears reports whether name is referenced anywhere inside expr.
-func identifierAppears(expr ast.Expr, name string) bool {
-	found := false
-	ast.Inspect(expr, func(node ast.Node) bool {
-		if ident, ok := node.(*ast.Ident); ok && ident.Name == name {
-			found = true
-		}
-		return true
-	})
-	return found
 }
 
 // isBoundOperand reports whether expr is a literal, a resolved constant, or

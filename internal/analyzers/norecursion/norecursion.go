@@ -42,6 +42,7 @@ import (
 
 	"github.com/kapetan-io/tiger/assert"
 	"github.com/kapetan-io/tiger/internal/analyzers/internal/ssalib"
+	"github.com/kapetan-io/tiger/internal/worklist"
 )
 
 const msgRewrite = " is a cycle of calls (recursion) — replace it with a loop over an explicit " +
@@ -95,7 +96,8 @@ func collectFunctions(sourceFuncs []*ssa.Function) []*ssa.Function {
 			collected = append(collected, fn)
 		}
 	}
-	for i := 0; i < len(collected); i++ {
+	i := 0
+	for ; i < len(collected) && i < worklist.NodesMax; i++ {
 		for _, anon := range collected[i].AnonFuncs {
 			if !seen[anon] {
 				seen[anon] = true
@@ -103,6 +105,7 @@ func collectFunctions(sourceFuncs []*ssa.Function) []*ssa.Function {
 			}
 		}
 	}
+	assert.Ok(i == len(collected), "collectFunctions: worklist reached worklist.NodesMax")
 	return collected
 }
 

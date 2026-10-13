@@ -311,3 +311,16 @@ func floatTupleFires(lo, hi float64) int {
 	}
 	return count
 }
+
+// resetCounterFires resets its counter in the body, so the counter never
+// reaches the limit. The body writing the counter makes it no bound.
+func resetCounterFires(limit int, again func() bool) int {
+	rounds := 0
+	for i := 0; i < limit; i++ { // want `TS-S02: this counter does not bound the loop`
+		rounds++
+		if again() {
+			i = 0
+		}
+	}
+	return rounds
+}

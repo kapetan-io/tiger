@@ -21,23 +21,6 @@ func drainAppendKnownMiss(queue []int, feed func() (int, bool)) int {
 	return drained
 }
 
-// resetCounterKnownMiss is syntactically counter-bounded: the Post
-// increments i and i appears in Cond. The body also resets i to 0 on some
-// rounds, so the loop can run forever.
-//
-// known-miss: only the Post clause is checked against Cond; a body
-// assignment that resets the counter is invisible to this syntactic check.
-func resetCounterKnownMiss(limit int, again func() bool) int {
-	rounds := 0
-	for i := 0; i < limit; i++ {
-		rounds++
-		if again() {
-			i = 0
-		}
-	}
-	return rounds
-}
-
 // wrongDirectionLiteralKnownMiss is the pre-existing TS-S02 hole this wave
 // deliberately does not close: x > 0 is accepted because 0 is a literal
 // bound operand, with no check on which way x actually moves. x++ moves

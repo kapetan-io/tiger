@@ -52,6 +52,7 @@ import (
 	"github.com/kapetan-io/tiger/internal/directive"
 	"github.com/kapetan-io/tiger/internal/facts"
 	"github.com/kapetan-io/tiger/internal/pins"
+	"github.com/kapetan-io/tiger/internal/worklist"
 )
 
 // EffectsFact carries one named function's enforced effect summary in
@@ -170,7 +171,8 @@ func gatherFunctions(roots []*ssa.Function) []*ssa.Function {
 	all := []*ssa.Function{}
 	seen := map[*ssa.Function]bool{}
 	work := append([]*ssa.Function{}, roots...)
-	for i := 0; i < len(work); i++ {
+	i := 0
+	for ; i < len(work) && i < worklist.NodesMax; i++ {
 		fn := work[i]
 		if seen[fn] {
 			continue
@@ -179,6 +181,7 @@ func gatherFunctions(roots []*ssa.Function) []*ssa.Function {
 		all = append(all, fn)
 		work = append(work, fn.AnonFuncs...)
 	}
+	assert.Ok(i == len(work), "gatherFunctions: worklist reached worklist.NodesMax")
 	return all
 }
 

@@ -21,7 +21,9 @@ import (
 	"golang.org/x/tools/go/analysis/passes/buildssa"
 	"golang.org/x/tools/go/ssa"
 
+	"github.com/kapetan-io/tiger/assert"
 	"github.com/kapetan-io/tiger/internal/analyzers/internal/restrict"
+	"github.com/kapetan-io/tiger/internal/worklist"
 )
 
 // Analyzer enforces TS-K03.
@@ -60,7 +62,8 @@ func gatherFunctions(roots []*ssa.Function) []*ssa.Function {
 	all := []*ssa.Function{}
 	seen := map[*ssa.Function]bool{}
 	work := append([]*ssa.Function{}, roots...)
-	for i := 0; i < len(work); i++ {
+	i := 0
+	for ; i < len(work) && i < worklist.NodesMax; i++ {
 		fn := work[i]
 		if seen[fn] {
 			continue
@@ -69,6 +72,7 @@ func gatherFunctions(roots []*ssa.Function) []*ssa.Function {
 		all = append(all, fn)
 		work = append(work, fn.AnonFuncs...)
 	}
+	assert.Ok(i == len(work), "gatherFunctions: worklist reached worklist.NodesMax")
 	return all
 }
 
@@ -105,7 +109,8 @@ func devirtualize(root ssa.Value) (types.Type, bool) {
 	seen := map[ssa.Value]bool{}
 	work := []ssa.Value{root}
 	var found types.Type
-	for i := 0; i < len(work); i++ {
+	i := 0
+	for ; i < len(work) && i < worklist.NodesMax; i++ {
 		value := work[i]
 		if seen[value] {
 			continue
@@ -124,6 +129,7 @@ func devirtualize(root ssa.Value) (types.Type, bool) {
 		}
 		work = append(work, resolved.next...)
 	}
+	assert.Ok(i == len(work), "devirtualize: worklist reached worklist.NodesMax")
 	if found == nil {
 		return nil, false
 	}

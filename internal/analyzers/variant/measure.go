@@ -1,0 +1,423 @@
+package variant
+
+import (
+	"errors"
+	"go/ast"
+	"go/constant"
+	"go/token"
+	"go/types"
+	"strconv"
+	"strings"
+
+	"github.com/kapetan-io/tiger/assert"
+	"github.com/kapetan-io/tiger/internal/analyzers/internal/counter"
+	"github.com/kapetan-io/tiger/internal/directive"
+)
+
+// sizes returns the target's type sizes, falling back to the common 64-bit
+// layout when the driver supplied none.
+func (c *checker) sizes() types.Sizes {
+	if c.pass.TypesSizes != nil {
+		return c.pass.TypesSizes
+	}
+	return types.SizesFor("gc", "amd64")
+}
+
+// place names where a measured value lives: a variable, or a field of one.
+type place struct {
+	root  *types.Var
+	field *types.Var
+}
+
+// subject is one operand of a ranking: a constant, a variable or field, or
+// the length of a variable or field.
+type subject struct {
+	place
+	number   int64
+	constant bool
+	length   bool
+}
+
+// atom prints the subject in the predicate language's syntax.
+func (s subject) atom() directive.Atom {
+	if s.constant {
+		return directive.Atom{Kind: directive.AtomNumber, Int: s.number}
+	}
+	ref := s.root.Name()
+	if s.field != nil {
+		ref += "." + s.field.Name()
+	}
+	if s.length {
+		return directive.Atom{Kind: directive.AtomLen, Ref: ref}
+	}
+	return directive.Atom{Kind: directive.AtomRef, Ref: ref}
+}
+
+// term is one signed operand of a ranking.
+type term struct {
+	subject
+	minus bool
+}
+
+// ranking is a linear expression a loop must shrink.
+type ranking []term
+
+// variant prints the ranking as a //tiger:variant argument.
+func (r ranking) variant() directive.Variant {
+	var printed directive.Variant
+	for _, t := range r {
+		printed.Terms = append(printed.Terms, directive.VariantTerm{Minus: t.minus, Atom: t.atom()})
+	}
+	return printed
+}
+
+// bounds is a comparison normalized to low OP high, where OP is < or <=: a
+// > or >= comparison is rewritten by swapping its operands.
+type bounds struct {
+	low  ast.Expr
+	high ast.Expr
+	op   token.Token
+}
+
+// normalize rewrites a comparison into low/high form, or reports the
+// comparison is not one of the four ordering operators.
+func normalize(binary *ast.BinaryExpr) (bounds, bool) {
+	if binary.Op == token.LSS || binary.Op == token.LEQ {
+		return bounds{low: binary.X, high: binary.Y, op: binary.Op}, true
+	}
+	swapped, ok := swappedOrdering[binary.Op]
+	return bounds{low: binary.Y, high: binary.X, op: swapped}, ok
+}
+
+// swappedOrdering maps > and >= to the < and <= that read the same with the
+// operands swapped.
+var swappedOrdering = map[token.Token]token.Token{token.GTR: token.LSS, token.GEQ: token.LEQ}
+
+// key identifies a place for the guards a condition establishes.
+type key place
+
+// candidate pairs a ranking with the condition term that supplies its lower
+// bound.
+type candidate struct {
+	ranking ranking
+	limits  bounds
+}
+
+// loopFacts is what a loop's condition and shape establish before its body
+// is judged.
+type loopFacts struct {
+	*checker
+	loop     *ast.ForStmt
+	top      map[ast.Node]bool
+	positive map[key]bool
+	nonEmpty map[key]bool
+}
+
+// factsOf collects the guards every top-level && term of the condition
+// establishes on each pass, and the statements that always run: the Post
+// clause and the body's direct statements.
+func (c *checker) factsOf(loop *ast.ForStmt) *loopFacts {
+	found := &loopFacts{
+		checker: c, loop: loop, top: map[ast.Node]bool{},
+		positive: map[key]bool{}, nonEmpty: map[key]bool{},
+	}
+	for _, stmt := range loop.Body.List {
+		found.top[stmt] = true
+	}
+	if loop.Post != nil {
+		found.top[loop.Post] = true
+	}
+	for _, conjunct := range counter.Conjuncts(loop.Cond) {
+		found.learn(conjunct)
+	}
+	return found
+}
+
+// learn records what one condition term guarantees: a variable above zero,
+// or a slice that is not empty.
+func (f *loopFacts) learn(conjunct ast.Expr) {
+	binary, ok := conjunct.(*ast.BinaryExpr)
+	if !ok {
+		return
+	}
+	limits, ok := normalize(binary)
+	if !ok {
+		return
+	}
+	floor, ok := f.smallConstant(limits.low)
+	if !ok {
+		return
+	}
+	if floor < 0 {
+		return
+	}
+	if floor == 0 && limits.op != token.LSS {
+		return
+	}
+	measured, ok := f.subjectOf(limits.high)
+	if !ok || measured.constant {
+		return
+	}
+	if measured.length {
+		f.nonEmpty[key(measured.place)] = true
+		return
+	}
+	f.positive[key(measured.place)] = true
+}
+
+// smallConstant returns expr's value when the compiler folded it to an
+// integer that fits an int64.
+func (c *checker) smallConstant(expr ast.Expr) (int64, bool) {
+	value := c.pass.TypesInfo.Types[expr].Value
+	if value == nil || value.Kind() != constant.Int {
+		return 0, false
+	}
+	return constant.Int64Val(value)
+}
+
+// subjectOf reads expr as a ranking operand.
+func (c *checker) subjectOf(expr ast.Expr) (subject, bool) {
+	expr = ast.Unparen(expr)
+	if number, ok := c.smallConstant(expr); ok {
+		return subject{number: number, constant: true}, true
+	}
+	if call, ok := expr.(*ast.CallExpr); ok {
+		return c.lengthOf(call)
+	}
+	where, ok := c.placeOf(expr)
+	if !ok || !c.isInteger(expr) {
+		return subject{}, false
+	}
+	return subject{place: where}, true
+}
+
+// lengthOf reads len(x) as a ranking operand when x is a slice, map or
+// string.
+func (c *checker) lengthOf(call *ast.CallExpr) (subject, bool) {
+	ident, ok := ast.Unparen(call.Fun).(*ast.Ident)
+	if !ok || len(call.Args) != 1 {
+		return subject{}, false
+	}
+	builtin, ok := c.pass.TypesInfo.Uses[ident].(*types.Builtin)
+	if !ok || builtin.Name() != "len" {
+		return subject{}, false
+	}
+	where, ok := c.placeOf(call.Args[0])
+	if !ok || !lenable(c.pass.TypesInfo.TypeOf(call.Args[0])) {
+		return subject{}, false
+	}
+	return subject{place: where, length: true}, true
+}
+
+// placeOf resolves expr to a variable or to a field of a variable.
+func (c *checker) placeOf(expr ast.Expr) (place, bool) {
+	switch e := ast.Unparen(expr).(type) {
+	case *ast.Ident:
+		v, ok := c.pass.TypesInfo.ObjectOf(e).(*types.Var)
+		return place{root: v}, ok && !v.IsField()
+	case *ast.SelectorExpr:
+		selection := c.pass.TypesInfo.Selections[e]
+		if selection == nil || selection.Kind() != types.FieldVal || len(selection.Index()) != 1 {
+			return place{}, false
+		}
+		base, ok := ast.Unparen(e.X).(*ast.Ident)
+		if !ok {
+			return place{}, false
+		}
+		root, ok := c.pass.TypesInfo.ObjectOf(base).(*types.Var)
+		field, isField := selection.Obj().(*types.Var)
+		return place{root: root, field: field}, ok && isField
+	}
+	return place{}, false
+}
+
+// isInteger reports whether expr has an integer type.
+func (c *checker) isInteger(expr ast.Expr) bool {
+	found := c.pass.TypesInfo.TypeOf(expr)
+	if found == nil {
+		return false
+	}
+	basic, ok := found.Underlying().(*types.Basic)
+	return ok && basic.Info()&types.IsInteger != 0
+}
+
+// lenable reports whether t is a slice, map, or string, the len subjects the
+// rules admit.
+func lenable(t types.Type) bool {
+	if t == nil {
+		return false
+	}
+	switch under := t.Underlying().(type) {
+	case *types.Slice, *types.Map:
+		return true
+	case *types.Basic:
+		return under.Info()&types.IsString != 0
+	}
+	return false
+}
+
+// synthesize tries each top-level && term of the condition as the source of
+// a ranking and returns the first one the body verifies.
+func (c *checker) synthesize(loop *ast.ForStmt) (directive.Variant, bool) {
+	facts := c.factsOf(loop)
+	for _, conjunct := range counter.Conjuncts(loop.Cond) {
+		found, ok := facts.measure(conjunct)
+		if ok && facts.verify(found.ranking, found.limits).ok {
+			return found.ranking.variant(), true
+		}
+	}
+	return directive.Variant{}, false
+}
+
+// measure classifies one condition term against the closed
+// recognized-comparison set, returning the ranking it supplies.
+func (f *loopFacts) measure(conjunct ast.Expr) (candidate, bool) {
+	binary, ok := conjunct.(*ast.BinaryExpr)
+	if !ok {
+		return candidate{}, false
+	}
+	limits, ok := normalize(binary)
+	if !ok {
+		return candidate{}, false
+	}
+	if found, ok := f.lengthMeasure(limits); ok {
+		return candidate{ranking: found, limits: limits}, true
+	}
+	found, ok := f.linearMeasure(limits)
+	return candidate{ranking: found, limits: limits}, ok
+}
+
+// lengthMeasure recognizes low OP len(s) with low a non-negative constant:
+// the ranking is len(s) alone.
+func (f *loopFacts) lengthMeasure(limits bounds) (ranking, bool) {
+	call, ok := ast.Unparen(limits.high).(*ast.CallExpr)
+	if !ok {
+		return nil, false
+	}
+	length, ok := f.lengthOf(call)
+	if !ok {
+		return nil, false
+	}
+	floor, ok := f.smallConstant(limits.low)
+	if !ok || floor < 0 {
+		return nil, false
+	}
+	return ranking{{subject: length}}, true
+}
+
+// linearMeasure recognizes an integer comparison between two operands, each
+// an integer variable, field, or constant, with at least one not constant.
+// The ranking is high - low, dropping a zero low term.
+func (f *loopFacts) linearMeasure(limits bounds) (ranking, bool) {
+	low, ok := f.subjectOf(limits.low)
+	if !ok || low.length {
+		return nil, false
+	}
+	high, ok := f.subjectOf(limits.high)
+	if !ok || high.length {
+		return nil, false
+	}
+	if low.constant && high.constant {
+		return nil, false
+	}
+	measure := ranking{{subject: high}}
+	if !low.constant || low.number != 0 {
+		measure = append(measure, term{subject: low, minus: true})
+	}
+	return measure, true
+}
+
+// verifyPinned resolves the pin's names against the loop and verifies the
+// ranking against a recognized condition term, which supplies the lower
+// bound.
+func (c *checker) verifyPinned(loop *ast.ForStmt, pinned directive.Variant) verdict {
+	facts := c.factsOf(loop)
+	for _, conjunct := range counter.Conjuncts(loop.Cond) {
+		found, ok := facts.measure(conjunct)
+		if !ok {
+			continue
+		}
+		resolved, err := facts.resolve(pinned)
+		if err != nil {
+			return verdict{reason: err.Error()}
+		}
+		return facts.verify(resolved, found.limits)
+	}
+	return verdict{reason: "the loop's condition is not one of the recognized comparison forms"}
+}
+
+// resolve binds the pin's names to the variables and fields they mean where
+// the loop sits. It fails when a name binds to nothing the rules can follow.
+func (f *loopFacts) resolve(pinned directive.Variant) (ranking, error) {
+	var resolved ranking
+	for _, pinTerm := range pinned.Terms {
+		found, ok := f.resolveAtom(pinTerm.Atom)
+		if !ok {
+			return nil, errors.New(atomText(pinTerm.Atom) + " cannot be shown to move consistently")
+		}
+		resolved = append(resolved, term{subject: found, minus: pinTerm.Minus})
+	}
+	return resolved, nil
+}
+
+// resolveAtom binds one atom to a subject using the scope at the loop.
+func (f *loopFacts) resolveAtom(atom directive.Atom) (subject, bool) {
+	if atom.Kind == directive.AtomNumber {
+		return subject{number: atom.Int, constant: true}, true
+	}
+	if atom.Kind != directive.AtomRef && atom.Kind != directive.AtomLen {
+		return subject{}, false
+	}
+	names := strings.Split(atom.Ref, ".")
+	_, object := f.pass.Pkg.Scope().Innermost(f.loop.Pos()).LookupParent(names[0], f.loop.Pos())
+	root, ok := object.(*types.Var)
+	if !ok || len(names) > 2 {
+		return subject{}, false
+	}
+	found := subject{place: place{root: root}, length: atom.Kind == directive.AtomLen}
+	held := root.Type()
+	if len(names) == 2 {
+		field, ok := fieldNamed(held, names[1], f.pass.Pkg)
+		if !ok {
+			return subject{}, false
+		}
+		found.field = field
+		held = field.Type()
+	}
+	if found.length != lenable(held) {
+		return subject{}, false
+	}
+	if found.length {
+		return found, true
+	}
+	basic, isBasic := held.Underlying().(*types.Basic)
+	if !isBasic || basic.Info()&types.IsInteger == 0 {
+		return subject{}, false
+	}
+	return found, true
+}
+
+// fieldNamed finds the struct field called name on t or on the type t points
+// to.
+func fieldNamed(t types.Type, name string, pkg *types.Package) (*types.Var, bool) {
+	object, _, _ := types.LookupFieldOrMethod(t, true, pkg, name)
+	field, ok := object.(*types.Var)
+	return field, ok && field.IsField()
+}
+
+// atomText prints one atom for use inside a verification-failure reason.
+func atomText(a directive.Atom) string {
+	switch a.Kind {
+	case directive.AtomNumber:
+		return strconv.FormatInt(a.Int, 10)
+	case directive.AtomRef:
+		return a.Ref
+	case directive.AtomLen:
+		return "len(" + a.Ref + ")"
+	case directive.AtomNil:
+		return "nil"
+	default:
+		assert.Unreachable("AtomKind: unhandled value")
+	}
+	return ""
+}

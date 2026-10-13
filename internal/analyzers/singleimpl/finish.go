@@ -8,7 +8,9 @@ import (
 
 	"golang.org/x/tools/go/analysis"
 
+	"github.com/kapetan-io/tiger/assert"
 	"github.com/kapetan-io/tiger/internal/finish"
+	"github.com/kapetan-io/tiger/internal/worklist"
 )
 
 // candidate is one named type eligible to implement an interface.
@@ -177,7 +179,8 @@ func interfaceAsSeenBy(pkg *types.Package, entry interfaceEntry) (*types.Interfa
 func findImport(pkg *types.Package, path string) *types.Package {
 	seen := map[*types.Package]bool{pkg: true}
 	work := []*types.Package{pkg}
-	for i := 0; i < len(work); i++ {
+	i := 0
+	for ; i < len(work) && i < worklist.NodesMax; i++ {
 		next := work[i]
 		if next.Path() == path {
 			return next
@@ -189,6 +192,7 @@ func findImport(pkg *types.Package, path string) *types.Package {
 			}
 		}
 	}
+	assert.Ok(i == len(work), "findImport: worklist reached worklist.NodesMax")
 	return nil
 }
 

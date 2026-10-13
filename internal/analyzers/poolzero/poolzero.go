@@ -219,11 +219,14 @@ func mustReach(fn *ssa.Function, x ssa.Value, put putSite) bool {
 		input:  map[*ssa.BasicBlock]bool{},
 		output: map[*ssa.BasicBlock]bool{},
 	}
+	settled := false
 	for round := 0; round < len(fn.Blocks)+2; round++ {
 		if !state.step(fn.Blocks) {
+			settled = true
 			break
 		}
 	}
+	assert.Ok(settled, "mustReach: no fixpoint within len(fn.Blocks)+2 rounds")
 	return state.input[put.Block] || state.gen(put.Block)
 }
 
