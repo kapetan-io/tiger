@@ -277,7 +277,9 @@ where it enters the program, through parameters, struct fields, local variables 
 function results, across packages. Every value written into it must be a constant, a
 length, another bounded limit, or a value clamped against a declared maximum, such as
 `min(config.Spins, spinsMax)` or an `if count > objectsMax` that rejects. A function that
-returns a clamped value carries the bound to its callers. A constant at least half of the
+returns a clamped value carries the bound to its callers. A clamp caps the upper end only, so
+subtracting anything but a constant or a length from a limit, or negating it, makes it unbounded
+again. A parameter the function writes carries the written value as well as the caller's. A constant at least half of the
 type's maximum, such as `math.MaxInt`, is a finding too, because no loop reaches it. That
 applies to integer types of 32 bits or wider. Standard library packages and `_test.go` files
 are not traced, and a running total (`n += len(x)`, `n++`) counts as bounded.

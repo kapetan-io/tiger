@@ -83,7 +83,9 @@ var joins = map[token.Token]nodeKind{
 var addsOrSubtracts = map[token.Token]bool{token.ADD: true, token.SUB: true}
 
 // unaryJoins are the unary operators that leave a value as bounded as it was.
-var unaryJoins = map[token.Token]bool{token.ADD: true, token.SUB: true, token.XOR: true}
+// A negation or complement turns a large negative value into a large positive
+// one, and every clamp tiger accepts caps only the upper end.
+var unaryJoins = map[token.Token]bool{token.ADD: true}
 
 // trace follows root back to where it enters the program.
 func (s *state) trace(fn *function, root ast.Expr, mode reach) traceResult {
@@ -229,7 +231,9 @@ func (t *tracer) builtin(current task, call *ast.CallExpr, name string) {
 	}
 }
 
-// binary fills the node from arithmetic on two operands. A remainder is as
+// binary fills the node from arithmetic on two operands. A subtrahend must be
+// a constant or a length, because subtracting a clamped value that is very
+// negative gives a very large result. A remainder is as
 // bounded as its divisor, a quotient or right shift as bounded as its
 // dividend, and a mask as bounded as either side.
 func (t *tracer) binary(current task, expr *ast.BinaryExpr) {
@@ -245,6 +249,10 @@ func (t *tracer) binary(current task, expr *ast.BinaryExpr) {
 	}
 	kind, ok := joins[expr.Op]
 	if !ok {
+		t.set(current.index, nodeUnbounded, expr)
+		return
+	}
+	if expr.Op == token.SUB && !t.declaredMaximum(expr.Y) {
 		t.set(current.index, nodeUnbounded, expr)
 		return
 	}
@@ -306,8 +314,7 @@ func (t *tracer) ident(current task, ident *ast.Ident) {
 		return
 	}
 	if index, isParam := t.fn.params[v]; isParam {
-		t.nodes[current.index].param = index
-		t.set(current.index, nodeParam, ident)
+		t.parameter(current, v, index, ident)
 		return
 	}
 	if v.Parent() == v.Pkg().Scope() {
@@ -321,6 +328,29 @@ func (t *tracer) ident(current task, ident *ast.Ident) {
 	}
 	t.vars[v] = current.index
 	t.local(current, v, ident)
+}
+
+// parameter fills the node from a parameter. The caller's argument is one
+// source, and every write the function makes into the parameter is another.
+func (t *tracer) parameter(current task, v *types.Var, index int, use *ast.Ident) {
+	writes := t.fn.scope.Writes(t.fn.decl, v)
+	if len(writes) == 0 {
+		t.nodes[current.index].param = index
+		t.set(current.index, nodeParam, use)
+		return
+	}
+	if earlier, seen := t.vars[v]; seen {
+		t.nodes[current.index].kind = nodeAll
+		t.nodes[current.index].children = []int{earlier}
+		return
+	}
+	t.vars[v] = current.index
+	t.nodes[current.index].kind = nodeAll
+	t.leaf(current.index, nodeParam, use)
+	t.nodes[len(t.nodes)-1].param = index
+	for _, write := range writes {
+		t.written(current.index, v, write, use)
+	}
 }
 
 // local fills the node from every write into a local variable.

@@ -4,7 +4,10 @@
 // not report.
 package fixture
 
-import "database/sql"
+import (
+	"database/sql"
+	"errors"
+)
 
 // pageOfConstantRows caps a database cursor at a constant, which is a safety
 // cap and not a page size.
@@ -84,4 +87,17 @@ func cleansUpAtTheCap(done func() bool, limit int, cleanup func()) {
 func downToVariableCap(start, floor int, done func() bool) {
 	for i := start; i > floor && !done(); i -= 2 { // want `TS-S02: this counter cap ends the loop without saying so`
 	}
+}
+
+// checksTheCounterAgainstZero fails on a condition that never compares the
+// counter with the limit, so the cap stays silent. The post statement writes
+// the counter, which is not the loop waiting for a result.
+func checksTheCounterAgainstZero(done func() bool, limit int) error {
+	i := 0
+	for ; i < limit && !done(); i++ { // want `TS-S02: this counter cap ends the loop without saying so`
+	}
+	if i == 0 {
+		return errors.New("empty")
+	}
+	return nil
 }

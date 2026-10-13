@@ -204,8 +204,9 @@ func (c *checker) silentWhenHit(loop *ast.ForStmt, caps []counter.Term) bool {
 	return true
 }
 
-// readsLoopResult reports whether cond reads a variable the loop assigns, such
-// as the found flag a search loop sets.
+// readsLoopResult reports whether cond reads a variable the loop body assigns,
+// such as the found flag a search loop sets. The post statement is left out
+// because it writes every counter.
 func (c *checker) readsLoopResult(cond ast.Expr, loop *ast.ForStmt) bool {
 	found := false
 	ast.Inspect(cond, func(n ast.Node) bool {
@@ -214,7 +215,7 @@ func (c *checker) readsLoopResult(cond ast.Expr, loop *ast.ForStmt) bool {
 			return !found
 		}
 		if v, isVar := c.pass.TypesInfo.ObjectOf(ident).(*types.Var); isVar {
-			found = len(c.scope.Writes(loop, v)) > 0
+			found = len(c.scope.Writes(loop.Body, v)) > 0
 		}
 		return !found
 	})

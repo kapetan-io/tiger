@@ -93,7 +93,7 @@ func (t *tracer) dominated(step pathStep, target ast.Expr, want string) bool {
 		if stmt.Pos() >= step.node.Pos() {
 			break
 		}
-		if t.clampsBefore(stmt, want) {
+		if t.clampsBefore(stmt, target, want) {
 			clamped = true
 		} else if t.writesTo(stmt, target) {
 			clamped = false
@@ -201,12 +201,16 @@ func (t *tracer) writtenBefore(body *ast.BlockStmt, target ast.Expr) bool {
 }
 
 // clampsBefore reports whether stmt, which runs before the use, bounds the
-// expression named want.
-func (t *tracer) clampsBefore(stmt ast.Stmt, want string) bool {
+// expression named want. The else branch of a rejecting if runs when the
+// value is within the maximum, so it must not write the value.
+func (t *tracer) clampsBefore(stmt ast.Stmt, target ast.Expr, want string) bool {
 	switch s := stmt.(type) {
 	case *ast.AssignStmt:
 		return t.assignsMin(s, want)
 	case *ast.IfStmt:
+		if s.Else != nil && t.writesTo(s.Else, target) {
+			return false
+		}
 		return t.exceeds(s.Cond, want) && t.leaves(s.Body, want)
 	}
 	return false

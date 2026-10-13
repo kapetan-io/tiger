@@ -423,7 +423,9 @@ Every loop limit is bounded where it enters the program. The analyzer traces a l
 parameters, fields, and function results, across packages. Every value written into it must be a
 constant, a length, another bounded limit, or a value clamped against a declared maximum, such as
 `min(config.Spins, spinsMax)` or an `if count > objectsMax` that rejects. A function that returns a
-clamped value carries the bound to its callers. A call that passes `math.MaxInt`, the type's
+clamped value carries the bound to its callers. A clamp caps the upper end only, so subtracting
+anything but a constant or a length from a limit, or negating it, makes it unbounded again, and a
+parameter the function writes carries the written value as well as the caller's. A call that passes `math.MaxInt`, the type's
 maximum, or a constant at least half of it is a finding, on integer types of 32 bits or wider, where
 no loop reaches half the range. A running total (`n += len(x)`, `n++`) is as bounded as what is added,
 because every loop tiger accepts ends. Standard library packages and `_test.go` files are not traced.
@@ -1740,7 +1742,7 @@ changes what it checks), or **not built**.
 | `invariantsymmetry` | TS-A08 | Pair functions by naming convention, compare invariant sets | not built (ENG-182) |
 | `invariantnegative` | TS-A09 | Require `assert.Violates` per declared invariant | built |
 | `norecursion` | TS-S01 | `buildssa`, static call graph (`ssalib.StaticCalls`), report any strongly connected component that is a cycle | built |
-| `boundedloop` | TS-S02, S03, S23 | AST, classify every loop; unclassifiable loops are findings and no directive waives TS-S02. Checks counter soundness and cap reporting, accepts a loop whose variant `variant` verified, and treats a range over a non-standard-library iterator as a finding | built; changes decided (ADR-0014, ADR-0020); the `//tiger:batched` cursor waiver still applies until ADR-0014 is built |
+| `boundedloop` | TS-S02, S03, S23 | AST, classify every loop; unclassifiable loops are findings and no directive waives TS-S02, except the `//tiger:batched` cursor waiver, which stays until ADR-0014 is built. Checks counter soundness and cap reporting, accepts a loop whose variant `variant` verified, and treats a range over a non-standard-library iterator as a finding | built; changes decided (ADR-0014, ADR-0020) |
 | `limitflow` | TS-S02 (limit) | `go/types` and cross-package facts; traces each loop limit through parameters, fields, locals and function results back to where it enters the program; a value must be a constant, a length, another bounded limit, or clamped against a declared maximum | built (ADR-0013) |
 | `compoundcond` | TS-S06, S07, S08 | AST, count binary logical operators per condition | built |
 | `assertdensity` | TS-A01, A02 | AST plus `types`, count assert calls per function and package | not built |
