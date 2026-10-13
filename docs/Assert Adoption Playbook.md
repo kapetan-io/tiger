@@ -53,7 +53,7 @@ Add `default: assert.Unreachable(...)`, and the next variant that lands without 
 now fails loud instead of silently falling through.
 
 Not every switch that looks closed is: a type whose vocabulary is deliberately extensible (a wire
-enum you expect to grow) wants a real catch-all default, not a crash. Mark that type `//tiger:openenum`
+enum you expect to grow) wants a real catch-all default, not a crash. Mark that type `//tiger:openenum <reason>`
 instead of reaching for `assert.Unreachable` — see `TS-S08` in the specification for the full
 distinction and the separate opt-out `exhaustive` (the auto half of this rule) needs. Getting this
 choice wrong in either direction is a real cost: an `assert.Unreachable` on a type that legitimately
@@ -135,7 +135,7 @@ The measurable state to cross before either analyzer is worth building, on a giv
 1. `TS-S18` and `TS-S08` findings are resolved **without a behavior change** — naked panics are
    either `assert.Ok`/`assert.Unreachable` (bugs) or converted to `error` returns (expected
    conditions, per `TS-E01`), and closed-set switches carry a real `assert.Unreachable` default
-   where one is warranted, `//tiger:openenum` where it is not.
+   where one is warranted, `//tiger:openenum <reason>` where it is not.
 2. The `inv` package exists, with at least a handful of invariant IDs, each referenced from real
    `assert.Invariant` call sites — not a stub with the pattern but nothing declared in it.
 

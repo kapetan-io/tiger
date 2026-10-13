@@ -465,7 +465,7 @@ from another package, or from stored data, and was never one of the declared con
 that value reaches `assert.Unreachable` instead of falling through the switch. The rule's
 intent is that adding a new value to the set breaks every switch not yet updated for it.
 Once every switch ends in `assert.Unreachable`, that is what happens. A type whose values
-are meant to grow is marked `//tiger:openenum` in its declaration's doc comment. A switch
+are meant to grow is marked `//tiger:openenum <reason>` in its declaration's doc comment. A switch
 over such a type still needs a `default` arm, but there the arm is a legitimate catch-all,
 so `assert.Unreachable` is not required. This rule caught three real bugs on the two real
 codebases tiger was run against before its rules settled, two of them storage backends
@@ -588,8 +588,8 @@ A directive is a `//tiger:<verb>` comment that lets a line of code carry a claim
 There are three kinds of directive.
 
 1. A pin states a claim tiger proves, and a pin the code does not satisfy is a blocking finding. `//tiger:variant`, from the loop section, is one. `//tiger:requires` and `//tiger:ensures` state a function's contract. `requires` states a precondition the caller must establish, and `ensures` states a postcondition the function guarantees on return. Each is written as a small comparison such as `n > 0` or as the ID of a named invariant (TS-V03). `tiger pin` writes a variant tiger found as a `//tiger:variant` comment, and that is the only directive it writes.
-2. An intent declaration states something no analyzer can compute, and the code is held to that claim afterward. `//tiger:openenum`, from the switch rule, is the only one. Because tiger can't check that an enum really is open, it carries a reason and counts against its package's budget, the way an escape does.
-3. The escape directive, `//tiger:batched`, waives the rule against IO inside a loop body (TS-M10) at one site, and it always carries a reason. It counts against its package's budget on every run, whether or not it is waiving a finding at that moment.
+2. An intent declaration states something no analyzer can compute, and the code is held to that claim afterward. Invariants and the layer file are intent too, declared outside a directive.
+3. An escape directive always carries a reason and counts against its package's budget on every run, whether or not it is waiving a finding at that moment. `//tiger:batched` waives the rule against IO inside a loop body (TS-M10) at one site. `//tiger:openenum` marks a type's values as open to growth, which exempts its switches from ending in `assert.Unreachable` (TS-S08). Tiger can't check that an enum really is open, so the claim is counted like a waiver.
 
 An escape is admitted only where the rules forbid something the outside world requires and no rewrite can satisfy the rule. `//tiger:batched` was admitted because some external systems accept only one item of IO at a time. No rewrite of the caller changes that.
 

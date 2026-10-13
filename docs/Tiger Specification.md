@@ -326,7 +326,7 @@ hatches** (loosen one rule at one site, always with a reason, counted by `TS-D06
 | Loop variant | `//tiger:variant len(pending)` | pin | TS-V01 |
 | Surface fault set | fault cases enumerated in the interface | intent | TS-I05 |
 | Layer graph | checked-in layer file (not built, ENG-328) | intent | TS-X03 |
-| Open enum | `//tiger:openenum <reason>`, counted by `TS-D06` | intent | TS-S08 |
+| Open enum | `//tiger:openenum <reason>`, counted by `TS-D06` | escape | TS-S08 |
 | Batched IO | `//tiger:batched <reason>` | escape | TS-M10 |
 | Deviation | `//tiger:<rule-id> <reason>` | escape (gated, does not ship before the first heuristic rules + TS-D06 ratchet) | TS-L09 |
 
@@ -504,7 +504,7 @@ switches still trips the auto rule's exhaustiveness finding.
 *(Amended 2026-08-17: `//tiger:openenum` intent declaration added, see "Declarations at a glance".)*
 *(Amended 2026-10-12: `//tiger:openenum <reason>` carries a reason and counts against its package's
 `TS-D06` budget, because tiger cannot check that an enum really is open. A missing reason is a
-`TS-L09` finding. Decided and not built (ENG-179 item 1).)*
+`TS-L09` finding. Built in ENG-339.)*
 
 **`TS-S09` No `goto`, no labeled break or continue.**
 Why. Simple explicit control flow. A labeled break is usually a loop that wanted to be a function.
@@ -1319,8 +1319,8 @@ whether or not the entry is on, which is one reason CI runs `tiger check`. A cou
 `//nolint:<linter>` waiver is not part of tiger.
 Enforce. `nolintlint` with `require-explanation` (auto) plus `directives` (custom): blocking on
 a missing reason, an unknown verb, and, with `nolint.forbid` on, any `//nolint`; advisory on each
-escape present. *(Amended 2026-10-12: the `nolint.forbid` entry and the `openenum` reason are
-decided and not built, ADR-0023 and ENG-179.)*
+escape present. *(Amended 2026-10-12: the `nolint.forbid` entry and the `openenum` reason, ADR-0023
+and ENG-179, are built in ENG-339.)*
 
 **`TS-L10` Blank lines group acquisition with its `defer`, and no `defer` inside a loop.**
 Why. Put acquire and release next to each other and a leak becomes visible. A `defer` in a loop is an
@@ -1753,7 +1753,7 @@ changes what it checks), or **not built**.
 | `declorder` | TS-L05 | AST, declaration and method order (TS-L04 not shipped, see TS-L04) | built |
 | `deferdistance` | TS-L10 | AST plus token positions | built |
 | `restatement` | TS-L12 | Token overlap between comment and identifier. Tune it | not built |
-| `directives` | TS-L09 | AST, every escape-hatch directive and `//tiger:openenum` carries a reason; with `nolint.forbid` on, every `//nolint` is a finding | built; changes decided (ADR-0023, ENG-179) |
+| `directives` | TS-L09 | AST, every escape-hatch directive and `//tiger:openenum` carries a reason; with `nolint.forbid` on, every `//nolint` is a finding | built (ADR-0023, ENG-179) |
 | `maporder` | TS-T02 | `buildssa`, allowlist of order-safe loop bodies; collect-then-sort with plain sorts or full-coverage comparators; the `maps` escape closed | built; changes decided (ADR-0021) |
 | `fuzzcoverage` | TS-T03 | `packages`, parsers must have a Fuzz function | not built |
 | `corpuscheck` | TS-T09 | Directory presence plus a test that iterates it | not built |

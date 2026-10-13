@@ -354,7 +354,6 @@ issues:
   # No cap. A finding you cannot see is a finding you will not fix.
   max-issues-per-linter: 0
   max-same-issues: 0
-  # Adopt with `--new-from-rev=origin/main` so the ratchet only ever tightens.
 
 # ---------------------------------------------------------------------------
 # Custom analyzers
