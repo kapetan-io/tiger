@@ -41,17 +41,16 @@ writes it (insertion, for `tiger pin`); a pin written by the tool and a pin type
 indistinguishable afterward.
 
 **Intent declaration**:
-A directive stating something no analyzer can compute (`openenum`); stated first, enforced after.
-Invariants and the `TS-X03` layer file are intent too, declared outside a directive. `//tiger:restrict`
-and the `hot`, `wire`, and `owner` verbs are removed (ADR-0024, ADR-0028).
+A directive stating something no analyzer can compute; stated first, enforced after.
+Invariants and the `TS-X03` layer file are intent too, declared outside a directive.
 
 **Escape hatch**:
 A directive loosening one rule at one site, always carrying a reason; admitted only where no
 in-subset code shape can accomplish the task. `//tiger:batched <reason>` is the only one, and it
 waives only TS-M10 in `ioinloop`; ADR-0014 removed its waiver of the TS-S02 loop bound. Shape is
 machine-checked, truth is human-reviewed, and every escape is counted against its package's budget
-on every run, printing when the package goes over. `//tiger:openenum` carries a reason and is
-counted the same way.
+on every run, printing when the package goes over. `//tiger:openenum <reason>` is an escape too,
+because tiger cannot check that an enum really is open.
 _Avoid_: suppression, nolint (the golangci mechanism, not ours)
 
 **Severity**:
@@ -135,7 +134,7 @@ element type no longer counts; today's analyzers still recognize both until the 
 _Avoid_: shutdown channel (the name-based recognition ADR-0020 removes)
 
 **Open enum**:
-A named type marked `//tiger:openenum` whose vocabulary is deliberately extensible; switches
+A named type marked `//tiger:openenum <reason>` whose vocabulary is deliberately extensible; switches
 over it need a default arm but not exhaustiveness or `assert.Unreachable`. Recognized
 same-package only — a switch in another package from the marked type is a documented known
 miss — and governs only the custom default-arm check; the `exhaustive` auto rule needs its own
@@ -147,8 +146,7 @@ evidence on at least two real codebases; demotion is the same edit in reverse.
 
 **Whole-program rule**:
 A custom rule whose finding cannot be decided inside any one package because its evidence is
-spread across packages that do not import each other (TS-A07, TS-A09; TS-X01 until ADR-0016's
-removal lands). Its analyzer's
+spread across packages that do not import each other (TS-A07, TS-A09). Its analyzer's
 per-package pass exports a package fact describing what the package contributes; the finish
 step reads every such fact and reports. Runs only under the tiger CLI.
 _Avoid_: cross-package rule (facts already cross packages; the distinguishing property is the

@@ -63,10 +63,11 @@ A directive is a `//tiger:<verb>` comment. It binds to the code that starts on t
 after its comment group. The vocabulary is closed. An unknown verb is a blocking finding
 (TS-L09), so a typo cannot silently disable anything. There are three kinds.
 
-**Escape hatches** loosen one rule at one site and always carry a reason. There is exactly
-one, and it exists because some external systems only accept one item at a time (a fact of
-the world no rewrite removes). Every escape is counted against its package's budget on
-every run, whether it waives anything or not.
+**Escape hatches** loosen a rule at one site, or state a claim tiger cannot check, and
+always carry a reason. `batched` exists because some external systems only accept one item
+at a time (a fact of the world no rewrite removes). `openenum` claims a type's set of values
+is open to growth, which no analyzer can verify. Every escape is counted against its
+package's budget on every run, whether it waives anything or not.
 
 **Pins** freeze a fact tiger computed (what a function does, what it writes, why a loop
 ends) into a contract. Absence of a pin is never a finding. `tiger pin <Name>` writes one;
@@ -78,16 +79,12 @@ code to the statement.
 | Verb | Kind | Rules it affects |
 |---|---|---|
 | `//tiger:batched <reason>` | escape | TS-M10 (per-item IO in a loop); TS-S02 (cursor-shaped loops only); counted by TS-L09 |
+| `//tiger:openenum <reason>` | escape | TS-S08 (default arm instead of `assert.Unreachable`); counted by TS-L09 |
 | `//tiger:effects <set>` | pin | TS-F01, TS-F02 |
 | `//tiger:frame <set>` | pin | TS-F07 |
 | `//tiger:variant <expr>` | pin | TS-V01 |
 | `//tiger:requires <cond>` | pin | TS-V03 |
 | `//tiger:ensures <cond>` | pin | TS-V03 |
-| `//tiger:restrict <axes>` | intent | TS-P01, TS-P02, TS-K03 |
-| `//tiger:openenum` | intent | TS-S08 (default arm instead of `assert.Unreachable`) |
-| `//tiger:hot` | intent | validated today; no rule consumes it yet |
-| `//tiger:wire` | intent | validated today; no rule consumes it yet |
-| `//tiger:owner` | intent | validated today; no rule consumes it yet |
 
 ## Bounds and control flow
 
@@ -493,9 +490,10 @@ func classify(status Status) string {
 }
 ```
 
-**Directives:** `//tiger:openenum` marks a type's set of values as deliberately open to
+**Directives:** `//tiger:openenum <reason>` marks a type's set of values as deliberately open to
 growth. A switch over that type still needs a default arm, just not one ending in
-`assert.Unreachable`. Tiger recognizes the directive only when the switch is in the same
+`assert.Unreachable`. The directive needs a reason and counts against its package's budget
+(TS-L09); one without a reason does not parse, so it waives nothing. Tiger recognizes the directive only when the switch is in the same
 package as the marked type.
 
 **Known miss:** A switch over an `//tiger:openenum` type in a different package from the
@@ -773,6 +771,11 @@ func drain(queue []string) {
 }
 ```
 
+**Not checked in tests:** `_test.go` files are skipped for this rule. A concurrency test
+starts one goroutine per request on purpose, and a single-worker queue would defeat it.
+The same loop in a non-test file still fires. A goroutine started outside a loop in a test
+is still TS-C02.
+
 <!-- rule: TS-C12 -->
 ### TS-C12 — channel types are declared in one file per package
 
@@ -846,6 +849,11 @@ func closeQuiet(f *os.File) {
 	_ = f.Close() // best-effort cleanup; callers already check write errors
 }
 ```
+
+**Cleanup is exempt:** a discarded error inside a `defer` statement's call, or inside a
+function literal passed to `t.Cleanup`, is not a finding. Closing something on the way out
+has no better answer than dropping the error, so a comment there would add nothing.
+Cleanup that is not deferred, like `_ = resp.Body.Close()`, still fires.
 
 **Known miss:** The check verifies a comment exists next to the discard, not that it is
 true. `_ = f.Close() // ok` satisfies it; the truth of the reason is review's job.
@@ -970,13 +978,36 @@ func notifyAll(hooks []string) {
 **Directives:** This rule validates every directive in the file. A well-formed escape is
 not blocking on its own; the entry below counts it instead.
 
+**Banning `//nolint`:** tiger never honors `//nolint`, and does not ban it by default. A
+team that wants every `//nolint` gone turns the ban on in `tiger.yaml`:
+
+```yaml
+version: 1
+nolint:
+  forbid: true
+  reason: agents must fix findings, not silence them
+```
+
+With the entry on, `tiger check` reports every `//nolint` in a checked package as a blocking
+TS-L09 finding at the file's `package` line, where a `//nolint` on the original line cannot
+cover it. A `//nolint` in a generated file is not reported:
+
+```
+store.go:2:1: TS-L09: line 14 has a //nolint, and this repository's tiger.yaml forbids them (nolint.forbid) — fix the finding it silences instead
+```
+
+The ban holds under `tiger check` only. Under the golangci-lint plugin, a file-wide
+`//nolint:tiger` above the `package` clause or an `exclusions` rule in `.golangci.yml` drops
+the finding, so CI relies on `tiger check`.
+
 <!-- rule: TS-L09-escape -->
 ### TS-L09 (escape accounting) — every escape directive is counted
 
 **Severity:** advisory — findings are counted against the package's row in tiger.budget.yaml: silent under budget; on overrun they print as blocking lines under a TS-D06 line. See [Budgets and the ratchet](#budgets-and-the-ratchet).
 
 An escape like `//tiger:batched <reason>` waives one rule at one spot, and sometimes
-that is the right call. But every escape loosens a rule, so tiger counts each one
+that is the right call. `//tiger:openenum <reason>` is counted the same way, because tiger
+cannot check that an enum really is open. But every escape loosens a rule, so tiger counts each one
 instead of letting it vanish once approved. The count sits in the package's budget,
 where a team can see exactly how many escapes it carries and a raise needs review.
 
@@ -1244,6 +1275,11 @@ func connect(options connectOptions) {
 }
 ```
 
+**Leading `t` and `ctx` are free:** a leading `*testing.T`, `*testing.B` or `testing.TB`
+does not count toward the four-parameter limit, and neither does a `context.Context` that
+comes first or right after it. A `t` or `ctx` anywhere else still counts. The
+adjacent-same-type check counts every parameter.
+
 **Known miss:** Only parameters directly next to each other are flagged. Two same-typed
 parameters separated by a different type stay silent. Function literals are exempt too,
 because their signatures are usually fixed by the API consuming them (`sort.Slice`'s
@@ -1359,9 +1395,40 @@ func Names(m map[string]int) []string {
 }
 ```
 
-**Known miss:** Collecting keys with `slices.Collect(maps.Keys(m))` without sorting,
-then ranging over that slice, escapes the check. The range target is a slice by then,
-not the map.
+The sorted rewrite is not the only shape that passes. A map loop that appends into a local
+slice passes when the slice's first use after the loop is `sort.Strings`, `sort.Ints`, or
+`slices.Sort` on string or integer elements, since equal strings or integers cannot be told
+apart:
+
+```go
+ids := make([]string, 0, len(m))
+for id := range m {
+	ids = append(ids, id)
+}
+sort.Strings(ids)
+```
+
+Floats do not pass, because -0 and +0 compare equal and print differently. A comparator sort
+(`slices.SortFunc`, `slices.SortStableFunc`, `slices.SortedFunc`) passes only when its comparisons
+together cover every field of the element, using `cmp.Compare`, `strings.Compare`, or
+`bytes.Compare` on a whole array. Pointer, interface, bool, float, and `time.Time` fields never
+count as covered. A key type's `Compare` method that passes the same check counts, as in
+`slices.SortedFunc(maps.Keys(m), K.Compare)`. Any other comparator sort fires, and its message
+names `slices.Sorted(maps.Keys(m))` followed by `slices.SortStableFunc`.
+
+A result of `maps.Keys`, `maps.Values`, or `maps.All` fires unless it goes to `slices.Sorted`, a
+full-coverage `SortedFunc` or `SortedStableFunc`, `maps.Collect`, `maps.Insert`, or a range checked like a map range, so
+`slices.Collect(maps.Keys(m))` is a finding. A map write gated by a counter, such as copying the
+first three entries visited, fires too.
+
+A finding means the loop's shape is outside the allowlist, not that the output varies.
+
+**Known misses:** Five shapes pass although they depend on order. Last writer wins
+(`inverse[v] = k` when two keys share a value). A map write whose value calls a function
+(`labels[k] = fmt.Sprint(v)`). `golang.org/x/exp/maps.Keys`. `reflect.Value.MapKeys`. A range over
+a type parameter constrained to a map. TS-T11, which runs the tests twice and compares the output,
+can catch these on the paths the tests exercise, though two runs sometimes visit entries in the same
+order.
 
 <!-- rule: TS-T06 -->
 ### TS-T06 — test functions have a doc comment
@@ -1714,141 +1781,7 @@ bare nil or a constant out of range. When the bad value comes from earlier code,
 stays silent and the check falls back to the callee's own runtime assertion.
 
 
-## Package restrictions
-
-<!-- rule: TS-P01 -->
-### TS-P01 — declared package restrictions hold against the package's own imports
-
-**Severity:** blocking — a finding fails the run.
-
-Go can only restrict imports and dispatch at the package level, not per function. So
-tiger asks for one declaration per package, written once in its doc comment. Leaving an
-axis undeclared is never an error; it just takes a safe default. Declaring an axis and
-then contradicting it with your own imports is a finding.
-
-Code that fires it:
-
-```go
-// Package ledger applies entries to the account state machine.
-//
-//tiger:restrict no-reflect
-package ledger
-
-import "reflect"
-
-func TypeOf(v int) reflect.Type {
-	return reflect.TypeOf(v)
-}
-```
-
-```
-ledger.go:6:8: TS-P01: package ledger declares //tiger:restrict no-reflect but imports reflect — remove the reflect import or drop no-reflect from the directive
-```
-
-The compliant rewrite drops the `reflect` import (or the claim).
-
-```go
-// Package ledger applies entries to the account state machine.
-//
-//tiger:restrict no-reflect
-package ledger
-
-const Marker = "ledger"
-```
-
-**Directives:** `//tiger:restrict <axes>` declares a package's restriction set
-(`closed-dispatch`, `no-reflect`, or `imports(<path>...)`) as a comma-separated list in
-the package doc comment, at most one directive per package.
-
-<!-- rule: TS-P02 -->
-### TS-P02 — every transitive dependency supports each restriction axis a package claims
-
-**Severity:** blocking — a finding fails the run.
-
-Claiming closed dispatch means nothing if a dependency you call into still dispatches
-dynamically. Tiger checks the whole chain. Every axis your package claims must also hold
-in everything it imports, and a dependency that declares nothing counts as weakest on
-every axis. That is an honest default, not a free pass, and the finding names the edit.
-
-Code that fires it (`billing` claims an axis; its dependency `legacy` declares nothing):
-
-```go
-//tiger:restrict closed-dispatch
-package billing
-
-import "fixture.example/legacy"
-
-func Use() string {
-	return legacy.Marker
-}
-```
-
-```
-billing.go:2:1: TS-P02: package billing claims closed-dispatch but imports legacy, which declares nothing — add //tiger:restrict closed-dispatch to legacy, or drop closed-dispatch from billing's declaration
-```
-
-The compliant rewrite makes `legacy` claim the same axis.
-
-```go
-//tiger:restrict closed-dispatch
-package legacy
-
-const Marker = "legacy"
-```
-
-**Directives:** The same `//tiger:restrict <axes>` directive as TS-P01, one hop further.
-A third-party package declares nothing and so counts as weakest on every axis, which
-means claiming an axis while importing one fails until the dependency goes.
-
-<!-- rule: TS-K03 -->
-### TS-K03 — no dynamic dispatch in a package that declares closed-dispatch
-
-**Severity:** blocking — a finding fails the run.
-
-Effects, frames, and preconditions are only precise when tiger knows exactly which
-function a call reaches. Dynamic dispatch (calling a method through an interface that
-could resolve to more than one type) breaks that certainty. A package that declares
-closed dispatch promises every such call resolves to one concrete method. A package
-that skips the declaration is not exempt from the other rules; it just gets
-lower-confidence results from them.
-
-Code that fires it:
-
-```go
-//tiger:restrict closed-dispatch
-package store
-
-type Storage interface{ Write(entry string) }
-
-type diskStorage struct{}
-type memStorage struct{}
-
-func (diskStorage) Write(string) {}
-func (memStorage) Write(string)  {}
-
-func FromParameter(s Storage) {
-	s.Write("x")
-}
-```
-
-```
-storage.go:13:9: TS-K03: s.Write is called through interface Storage in a package that declares //tiger:restrict closed-dispatch — call the concrete type's method, or drop closed-dispatch
-```
-
-The compliant rewrite resolves the call to one concrete type.
-
-```go
-func FromParameter() {
-	var s Storage = diskStorage{}
-	s.Write("x")
-}
-```
-
-**Directives:** Applies only inside a package that declares `closed-dispatch` via
-`//tiger:restrict`.
-
-
-## Invariants and interfaces
+## Invariants
 
 <!-- rule: TS-A07 -->
 ### TS-A07 — every invariant is asserted in a function outside _test.go files
@@ -1944,56 +1877,6 @@ func TestHeaderChecksumViolates(t *testing.T) {
 ```
 
 **Directives:** The same invariant vocabulary as TS-A07.
-
-<!-- rule: TS-X01 -->
-### TS-X01 — no interface with exactly one implementation outside _test.go files
-
-**Severity:** blocking — a finding fails the run.
-
-Every abstraction has a cost and a chance of leaking the details it was meant to hide.
-An interface with only one implementation has paid that cost and gained nothing in
-return. That is the exact shape of an abstraction added just in case, not because it was
-needed. Evidence for this rule spans packages that do not import each other, so only the
-`tiger` CLI reports it; the golangci-lint plugin cannot.
-
-Code that fires it:
-
-```go
-type Storage interface {
-	Get(key string) (string, bool)
-}
-
-type diskStorage struct {
-	data map[string]string
-}
-
-func (d *diskStorage) Get(key string) (string, bool) {
-	v, ok := d.data[key]
-	return v, ok
-}
-```
-
-```
-storage.go:3:6: TS-X01: interface Storage has one implementation, diskStorage — use diskStorage directly and delete the interface, or add a second implementation outside _test.go files
-```
-
-The compliant rewrite deletes the interface and uses the concrete type directly (or, if
-the second implementation genuinely exists, adds it in a non-test package).
-
-```go
-type DiskStorage struct {
-	data map[string]string
-}
-
-func (d *DiskStorage) Get(key string) (string, bool) {
-	v, ok := d.data[key]
-	return v, ok
-}
-```
-
-**Directives:** A type declared in a `_test.go` file never counts as an implementation.
-A fake that should count needs to live in a non-test package.
-
 
 ## Budget accounting
 
@@ -2118,7 +2001,7 @@ golangci-lint findings fail its run.
 | TS-L09 | every suppression carries a reason | nolintlint |
 | TS-L11 | imports grouped standard, external, internal | gci |
 | TS-T01 | time and randomness are injected | forbidigo |
-| TS-D01 | the standard library, and nothing else, where restrictions permit | depguard |
+| TS-D01 | the standard library, and nothing else, in internal/domain packages | depguard |
 
 ## Computed facts
 

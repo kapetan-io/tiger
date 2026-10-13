@@ -1,6 +1,6 @@
 // Package sametypeparams enforces TS-N07 (adjacent parameters of identical
-// type, and more than four parameters, need an options struct) and TS-N08
-// (a plain bool parameter needs a named type).
+// type, and more than four parameters not counting a leading t or ctx, need
+// an options struct) and TS-N08 (a plain bool parameter needs a named type).
 //
 // The spec's own assert package — Ok(cond bool, ...), Equal(got, want T) —
 // is tiger infrastructure whose API the spec itself fixes, so the assert
@@ -11,6 +11,10 @@
 // func(i, j int) bool cannot be restructured into an options struct), so
 // flagging them was a false positive on a blocking rule, surfaced by this
 // repository's own dogfood run and fixed here per correctness constraint 7.
+//
+// The four-parameter limit does not count a leading testing.TB, *testing.T
+// or *testing.B, nor a context.Context first or right after it (ADR-0018).
+// The adjacent-same-type half counts every parameter.
 package sametypeparams
 
 import (
@@ -20,6 +24,8 @@ import (
 	"go/types"
 
 	"golang.org/x/tools/go/analysis"
+
+	"github.com/kapetan-io/tiger/internal/analyzers/internal/assertpkg"
 )
 
 // Analyzer enforces TS-N07 and TS-N08: no adjacent same-type parameters, no bool parameters.
@@ -39,8 +45,7 @@ type paramSlot struct {
 }
 
 func run(pass *analysis.Pass) (any, error) {
-	pkg := pass.Pkg.Name()
-	if pkg == "assert" || pkg == "assert_test" {
+	if assertpkg.Is(pass.Pkg.Path()) {
 		return nil, nil
 	}
 	for _, file := range pass.Files {
@@ -65,12 +70,17 @@ func run(pass *analysis.Pass) (any, error) {
 // adjacent same-type pair, and TS-N08 for each plain bool parameter.
 func checkParams(pass *analysis.Pass, funcType *ast.FuncType) {
 	slots := flattenParams(pass, funcType.Params)
-	if len(slots) > maxParams {
+	exempt := leadingExempt(slots)
+	if counted := len(slots) - exempt; counted > maxParams {
+		suffix := ""
+		if exempt > 0 {
+			suffix = " besides its leading t or ctx"
+		}
 		pass.Report(analysis.Diagnostic{
 			Pos:      funcType.Params.Pos(),
 			Category: "TS-N07",
-			Message: fmt.Sprintf("TS-N07: this function takes %d parameters — group the "+
-				"related ones into an options struct", len(slots)),
+			Message: fmt.Sprintf("TS-N07: this function takes %d parameters%s — group the "+
+				"related ones into an options struct", counted, suffix),
 		})
 	}
 	for i := 0; i < len(slots)-1; i++ {
@@ -79,6 +89,37 @@ func checkParams(pass *analysis.Pass, funcType *ast.FuncType) {
 	for _, slot := range slots {
 		checkBoolParam(pass, slot)
 	}
+}
+
+// leadingExempt returns how many leading slots the parameter limit ignores.
+func leadingExempt(slots []paramSlot) int {
+	exempt := 0
+	if len(slots) > 0 && isTestingHandle(slots[0].typ) {
+		exempt = 1
+	}
+	if len(slots) > exempt && isNamed(slots[exempt].typ, "context.Context") {
+		exempt++
+	}
+	return exempt
+}
+
+// isTestingHandle reports whether typ is testing.TB, *testing.T or *testing.B.
+func isTestingHandle(typ types.Type) bool {
+	if ptr, ok := types.Unalias(typ).(*types.Pointer); ok {
+		return isNamed(ptr.Elem(), "testing.T") || isNamed(ptr.Elem(), "testing.B")
+	}
+	return isNamed(typ, "testing.TB")
+}
+
+// isNamed reports whether typ is the named type with the import-path
+// qualified name, such as "context.Context".
+func isNamed(typ types.Type, qualified string) bool {
+	named, ok := types.Unalias(typ).(*types.Named)
+	if !ok {
+		return false
+	}
+	obj := named.Obj()
+	return obj.Pkg() != nil && obj.Pkg().Path()+"."+obj.Name() == qualified
 }
 
 // checkAdjacent reports TS-N07 when the parameter at index and the one

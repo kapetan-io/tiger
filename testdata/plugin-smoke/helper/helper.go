@@ -1,9 +1,6 @@
 // Package helper is the smoke fixture's second package: it exports an
 // unpinned function with a network effect, so a pinned caller in the smoke
-// package can only be caught if the effects fact crossed the import. It
-// declares no-reflect so it weakens nothing smoke claims.
-//
-//tiger:restrict no-reflect
+// package can only be caught if the effects fact crossed the import.
 package helper
 
 import "net"

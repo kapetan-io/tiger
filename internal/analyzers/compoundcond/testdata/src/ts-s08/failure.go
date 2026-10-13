@@ -58,7 +58,7 @@ func emptyDefaultBody(status Status) string {
 // package doesn't name yet, so a default arm is still required — just not
 // one ending in assert.Unreachable.
 //
-//tiger:openenum
+//tiger:openenum peers on the wire add codes before we upgrade
 type TransferMode string
 
 const (

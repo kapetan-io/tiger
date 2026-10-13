@@ -3,8 +3,8 @@
 package production
 
 import (
-	"fixture.example/invariantrefs/assert"
-	"fixture.example/invariantrefs/inv"
+	"github.com/kapetan-io/tiger/assert"
+	"github.com/kapetan-io/tiger/inv"
 )
 
 // CheckOnce asserts AssertedOnce, its one production site.

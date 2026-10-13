@@ -3,9 +3,9 @@ package methodsite_test
 import (
 	"testing"
 
-	"fixture.example/invariantrefs/assert"
-	"fixture.example/invariantrefs/inv"
-	"fixture.example/invariantrefs/methodsite"
+	"github.com/kapetan-io/tiger/assert"
+	"github.com/kapetan-io/tiger/inv"
+	"github.com/kapetan-io/tiger/methodsite"
 )
 
 // TestCheckPasses exercises the compliant method-site assertion.

@@ -67,6 +67,7 @@ type Key struct {
 type File struct {
 	module  Module
 	entries map[Key][]Entry
+	nolint  bool
 }
 
 // Error is a load failure carrying the analyzer, key, and value the
@@ -96,7 +97,15 @@ func (e *Error) Error() string {
 // name of key to entries.
 type document struct {
 	Version   int                           `yaml:"version"`
+	Nolint    yaml.Node                     `yaml:"nolint"`
 	Analyzers map[string]map[string][]Entry `yaml:",inline"`
+}
+
+// nolintBlock is the one entry that is not an analyzer setting: it turns
+// on the ban on //nolint (ADR-0023), so it has no value list or package scope.
+type nolintBlock struct {
+	Forbid bool   `yaml:"forbid"`
+	Reason string `yaml:"reason"`
 }
 
 // Load reads dir's tiger.yaml and validates it against analyzers: every
@@ -125,12 +134,46 @@ func Load(dir string, analyzers []*analysis.Analyzer) (*File, error) {
 			"version %d is not supported — write version: %d", parsed.Version, version)}
 	}
 	loaded := &File{module: Module(module), entries: map[Key][]Entry{}}
+	forbid, err := parseNolint(&parsed.Nolint)
+	if err != nil {
+		return nil, err
+	}
+	loaded.nolint = forbid
 	for _, name := range slices.Sorted(maps.Keys(parsed.Analyzers)) {
 		if err := loaded.add(name, parsed.Analyzers[name], analyzers); err != nil {
 			return nil, err
 		}
 	}
 	return loaded, nil
+}
+
+// parseNolint validates the nolint block, if the file has one, and reports
+// whether it forbids //nolint. A key other than forbid and reason is an
+// error so a typo cannot leave the ban silently off.
+func parseNolint(node *yaml.Node) (bool, error) {
+	if node.IsZero() {
+		return false, nil
+	}
+	if node.Kind != yaml.MappingNode {
+		return false, &Error{Analyzer: "nolint", Problem: "the block must hold forbid: and reason:"}
+	}
+	for i := 0; i < len(node.Content); i += 2 {
+		if name := node.Content[i].Value; name != "forbid" && name != "reason" {
+			return false, &Error{
+				Analyzer: "nolint", Key: name,
+				Problem: "no setting has this name — the block takes forbid: and reason:",
+			}
+		}
+	}
+	var block nolintBlock
+	if err := node.Decode(&block); err != nil {
+		return false, &Error{Analyzer: "nolint", Problem: oneLine(err)}
+	}
+	if block.Forbid && strings.TrimSpace(block.Reason) == "" {
+		return false, &Error{Analyzer: "nolint", Key: "forbid", Problem: "the entry has no " +
+			"reason — add reason: with why a reviewer accepted it"}
+	}
+	return block.Forbid, nil
 }
 
 // add validates one analyzer's block and records its entries.
@@ -284,4 +327,10 @@ func Values(pkgPath string, key Key) []string {
 		}
 	}
 	return values
+}
+
+// NolintForbidden reports whether the installed config turns on the ban on
+// //nolint. Nothing installed means the ban is off.
+func NolintForbidden() bool {
+	return installed != nil && installed.nolint
 }

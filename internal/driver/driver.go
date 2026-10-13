@@ -471,8 +471,7 @@ func runFinish(
 }
 
 // moduleOf describes the package's enclosing module for analyzers that
-// resolve module-relative paths (the restrict directive's imports axis);
-// nil outside a module, as under other drivers.
+// resolve module-relative paths; nil outside a module, as under other drivers.
 func moduleOf(pkg *packages.Package) *analysis.Module {
 	if pkg.Module == nil {
 		return nil

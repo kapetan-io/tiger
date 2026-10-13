@@ -6,8 +6,8 @@
 # rule ID in the comment so that a developer who hits a finding can go read
 # why.
 #
-# Path patterns express package-level restriction sets (TS-P01), not tiers:
-#   internal/domain/  packages declaring the strictest restriction set
+# Path patterns name the directories with their own import rules:
+#   internal/domain/  packages limited to the standard library
 #   internal/sys/     packages permitted unsafe, cgo, and goroutine supervision
 #
 # Verify linter availability with `golangci-lint linters` for your version.
@@ -138,10 +138,8 @@ linters:
     depguard:
       rules:
         internal-domain:
-          # TS-D01, TS-S12, TS-T01. Mirrors the //tiger:restrict imports axis
-          # declared by internal/domain packages: stdlib only, no unsafe, no
-          # nondeterminism. Hand-maintained until the restrictions analyzer
-          # generates this block from the declarations (TS-P01).
+          # TS-D01, TS-S12, TS-T01. Packages under internal/domain take the
+          # standard library only, no unsafe, no nondeterminism.
           files:
             - '**/internal/domain/**'
           allow:
@@ -159,8 +157,8 @@ linters:
             - pkg: crypto/rand
               desc: TS-T01. Inject through the platform interface so it can be replayed.
         baseline:
-          # TS-P01 default imports baseline for the whole module; internal/sys
-          # is the sanctioned exception where the platform touches the world.
+          # Bans for the whole module; internal/sys is the sanctioned exception
+          # where the platform touches the world.
           files:
             - $all
             - '!**/internal/sys/**'
@@ -169,6 +167,13 @@ linters:
               desc: TS-S12. Allowed only in internal/sys.
             - pkg: github.com/pkg/errors
               desc: TS-E03. Use the standard library, wrap with %w.
+        reflect:
+          # TS-S12. Banned in every package, internal/sys included.
+          files:
+            - $all
+          deny:
+            - pkg: reflect
+              desc: TS-S12. Reflection moves errors to run time and allocates doing it.
 
     forbidigo:
       # TS-C08, TS-T01, TS-T04. depguard works on packages, forbidigo works on
@@ -354,7 +359,6 @@ issues:
   # No cap. A finding you cannot see is a finding you will not fix.
   max-issues-per-linter: 0
   max-same-issues: 0
-  # Adopt with `--new-from-rev=origin/main` so the ratchet only ever tightens.
 
 # ---------------------------------------------------------------------------
 # Custom analyzers

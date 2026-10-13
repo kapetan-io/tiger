@@ -5,6 +5,13 @@
 // present, either trailing the statement or ending on the line directly
 // above it, and never judges what the comment says. A vacuous comment
 // satisfies the rule; only a human review catches a false claim.
+//
+// Discards inside the function literal a defer statement calls, or a
+// function literal passed to a testing Cleanup method, are exempt
+// (ADR-0017). Arguments evaluated at the defer or Cleanup call run
+// immediately and are still checked. Closing something on the
+// way out has no better answer than dropping the error, so a comment there
+// carries no information. Cleanup that is not deferred still needs one.
 package errignore
 
 import (
@@ -24,16 +31,41 @@ var Analyzer = &analysis.Analyzer{
 
 func run(pass *analysis.Pass) (any, error) {
 	for _, file := range pass.Files {
+		exempt := map[*ast.FuncLit]bool{}
 		ast.Inspect(file, func(node ast.Node) bool {
-			assign, ok := node.(*ast.AssignStmt)
-			if !ok {
-				return true
+			switch stmt := node.(type) {
+			case *ast.DeferStmt:
+				if lit, ok := stmt.Call.Fun.(*ast.FuncLit); ok {
+					exempt[lit] = true
+				}
+			case *ast.CallExpr:
+				if isTestingCleanup(pass, stmt) {
+					for _, arg := range stmt.Args {
+						if lit, ok := arg.(*ast.FuncLit); ok {
+							exempt[lit] = true
+						}
+					}
+				}
+			case *ast.FuncLit:
+				return !exempt[stmt]
+			case *ast.AssignStmt:
+				inspectAssign(pass, file, stmt)
 			}
-			inspectAssign(pass, file, assign)
 			return true
 		})
 	}
 	return nil, nil
+}
+
+// isTestingCleanup reports whether call is a Cleanup method call on one of
+// testing's types.
+func isTestingCleanup(pass *analysis.Pass, call *ast.CallExpr) bool {
+	sel, ok := call.Fun.(*ast.SelectorExpr)
+	if !ok || sel.Sel.Name != "Cleanup" {
+		return false
+	}
+	obj := pass.TypesInfo.ObjectOf(sel.Sel)
+	return obj != nil && obj.Pkg() != nil && obj.Pkg().Path() == "testing"
 }
 
 // inspectAssign reports every blank left-hand side of assign whose matching

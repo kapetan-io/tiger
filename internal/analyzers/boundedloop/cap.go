@@ -7,6 +7,7 @@ import (
 
 	"golang.org/x/tools/go/analysis"
 
+	"github.com/kapetan-io/tiger/internal/analyzers/internal/assertpkg"
 	"github.com/kapetan-io/tiger/internal/analyzers/internal/condition"
 	"github.com/kapetan-io/tiger/internal/analyzers/internal/counter"
 	"github.com/kapetan-io/tiger/internal/analyzers/internal/mutation"
@@ -296,7 +297,7 @@ func errorInterface() *types.Interface {
 }
 
 // assertsOrPanics reports whether call is the panic builtin or a function
-// from a package named assert.
+// from tiger's assert package.
 func (c *checker) assertsOrPanics(call *ast.CallExpr) bool {
 	switch fun := ast.Unparen(call.Fun).(type) {
 	case *ast.Ident:
@@ -308,7 +309,7 @@ func (c *checker) assertsOrPanics(call *ast.CallExpr) bool {
 			return false
 		}
 		pkg, ok := c.pass.TypesInfo.Uses[pkgIdent].(*types.PkgName)
-		return ok && pkg.Imported().Name() == "assert"
+		return ok && assertpkg.Is(pkg.Imported().Path())
 	}
 	return false
 }

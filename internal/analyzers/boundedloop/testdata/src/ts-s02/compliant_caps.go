@@ -7,7 +7,7 @@ import (
 	"database/sql"
 	"errors"
 
-	"assert"
+	"github.com/kapetan-io/tiger/assert"
 )
 
 // errSpinCapHit reports a spin that reached its limit before done.

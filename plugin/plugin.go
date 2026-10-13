@@ -11,11 +11,11 @@
 // crowd real findings off their lines. The plugin therefore drops fact
 // diagnostics, the same decision tiger check makes when the flag is absent.
 //
-// Whole-program rules (ADR-0010) — TS-A07, TS-A09, and TS-X01 — decide
-// their findings in a finish step only the tiger CLI runs. Under this
-// plugin their per-package halves still run and export their facts, so
-// nothing breaks, but those three rule codes never appear in a
-// golangci-lint run; only `tiger check` reports them.
+// Whole-program rules (ADR-0010) — TS-A07 and TS-A09 — decide their
+// findings in a finish step only the tiger CLI runs. Under this plugin
+// their per-package halves still run and export their facts, so nothing
+// breaks, but those two rule codes never appear in a golangci-lint run;
+// only `tiger check` reports them.
 //
 // The plugin also installs the repository's tiger.yaml (ADR-0002: the
 // driver loads config, analyzers only query it). It is read from the

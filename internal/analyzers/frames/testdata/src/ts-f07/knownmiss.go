@@ -18,8 +18,7 @@ func fieldPointer(r *Recorder) *string {
 // opaque hop it cannot see through, so this write never joins the computed
 // frame. A frame pinned on an exported caller of this helper would omit
 // r.handle and still match exactly — the mismatch never surfaces as a
-// finding, which is the known-miss boundary TS-P02 bounds, not a bug to
-// fix here.
+// finding, which is the known-miss boundary, not a bug to fix here.
 func (r *Recorder) setViaAlias(v string) {
 	h := fieldPointer(r)
 	*h = v

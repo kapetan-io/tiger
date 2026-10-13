@@ -1,19 +1,25 @@
 // Package nogoroutine enforces TS-C02 and TS-C09: no bare goroutine spawns
 // outside supervisors.
 //
-// Every GoStmt is a finding. A spawn lexically inside a for or range loop
-// body is the reactive anti-pattern TS-C09 warns about — work started in
-// direct response to each event or item, with no back pressure. Any other
+// Every GoStmt is a finding, except a loop spawn in a _test.go file. A
+// spawn lexically inside a for or range loop body is the reactive
+// anti-pattern TS-C09 warns about — work started in direct response to each
+// event or item, with no back pressure. Any other
 // spawn is TS-C02: a goroutine with no documented owner and no lifetime
 // tied to a context. The compliant path is errgroup.Group.Go or another
 // library that owns the join; there is no allowlist of supervisor
 // functions, because a function listed there would have every go statement
 // inside it exempted — a per-site deviation in config shape, which
 // ADR-0003/0005 gate.
+//
+// TS-C09 skips _test.go files (ADR-0019): a concurrency test starts one
+// goroutine per request on purpose. A spawn in a test loop is silent; a
+// spawn outside a loop in a test still fires TS-C02.
 package nogoroutine
 
 import (
 	"go/ast"
+	"strings"
 
 	"golang.org/x/tools/go/analysis"
 )
@@ -53,9 +59,12 @@ func run(pass *analysis.Pass) (any, error) {
 }
 
 // check reports a finding for spawn, choosing TS-C09 over TS-C02 when
-// spawn sits inside a loop.
+// spawn sits inside a loop. A loop spawn in a _test.go file is exempt.
 func check(pass *analysis.Pass, spawn *ast.GoStmt, ancestors []ast.Node) {
 	if insideLoop(ancestors) {
+		if strings.HasSuffix(pass.Fset.PositionFor(spawn.Pos(), false).Filename, "_test.go") {
+			return
+		}
 		pass.Report(analysis.Diagnostic{Pos: spawn.Pos(), Category: "TS-C09", Message: msgReactive})
 		return
 	}

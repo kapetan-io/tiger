@@ -109,14 +109,11 @@ Two engines enforce the rules:
   written (`norecursion`, `maporder`, `poolzero`, `effects`, `frames`,
   `variant`, `contracts`), with effect sets and frames crossing package
   boundaries through `go/analysis` facts; the cross-package wave adds the
-  rules whose evidence spans the module (`restrictions`, `closedworld`,
-  `invariantrefs`, `invariantnegative`, `singleimpl`). ENG-191 removes
-  `effects` and `frames` (ADR-0026), `restrictions` and `closedworld`
-  (ADR-0024), and `singleimpl` (ADR-0016); the specification's analyzer table
-  shows what is built and what is decided. Analyzers are driver-agnostic
+  rules whose evidence spans the module (`invariantrefs`,
+  `invariantnegative`). ENG-191 removes `effects` and `frames` (ADR-0026); the
+  specification's analyzer table shows what is built and what is decided. Analyzers are driver-agnostic
   `go/analysis` passes; severity and exit codes live in the driver, per
-  ADR-0002. TS-A07 and TS-A09 are whole-program rules (and TS-X01 until its
-  removal lands): their finding is decided in a finish step the tiger driver
+  ADR-0002. TS-A07 and TS-A09 are whole-program rules: their finding is decided in a finish step the tiger driver
   runs once after every package has been visited (ADR-0010). Only
   `tiger check` reports them; under the golangci-lint plugin their
   per-package halves still run and export facts, and those codes are simply
@@ -124,14 +121,15 @@ Two engines enforce the rules:
 
 Directives share the `//tiger:<verb>` namespace, owned by the grammar package
 (`internal/directive`): an unknown verb is a blocking error, never a silently
-meaningless comment. Tiger admits exactly one escape hatch,
-`//tiger:batched <reason>`, which waives only the rule against IO inside a loop
-(TS-M10, ADR-0014), and it is counted against its package's budget on every
-run, so the debt it carries is a number in `tiger.budget.yaml`'s diff
-(ADR-0003, ADR-0011). `//tiger:openenum` carries a reason and is counted the
-same way. There is deliberately no `//tiger:bounded` and no dismissal
-directive. Tiger has no package-level declarations: ADR-0024 removes
-`//tiger:restrict`, and ADR-0028 removes the `hot`, `wire`, and `owner` verbs.
+meaningless comment. Tiger admits two escape hatches.
+`//tiger:batched <reason>` waives only the rule against IO inside a loop
+(TS-M10, ADR-0014). `//tiger:openenum <reason>` claims a type's values are open
+to growth, which tiger cannot check. Each is counted against its package's
+budget on every run, so the debt it carries is a number in
+`tiger.budget.yaml`'s diff (ADR-0003, ADR-0011). There is deliberately no
+`//tiger:bounded` and no dismissal directive. Tiger has no package-level
+declarations (ADR-0024), and the `hot`, `wire`, and `owner` verbs do not exist
+(ADR-0028).
 
 ## What is here
 
@@ -139,10 +137,10 @@ directive. Tiger has no package-level declarations: ADR-0024 removes
 | --- | --- |
 | `cmd/tiger/` | The CLI: a thin `main` over a testable run function. |
 | `internal/rules/` | The rule registry — the single source of the rule set. The binary's analyzer set, the finish functions, the corpus meta-tests, severity, the computed-facts table, and the `tiger golangci` audit are all derived from it. |
-| `internal/analyzers/` | The 32 analyzers, one package per analyzer, each with its corpus (failure-mode fires, compliant rewrite silent, known misses marked): an `analysistest` corpus for a per-package rule, a small module under `testdata/module/` run through the tiger driver for a whole-program rule. The shared internals live under `internal/analyzers/internal/`: `words` (identifier tokenization), `ssalib` (shared `go/ssa` call-graph walks used by `norecursion`, plus the effect lattice plumbing and curated stdlib effects table, which ADR-0026 removes with `effects` and `frames`), `restrict` (the package restriction declaration, removed by ADR-0024), and `invariants` (invariant const and assert-call collection). |
+| `internal/analyzers/` | The 29 analyzers, one package per analyzer, each with its corpus (failure-mode fires, compliant rewrite silent, known misses marked): an `analysistest` corpus for a per-package rule, a small module under `testdata/module/` run through the tiger driver for a whole-program rule. The shared internals live under `internal/analyzers/internal/`: `words` (identifier tokenization), `ssalib` (shared `go/ssa` call-graph walks used by `norecursion`, plus the effect lattice plumbing and curated stdlib effects table, which ADR-0026 removes with `effects` and `frames`), `assertpkg` (recognizes tiger's assert package by import path), and `invariants` (invariant const and assert-call collection). |
 | `internal/directive/` | The `//tiger:` grammar: closed verb vocabulary, per-verb pin argument grammars (variant expressions and contract predicates; the effect lattice and frame lists go with ADR-0026), canonical printing, and the round-trip contract `Parse(Format(d)) == d`. |
-| `plugin/` + `.custom-gcl.yml` | The golangci-lint module plugin: the same analyzers under `golangci-lint run`, minus the finish step — TS-A07 and TS-A09 (and TS-X01 until its removal) are `tiger check`-only. See "Running under golangci-lint" below. |
-| `assert/` | The always-on assertion package, including `Invariant`/`Violates` generic over `~string`. Zero dependencies. Copy it to `internal/assert` in your project. |
+| `plugin/` + `.custom-gcl.yml` | The golangci-lint module plugin: the same analyzers under `golangci-lint run`, minus the finish step — TS-A07 and TS-A09 are `tiger check`-only. See "Running under golangci-lint" below. |
+| `assert/` | The always-on assertion package, including `Invariant`/`Violates` generic over `~string`. Zero dependencies. Import it as `github.com/kapetan-io/tiger/assert`; tiger recognizes it by that import path only. |
 | `examples/ledger/` | The invariant vocabulary pattern: an `inv` package declaring IDs (TS-A07), a symmetric encode/decode pair asserting them (TS-A08), and a violation test per invariant (TS-A09). |
 | `config/golangci.yml` | The Stage 0 golangci-lint v2 template with rule-ID comments. `tiger golangci --init` generates the machine-audited baseline from the registry. |
 
