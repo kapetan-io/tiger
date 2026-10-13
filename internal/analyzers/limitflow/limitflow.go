@@ -20,7 +20,8 @@
 // A limit that reaches a loop through a function value or an interface
 // method is not followed, because there is no body to trace. A constant
 // below half the type's maximum is trusted, because it cannot be told from a
-// legitimate large count. Both are recorded misses.
+// legitimate large count. Both are listed under "Known misses" in
+// docs/Tiger Rule Reference.md.
 package limitflow
 
 import (
@@ -38,13 +39,12 @@ import (
 	"golang.org/x/tools/go/analysis"
 
 	"github.com/kapetan-io/tiger/assert"
-	"github.com/kapetan-io/tiger/internal/analyzers/internal/cancel"
 	"github.com/kapetan-io/tiger/internal/analyzers/internal/intrange"
 	"github.com/kapetan-io/tiger/internal/analyzers/internal/mutation"
 )
 
 const (
-	msgUnbounded = "TS-S02: this value bounds a loop but has no upper bound where it enters — " +
+	msgUnbounded = "TS-S02: this value reaches a loop limit with no upper bound where it enters — " +
 		"clamp it there, for example min(x, xMax), or reject it with if x > xMax"
 	msgHuge = "TS-S02: this value is too large for the loop to ever reach, so it bounds " +
 		"nothing — pass a declared maximum instead"
@@ -113,9 +113,11 @@ type state struct {
 	funcs       []*function
 	limitParams map[*types.Func]map[int]bool
 	limitFields map[string]bool
-	ownFields   map[string]bool
-	results     map[*types.Func][]int
-	sinks       map[*function][]sink
+	// ownFields is the part of limitFields this package learned, and the
+	// only part it exports.
+	ownFields map[string]bool
+	results   map[*types.Func][]int
+	sinks     map[*function][]sink
 }
 
 func run(pass *analysis.Pass) (any, error) {
@@ -166,7 +168,7 @@ func (s *state) collect() {
 		}
 		fn := &function{
 			obj: obj, decl: decl, scope: scope, params: map[*types.Var]int{},
-			literalParams: cancel.Parameters(s.pass.TypesInfo, decl),
+			literalParams: scope.Parameters(),
 		}
 		signature, _ := obj.Type().(*types.Signature)
 		for i := 0; i < signature.Params().Len(); i++ {
@@ -243,7 +245,7 @@ func (s *state) learn(fn *function, result traceResult) bool {
 // its parameters are.
 func (s *state) learnResult(fn *function) bool {
 	signature, _ := fn.obj.Type().(*types.Signature)
-	if signature.Results().Len() != 1 || !isInteger(signature.Results().At(0).Type()) {
+	if signature.Results().Len() != 1 || !intrange.IsInteger(signature.Results().At(0).Type()) {
 		return false
 	}
 	var depends []int
@@ -253,11 +255,15 @@ func (s *state) learnResult(fn *function) bool {
 			return false
 		}
 		stmt, ok := n.(*ast.ReturnStmt)
-		if !ok || len(stmt.Results) != 1 {
+		if !ok {
+			return true
+		}
+		returned := s.returnedValue(fn, stmt)
+		if returned == nil {
 			return true
 		}
 		returns++
-		result := s.trace(fn, stmt.Results[0], downstream)
+		result := s.trace(fn, returned, downstream)
 		if len(result.bad) > 0 || len(result.huge) > 0 {
 			unbounded = true
 		}
@@ -274,6 +280,19 @@ func (s *state) learnResult(fn *function) bool {
 	}
 	s.results[fn.obj] = depends
 	return true
+}
+
+// returnedValue returns the expression a return statement hands back. A bare
+// return in a function with a named result hands back that result.
+func (s *state) returnedValue(fn *function, stmt *ast.ReturnStmt) ast.Expr {
+	if len(stmt.Results) == 1 {
+		return stmt.Results[0]
+	}
+	results := fn.decl.Type.Results
+	if len(stmt.Results) == 0 && results != nil && len(results.List) == 1 && len(results.List[0].Names) == 1 {
+		return results.List[0].Names[0]
+	}
+	return nil
 }
 
 // report traces every active sink once more, with the facts settled, and
@@ -346,9 +365,4 @@ func (s *state) resultOf(fn *types.Func) ([]int, bool) {
 		return imported.DependsOn, true
 	}
 	return nil, false
-}
-
-// isInteger reports whether t is an integer type.
-func isInteger(t types.Type) bool {
-	return intrange.IsInteger(t)
 }

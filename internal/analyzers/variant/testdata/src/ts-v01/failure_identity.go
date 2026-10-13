@@ -222,7 +222,7 @@ func pinnedField(h *handler) {
 // pinnedUnknownName pins a name that is not in scope at the loop.
 func pinnedUnknownName(pending []int) {
 	//tiger:variant len(missing)
-	for len(pending) > 0 { // want `TS-V01: //tiger:variant len\(missing\) doesn't provably shrink on every pass \(len\(missing\) cannot be shown to move consistently\)`
+	for len(pending) > 0 { // want `TS-V01: //tiger:variant len\(missing\) doesn't provably shrink on every pass \(len\(missing\) has no step tiger recognizes\)`
 		pending = pending[1:]
 	}
 }

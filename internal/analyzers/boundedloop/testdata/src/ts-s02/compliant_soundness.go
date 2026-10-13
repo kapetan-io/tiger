@@ -37,3 +37,12 @@ labeled:
 	_ = 0
 	goto labeled
 }
+
+// byteToAssignedLimit counts a byte to a limit that is assigned a constant
+// after its declaration.
+func byteToAssignedLimit() {
+	var limit uint8
+	limit = 100
+	for i := uint8(0); i < limit; i += 2 {
+	}
+}

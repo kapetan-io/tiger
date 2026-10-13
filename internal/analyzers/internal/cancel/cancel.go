@@ -14,34 +14,10 @@ import (
 	"github.com/kapetan-io/tiger/internal/analyzers/internal/condition"
 )
 
-// Parameters collects every function parameter declared in decl.
-func Parameters(info *types.Info, decl ast.Node) map[*types.Var]bool {
-	found := map[*types.Var]bool{}
-	ast.Inspect(decl, func(node ast.Node) bool {
-		var signature *ast.FuncType
-		switch fn := node.(type) {
-		case *ast.FuncDecl:
-			signature = fn.Type
-		case *ast.FuncLit:
-			signature = fn.Type
-		default:
-			return true
-		}
-		for _, field := range signature.Params.List {
-			for _, name := range field.Names {
-				if v, ok := info.Defs[name].(*types.Var); ok {
-					found[v] = true
-				}
-			}
-		}
-		return true
-	})
-	return found
-}
-
-// Waits reports whether a top-level && term of cond is ctx.Err() == nil on
-// one of the parameters.
-func Waits(info *types.Info, params map[*types.Var]bool, cond ast.Expr) bool {
+// UntilCancelled reports whether a top-level && term of cond is
+// ctx.Err() == nil on one of the parameters, which makes the loop run until the
+// caller cancels.
+func UntilCancelled(info *types.Info, params map[*types.Var]bool, cond ast.Expr) bool {
 	for _, term := range condition.Conjuncts(cond) {
 		binary, ok := term.(*ast.BinaryExpr)
 		if !ok || binary.Op != token.EQL {

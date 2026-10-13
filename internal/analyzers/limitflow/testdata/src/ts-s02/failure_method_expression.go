@@ -13,12 +13,12 @@ func (pacer) Spin(done func() bool, limit int) error { // want Spin:`\[1\]`
 
 // SpinThroughMethodExpression names the method and passes the receiver first.
 func SpinThroughMethodExpression(config SpinConfig, done func() bool) error {
-	return pacer.Spin(pacer{}, done, config.Spins) // want `TS-S02: this value bounds a loop but has no upper bound where it enters`
+	return pacer.Spin(pacer{}, done, config.Spins) // want `TS-S02: this value reaches a loop limit with no upper bound where it enters`
 }
 
 // SpinFromDecodedRequest reads a limit from a struct decoded into a type
 // with no name, which is still a value from outside.
 func SpinFromDecodedRequest(done func() bool) error {
 	var request struct{ Limit int }
-	return lib.SpinReported(done, request.Limit) // want `TS-S02: this value bounds a loop but has no upper bound where it enters`
+	return lib.SpinReported(done, request.Limit) // want `TS-S02: this value reaches a loop limit with no upper bound where it enters`
 }

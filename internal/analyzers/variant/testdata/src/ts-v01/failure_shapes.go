@@ -180,3 +180,32 @@ func unsignedByTwo(n, floor uint) {
 		n -= 2
 	}
 }
+
+// pinMissesTheVariableThatMoves pins b, but the condition compares a and b
+// and the loop moves both.
+func pinMissesTheVariableThatMoves(a, b int) {
+	//tiger:variant b
+	for a < b { // want `TS-V01: //tiger:variant b doesn't provably shrink on every pass \(leaves out a variable the loop changes\)`
+		a -= 5
+		b--
+	}
+}
+
+// pinLeavesOutTheGrowingBound pins -a, but b grows by two on every pass.
+func pinLeavesOutTheGrowingBound(a, b int) {
+	//tiger:variant 0 - a
+	for a < b { // want `TS-V01: //tiger:variant 0 - a doesn't provably shrink on every pass \(leaves out a variable the loop changes\)`
+		a++
+		b += 2
+	}
+}
+
+// growsMapThroughHelper inserts into the map whose length is the limit by
+// handing it to a function.
+func growsMapThroughHelper(entries map[int]int) {
+	for i := 0; i < len(entries); i++ { // want `TS-V01: tiger can't prove this loop ends`
+		insert(entries, i+1000)
+	}
+}
+
+func insert(entries map[int]int, key int) { entries[key] = 1 }

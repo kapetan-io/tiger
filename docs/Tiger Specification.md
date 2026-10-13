@@ -388,14 +388,15 @@ building at all.
 Why. Bounded execution. A recursive function's stack depth depends on data, and data comes from
 outside. Go grows stacks to 1GB by default, so you do not get a clean early crash, you get a process
 that quietly eats a gigabyte and dies far from the cause.
-Enforce. `norecursion` (custom, SSA callgraph, catches mutual recursion).
+Enforce. `norecursion` (custom, SSA static call graph, catches mutual recursion).
 
 **`TS-S02` Every loop has an upper bound.**
 Why. Everything in reality has a limit. A loop that does not state its limit is asserting that some
 input will always be well-formed. Bound it and an infinite hang becomes a fast, loud failure at the
 boundary. See `TS-V01` for the stronger form.
 Enforce. `boundedloop` (custom). A `for` with no condition, or a condition that states no bound, is a
-finding, and no directive waives it. A bound is a constant, a `len`, a sound counter, or a variant
+finding, and no directive waives it (until ADR-0014 is built, `//tiger:batched` still waives a
+cursor-shaped loop). A bound is a constant, a `len`, a sound counter, or a variant
 `TS-V01` verified. Where none exists, the compliant forms are an explicit counter cap and the
 `TS-S03` event-loop shape.
 
@@ -1732,7 +1733,7 @@ changes what it checks), or **not built**.
 | `invariantrefs` | TS-A07 | Group `assert.Invariant` calls by constant, count referencing functions | built |
 | `invariantsymmetry` | TS-A08 | Pair functions by naming convention, compare invariant sets | not built (ENG-182) |
 | `invariantnegative` | TS-A09 | Require `assert.Violates` per declared invariant | built |
-| `norecursion` | TS-S01 | `buildssa`, CHA callgraph, report any cycle | built |
+| `norecursion` | TS-S01 | `buildssa`, static call graph (`ssalib.StaticCalls`), report any strongly connected component that is a cycle | built |
 | `boundedloop` | TS-S02, S03, S23 | AST, classify every loop; unclassifiable loops are findings and no directive waives TS-S02. Checks counter soundness and cap reporting, accepts a loop whose variant `variant` verified, and treats a range over a non-standard-library iterator as a finding | built; changes decided (ADR-0014, ADR-0020); the `//tiger:batched` cursor waiver still applies until ADR-0014 is built |
 | `limitflow` | TS-S02 (limit) | `go/types` and cross-package facts; traces each loop limit through parameters, fields, locals and function results back to where it enters the program; a value must be a constant, a length, another bounded limit, or clamped against a declared maximum | built (ADR-0013) |
 | `compoundcond` | TS-S06, S07, S08 | AST, count binary logical operators per condition | built |

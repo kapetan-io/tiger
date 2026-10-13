@@ -5,7 +5,7 @@ decisions recorded in ENG-191. Several pieces described here are not built yet:
 
 - the `tiger changed` report, and the removal of effect and frame pins it replaces
 - the patterns collection and the `tiger pattern` command
-- the changes to the loop rules, including the end of `//tiger:batched` as a loop-bound waiver
+- the end of `//tiger:batched` as a loop-bound waiver (ENG-183)
 - the changes to the goroutine and wait rules, including TS-C03's goleak check
 - the collect-then-sort part of the map-order rule, and TS-T11's double test run
 - the layer file that declares which packages may import which (ENG-328)
@@ -710,7 +710,7 @@ The transcripts on this page come from different runs and prototypes.
 The invariant run is against `examples/ledger`. The `Drain` run and the four-file `bugs`
 run use scratch packages instead, because the ledger has no loop, switch, goroutine, or
 wait written in a shape tiger rejects. Their findings use today's wording. It will
-change once the decided loop and goroutine rules are built.
+change once the decided goroutine rules are built.
 
 The remaining transcripts each come from their own source:
 - The `tiger golangci` audit is against a config that `tiger golangci --init` generated,

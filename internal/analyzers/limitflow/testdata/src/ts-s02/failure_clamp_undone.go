@@ -7,19 +7,19 @@ import "lib"
 
 // SpinClampedThenReassigned writes the setting again after the check.
 func SpinClampedThenReassigned(tuning, later Tuning, done func() bool) error {
-	spins := tuning.Spins // want `TS-S02: this value bounds a loop but has no upper bound where it enters`
+	spins := tuning.Spins // want `TS-S02: this value reaches a loop limit with no upper bound where it enters`
 	if spins > spinsMax {
 		return nil
 	}
-	spins = later.Spins // want `TS-S02: this value bounds a loop but has no upper bound where it enters`
+	spins = later.Spins // want `TS-S02: this value reaches a loop limit with no upper bound where it enters`
 	return lib.SpinReported(done, spins)
 }
 
 // SpinClampedByDoubling answers a too-large setting by making it larger.
 func SpinClampedByDoubling(tuning Tuning, done func() bool) error {
-	spins := tuning.Spins // want `TS-S02: this value bounds a loop but has no upper bound where it enters`
+	spins := tuning.Spins // want `TS-S02: this value reaches a loop limit with no upper bound where it enters`
 	if spins > spinsMax {
-		spins = spins * 2 // want `TS-S02: this value bounds a loop but has no upper bound where it enters`
+		spins = spins * 2 // want `TS-S02: this value reaches a loop limit with no upper bound where it enters`
 	}
 	return lib.SpinReported(done, spins)
 }
@@ -32,7 +32,7 @@ func SpinClampedOtherVariable(tuning, other Tuning, done func() bool) error {
 		return nil
 	}
 	{
-		spins := other.Spins // want `TS-S02: this value bounds a loop but has no upper bound where it enters`
+		spins := other.Spins // want `TS-S02: this value reaches a loop limit with no upper bound where it enters`
 		return lib.SpinReported(done, spins)
 	}
 }

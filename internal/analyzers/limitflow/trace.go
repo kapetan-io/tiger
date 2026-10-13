@@ -24,8 +24,8 @@ type traceResult struct {
 }
 
 // bounded reports whether nothing in the traceResult is a finding.
-func (o traceResult) bounded() bool {
-	return len(o.bad) == 0 && len(o.huge) == 0
+func (r traceResult) bounded() bool {
+	return len(r.bad) == 0 && len(r.huge) == 0
 }
 
 // nodeKind classifies a node of the tree a trace builds over one value.
@@ -164,9 +164,7 @@ func (t *tracer) constant(index int, expr ast.Expr) bool {
 // maximum, on a type wide enough that a loop to that count is out of reach.
 func (t *tracer) tooLarge(known types.TypeAndValue) bool {
 	span, ok := intrange.Of(known.Type, t.fn.scope.Sizes())
-	// A type that holds fewer values than an int32 does is one a loop can
-	// reach the far half of, so only wider types have constants out of reach.
-	if !ok || span.High.Cmp(big.NewInt(1<<31-1)) < 0 {
+	if !ok || !span.OutOfReach() {
 		return false
 	}
 	value, exact := new(big.Int).SetString(known.Value.ExactString(), 10)
@@ -265,11 +263,11 @@ func (t *tracer) unary(current task, expr *ast.UnaryExpr) {
 	t.child(current.index, expr.X, current.mode)
 }
 
-// selector fills the node from a struct field read. A field known to bound a
-// loop is another bounded limit. A field read straight into a loop header
-// joins that set. A field of a struct with no name has nothing to record a
-// fact against, so one read straight into a loop header is not judged. Any
-// other field read is a value from outside.
+// selector fills the node from a struct field read. A field already known to
+// bound a loop (limitFields) is bounded. A field read straight into a loop
+// header is recorded in the node as a new limit field, so every write into it
+// is judged. A header read of a field of an unnamed struct cannot be recorded,
+// so it is trusted. Any other field read is a value from outside.
 func (t *tracer) selector(current task, expr *ast.SelectorExpr) {
 	selection := t.s.pass.TypesInfo.Selections[expr]
 	if selection == nil || selection.Kind() != types.FieldVal {
@@ -391,7 +389,7 @@ func (t *tracer) assigned(parent int, v *types.Var, stmt *ast.AssignStmt) {
 // assignedValue adds the node for the value assigned into v. v = v + x adds
 // x to a running total, and any other value that reads v feeds itself.
 func (t *tracer) assignedValue(parent int, v *types.Var, value ast.Expr) {
-	if !t.mentions(value, v) {
+	if !t.fn.scope.Mentions(value, v) {
 		t.child(parent, value, downstream)
 		return
 	}
@@ -400,7 +398,7 @@ func (t *tracer) assignedValue(parent int, v *types.Var, value ast.Expr) {
 		return
 	}
 	binary, ok := ast.Unparen(value).(*ast.BinaryExpr)
-	if ok && addsOrSubtracts[binary.Op] && t.isVar(binary.X, v) {
+	if ok && addsOrSubtracts[binary.Op] && t.fn.scope.IsVar(binary.X, v) {
 		t.child(parent, binary.Y, downstream)
 		return
 	}
@@ -426,12 +424,6 @@ func (t *tracer) clampsItself(value ast.Expr) bool {
 	return false
 }
 
-// isVar reports whether expr is a use of v.
-func (t *tracer) isVar(expr ast.Expr, v *types.Var) bool {
-	ident, ok := ast.Unparen(expr).(*ast.Ident)
-	return ok && t.s.pass.TypesInfo.ObjectOf(ident) == v
-}
-
 // declared adds the node for var v T or var v = value.
 func (t *tracer) declared(parent int, v *types.Var, spec *ast.ValueSpec, use *ast.Ident) {
 	if len(spec.Values) == 0 {
@@ -454,8 +446,8 @@ func (t *tracer) declared(parent int, v *types.Var, spec *ast.ValueSpec, use *as
 func (t *tracer) ranged(parent int, v *types.Var, stmt *ast.RangeStmt) {
 	key, isKey := stmt.Key.(*ast.Ident)
 	if !isKey || t.s.pass.TypesInfo.ObjectOf(key) != v {
-		if t.constantElements(stmt.X) {
-			t.leaf(parent, nodeBounded, stmt.Value)
+		if literal, ok := ast.Unparen(stmt.X).(*ast.CompositeLit); ok && t.constantElements(literal) {
+			t.constantList(parent, literal)
 			return
 		}
 		t.leaf(parent, nodeUnbounded, stmt.Value)
@@ -475,13 +467,9 @@ func (t *tracer) ranged(parent int, v *types.Var, stmt *ast.RangeStmt) {
 	}
 }
 
-// constantElements reports whether expr is a literal slice or array whose
-// elements are all constants.
-func (t *tracer) constantElements(expr ast.Expr) bool {
-	literal, ok := ast.Unparen(expr).(*ast.CompositeLit)
-	if !ok {
-		return false
-	}
+// constantElements reports whether every element of a literal slice or array
+// is a constant.
+func (t *tracer) constantElements(literal *ast.CompositeLit) bool {
 	for _, element := range literal.Elts {
 		if t.s.pass.TypesInfo.Types[element].Value == nil {
 			return false
@@ -490,17 +478,16 @@ func (t *tracer) constantElements(expr ast.Expr) bool {
 	return true
 }
 
-// mentions reports whether expr reads v.
-func (t *tracer) mentions(expr ast.Expr, v *types.Var) bool {
-	found := false
-	ast.Inspect(expr, func(n ast.Node) bool {
-		ident, ok := n.(*ast.Ident)
-		if ok && t.s.pass.TypesInfo.ObjectOf(ident) == v {
-			found = true
+// constantList adds a node for each constant in a literal list, so one too
+// large to reach is found like any other constant.
+func (t *tracer) constantList(parent int, literal *ast.CompositeLit) {
+	for _, element := range literal.Elts {
+		kind := nodeBounded
+		if t.tooLarge(t.s.pass.TypesInfo.Types[element]) {
+			kind = nodeHuge
 		}
-		return !found
-	})
-	return found
+		t.leaf(parent, kind, element)
+	}
 }
 
 // evaluate settles every node bottom-up. Children sit after their parents in
@@ -580,11 +567,11 @@ func (t *tracer) joinAny(children []int) traceResult {
 }
 
 // merge combines two results.
-func (o traceResult) merge(other traceResult) traceResult {
+func (r traceResult) merge(other traceResult) traceResult {
 	return traceResult{
-		bad:    append(slices.Clone(o.bad), other.bad...),
-		huge:   append(slices.Clone(o.huge), other.huge...),
-		params: append(slices.Clone(o.params), other.params...),
-		fields: append(slices.Clone(o.fields), other.fields...),
+		bad:    append(slices.Clone(r.bad), other.bad...),
+		huge:   append(slices.Clone(r.huge), other.huge...),
+		params: append(slices.Clone(r.params), other.params...),
+		fields: append(slices.Clone(r.fields), other.fields...),
 	}
 }

@@ -85,7 +85,7 @@ func (s Scope) External(pkg *types.Package) bool {
 // literal is reported as Closure, because the literal may run any number of
 // times.
 func (s Scope) Writes(node ast.Node, v *types.Var) []Write {
-	return s.collect(node, func(expr ast.Expr) bool { return s.isVar(expr, v) }, CountInserts)
+	return s.collect(node, func(expr ast.Expr) bool { return s.IsVar(expr, v) }, CountInserts)
 }
 
 // FieldWrites collects every write to the struct field in node, whatever
@@ -104,8 +104,8 @@ func (s Scope) Escapes(v *types.Var) bool {
 	if v.Parent() == v.Pkg().Scope() {
 		return true
 	}
-	return s.addressTaken(func(expr ast.Expr) bool { return s.isVar(expr, v) }) ||
-		s.closureWrites(func(expr ast.Expr) bool { return s.isVar(expr, v) }, v.Pos())
+	return s.addressTaken(func(expr ast.Expr) bool { return s.IsVar(expr, v) }) ||
+		s.closureWrites(func(expr ast.Expr) bool { return s.IsVar(expr, v) }, v.Pos())
 }
 
 // FieldEscapes reports whether something outside the loop body could write
@@ -170,8 +170,8 @@ func DerefNamed(t types.Type) *types.Named {
 	return named
 }
 
-// isVar reports whether expr is a use of v.
-func (s Scope) isVar(expr ast.Expr, v *types.Var) bool {
+// IsVar reports whether expr is a use of v.
+func (s Scope) IsVar(expr ast.Expr, v *types.Var) bool {
 	ident, ok := ast.Unparen(expr).(*ast.Ident)
 	return ok && s.info.ObjectOf(ident) == v
 }
@@ -401,7 +401,7 @@ func (s Scope) defines(write Write) bool {
 
 // assigned returns the constant a write stores into v.
 func (s Scope) assigned(write Write, v *types.Var) (*big.Int, bool) {
-	match := func(expr ast.Expr) bool { return s.isVar(expr, v) }
+	match := func(expr ast.Expr) bool { return s.IsVar(expr, v) }
 	switch stmt := write.Node.(type) {
 	case *ast.AssignStmt:
 		if stmt.Tok != token.ASSIGN && stmt.Tok != token.DEFINE {
@@ -413,6 +413,9 @@ func (s Scope) assigned(write Write, v *types.Var) (*big.Int, bool) {
 			}
 		}
 	case *ast.ValueSpec:
+		if len(stmt.Values) == 0 {
+			return big.NewInt(0), true
+		}
 		for i, name := range stmt.Names {
 			if match(name) && len(stmt.Names) == len(stmt.Values) {
 				return s.constant(stmt.Values[i])
@@ -431,4 +434,71 @@ func (s Scope) constant(expr ast.Expr) (*big.Int, bool) {
 	exact := constant.ToInt(value)
 	number, ok := new(big.Int).SetString(exact.ExactString(), 10)
 	return number, ok
+}
+
+// Mentions reports whether expr reads v anywhere inside it.
+func (s Scope) Mentions(expr ast.Expr, v *types.Var) bool {
+	found := false
+	ast.Inspect(expr, func(n ast.Node) bool {
+		ident, ok := n.(*ast.Ident)
+		if ok && s.info.ObjectOf(ident) == v {
+			found = true
+		}
+		return !found
+	})
+	return found
+}
+
+// PassedToCall reports whether a call in node takes v as an argument. A map
+// handed to a function can be inserted into there, unlike a slice, whose
+// length the callee cannot change.
+func (s Scope) PassedToCall(node ast.Node, v *types.Var) bool {
+	found := false
+	ast.Inspect(node, func(n ast.Node) bool {
+		call, ok := n.(*ast.CallExpr)
+		if !ok {
+			return !found
+		}
+		if s.info.Types[call.Fun].IsType() {
+			return !found
+		}
+		if ident, isIdent := ast.Unparen(call.Fun).(*ast.Ident); isIdent {
+			if _, builtin := s.info.Uses[ident].(*types.Builtin); builtin {
+				return !found
+			}
+		}
+		for _, arg := range call.Args {
+			if s.IsVar(arg, v) {
+				found = true
+			}
+		}
+		return !found
+	})
+	return found
+}
+
+// Parameters collects every function parameter declared in the scope's
+// declaration, the declaration's own and those of function literals inside it.
+func (s Scope) Parameters() map[*types.Var]bool {
+	found := map[*types.Var]bool{}
+	ast.Inspect(s.root, func(node ast.Node) bool {
+		var signature *ast.FuncType
+		switch fn := node.(type) {
+		case *ast.FuncDecl:
+			signature = fn.Type
+		case *ast.FuncLit:
+			signature = fn.Type
+		default:
+			return true
+		}
+		for _, field := range signature.Params.List {
+			for _, name := range field.Names {
+				if v, ok := s.info.Defs[name].(*types.Var); ok {
+					found[v] = true
+				}
+			}
+		}
+		return true
+	})
+	return found
 }

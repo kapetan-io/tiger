@@ -60,6 +60,13 @@ func Of(t types.Type, sizes types.Sizes) (Span, bool) {
 	return common, true
 }
 
+// OutOfReach reports whether the span reaches at least as high as an int32
+// does, which no loop counts up to in practice. A narrower type can be
+// counted to its edge, and a constant in the upper half of a wider one cannot.
+func (s Span) OutOfReach() bool {
+	return s.High.Cmp(big.NewInt(1<<31-1)) >= 0
+}
+
 // spanOf returns the range of one integer type.
 func spanOf(basic *types.Basic, sizes types.Sizes) Span {
 	if basic.Info()&types.IsUntyped != 0 {

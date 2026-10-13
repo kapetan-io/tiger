@@ -28,3 +28,14 @@ labeled:
 	}
 	goto labeled
 }
+
+// grow inserts into a map it is handed.
+func grow(entries map[int]int, key int) { entries[key] = 1 }
+
+// growsThroughHelper inserts into the map whose length is the limit by
+// handing it to a function.
+func growsThroughHelper(entries map[int]int) {
+	for i := 0; i < len(entries); i++ { // want `TS-S02: this counter does not bound the loop`
+		grow(entries, i+1000)
+	}
+}

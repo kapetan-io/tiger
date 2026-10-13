@@ -11,8 +11,9 @@ import (
 	"github.com/kapetan-io/tiger/assert"
 )
 
-// termsMax bounds how many nodes the flattening of one condition visits.
-const termsMax = 1 << 12
+// termsMax bounds how many nodes the flattening of one condition visits. No
+// real condition has this many terms, but generated code can have thousands.
+const termsMax = 1 << 16
 
 const _ = uint(1<<20 - termsMax)
 

@@ -1,5 +1,6 @@
 // Package counter decides whether a for loop's counter is a sound bound,
-// shared by boundedloop (TS-S02) and variant (TS-V01).
+// shared by boundedloop (TS-S02), limitflow (TS-S02 limits) and variant
+// (TS-V01).
 //
 // A counter is a bound only when its comparison is a top-level && term of
 // the loop's condition, pairs < or <= with ++ or += (or > or >= with -- or
@@ -65,6 +66,17 @@ func Terms(scope mutation.Scope, sizes types.Sizes, loop *ast.ForStmt) []Term {
 	return terms
 }
 
+// Counted reports whether the loop advances a counter its condition reads,
+// sound or not. Such a loop is judged by whether the counter bounds it, and
+// not by the shape of its condition.
+func Counted(scope mutation.Scope, loop *ast.ForStmt) bool {
+	if loop.Cond == nil {
+		return false
+	}
+	moved, ok := advance(scope.Info(), loop.Post)
+	return ok && scope.Mentions(loop.Cond, moved.counter)
+}
+
 // advance reads the counter and the constant step a Post clause applies.
 func advance(info *types.Info, post ast.Stmt) (step, bool) {
 	switch stmt := post.(type) {
@@ -121,13 +133,13 @@ func compare(
 	}
 	op, limit := binary.Op, binary.Y
 	switch {
-	case isVar(scope.Info(), binary.X, moved.counter):
-	case isVar(scope.Info(), binary.Y, moved.counter):
+	case scope.IsVar(binary.X, moved.counter):
+	case scope.IsVar(binary.Y, moved.counter):
 		op, limit = flipped(binary.Op), binary.X
 	default:
 		return Term{}, false
 	}
-	if mentions(scope.Info(), limit, moved.counter) {
+	if scope.Mentions(limit, moved.counter) {
 		return Term{}, false
 	}
 	toward := op == token.LSS || op == token.LEQ
@@ -149,24 +161,6 @@ func compare(
 func flipped(op token.Token) token.Token {
 	mirrored, _ := condition.Mirror(op)
 	return mirrored
-}
-
-// mentions reports whether expr reads v.
-func mentions(info *types.Info, expr ast.Expr, v *types.Var) bool {
-	found := false
-	ast.Inspect(expr, func(n ast.Node) bool {
-		ident, ok := n.(*ast.Ident)
-		if ok && info.ObjectOf(ident) == v {
-			found = true
-		}
-		return !found
-	})
-	return found
-}
-
-func isVar(info *types.Info, expr ast.Expr, v *types.Var) bool {
-	ident, ok := ast.Unparen(expr).(*ast.Ident)
-	return ok && info.ObjectOf(ident) == v
 }
 
 // stable reports whether nothing in the loop can change limit's value.
@@ -192,6 +186,19 @@ func stable(scope mutation.Scope, loop *ast.ForStmt, limit ast.Expr) bool {
 		return holds
 	})
 	return holds
+}
+
+// uninstantiated returns the function named by fun without the type
+// arguments of an explicit instantiation.
+func uninstantiated(fun ast.Expr) ast.Expr {
+	fun = ast.Unparen(fun)
+	switch instantiated := fun.(type) {
+	case *ast.IndexExpr:
+		return ast.Unparen(instantiated.X)
+	case *ast.IndexListExpr:
+		return ast.Unparen(instantiated.X)
+	}
+	return fun
 }
 
 // limitBuiltins are the builtins whose result a loop body cannot grow from
@@ -231,7 +238,7 @@ func staysPut(info *types.Info, call *ast.CallExpr) bool {
 		return true
 	}
 	var callee types.Object
-	switch fun := ast.Unparen(call.Fun).(type) {
+	switch fun := uninstantiated(call.Fun).(type) {
 	case *ast.Ident:
 		callee = info.Uses[fun]
 	case *ast.SelectorExpr:
@@ -254,6 +261,9 @@ func variableHolds(scope mutation.Scope, loop *ast.ForStmt, ident *ast.Ident) bo
 		return true
 	}
 	if len(scope.Writes(loop.Body, v)) > 0 {
+		return false
+	}
+	if _, isMap := v.Type().Underlying().(*types.Map); isMap && scope.PassedToCall(loop.Body, v) {
 		return false
 	}
 	return !scope.Escapes(v)
@@ -290,8 +300,10 @@ func trusted(typed intrange.Span, term Term) bool {
 	if term.Size == 1 && !term.Inclusive {
 		return true
 	}
-	wide := typed.High.Cmp(big.NewInt(1<<31-1)) >= 0
+	wide := typed.OutOfReach()
 	if term.Down {
+		// A wide signed type counting down needs 2^31 passes to reach its low
+		// edge; an unsigned one reaches its edge at zero.
 		return wide && typed.Low.Sign() < 0
 	}
 	return wide

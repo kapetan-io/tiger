@@ -31,15 +31,15 @@ type operand struct {
 }
 
 // atom prints the operand in the predicate language's syntax.
-func (s operand) atom() directive.Atom {
-	if s.constant {
-		return directive.Atom{Kind: directive.AtomNumber, Int: s.number}
+func (o operand) atom() directive.Atom {
+	if o.constant {
+		return directive.Atom{Kind: directive.AtomNumber, Int: o.number}
 	}
-	ref := s.root.Name()
-	if s.field != nil {
-		ref += "." + s.field.Name()
+	ref := o.root.Name()
+	if o.field != nil {
+		ref += "." + o.field.Name()
 	}
-	if s.length {
+	if o.length {
 		return directive.Atom{Kind: directive.AtomLen, Ref: ref}
 	}
 	return directive.Atom{Kind: directive.AtomRef, Ref: ref}
@@ -77,13 +77,15 @@ func normalize(binary *ast.BinaryExpr) (lowHigh, bool) {
 	if binary.Op == token.LSS || binary.Op == token.LEQ {
 		return lowHigh{low: binary.X, high: binary.Y, op: binary.Op}, true
 	}
-	swapped, ok := swappedOrdering[binary.Op]
-	return lowHigh{low: binary.Y, high: binary.X, op: swapped}, ok
+	mirrored, ok := condition.Mirror(binary.Op)
+	if !ok {
+		return lowHigh{}, false
+	}
+	if mirrored != token.LSS && mirrored != token.LEQ {
+		return lowHigh{}, false
+	}
+	return lowHigh{low: binary.Y, high: binary.X, op: mirrored}, true
 }
-
-// swappedOrdering maps > and >= to the < and <= that read the same with the
-// operands swapped.
-var swappedOrdering = map[token.Token]token.Token{token.GTR: token.LSS, token.GEQ: token.LEQ}
 
 // candidate pairs a ranking with the condition term that supplies its lower
 // bound.
@@ -147,7 +149,7 @@ func (f *loopFacts) learn(conjunct ast.Expr) {
 	if floor == 0 && limits.op != token.LSS {
 		return
 	}
-	measured, ok := f.subjectOf(limits.high)
+	measured, ok := f.operandOf(limits.high)
 	if !ok || measured.constant {
 		return
 	}
@@ -164,8 +166,8 @@ func (c *checker) smallConstant(expr ast.Expr) (int64, bool) {
 	return intrange.SmallConstant(c.pass.TypesInfo, expr)
 }
 
-// subjectOf reads expr as a ranking operand.
-func (c *checker) subjectOf(expr ast.Expr) (operand, bool) {
+// operandOf reads expr as a ranking operand.
+func (c *checker) operandOf(expr ast.Expr) (operand, bool) {
 	expr = ast.Unparen(expr)
 	if number, ok := c.smallConstant(expr); ok {
 		return operand{number: number, constant: true}, true
@@ -294,11 +296,11 @@ func (f *loopFacts) lengthMeasure(limits lowHigh) (ranking, bool) {
 // an integer variable, field, or constant, with at least one not constant.
 // The ranking is high - low, dropping a zero low term.
 func (f *loopFacts) linearMeasure(limits lowHigh) (ranking, bool) {
-	low, ok := f.subjectOf(limits.low)
+	low, ok := f.operandOf(limits.low)
 	if !ok || low.length {
 		return nil, false
 	}
-	high, ok := f.subjectOf(limits.high)
+	high, ok := f.operandOf(limits.high)
 	if !ok || high.length {
 		return nil, false
 	}
@@ -332,9 +334,34 @@ func (c *checker) verifyPinned(loop *ast.ForStmt, pinned directive.Variant) verd
 			reason = "the expression is about variables the loop's condition does not compare"
 			continue
 		}
+		if !facts.accounts(found, resolved) {
+			reason = "leaves out a variable the loop changes"
+			continue
+		}
 		return facts.verify(resolved, found.limits)
 	}
 	return verdict{reason: reason}
+}
+
+// accounts reports whether the pin names every variable the condition's
+// ranking compares that the loop changes, with the same sign. A pin on n alone
+// says nothing about i < n when the loop also moves i.
+func (f *loopFacts) accounts(found candidate, pinned ranking) bool {
+	for _, m := range found.ranking {
+		if m.constant || f.movementOf(m.operand).trend == trendConstant {
+			continue
+		}
+		named := false
+		for _, t := range pinned {
+			if !t.constant && t.place == m.place && t.length == m.length && t.minus == m.minus {
+				named = true
+			}
+		}
+		if !named {
+			return false
+		}
+	}
+	return true
 }
 
 // covers reports whether every variable or field the pinned ranking names is
@@ -364,14 +391,14 @@ func (f *loopFacts) resolve(pinned directive.Variant) (ranking, error) {
 	for _, pinTerm := range pinned.Terms {
 		found, ok := f.resolveAtom(pinTerm.Atom)
 		if !ok {
-			return nil, errors.New(atomText(pinTerm.Atom) + " cannot be shown to move consistently")
+			return nil, errors.New(atomText(pinTerm.Atom) + " has no step tiger recognizes")
 		}
 		resolved = append(resolved, term{operand: found, minus: pinTerm.Minus})
 	}
 	return resolved, nil
 }
 
-// resolveAtom binds one atom to a operand using the scope at the loop.
+// resolveAtom binds one atom to an operand using the scope at the loop.
 func (f *loopFacts) resolveAtom(atom directive.Atom) (operand, bool) {
 	if atom.Kind == directive.AtomNumber {
 		return operand{number: atom.Int, constant: true}, true
@@ -380,7 +407,7 @@ func (f *loopFacts) resolveAtom(atom directive.Atom) (operand, bool) {
 		return operand{}, false
 	}
 	names := strings.Split(atom.Ref, ".")
-	_, object := f.pass.Pkg.Scope().Innermost(f.loop.Pos()).LookupParent(names[0], f.loop.Pos())
+	_, object := f.pass.Pkg.Scope().Innermost(f.loop.Body.Pos()).LookupParent(names[0], f.loop.Body.Pos())
 	root, ok := object.(*types.Var)
 	if !ok || len(names) > 2 {
 		return operand{}, false
@@ -401,8 +428,7 @@ func (f *loopFacts) resolveAtom(atom directive.Atom) (operand, bool) {
 	if found.length {
 		return found, true
 	}
-	basic, isBasic := held.Underlying().(*types.Basic)
-	if !isBasic || basic.Info()&types.IsInteger == 0 {
+	if !intrange.IsInteger(held) {
 		return operand{}, false
 	}
 	return found, true

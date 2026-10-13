@@ -6,6 +6,7 @@ import (
 	"slices"
 
 	"github.com/kapetan-io/tiger/internal/analyzers/internal/counter"
+	"github.com/kapetan-io/tiger/internal/analyzers/internal/intrange"
 )
 
 // sinkKind says where a value becomes a loop limit.
@@ -62,7 +63,7 @@ func (s *state) sinksIn(fn *function) []sink {
 		case *ast.ForStmt:
 			found = append(found, s.limitsOf(fn, node)...)
 		case *ast.RangeStmt:
-			if isInteger(s.pass.TypesInfo.TypeOf(node.X)) {
+			if intrange.IsInteger(s.pass.TypesInfo.TypeOf(node.X)) {
 				found = append(found, sink{kind: loopLimit, expr: node.X, mode: atHeader})
 			}
 		case *ast.CallExpr:
@@ -126,7 +127,7 @@ func (s *state) receiverArguments(call *ast.CallExpr) int {
 // miss.
 func (s *state) callee(call *ast.CallExpr) *types.Func {
 	var name *ast.Ident
-	switch fun := ast.Unparen(call.Fun).(type) {
+	switch fun := genericBase(call.Fun).(type) {
 	case *ast.Ident:
 		name = fun
 	case *ast.SelectorExpr:
@@ -139,6 +140,19 @@ func (s *state) callee(call *ast.CallExpr) *types.Func {
 		return nil
 	}
 	return fn.Origin()
+}
+
+// genericBase returns the function named by fun without the type arguments of
+// an explicit instantiation, so f[int](x) resolves like f(x).
+func genericBase(fun ast.Expr) ast.Expr {
+	fun = ast.Unparen(fun)
+	switch instantiated := fun.(type) {
+	case *ast.IndexExpr:
+		return ast.Unparen(instantiated.X)
+	case *ast.IndexListExpr:
+		return ast.Unparen(instantiated.X)
+	}
+	return fun
 }
 
 // literalFields returns each keyed value of a struct literal.

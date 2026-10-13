@@ -13,7 +13,7 @@ It teaches the concepts this reference assumes.
 Every finding is one line with two halves.
 
 ```
-internal/handlers.go:117:2: TS-S02: this loop has no upper bound — add a cap to the condition, or select on ctx.Done() inside it (TS-S03's event-loop shape)
+internal/handlers.go:117:2: TS-S02: this for loop has no condition and no select on ctx.Done(), so nothing bounds it — add a cap (for tries := 0; tries < max; tries++) that fails when the cap is hit, or select on ctx.Done() inside it
 ```
 
 The head (`path:line:col: TS-XXX:`) is a parsing contract. Tools key on it and it never
@@ -119,7 +119,7 @@ func chase(n *Node, visit func(*Node)) {
 ```
 
 ```
-tree.go:4:1: TS-S01: chase → chase is a cycle of calls (recursion) — replace it with a capped worklist loop (for i := 0; i < len(work) && i < max; i++ { work = append(work, next...) }) that returns an error when it stops at max with nodes left
+tree.go:5:6: TS-S01: chase → chase is a cycle of calls (recursion) — replace it with a capped worklist loop (for i := 0; i < len(work) && i < max; i++ { work = append(work, next...) }) that returns an error when it stops at max with nodes left
 ```
 
 The compliant rewrite:
@@ -174,7 +174,8 @@ func newton(estimate float64) float64 {
 ```
 
 ```
-newton.go:2:2: TS-S02: tiger can't tell how many times this loop runs: its condition is not a constant, a len, or a counter — add a cap (for tries := 0; tries < max; tries++) that fails when the cap is hit, or make it an event loop that selects on ctx.Done()
+newton.go:2:2: TS-V01: tiger can't prove this loop ends: nothing in its condition shrinks on every pass — add a cap (for tries := 0; tries < max; tries++ { if done { break } ... }) that fails when the cap is hit, or say what shrinks with //tiger:variant <expr>
+newton.go:2:6: TS-S02: tiger can't tell how many times this loop runs: its condition is not a constant, a len, or a counter — add a cap (for tries := 0; tries < max; tries++) that fails when the cap is hit, or make it an event loop that selects on ctx.Done()
 ```
 
 The compliant rewrite:
@@ -294,7 +295,7 @@ func spin(config Config, done func() bool) error {
 ```
 
 ```
-spin.go:2:28: TS-S02: this value bounds a loop but has no upper bound where it enters — clamp it there, for example min(x, xMax), or reject it with if x > xMax
+spin.go:2:28: TS-S02: this value reaches a loop limit with no upper bound where it enters — clamp it there, for example min(x, xMax), or reject it with if x > xMax
 ```
 
 The compliant rewrite:
@@ -305,6 +306,12 @@ const spinsMax = 10_000
 func spin(config Config, done func() bool) error {
 	return spinReported(done, min(config.Spins, spinsMax))
 }
+```
+
+A constant no loop reaches gets its own message:
+
+```
+spin.go:2:34: TS-S02: this value is too large for the loop to ever reach, so it bounds nothing — pass a declared maximum instead
 ```
 
 **Known misses:** A limit passed through a function value or an interface method is not
@@ -1637,6 +1644,11 @@ not count. Growth through a pointer or a closure made before the loop defeats a 
 and so does a counter that wraps around at the end of its type (`i <= math.MaxInt`). A
 `continue`, a labeled `continue`, or a `goto` that can skip the shrink defeats it too.
 TS-S02 accepts a loop whose variant this rule verified.
+
+A `//tiger:variant` comment on a loop that ends on its own, a range or a counted loop,
+is a finding too, because it says nothing: `TS-V01: this loop has a //tiger:variant
+comment but ends on its own (a range or counted loop), so the comment says nothing —
+remove it`.
 
 **Directives:** This rule fires only where tiger cannot synthesize a shrinking
 expression on its own; most loops need no pin at all. Where synthesis fails,

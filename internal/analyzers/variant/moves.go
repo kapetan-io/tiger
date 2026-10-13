@@ -44,7 +44,7 @@ func (f *loopFacts) verify(expression ranking, limits lowHigh) verdict {
 		step := f.movementOf(t.operand)
 		name := atomText(t.atom())
 		if step.trend == trendUnknown {
-			return verdict{reason: name + " cannot be shown to move consistently"}
+			return verdict{reason: name + " has no step tiger recognizes"}
 		}
 		if t.minus && step.trend == trendDecreasing {
 			return verdict{reason: name + " decreases, so the expression grows instead of shrinking"}
@@ -66,9 +66,11 @@ func (f *loopFacts) verify(expression ranking, limits lowHigh) verdict {
 	return verdict{ok: true}
 }
 
-// wraps reports whether the mover steps past the end of its integer type on
-// the way to the other side of the condition. A mover that is not compared
-// with a constant limit directly is trusted.
+// wraps reports whether the mover can step past the end of its integer type
+// before it meets the other side of the condition. A mover that is not itself
+// one side of that comparison is trusted, and so is a step of size 0 (a
+// division or shift), which cannot overshoot. Whether the limit is a constant
+// is left to counter.Reaches.
 func (f *loopFacts) wraps(mover operand, step movement, limits lowHigh) bool {
 	if mover.length || step.size == 0 {
 		return false
@@ -99,11 +101,11 @@ func (f *loopFacts) wraps(mover operand, step movement, limits lowHigh) bool {
 // movementOf classifies one ranking operand: constant when nothing writes it,
 // strictly increasing or decreasing when its only write is an unconditional
 // recognized move, unknown otherwise.
-func (f *loopFacts) movementOf(sub operand) movement {
-	if sub.constant {
+func (f *loopFacts) movementOf(measured operand) movement {
+	if measured.constant {
 		return movement{trend: trendConstant}
 	}
-	writes, held := f.writesOf(sub)
+	writes, held := f.writesOf(measured)
 	if !held {
 		return movement{}
 	}
@@ -119,25 +121,25 @@ func (f *loopFacts) movementOf(sub operand) movement {
 	if writes[0].Kind == mutation.MapInsert {
 		return movement{}
 	}
-	return f.classify(writes[0].Node, sub)
+	return f.classify(writes[0].Node, measured)
 }
 
 // writesOf collects what writes the operand inside the loop. It reports
 // false when something outside the loop body could write it too: a pointer
 // or closure made before the loop, or a call that receives the struct that
 // holds the field.
-func (f *loopFacts) writesOf(sub operand) ([]mutation.Write, bool) {
+func (f *loopFacts) writesOf(measured operand) ([]mutation.Write, bool) {
 	scope := f.scope
-	if sub.field == nil {
-		return f.collectIn(scope.Writes, sub.root), !scope.Escapes(sub.root)
+	if measured.field == nil {
+		return f.collectIn(scope.Writes, measured.root), !scope.Escapes(measured.root)
 	}
-	if len(f.collectIn(scope.Writes, sub.root)) > 0 || scope.Escapes(sub.root) {
+	if len(f.collectIn(scope.Writes, measured.root)) > 0 || scope.Escapes(measured.root) {
 		return nil, false
 	}
-	if scope.FieldEscapes(sub.field) || scope.ReceivesOwner(f.loop, sub.root.Type()) {
+	if scope.FieldEscapes(measured.field) || scope.ReceivesOwner(f.loop, measured.root.Type()) {
 		return nil, false
 	}
-	return f.collectIn(scope.FieldWrites, sub.field), true
+	return f.collectIn(scope.FieldWrites, measured.field), true
 }
 
 // collectIn runs a collector over the loop's body and Post clause.
@@ -152,26 +154,26 @@ func (f *loopFacts) collectIn(
 }
 
 // classify reads one write as a move of the operand.
-func (f *loopFacts) classify(node ast.Node, sub operand) movement {
-	if sub.length {
-		return f.classifyShrink(node, sub)
+func (f *loopFacts) classify(node ast.Node, measured operand) movement {
+	if measured.length {
+		return f.classifyShrink(node, measured)
 	}
 	switch stmt := node.(type) {
 	case *ast.IncDecStmt:
 		if stmt.Tok == token.DEC {
-			return f.movedBy(stmt.X, sub, movement{trend: trendDecreasing, size: 1})
+			return f.movedBy(stmt.X, measured, movement{trend: trendDecreasing, size: 1})
 		}
-		return f.movedBy(stmt.X, sub, movement{trend: trendIncreasing, size: 1})
+		return f.movedBy(stmt.X, measured, movement{trend: trendIncreasing, size: 1})
 	case *ast.AssignStmt:
-		return f.classifyAssign(stmt, sub)
+		return f.classifyAssign(stmt, measured)
 	}
 	return movement{}
 }
 
 // movedBy returns the movement when target is the operand and the step moves
 // it by at least one.
-func (f *loopFacts) movedBy(target ast.Expr, sub operand, moves movement) movement {
-	if !f.isPlace(target, sub.place) || moves.size < 1 {
+func (f *loopFacts) movedBy(target ast.Expr, measured operand, moves movement) movement {
+	if !f.isPlace(target, measured.place) || moves.size < 1 {
 		return movement{}
 	}
 	return moves
@@ -194,30 +196,30 @@ var compoundOps = map[token.Token]token.Token{
 // classifyAssign reads x += k, x -= k, x /= k, x >>= k and their x = x op k
 // long forms. A division or shift only shrinks a value known to be above
 // zero.
-func (f *loopFacts) classifyAssign(stmt *ast.AssignStmt, sub operand) movement {
+func (f *loopFacts) classifyAssign(stmt *ast.AssignStmt, measured operand) movement {
 	if len(stmt.Lhs) != 1 || len(stmt.Rhs) != 1 {
 		return movement{}
 	}
-	op, operand := compoundOps[stmt.Tok], stmt.Rhs[0]
+	op, amountExpr := compoundOps[stmt.Tok], stmt.Rhs[0]
 	if stmt.Tok == token.ASSIGN {
 		binary, ok := ast.Unparen(stmt.Rhs[0]).(*ast.BinaryExpr)
-		if !ok || !f.isPlace(binary.X, sub.place) {
+		if !ok || !f.isPlace(binary.X, measured.place) {
 			return movement{}
 		}
-		op, operand = binary.Op, binary.Y
+		op, amountExpr = binary.Op, binary.Y
 	}
-	amount, ok := f.smallConstant(operand)
+	amount, ok := f.smallConstant(amountExpr)
 	if !ok {
 		return movement{}
 	}
 	if direction, isStep := stepOps[op]; isStep {
-		return f.movedBy(stmt.Lhs[0], sub, movement{trend: direction, size: amount})
+		return f.movedBy(stmt.Lhs[0], measured, movement{trend: direction, size: amount})
 	}
 	floor, isShrink := shrinkOps[op]
-	if !isShrink || amount < floor || !f.positive[sub.place] {
+	if !isShrink || amount < floor || !f.positive[measured.place] {
 		return movement{}
 	}
-	if !f.isPlace(stmt.Lhs[0], sub.place) {
+	if !f.isPlace(stmt.Lhs[0], measured.place) {
 		return movement{}
 	}
 	return movement{trend: trendDecreasing}
@@ -231,13 +233,13 @@ func (f *loopFacts) isPlace(expr ast.Expr, want place) bool {
 
 // classifyShrink reads s = s[k:], s = s[:len(s)-k] and s = s[len(part):]
 // with part shown not empty, the moves that shorten a slice, map or string.
-func (f *loopFacts) classifyShrink(node ast.Node, sub operand) movement {
+func (f *loopFacts) classifyShrink(node ast.Node, measured operand) movement {
 	stmt, ok := node.(*ast.AssignStmt)
 	if !ok || stmt.Tok != token.ASSIGN || len(stmt.Lhs) != 1 || len(stmt.Rhs) != 1 {
 		return movement{}
 	}
 	slice, ok := ast.Unparen(stmt.Rhs[0]).(*ast.SliceExpr)
-	if !ok || slice.Slice3 || !f.isPlace(stmt.Lhs[0], sub.place) || !f.isPlace(slice.X, sub.place) {
+	if !ok || slice.Slice3 || !f.isPlace(stmt.Lhs[0], measured.place) || !f.isPlace(slice.X, measured.place) {
 		return movement{}
 	}
 	switch {
@@ -245,11 +247,11 @@ func (f *loopFacts) classifyShrink(node ast.Node, sub operand) movement {
 		if amount, ok := f.smallConstant(slice.Low); ok && amount >= 1 {
 			return movement{trend: trendDecreasing}
 		}
-		if f.partNotEmpty(stmt, sub, slice.Low) {
+		if f.partNotEmpty(stmt, measured, slice.Low) {
 			return movement{trend: trendDecreasing}
 		}
 	case slice.Low == nil && slice.High != nil:
-		if f.trimsConstant(slice.High, sub) {
+		if f.trimsConstant(slice.High, measured) {
 			return movement{trend: trendDecreasing}
 		}
 	}
@@ -258,7 +260,7 @@ func (f *loopFacts) classifyShrink(node ast.Node, sub operand) movement {
 
 // trimsConstant reports whether high is len(s) - k with k a positive
 // constant.
-func (f *loopFacts) trimsConstant(high ast.Expr, sub operand) bool {
+func (f *loopFacts) trimsConstant(high ast.Expr, measured operand) bool {
 	binary, ok := ast.Unparen(high).(*ast.BinaryExpr)
 	if !ok || binary.Op != token.SUB {
 		return false
@@ -268,7 +270,7 @@ func (f *loopFacts) trimsConstant(high ast.Expr, sub operand) bool {
 		return false
 	}
 	length, ok := f.lengthOf(call)
-	if !ok || length.place != sub.place {
+	if !ok || length.place != measured.place {
 		return false
 	}
 	amount, ok := f.smallConstant(binary.Y)
@@ -276,11 +278,11 @@ func (f *loopFacts) trimsConstant(high ast.Expr, sub operand) bool {
 }
 
 // partNotEmpty reports whether part is len(chunk) for a chunk that holds at
-// least one element of sub when stmt runs. The condition guarantees sub is
-// not empty; chunk starts as all of sub, or a constant-sized front of it,
+// least one element of measured when stmt runs. The condition guarantees measured is
+// not empty; chunk starts as all of measured, or a constant-sized front of it,
 // and is only ever cut to a constant-sized front before stmt.
-func (f *loopFacts) partNotEmpty(stmt *ast.AssignStmt, sub operand, part ast.Expr) bool {
-	if !f.nonEmpty[sub.place] {
+func (f *loopFacts) partNotEmpty(stmt *ast.AssignStmt, measured operand, part ast.Expr) bool {
+	if !f.nonEmpty[measured.place] {
 		return false
 	}
 	call, ok := ast.Unparen(part).(*ast.CallExpr)
@@ -298,13 +300,13 @@ func (f *loopFacts) partNotEmpty(stmt *ast.AssignStmt, sub operand, part ast.Exp
 			return false
 		}
 		if assign.Tok == token.DEFINE {
-			declared = f.alwaysRuns[assign] && f.startsAsPartOf(assign, sub)
+			declared = f.alwaysRuns[assign] && f.startsAsPartOf(assign, measured)
 			if !declared {
 				return false
 			}
 			continue
 		}
-		if !f.cutsToFront(assign, length.root, sub.place) {
+		if !f.cutsToFront(assign, length.root, measured.place) {
 			return false
 		}
 	}
@@ -313,14 +315,14 @@ func (f *loopFacts) partNotEmpty(stmt *ast.AssignStmt, sub operand, part ast.Exp
 
 // startsAsPartOf reports whether define is chunk := s or chunk := s[:k] with
 // k a positive constant.
-func (f *loopFacts) startsAsPartOf(define *ast.AssignStmt, sub operand) bool {
+func (f *loopFacts) startsAsPartOf(define *ast.AssignStmt, measured operand) bool {
 	if len(define.Lhs) != 1 || len(define.Rhs) != 1 {
 		return false
 	}
 	if where, ok := f.placeOf(define.Rhs[0]); ok {
-		return where == sub.place
+		return where == measured.place
 	}
-	return f.frontOf(define.Rhs[0], sub.place)
+	return f.frontOf(define.Rhs[0], measured.place)
 }
 
 // cutsToFront reports whether assign is chunk = chunk[:k] or chunk =

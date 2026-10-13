@@ -15,13 +15,13 @@ func SpinHalf(done func() bool) error {
 
 // ClampToValue clamps one setting against another, neither of them declared.
 func ClampToValue(tuning Tuning, done func() bool) error {
-	return lib.SpinReported(done, min(tuning.Spins, tuning.Ceiling)) // want `TS-S02: this value bounds a loop but has no upper bound where it enters` `TS-S02: this value bounds a loop but has no upper bound where it enters`
+	return lib.SpinReported(done, min(tuning.Spins, tuning.Ceiling)) // want `TS-S02: this value reaches a loop limit with no upper bound where it enters` `TS-S02: this value reaches a loop limit with no upper bound where it enters`
 }
 
 // ClampOnOnePath clamps only when flagged, so the other path reaches the loop
 // unbounded.
 func ClampOnOnePath(tuning Tuning, flagged bool, done func() bool) error {
-	spins := tuning.Spins // want `TS-S02: this value bounds a loop but has no upper bound where it enters`
+	spins := tuning.Spins // want `TS-S02: this value reaches a loop limit with no upper bound where it enters`
 	if flagged {
 		spins = spinsMax
 	}

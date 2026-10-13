@@ -6,7 +6,7 @@ import "lib"
 
 // SpinConditionallyClamped clamps the setting only when flag is set.
 func SpinConditionallyClamped(tuning Tuning, flag bool, done func() bool) error {
-	spins := tuning.Spins // want `TS-S02: this value bounds a loop but has no upper bound where it enters`
+	spins := tuning.Spins // want `TS-S02: this value reaches a loop limit with no upper bound where it enters`
 	if flag {
 		spins = min(spins, spinsMax)
 	}

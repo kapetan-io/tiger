@@ -59,3 +59,24 @@ func countedWithoutPin(n int) int {
 	}
 	return total
 }
+
+// pinnedTypeParameter pins a variable whose type is a type parameter.
+func pinnedTypeParameter[T ~uint | ~uint8](x T) int {
+	count := 0
+	//tiger:variant x
+	for x > 0 {
+		x >>= 1
+		count++
+	}
+	return count
+}
+
+// pinnedInitVariable pins a variable the loop declares in its own header.
+func pinnedInitVariable(n int, ready func() bool) int {
+	count := 0
+	//tiger:variant n - j
+	for j := 0; j < n && ready(); j = j + 1 {
+		count++
+	}
+	return count
+}

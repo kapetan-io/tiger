@@ -116,7 +116,7 @@ func run(pass *analysis.Pass) (any, error) {
 	for _, scope := range mutation.Declarations(pass) {
 		inspectDecl(&checker{
 			pass: pass, scope: scope, set: set, verified: verified,
-			params: cancel.Parameters(pass.TypesInfo, scope.Root()),
+			params: scope.Parameters(),
 		})
 	}
 	return verified, nil
@@ -172,7 +172,7 @@ func (c *checker) checkFor(loop *ast.ForStmt) {
 		c.checkOutOfScopePin(loop)
 		return
 	}
-	if cancel.Waits(c.pass.TypesInfo, c.params, loop.Cond) {
+	if cancel.UntilCancelled(c.pass.TypesInfo, c.params, loop.Cond) {
 		c.checkOutOfScopePin(loop)
 		return
 	}

@@ -69,8 +69,8 @@ const (
 		"other goroutine closes the channel — add a counter cap that fails when the cap is " +
 		"hit, or make it an event loop that selects on ctx.Done()"
 	msgCounterUnsound = "TS-S02: this counter does not bound the loop: it must count toward its " +
-		"limit in a top-level && term, and neither it nor the limit may change in the body — add " +
-		"a cap that fails when the cap is hit"
+		"limit in a top-level && term and arrive before wrapping around its type, and neither it " +
+		"nor the limit may change in the body — add a cap that fails when the cap is hit"
 	msgIterator = "TS-S02: this loop ranges over an iterator tiger can't see into, so nothing " +
 		"says it ends — range over a slice, a map, or a standard library iterator, or add a " +
 		"counter cap that fails when the cap is hit"
@@ -105,7 +105,7 @@ func run(pass *analysis.Pass) (any, error) {
 		decl := scope.Root()
 		check := &checker{
 			pass: pass, scope: scope, verified: verified,
-			following: followingStatements(decl), params: cancel.Parameters(pass.TypesInfo, decl),
+			following: followingStatements(decl), params: scope.Parameters(),
 		}
 		ast.Inspect(decl, func(node ast.Node) bool {
 			switch loop := node.(type) {
@@ -240,14 +240,19 @@ func fileOf(files []*ast.File, node ast.Node) *ast.File {
 }
 
 // bounded reports whether loop's condition proves a bound without a sound
-// counter: a structural bound, a variant TS-V01 verified, or a wait for a
-// context parameter to be cancelled.
+// counter: a variant TS-V01 verified, a wait for a context parameter to be
+// cancelled, or a structural bound. A loop that advances a counter its
+// condition reads has no structural bound, because the counter either bounds
+// it soundly or does not.
 func (c *checker) bounded(loop *ast.ForStmt) bool {
 	if c.verified[loop] {
 		return true
 	}
-	if cancel.Waits(c.pass.TypesInfo, c.params, loop.Cond) {
+	if cancel.UntilCancelled(c.pass.TypesInfo, c.params, loop.Cond) {
 		return true
+	}
+	if counter.Counted(c.scope, loop) {
+		return false
 	}
 	return condBounded(c.pass, loop, loop.Cond, plainContext)
 }

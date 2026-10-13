@@ -174,7 +174,7 @@ func insideBreakTarget(body *ast.BlockStmt, branch *ast.BranchStmt) bool {
 // reached. Three shapes report. One is an if statement that compares the
 // counter with the limit and asserts, panics, or returns an error. Another
 // is an if statement on a variable the loop assigns, which fails when the
-// loop gave up without the outcome it waited for. The last is an assert or
+// loop gave up without the result it waited for. The last is an assert or
 // panic statement on its own, which states what the loop was waiting for;
 // tiger can't tell what the assertion is about, so it trusts the author that
 // it covers the cap.
@@ -189,7 +189,7 @@ func (c *checker) silentWhenHit(loop *ast.ForStmt, caps []counter.Term) bool {
 			if !c.fails(next.Body) {
 				continue
 			}
-			if c.readsOutcome(next.Cond, loop) {
+			if c.readsLoopResult(next.Cond, loop) {
 				return false
 			}
 			for _, term := range caps {
@@ -202,8 +202,9 @@ func (c *checker) silentWhenHit(loop *ast.ForStmt, caps []counter.Term) bool {
 	return true
 }
 
-// readsOutcome reports whether cond reads a variable the loop assigns.
-func (c *checker) readsOutcome(cond ast.Expr, loop *ast.ForStmt) bool {
+// readsLoopResult reports whether cond reads a variable the loop assigns, such
+// as the found flag a search loop sets.
+func (c *checker) readsLoopResult(cond ast.Expr, loop *ast.ForStmt) bool {
 	found := false
 	ast.Inspect(cond, func(n ast.Node) bool {
 		ident, ok := n.(*ast.Ident)
