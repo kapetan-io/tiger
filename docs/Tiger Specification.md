@@ -443,9 +443,9 @@ Patterns: capped worklist, page over an outside stream, clamp a limit, filtered 
 admission test, since a reason is shape-checkable but not truth-checkable and every terminating
 loop can state a cap. See "Declarations at a glance".)*
 *(Amended 2026-10-12: ADR-0014 supersedes the 2026-08-17 amendment that let `//tiger:batched`
-waive this rule on cursor-shaped loops; no directive waives it. The counter, cap, limit,
-`ctx.Err()`, iterator, and store-loop requirements above are decided and not built (ADR-0013,
-ADR-0014, ENG-191 follow-ups 1 and 10).)*
+waive this rule on cursor-shaped loops; no directive waives it. ADR-0013 is built: the counter,
+cap, limit, `ctx.Err()` and iterator requirements above. The store-loop requirement is decided and
+not built (ADR-0014, ENG-183).)*
 
 **`TS-S03` An unbounded event loop selects on a stop case and asserts progress.**
 Why. Some loops genuinely run forever. Those get an explicit termination path and an assertion that
@@ -942,8 +942,8 @@ variant, and when a pinned variant fails to decrease. A loop whose termination a
 the analyzer's predicate language takes a counter cap that reports when it is hit (`TS-S02`).
 `TS-S02` accepts a loop whose variant this rule verified, whether synthesized or pinned.
 *(Amended 2026-10-12: the four shapes after the fixed step, the soundness fixes, and `TS-S02`
-accepting a verified variant are decided and not built, ADR-0013. ADR-0014 closes the ENG-183 clash
-with `//tiger:batched`, which no longer waives a loop bound.)*
+accepting a verified variant are built, ADR-0013. ADR-0014 closes the ENG-183 clash with
+`//tiger:batched`, which no longer waives a loop bound; that part is not built.)*
 
 **`TS-V02` Functions are total.**
 Why. Total means it returns for all inputs satisfying its preconditions. With `TS-S01` and `TS-V01`
@@ -1715,7 +1715,7 @@ changes what it checks), or **not built**.
 | Analyzer | Rules | Approach | Status |
 | --- | --- | --- | --- |
 | `contracts` | TS-V03 | Abstract interpretation over nil-ness, integer ranges, length relations, invariant IDs | built |
-| `variant` | TS-V01, V02 | `buildssa`; synthesizes variants for fixed steps, constant division and shifts, slicing by a part shown non-empty, struct fields no call receives, and `&&` conditions; matches variables by identity; verifies pinned ones at loop head and back edges | built; changes decided (ADR-0013) |
+| `variant` | TS-V01, V02 | AST and `go/types`; synthesizes variants for fixed steps, constant division and shifts, slicing by a part shown non-empty, struct fields no call receives, and `&&` conditions; matches variables by identity; verifies pinned ones at loop head and back edges; its verified loops are the result `boundedloop` reads | built (ADR-0013) |
 | `surfaces` | TS-I01, I03, I05, I07 | Not planned. TS-I01's direct half is `TS-T01`'s bans, the rest is review with `tiger changed`; I03, I05, I07 are review | not built |
 | `canonical` | TS-K01, K02, K04, K05 | AST, with auto-fix | not built |
 | `surfacediff` | TS-R02 | Serialize the exported surface, diff against a checked-in file | not built |
@@ -1724,7 +1724,8 @@ changes what it checks), or **not built**.
 | `invariantsymmetry` | TS-A08 | Pair functions by naming convention, compare invariant sets | not built (ENG-182) |
 | `invariantnegative` | TS-A09 | Require `assert.Violates` per declared invariant | built |
 | `norecursion` | TS-S01 | `buildssa`, CHA callgraph, report any cycle | built |
-| `boundedloop` | TS-S02, S03, S23 | AST, classify every loop; unclassifiable loops are findings and no directive waives TS-S02. Checks counter soundness and cap reporting, and traces each loop limit to where it enters the program; whether the trace is a separate analyzer is left to the build ticket | built; changes decided (ADR-0013, ADR-0014, ADR-0020) |
+| `boundedloop` | TS-S02, S03, S23 | AST, classify every loop; unclassifiable loops are findings and no directive waives TS-S02. Checks counter soundness and cap reporting, accepts a loop whose variant `variant` verified, and treats a range over a non-standard-library iterator as a finding | built; changes decided (ADR-0014, ADR-0020) |
+| `limitflow` | TS-S02 (limit) | `go/types` and cross-package facts; traces each loop limit through parameters, fields, locals and function results back to where it enters the program; a value must be a constant, a length, another bounded limit, or clamped against a declared maximum | built (ADR-0013) |
 | `compoundcond` | TS-S06, S07, S08 | AST, count binary logical operators per condition | built |
 | `assertdensity` | TS-A01, A02 | AST plus `types`, count assert calls per function and package | not built |
 | `quantitycast` | TS-Q01, Q03 | `types`, forbid direct conversions outside the quantity package | not built |
