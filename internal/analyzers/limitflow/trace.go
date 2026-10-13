@@ -375,12 +375,36 @@ func (t *tracer) assignedValue(parent int, v *types.Var, value ast.Expr) {
 		t.child(parent, value, indirect)
 		return
 	}
+	if t.clampsItself(value) {
+		t.leaf(parent, nodeBounded, value)
+		return
+	}
 	binary, ok := ast.Unparen(value).(*ast.BinaryExpr)
 	if ok && addsOrSubtracts[binary.Op] && t.isVar(binary.X, v) {
 		t.child(parent, binary.Y, indirect)
 		return
 	}
 	t.leaf(parent, nodeUnbounded, value)
+}
+
+// clampsItself reports whether value is min(...) with an argument that is a
+// constant or a length, as in spins = min(spins, spinsMax). The variable
+// reads itself on purpose, to be cut down.
+func (t *tracer) clampsItself(value ast.Expr) bool {
+	call, ok := ast.Unparen(value).(*ast.CallExpr)
+	if !ok {
+		return false
+	}
+	ident, ok := ast.Unparen(call.Fun).(*ast.Ident)
+	if !ok || ident.Name != "min" {
+		return false
+	}
+	for _, arg := range call.Args {
+		if t.declaredMaximum(arg) {
+			return true
+		}
+	}
+	return false
 }
 
 // isVar reports whether expr is a use of v.

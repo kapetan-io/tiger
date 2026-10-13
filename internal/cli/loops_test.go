@@ -102,3 +102,37 @@ func TestCheckPassesLoopsThatEndForReasonsTigerCanProve(t *testing.T) {
 	assert.Empty(t, got.stdout)
 	assert.Empty(t, got.stderr)
 }
+
+// TestCheckPassesTheRewriteOfEachBlockedLoop runs tiger over the compliant
+// rewrite of the loops that TestCheckBlocksEveryLoopThatNeverEndsOrStopsQuietly
+// blocks: the same shape with the hole closed.
+//
+// Goal: no finding, exit 0.
+func TestCheckPassesTheRewriteOfEachBlockedLoop(t *testing.T) {
+	got := run(t, "check", "-C", "testdata/fixtures/loopfixes", "./...")
+	assert.Empty(t, got.stdout)
+	assert.Equal(t, cli.ExitClean, got.code)
+	assert.Empty(t, got.stderr)
+}
+
+// TestCheckPassesTigerItself runs tiger over its own module, which carries
+// the capped worklists that replaced its uncapped ones.
+//
+// Goal: no finding, exit 0.
+func TestCheckPassesTigerItself(t *testing.T) {
+	got := run(t, "check", "-C", "../..", "./...")
+	assert.Empty(t, got.stdout)
+	assert.Equal(t, cli.ExitClean, got.code)
+	assert.Empty(t, got.stderr)
+}
+
+// TestCheckBlocksAnIteratorFromAModuleWithoutADotInItsPath ranges over an
+// iterator written in the module itself, which is named myapp.
+//
+// Goal: a module path with no dot is not mistaken for the standard library,
+// so the range is a TS-S02 finding.
+func TestCheckBlocksAnIteratorFromAModuleWithoutADotInItsPath(t *testing.T) {
+	got := run(t, "check", "-C", "testdata/fixtures/loopdotless", "./...")
+	assert.Equal(t, cli.ExitFindings, got.code)
+	assert.Contains(t, got.stdout, "loop.go:8:2: TS-S02: this loop ranges over an iterator tiger can't see into")
+}

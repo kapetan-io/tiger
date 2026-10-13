@@ -194,7 +194,7 @@ func (c *checker) standardIterator(expr ast.Expr) bool {
 		return false
 	}
 	fn, ok := c.pass.TypesInfo.Uses[name].(*types.Func)
-	if !ok || fn.Pkg() == nil || fn.Pkg() == c.pass.Pkg {
+	if !ok || fn.Pkg() == nil || !c.scope.External(fn.Pkg()) {
 		return false
 	}
 	first, _, _ := strings.Cut(fn.Pkg().Path(), "/")
