@@ -121,7 +121,7 @@ var expected = []row{
 	{name: "boundary.CollectEscape", finding: true, varies: true},
 	{name: "boundary.PromotedFields"},
 	{name: "boundary.StoredComparator", finding: true},
-	{name: "boundary.IndexComparator", finding: true},
+	{name: "boundary.IndexComparator"},
 	{name: "boundary.Invert", varies: true, knownMiss: true},
 }
 

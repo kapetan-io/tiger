@@ -115,11 +115,10 @@ func collectUsersByTeamStable(m map[string]User) []User {
 	return users
 }
 
-// Expected false positive: an index comparator over whole strings is
-// total, but sort.Slice comparators are not analyzed.
+// An index comparator over whole strings is total.
 func collectIDsSortSlice(m map[string]User) []string {
 	var ids []string
-	for id := range m { // want `TS-T02: this sort can find two different map entries equal`
+	for id := range m {
 		ids = append(ids, id)
 	}
 	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
@@ -244,5 +243,111 @@ func collectThenHelper(m map[string]User) []string {
 		ids = append(ids, id)
 	}
 	sortHelper(ids)
+	return ids
+}
+
+// Filling a preallocated slice by position is a collect: each visit writes
+// its own slot, so the sort fixes the order as it does for append.
+func indexedKeysSorted(m map[string]int) []string {
+	keys := make([]string, len(m))
+	i := 0
+	for k := range m {
+		keys[i] = k
+		i++
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+func indexedKeysVarCounter(m map[string]int) []string {
+	keys := make([]string, len(m))
+	var i int
+	for k := range m {
+		keys[i] = k
+		i++
+	}
+	slices.Sort(keys)
+	return keys
+}
+
+// A position is not enough when the slice is not sorted afterwards.
+func indexedKeysUnsorted(m map[string]int) []string {
+	keys := make([]string, len(m))
+	i := 0
+	for k := range m { // want `TS-T02: this loop's body may depend on the order`
+		keys[i] = k
+		i++
+	}
+	return keys
+}
+
+// The counter also gates a copy, so which entries land depends on order.
+func indexedKeysCounterRead(m map[string]int) []string {
+	keys := make([]string, 3)
+	i := 0
+	for k := range m { // want `TS-T02`
+		if i < 3 {
+			keys[i] = k
+		}
+		i++
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+// The counter is read by a second statement.
+func indexedKeysCounterUsed(m map[string]int) ([]string, []int) {
+	keys := make([]string, len(m))
+	ranks := make([]int, len(m))
+	i := 0
+	for k := range m { // want `TS-T02`
+		keys[i] = k
+		ranks[i] = i
+		i++
+	}
+	sort.Strings(keys)
+	return keys, ranks
+}
+
+// The value stored reads the counter, so every slot holds its visit rank.
+func indexedVisitRank(m map[string]int) []int {
+	ranks := make([]int, len(m))
+	i := 0
+	for range m { // want `TS-T02`
+		ranks[i] = i
+		i++
+	}
+	slices.Sort(ranks)
+	return ranks
+}
+
+// An index comparator that compares the slice's own elements is total for
+// strings and integers.
+func collectIDsSortSliceSelf(m map[string]User) []string {
+	var ids []string
+	for id := range m {
+		ids = append(ids, id)
+	}
+	sort.Slice(ids, func(i, j int) bool { return ids[i] > ids[j] })
+	return ids
+}
+
+// Comparing a field, not the element, can tie.
+func collectUsersSortSliceField(m map[string]User) []User {
+	var users []User
+	for _, u := range m { // want `TS-T02: this sort can find two different map entries equal`
+		users = append(users, u)
+	}
+	sort.Slice(users, func(i, j int) bool { return users[i].ID < users[j].ID })
+	return users
+}
+
+// Comparing one element with itself ties everything.
+func collectIDsSortSliceSameIndex(m map[string]User) []string {
+	var ids []string
+	for id := range m { // want `TS-T02: this sort can find two different map entries equal`
+		ids = append(ids, id)
+	}
+	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[i] })
 	return ids
 }

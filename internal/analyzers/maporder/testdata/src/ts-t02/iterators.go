@@ -4,9 +4,11 @@ package fixture
 
 import (
 	"cmp"
+	"fmt"
 	"iter"
 	"maps"
 	"slices"
+	"sort"
 )
 
 func consume(seq iter.Seq[string]) {}
@@ -88,4 +90,47 @@ func unsortedCollect(m map[string]int) []int {
 		result = append(result, m[k])
 	}
 	return result
+}
+
+// Collected into a local slice that a plain sort orders next.
+func collectThenSortStrings(m map[string]int) []string {
+	keys := slices.Collect(maps.Keys(m))
+	sort.Strings(keys)
+	return keys
+}
+
+func appendSeqThenSort(m map[string]int, prefix []string) []string {
+	prefix = slices.AppendSeq(prefix, maps.Keys(m))
+	slices.Sort(prefix)
+	return prefix
+}
+
+// The slice is read before the sort.
+func collectThenRead(m map[string]int) []string {
+	keys := slices.Collect(maps.Keys(m)) // want `TS-T02: this iterator`
+	first := keys[0]
+	sort.Strings(keys)
+	return append(keys, first)
+}
+
+// Floats can't be told apart by a sort.
+func collectFloatsThenSort(m map[string]float64) []float64 {
+	vals := slices.Collect(maps.Values(m)) // want `TS-T02: this iterator`
+	slices.Sort(vals)
+	return vals
+}
+
+// Printed through a closure before the sort.
+func collectThenClosure(m map[string]int) {
+	var keys []string
+	show := func() { fmt.Println(keys) }
+	keys = slices.Collect(maps.Keys(m)) // want `TS-T02: this iterator`
+	show()
+	sort.Strings(keys)
+}
+
+func appendSeqFresh(m map[string]int) []string {
+	keys := slices.AppendSeq(make([]string, 0, len(m)), maps.Keys(m))
+	slices.Sort(keys)
+	return keys
 }
