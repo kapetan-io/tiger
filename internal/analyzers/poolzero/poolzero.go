@@ -348,10 +348,27 @@ func untouched(alloc *ssa.Alloc, load *ssa.UnOp) bool {
 		return false
 	}
 	for _, ref := range *alloc.Referrers() {
-		if ref != ssa.Instruction(load) {
-			if _, debug := ref.(*ssa.DebugRef); !debug {
-				return false
-			}
+		if ref == ssa.Instruction(load) || zeroFieldAddr(ref) {
+			continue
+		}
+		if _, debug := ref.(*ssa.DebugRef); !debug {
+			return false
+		}
+	}
+	return true
+}
+
+// zeroFieldAddr reports whether ref addresses a field of the literal that is
+// only ever set to its zero value, as in T{N: 0}.
+func zeroFieldAddr(ref ssa.Instruction) bool {
+	addr, ok := ref.(*ssa.FieldAddr)
+	if !ok {
+		return false
+	}
+	for _, use := range *addr.Referrers() {
+		store, isStore := use.(*ssa.Store)
+		if !isStore || !isZeroed(store.Val) {
+			return false
 		}
 	}
 	return true

@@ -22,6 +22,7 @@ import (
 // label is declared inside the loop.
 func (c *checker) checkExits(loop *ast.ForStmt) {
 	inner := labelsWithin(loop.Body)
+	own := c.labelOf(loop)
 	var ancestors []ast.Node
 	ast.Inspect(loop.Body, func(node ast.Node) bool {
 		if node == nil {
@@ -38,7 +39,7 @@ func (c *checker) checkExits(loop *ast.ForStmt) {
 		case *ast.ReturnStmt:
 			c.reportExit(stmt.Pos(), "return")
 		case *ast.BranchStmt:
-			if leavesLoop(stmt, inner, ancestors) {
+			if leavesLoop(stmt, inner, own, ancestors) {
 				c.reportExit(stmt.Pos(), strings.ToLower(stmt.Tok.String()))
 			}
 		}
@@ -54,14 +55,19 @@ func (c *checker) reportExit(pos token.Pos, kind string) {
 	})
 }
 
-// leavesLoop reports whether a break statement ends the event loop: a labeled
-// break to a label outside the loop, or an unlabeled break with no select,
+// leavesLoop reports whether a break or goto statement ends the event loop: a
+// jump to a label outside the loop, or an unlabeled break with no select,
 // switch or loop between it and the loop.
-func leavesLoop(stmt *ast.BranchStmt, inner map[string]bool, ancestors []ast.Node) bool {
+func leavesLoop(
+	stmt *ast.BranchStmt, inner map[string]bool, own string, ancestors []ast.Node,
+) bool {
 	if stmt.Tok != token.BREAK && stmt.Tok != token.GOTO {
 		return false
 	}
 	if stmt.Label != nil {
+		if stmt.Tok == token.GOTO && stmt.Label.Name == own {
+			return false
+		}
 		return !inner[stmt.Label.Name]
 	}
 	for _, node := range ancestors {
@@ -101,4 +107,22 @@ func endsInReturn(body []ast.Stmt) bool {
 	}
 	_, ok := body[len(body)-1].(*ast.ReturnStmt)
 	return ok
+}
+
+// labelOf returns the label on loop, or "" if it has none. A goto to the
+// loop's own label restarts the loop and does not leave it.
+func (c *checker) labelOf(loop *ast.ForStmt) string {
+	name := ""
+	for _, file := range c.pass.Files {
+		if file.Pos() > loop.Pos() || loop.End() > file.End() {
+			continue
+		}
+		ast.Inspect(file, func(node ast.Node) bool {
+			if labeled, ok := node.(*ast.LabeledStmt); ok && labeled.Stmt == ast.Stmt(loop) {
+				name = labeled.Label.Name
+			}
+			return name == ""
+		})
+	}
+	return name
 }

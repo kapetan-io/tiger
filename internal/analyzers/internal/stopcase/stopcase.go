@@ -80,18 +80,32 @@ func New(pass *analysis.Pass) *Finder {
 
 // passDown credits a close or send on a parameter to the channels the package
 // passes for it, at the call that passes them, so a helper like shut(ch) that
-// closes its argument counts for the field its callers hand it.
+// closes its argument counts for the field its callers hand it, through any
+// number of helpers.
 func (f *Finder) passDown(into map[*types.Var][]producer) {
-	for _, param := range f.params {
+	work := slices.Clone(f.params)
+	i := 0
+	for ; i < len(work) && i < worklist.NodesMax; i++ {
+		param := work[i]
 		if len(into[param]) == 0 {
 			continue
 		}
 		for _, arg := range f.index.Arguments(param) {
-			if obj := f.index.Object(arg.Expr); obj != nil && obj != param {
-				into[obj] = append(into[obj], producer{node: arg.Expr, decl: arg.Decl})
+			obj := f.index.Object(arg.Expr)
+			if obj == nil || obj == param {
+				continue
+			}
+			credited := func(p producer) bool { return p.node == arg.Expr }
+			if slices.ContainsFunc(into[obj], credited) {
+				continue
+			}
+			into[obj] = append(into[obj], producer{node: arg.Expr, decl: arg.Decl})
+			if f.index.IsParameter(obj) {
+				work = append(work, obj)
 			}
 		}
 	}
+	assert.Ok(i == len(work), "passDown: worklist reached worklist.NodesMax")
 }
 
 // record notes node as a producer for the channel expr names.
