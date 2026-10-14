@@ -1447,6 +1447,11 @@ deletes. Which entries it handled before stopping depends on visit order. It fir
 boolean is set to a constant on one entry and the loop stops on another without setting it. A loop
 whose every exit sets the same constants, such as a search for one value, passes.
 
+A loop that writes or deletes an entry of the map it ranges over, other than the current one,
+fires, because Go may or may not visit entries added or removed during the range. A jump
+(`break`, `continue`, `goto`) between a collect and its sort also fires, since it can skip the sort for
+the rest of an enclosing loop.
+
 A slice also counts as aliased when it is copied (`t := s`), passed or returned before the sort, or
 started from anything but `make`, a literal, `nil` or `slices.Collect`.
 

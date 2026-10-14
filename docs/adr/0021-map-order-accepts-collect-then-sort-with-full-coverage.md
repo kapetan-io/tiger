@@ -109,6 +109,8 @@ changes to what the rule accepts and refuses:
   function compares the slice's own string or integer elements.
 - A loop that can `break` or `return` fires when it writes a map, adds to a counter or deletes, or
   when an exit skips a constant outcome the body sets on another entry.
+- A loop that writes or deletes an entry of its own map other than the current one fires. So does
+  a `break`, `continue` or `goto` between a collect and its sort.
 - Parentheses around an iterator call and a label on the map loop change nothing.
 
 A scan of 970 module-cache modules, comparing against the rule as it stood before ENG-340, finds 84

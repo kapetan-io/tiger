@@ -31,10 +31,14 @@ import (
 // m[k], with k the range key, each visit touches only its own entry, so
 // reading any map of that type at [k] sees nothing an earlier visit wrote.
 type carry struct {
-	objs    map[types.Object]bool
-	maps    []types.Type
-	unkeyed []types.Type
-	key     types.Object
+	// reshapes is set when the body writes or deletes an entry of the map
+	// being ranged over other than the current one, which changes which
+	// entries the range goes on to visit.
+	reshapes bool
+	objs     map[types.Object]bool
+	maps     []types.Type
+	unkeyed  []types.Type
+	key      types.Object
 }
 
 // carriedState collects what loop's body writes that is declared outside
@@ -44,10 +48,14 @@ func carriedState(pass *analysis.Pass, loop *ast.RangeStmt) *carry {
 	if key, ok := loop.Key.(*ast.Ident); ok && key.Name != "_" && distinctKeys(pass, loop) {
 		c.key = pass.TypesInfo.ObjectOf(key)
 	}
+	ranged := rangedMap(loop)
 	mapWrite := func(m, index ast.Expr) {
 		t := pass.TypesInfo.TypeOf(m)
 		if t == nil {
 			return
+		}
+		if ranged != "" && types.ExprString(ast.Unparen(m)) == ranged && !c.isKey(pass, index) {
+			c.reshapes = true
 		}
 		c.maps = append(c.maps, t)
 		if !c.isKey(pass, index) {
@@ -88,6 +96,17 @@ func carriedState(pass *analysis.Pass, loop *ast.RangeStmt) *carry {
 		return true
 	})
 	return c
+}
+
+// rangedMap returns the source text of the map loop ranges over, looking
+// through maps.Keys, maps.Values and maps.All, or "" when it is not a plain
+// expression.
+func rangedMap(loop *ast.RangeStmt) string {
+	expr := ast.Unparen(loop.X)
+	if call, ok := expr.(*ast.CallExpr); ok && len(call.Args) == 1 {
+		expr = ast.Unparen(call.Args[0])
+	}
+	return types.ExprString(expr)
 }
 
 // distinctKeys reports whether loop's first variable differs on every
@@ -193,6 +212,9 @@ func bodyAllowed(pass *analysis.Pass, loop *ast.RangeStmt, carried *carry) bool 
 // has an effect that outlives one visit or has an exit that skips an outcome
 // another entry sets.
 func walkBody(pass *analysis.Pass, loop *ast.RangeStmt, carried *carry) (allowed, unstable bool) {
+	if carried != nil && carried.reshapes {
+		return false, false
+	}
 	work := append([]ast.Stmt{}, loop.Body.List...)
 	exits, effects := false, false
 	outcomes := map[string]bool{}

@@ -195,6 +195,9 @@ func countMentions(pass *analysis.Pass, node ast.Node, obj types.Object) int {
 // earlier visit wrote. It returns nil otherwise. A break or return is out,
 // because it makes which entries are collected depend on visit order.
 func collectShape(pass *analysis.Pass, loop *ast.RangeStmt, carried *carry) map[types.Object]bool {
+	if carried != nil && carried.reshapes {
+		return nil
+	}
 	targets := map[types.Object]bool{}
 	work := append([]ast.Stmt{}, loop.Body.List...)
 	pairs := indexedPairs(pass, loop)
@@ -291,6 +294,9 @@ type sortCall struct {
 func firstUseSort(pass *analysis.Pass, after []ast.Stmt, target types.Object) *sortCall {
 	for _, stmt := range after {
 		if !mentions(pass, stmt, target) {
+			if leavesList(stmt) {
+				return nil
+			}
 			continue
 		}
 		expr, ok := stmt.(*ast.ExprStmt)
@@ -308,6 +314,23 @@ func firstUseSort(pass *analysis.Pass, after []ast.Stmt, target types.Object) *s
 		return &sortCall{call: call, name: fn.Pkg().Path() + "." + fn.Name()}
 	}
 	return nil
+}
+
+// leavesList reports whether stmt holds a break, continue or goto outside a
+// function literal. Such a jump can skip the sort for the rest of an
+// enclosing loop, which then sees the slice in map order.
+func leavesList(stmt ast.Stmt) bool {
+	found := false
+	ast.Inspect(stmt, func(node ast.Node) bool {
+		switch node := node.(type) {
+		case *ast.FuncLit:
+			return false
+		case *ast.BranchStmt:
+			found = found || node.Tok != token.FALLTHROUGH
+		}
+		return !found
+	})
+	return found
 }
 
 // isSortFunc reports whether fn is in package sort, or is a Sort* function
