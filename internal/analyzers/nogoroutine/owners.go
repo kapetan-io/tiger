@@ -7,6 +7,7 @@ import (
 	"go/types"
 
 	"golang.org/x/tools/go/analysis"
+	"golang.org/x/tools/go/cfg"
 
 	"github.com/kapetan-io/tiger/internal/analyzers/internal/ownership"
 	"github.com/kapetan-io/tiger/internal/analyzers/internal/stopcase"
@@ -25,56 +26,61 @@ var startMethods = map[string]bool{"Go": true, "TryGo": true}
 
 // owners judges the goroutines a package starts through groups.
 type owners struct {
-	pass  *analysis.Pass
-	index *ownership.Index
-	stops *stopcase.Finder
-	waits map[*types.Var][]wait
+	pass      *analysis.Pass
+	index     *ownership.Index
+	stops     *stopcase.Finder
+	expired   []span
+	graphs    map[*ast.FuncDecl]*cfg.CFG
+	summaries map[*types.Var]waiters
+	outside   map[*types.Var]bool
 }
 
-// wait is one Wait call on a group.
-type wait struct {
-	decl *ast.FuncDecl
+// span is a range of source.
+type span struct {
+	from, to token.Pos
 }
 
-// newOwners indexes every Wait on a group in the package that sits on the
-// success path of the function holding it.
+// newOwners finds the select cases that mean a caller gave up waiting, and the
+// groups waited on outside any function.
 func newOwners(pass *analysis.Pass) *owners {
 	stops := stopcase.New(pass)
-	found := &owners{pass: pass, index: stops.Index(), stops: stops, waits: map[*types.Var][]wait{}}
+	o := &owners{
+		pass: pass, index: stops.Index(), stops: stops,
+		graphs:    map[*ast.FuncDecl]*cfg.CFG{},
+		summaries: map[*types.Var]waiters{},
+		outside:   map[*types.Var]bool{},
+	}
 	for _, file := range pass.Files {
-		var expired []ast.Node
 		ast.Inspect(file, func(node ast.Node) bool {
-			if node == nil {
-				expired = expired[:len(expired)-1]
-				return false
+			switch found := node.(type) {
+			case *ast.CommClause:
+				o.noteExpired(found)
+			case *ast.SelectorExpr:
+				o.noteOutside(found)
 			}
-			if sel, ok := node.(*ast.SelectorExpr); ok && !found.inExpiredPath(expired) {
-				found.recordWait(sel)
-			}
-			expired = append(expired, node)
 			return true
 		})
 	}
-	return found
+	return o
 }
 
-// inExpiredPath reports whether the innermost select case around a node
-// receives from ctx.Done(): the early return of a function whose caller gave
-// up waiting.
-func (o *owners) inExpiredPath(ancestors []ast.Node) bool {
-	for i := len(ancestors) - 1; i >= 0; i-- {
-		if clause, ok := ancestors[i].(*ast.CommClause); ok {
-			return clause.Comm != nil && o.stops.ContextCase(clause.Comm)
-		}
+// noteExpired records the body of a select case that receives from ctx.Done():
+// the early return of a function whose caller gave up waiting.
+func (o *owners) noteExpired(clause *ast.CommClause) {
+	if clause.Comm == nil || len(clause.Body) == 0 || !o.stops.ContextCase(clause.Comm) {
+		return
 	}
-	return false
+	o.expired = append(o.expired, span{from: clause.Body[0].Pos(), to: clause.End()})
 }
 
-// recordWait notes sel as a Wait on its group.
-func (o *owners) recordWait(sel *ast.SelectorExpr) {
-	group, ok := o.groupMethod(sel, "Wait")
-	if ok && group != nil {
-		o.waits[group] = append(o.waits[group], wait{decl: o.index.DeclOf(sel)})
+// noteOutside records a Wait on a group made outside any function, such as in
+// a package variable's initializer.
+func (o *owners) noteOutside(sel *ast.SelectorExpr) {
+	if o.index.DeclOf(sel) != nil {
+		return
+	}
+	if group, ok := o.groupMethod(sel, "Wait"); ok && group != nil {
+		o.outside[group] = true
 	}
 }
 
@@ -193,19 +199,31 @@ func (o *owners) checkStart(sel *ast.SelectorExpr) bool {
 	return true
 }
 
-// waited reports whether a Wait on group is reached for a start at node. A
-// group the code cannot name has no Wait to find. A parameter is the caller's
-// to wait on.
-func (o *owners) waited(group *types.Var, node ast.Node) bool {
+// waited reports whether a Wait on group is reached on every success path
+// after a start at sel. A group the code cannot name has no Wait to find. A
+// parameter is the caller's to wait on. A group in a field or a package
+// variable may instead be waited by an exported method that always waits.
+func (o *owners) waited(group *types.Var, sel *ast.SelectorExpr) bool {
 	if group == nil {
 		return false
 	}
 	if o.index.IsParameter(group) {
 		return true
 	}
-	use := o.index.DeclOf(node)
-	for _, site := range o.waits[group] {
-		if o.index.Reaches(group, ownership.Link{Actor: site.decl, Reader: use}) {
+	start := o.index.DeclOf(sel)
+	if start == nil {
+		return o.outside[group]
+	}
+	always := o.summary(group)
+	query := flowQuery{group: group, start: sel, anyPath: sel.Sel.Name == "TryGo"}
+	if !o.uncovered(start, query, always) {
+		return true
+	}
+	if !group.IsField() && group.Parent() != group.Pkg().Scope() {
+		return false
+	}
+	for _, decl := range o.index.Decls() {
+		if always[decl] && o.index.Reaches(group, ownership.Link{Actor: decl, Reader: start}) {
 			return true
 		}
 	}

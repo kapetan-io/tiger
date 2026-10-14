@@ -402,7 +402,8 @@ func runWithTermination(ctx context.Context, input <-chan int, output chan<- int
 }
 ```
 
-A stop case is one of two things. The first is a receive from `ctx.Done()` on a
+A stop case is one of two things, and its body must leave the loop with a `return` or a
+`break`. A case that fires and falls back into the loop stops nothing. The first is a receive from `ctx.Done()` on a
 `context.Context` that does not trace, within the function, to `context.Background()` or
 `context.TODO()`. A context made from nothing in the same function is cancelled only by
 that function, so waiting on it proves nothing. The second is a receive or send on a
@@ -415,7 +416,9 @@ channel nothing fires, and a channel called `shutdown` that nothing closes, both
 method reaches the close and not whether it runs. A channel the package never closes but
 a caller does is not recognized, so the loop is flagged. So is a channel closed by a free
 function or by a method of another type, since for a field only a method of the owning
-type counts.
+type counts. A context built by a helper function that returns `context.Background()` looks
+like one the caller can cancel, because the check follows a context to `Background` within
+one function. The same is true of a context held in a struct field.
 
 <!-- rule: TS-S23 -->
 ### TS-S23 — an event loop's only exit is its stop case
@@ -780,7 +783,11 @@ unwaited, so Shutdown could return before its HTTP goroutines exited.
 A bare `go` statement is always a finding, and there is no list of functions allowed to
 use one. For a group held in a local variable, `Wait` must be reached in the same
 function. For a group held in a struct field, it must be reached in an exported method of
-the owning type, or in a method such a method calls. A `Wait` that only runs in the
+the owning type, or in a method such a method calls. The `Wait` must follow the start on
+every success path. A `Wait` after a `return`, on one branch only, in a function literal
+nobody calls, or inside the goroutine it waits for does not count. A path that returns a
+non-nil error is not a success path, so a `Shutdown` that returns its flush error before it
+waits is accepted. A `Wait` that only runs in the
 branch where the caller's context expired does not count. That branch is a `Shutdown`
 giving up early, and the early return is exempt from the check. A group handed in as a
 parameter is the caller's to wait on, and this check does not follow it.
@@ -834,7 +841,8 @@ start it with `wg.Go`, and have every waiter select on `done`.
 A leak is easy to see at run time and hard to see by reading, so the test suite should
 look for it, and tiger checks that the look is there. A package whose non-test files start
 a goroutine, with `go`, `wg.Go` or `errgroup.Go`, needs a `TestMain` that calls into
-`go.uber.org/goleak`, in the package's own tests or its `_test` package. The check is
+`go.uber.org/goleak` that calls `goleak.VerifyTestMain`, in the package's own tests or its
+`_test` package. Naming a goleak option does not count. The check is
 once per package, at the first goroutine start. `goleak` alone misses a goroutine that
 exits just after `Shutdown` returns, so TS-C02 and TS-S03 stay.
 

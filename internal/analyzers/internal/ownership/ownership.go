@@ -128,6 +128,18 @@ func (index *Index) DeclOf(node ast.Node) *ast.FuncDecl {
 	return nil
 }
 
+// Decls returns the package's function declarations that have a body, in
+// source order.
+func (index *Index) Decls() []*ast.FuncDecl {
+	return index.decls
+}
+
+// DeclFor returns the declaration of a package function or method, or nil for
+// one declared elsewhere.
+func (index *Index) DeclFor(fn *types.Func) *ast.FuncDecl {
+	return index.byFunc[fn.Origin()]
+}
+
 // Object returns the variable an expression names: a plain identifier, or the
 // field or package variable a selector picks. It returns nil for anything
 // else, such as a call result or an element of a slice.

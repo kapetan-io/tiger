@@ -56,8 +56,8 @@ func hasLeakCheck(dir string) bool {
 	return false
 }
 
-// mainUsesGoleak reports whether file imports goleak and its TestMain refers
-// to the import.
+// mainUsesGoleak reports whether file imports goleak and its TestMain calls
+// VerifyTestMain on the import.
 func mainUsesGoleak(file *ast.File) bool {
 	local := ""
 	for _, spec := range file.Imports {
@@ -84,14 +84,21 @@ func mainUsesGoleak(file *ast.File) bool {
 	return false
 }
 
-// refers reports whether body selects from the package imported as local.
+// refers reports whether body calls VerifyTestMain from the package imported
+// as local. Naming an option or any other goleak function checks nothing.
 func refers(body *ast.BlockStmt, local string) bool {
 	found := false
 	ast.Inspect(body, func(node ast.Node) bool {
-		if selector, ok := node.(*ast.SelectorExpr); ok {
-			if ident, isIdent := selector.X.(*ast.Ident); isIdent && ident.Name == local {
-				found = true
-			}
+		call, ok := node.(*ast.CallExpr)
+		if !ok {
+			return !found
+		}
+		selector, isSelector := call.Fun.(*ast.SelectorExpr)
+		if !isSelector || selector.Sel.Name != "VerifyTestMain" {
+			return !found
+		}
+		if ident, isIdent := selector.X.(*ast.Ident); isIdent && ident.Name == local {
+			found = true
 		}
 		return !found
 	})

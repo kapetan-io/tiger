@@ -44,6 +44,8 @@ func (p *Pipeline) ServeAfter() {
 		case work := <-p.requests:
 			work()
 		case <-p.stop:
+			close(p.done)
+			return
 		}
 		if p.closing {
 			return // want `TS-S23: this return leaves the event loop without its stop case`

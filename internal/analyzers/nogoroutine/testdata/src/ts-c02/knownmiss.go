@@ -15,13 +15,3 @@ func callerNeverWaits() {
 	var wg sync.WaitGroup
 	startOnParameter(&wg)
 }
-
-// waitBeforeGo waits before the goroutine starts, so the Wait joins nothing.
-//
-// known-miss: a Wait anywhere in the function counts; its order against the
-// start is not checked.
-func waitBeforeGo() {
-	var wg sync.WaitGroup
-	wg.Wait()
-	wg.Go(work)
-}

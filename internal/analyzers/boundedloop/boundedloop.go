@@ -284,7 +284,7 @@ func (c *checker) checkEventLoop(loop *ast.ForStmt) {
 	if selectHasDefault(sel) {
 		return
 	}
-	if !c.selectHasStopCase(sel) {
+	if !c.selectHasStopCase(loop, sel) {
 		c.pass.Report(analysis.Diagnostic{
 			Pos:      sel.Pos(),
 			Category: "TS-S03",
@@ -318,11 +318,12 @@ func directSelect(block *ast.BlockStmt) *ast.SelectStmt {
 }
 
 // selectHasStopCase reports whether the select has a case that can stop the
-// loop (see internal/analyzers/internal/stopcase).
-func (c *checker) selectHasStopCase(sel *ast.SelectStmt) bool {
+// loop (see internal/analyzers/internal/stopcase) and whose body leaves it. A
+// case that fires and falls back into the loop stops nothing.
+func (c *checker) selectHasStopCase(loop *ast.ForStmt, sel *ast.SelectStmt) bool {
 	for _, clause := range sel.Body.List {
 		comm, ok := clause.(*ast.CommClause)
-		if ok && c.stops.Case(comm.Comm) {
+		if ok && c.stops.Case(comm.Comm) && c.leavesLoop(loop, comm) {
 			return true
 		}
 	}

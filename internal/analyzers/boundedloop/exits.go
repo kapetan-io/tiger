@@ -39,7 +39,7 @@ func (c *checker) checkExits(loop *ast.ForStmt) {
 		case *ast.ReturnStmt:
 			c.reportExit(stmt.Pos(), "return")
 		case *ast.BranchStmt:
-			if leavesLoop(stmt, inner, own, ancestors) {
+			if exitsLoop(stmt, inner, own, ancestors) {
 				c.reportExit(stmt.Pos(), strings.ToLower(stmt.Tok.String()))
 			}
 		}
@@ -55,10 +55,10 @@ func (c *checker) reportExit(pos token.Pos, kind string) {
 	})
 }
 
-// leavesLoop reports whether a break or goto statement ends the event loop: a
+// exitsLoop reports whether a break or goto statement ends the event loop: a
 // jump to a label outside the loop, or an unlabeled break with no select,
 // switch or loop between it and the loop.
-func leavesLoop(
+func exitsLoop(
 	stmt *ast.BranchStmt, inner map[string]bool, own string, ancestors []ast.Node,
 ) bool {
 	if stmt.Tok != token.BREAK && stmt.Tok != token.GOTO {
@@ -125,4 +125,33 @@ func (c *checker) labelOf(loop *ast.ForStmt) string {
 		})
 	}
 	return name
+}
+
+// leavesLoop reports whether a case body returns from the function or breaks
+// out of the loop. A return inside a function literal, or a break that leaves
+// an inner statement, does not count.
+func (c *checker) leavesLoop(loop *ast.ForStmt, clause *ast.CommClause) bool {
+	inner := labelsWithin(loop.Body)
+	own := c.labelOf(loop)
+	ancestors := []ast.Node{&ast.SelectStmt{}}
+	leaves := false
+	for _, stmt := range clause.Body {
+		ast.Inspect(stmt, func(node ast.Node) bool {
+			if node == nil {
+				ancestors = ancestors[:len(ancestors)-1]
+				return false
+			}
+			switch found := node.(type) {
+			case *ast.FuncLit:
+				return false
+			case *ast.ReturnStmt:
+				leaves = true
+			case *ast.BranchStmt:
+				leaves = leaves || exitsLoop(found, inner, own, ancestors)
+			}
+			ancestors = append(ancestors, node)
+			return !leaves
+		})
+	}
+	return leaves
 }

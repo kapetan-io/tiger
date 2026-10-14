@@ -47,6 +47,8 @@ func (p *Pipeline) ServeBreakAfterSelect() {
 		case work := <-p.requests:
 			work()
 		case <-p.stop:
+			close(p.done)
+			return
 		}
 		if p.closing {
 			break // want `TS-S23: this break leaves the event loop without its stop case`

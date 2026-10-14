@@ -40,12 +40,14 @@ import (
 	"fmt"
 	"go/token"
 	"go/types"
+	"slices"
 
 	"golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/analysis/passes/buildssa"
 	"golang.org/x/tools/go/ssa"
 
 	"github.com/kapetan-io/tiger/assert"
+	"github.com/kapetan-io/tiger/internal/worklist"
 )
 
 const (
@@ -71,6 +73,9 @@ var Analyzer = &analysis.Analyzer{
 // so the reset-dominance check can order it against same-block resets.
 type putSite struct {
 	Instr ssa.CallInstruction
+	// At is where the Put takes effect: the call itself, or for a deferred Put
+	// each point where the function runs its defers.
+	At    ssa.Instruction
 	Block *ssa.BasicBlock
 	Arg   ssa.Value
 }
@@ -105,7 +110,11 @@ func run(pass *analysis.Pass) (any, error) {
 // nested inside fn, at every depth, so no separate AnonFuncs walk is
 // needed.
 func checkFunc(pass *analysis.Pass, fn *ssa.Function) {
+	reported := map[token.Pos]bool{}
 	for _, put := range putSites(fn) {
+		if reported[put.Instr.Pos()] {
+			continue
+		}
 		box, ok := chaseBox(put.Arg)
 		if !ok {
 			continue
@@ -128,6 +137,7 @@ func checkFunc(pass *analysis.Pass, fn *ssa.Function) {
 		if mustReach(fn, box.X, put) {
 			continue
 		}
+		reported[put.Instr.Pos()] = true
 		pass.Report(analysis.Diagnostic{
 			Pos:      put.Instr.Pos(),
 			Category: "TS-M05",
@@ -159,10 +169,57 @@ func putSites(fn *ssa.Function) []putSite {
 			if len(call.Args) < 2 {
 				continue
 			}
-			sites = append(sites, putSite{Instr: site, Block: block, Arg: call.Args[1]})
+			if _, deferred := instr.(*ssa.Defer); deferred {
+				sites = append(sites, deferredSites(fn, site, call.Args[1])...)
+				continue
+			}
+			sites = append(sites, putSite{Instr: site, At: instr, Block: block, Arg: call.Args[1]})
 		}
 	}
 	return sites
+}
+
+// deferredSites returns one site for each point where fn runs its defers. A
+// deferred Put happens there, so a zeroing written after the defer statement
+// still comes first, and a return between them reaches the Put without one.
+func deferredSites(fn *ssa.Function, deferred ssa.CallInstruction, arg ssa.Value) []putSite {
+	after := reachableAfter(deferred)
+	sites := []putSite{}
+	for _, block := range fn.Blocks {
+		passed := false
+		for _, instr := range block.Instrs {
+			if instr == ssa.Instruction(deferred) {
+				passed = true
+			}
+			if _, runs := instr.(*ssa.RunDefers); !runs {
+				continue
+			}
+			if block == deferred.Block() && !passed {
+				continue
+			}
+			if block != deferred.Block() && !after[block] {
+				continue
+			}
+			sites = append(sites, putSite{Instr: deferred, At: instr, Block: block, Arg: arg})
+		}
+	}
+	return sites
+}
+
+// reachableAfter returns the blocks control can reach after the defer
+// statement runs. A return before the statement runs no defers it registered.
+func reachableAfter(deferred ssa.CallInstruction) map[*ssa.BasicBlock]bool {
+	seen := map[*ssa.BasicBlock]bool{}
+	work := slices.Clone(deferred.Block().Succs)
+	i := 0
+	for ; i < len(work) && i < worklist.NodesMax; i++ {
+		if !seen[work[i]] {
+			seen[work[i]] = true
+			work = append(work, work[i].Succs...)
+		}
+	}
+	assert.Ok(i == len(work), "reachableAfter: worklist reached worklist.NodesMax")
+	return seen
 }
 
 // chaseBox unwraps the *ssa.MakeInterface that boxes a value for an any
@@ -263,7 +320,7 @@ func (r *reachState) computeInput(block *ssa.BasicBlock) bool {
 func (r *reachState) gen(block *ssa.BasicBlock) bool {
 	var stop ssa.Instruction
 	if block == r.put.Block {
-		stop = r.put.Instr
+		stop = r.put.At
 	}
 	return blockGen(block, r.x, stop)
 }

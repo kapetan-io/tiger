@@ -850,8 +850,9 @@ Why. A goroutine with no owner is a leak you will find in production, at a memor
 explain. Start it through a group whose `Wait` is reached, never with a bare `go` mid-function.
 Enforce. `nogoroutine` (custom). Only `errgroup.Group.Go` and `sync.WaitGroup.Go` start a goroutine;
 a bare `go` statement is always a finding, and there is no supervisor allowlist. The group's `Wait`
-must be reached on the success path: in the same function, or, for a group held in a struct field,
-in an exported method of the owning type. A `Shutdown` that returns early because its own context
+must be reached on every success path after the start: in the same function, or, for a group held in
+a struct field, in an exported method of the owning type. A path that returns a non-nil error is not a
+success path. A `Shutdown` that returns early because its own context
 expired is exempt on that path. The message names the shutdown-loop shape as the fix (see
 `TS-S03`). Patterns: goroutine owner, shutdown loop.
 *(Amended 2026-10-12: built, ADR-0020 and ENG-177. A group received as a parameter is the caller's
