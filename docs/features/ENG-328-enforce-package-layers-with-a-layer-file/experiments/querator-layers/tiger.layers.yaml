@@ -1,0 +1,131 @@
+# tiger.layers.yaml — querator's import graph (TS-X03, TS-D01).
+#
+# Each key is a package (./dir, or ./dir/... for a subtree). Its list names
+# everything the package may import beyond the pure standard library:
+#   ./pkg         a package in this module (exact; the import graph)
+#   module/path   that import path and every path below it
+#   net os database syscall plugin io/ioutil crypto/rand math/rand
+#                 the standard library that reaches outside the process
+#                 or is nondeterministic; each lifts its whole subtree
+# Every other standard library package is always allowed. _test.go files
+# are not layered. A package with no key fails tiger check.
+
+.:
+  - net
+  - ./internal
+  - ./proto
+  - ./transport
+  - github.com/duh-rpc/duh-go
+  - github.com/kapetan-io/tackle
+  - google.golang.org/protobuf
+
+./cmd/querator:
+  - net
+  - os
+  - syscall
+  - .
+  - ./daemon
+  - ./proto
+  - ./transport
+  - github.com/duh-rpc/duh-go
+  - github.com/kapetan-io/tackle
+  - github.com/spf13/cobra
+  - google.golang.org/protobuf
+
+./cmd/querator-doc:
+  - ./proto
+  - github.com/duh-rpc/duh-go
+  - github.com/kapetan-io/tackle
+  - google.golang.org/protobuf
+
+./cmd/quickstart:
+  - net
+  - os
+  - .
+  - ./proto
+  - ./transport
+
+./daemon:
+  - net
+  - .
+  - ./internal
+  - ./internal/store
+  - ./internal/types
+  - ./service
+  - ./transport
+  - ./transport/auth
+  - github.com/duh-rpc/duh-go
+  - github.com/kapetan-io/errors
+  - github.com/kapetan-io/tackle
+  - github.com/prometheus/client_golang
+  - golang.org/x/net
+  - gopkg.in/yaml.v3
+
+./docs:
+  - os
+  - syscall
+  - ./daemon
+  - ./proto
+
+./internal:
+  - ./internal/store
+  - ./internal/types
+  - ./proto
+  - ./transport/auth
+  - ./transport/reply
+  - github.com/dustin/go-humanize
+  - github.com/kapetan-io/errors
+  - github.com/kapetan-io/tackle
+  - github.com/segmentio/ksuid
+  - golang.org/x/sync
+
+./internal/store:
+  - database
+  - ./internal/types
+  - ./transport/reply
+  - github.com/dgraph-io/badger/v4
+  - github.com/jackc/pgx/v5
+  - github.com/kapetan-io/errors
+  - github.com/kapetan-io/tackle
+  - github.com/segmentio/ksuid
+  - go.mongodb.org/mongo-driver
+
+./internal/types:
+  - ./proto
+  - ./transport/reply
+  - github.com/kapetan-io/tackle
+  - google.golang.org/protobuf
+
+./proto:
+  - google.golang.org/protobuf
+
+./service:
+  - .
+  - ./internal
+  - ./internal/store
+  - ./internal/types
+  - ./proto
+  - ./transport
+  - ./transport/auth
+  - ./transport/reply
+  - github.com/kapetan-io/tackle
+  - google.golang.org/protobuf
+
+./transport:
+  - net
+  - ./proto
+  - ./transport/auth
+  - ./transport/reply
+  - github.com/duh-rpc/duh-go
+  - github.com/kapetan-io/errors
+  - github.com/kapetan-io/tackle
+  - github.com/prometheus/client_golang
+  - google.golang.org/protobuf
+
+./transport/auth:
+  - crypto/rand
+
+./transport/reply:
+  - github.com/duh-rpc/duh-go
+  - github.com/kapetan-io/errors
+  - google.golang.org/protobuf

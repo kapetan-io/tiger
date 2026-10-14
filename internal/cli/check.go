@@ -3,6 +3,7 @@ package cli
 import (
 	"flag"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/kapetan-io/tiger/assert"
@@ -12,9 +13,11 @@ import (
 )
 
 // runCheck is tiger check: install the directory's config, load the named
-// packages, run every registered analyzer and finish step, print blocking
-// findings ordered by position, compare counted findings to
-// tiger.budget.yaml, and apply the registry's severity to the exit code.
+// packages, run every registered analyzer and finish step, add TS-X03's
+// whole-module findings (stale entries and unlisted packages the run did not
+// load), print blocking findings ordered by position, compare counted
+// findings to tiger.budget.yaml, and apply the registry's severity to the
+// exit code.
 func runCheck(args []string, streams Streams) int {
 	flags := flag.NewFlagSet("tiger check", flag.ContinueOnError)
 	flags.SetOutput(streams.Stderr)
@@ -63,8 +66,10 @@ func runCheck(args []string, streams Streams) int {
 		fmt.Fprintf(streams.Stderr, "tiger check: %v\n", err)
 		return ExitOperational
 	}
+	blocking := append(sorted.blocking, layerCoverage(setup, sorted.blocking)...)
+	sort.SliceStable(blocking, func(i, j int) bool { return blocking[i].Before(blocking[j]) })
 	printed := 0
-	for _, finding := range sorted.blocking {
+	for _, finding := range blocking {
 		printed++
 		fmt.Fprintf(streams.Stdout, "%s: %s\n", finding.Position, finding.Message)
 	}
