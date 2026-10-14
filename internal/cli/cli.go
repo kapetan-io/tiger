@@ -32,6 +32,11 @@ const usage = `usage:
   tiger golangci [-C dir] [--init | --print]
       audit the project golangci-lint config against the auto-rule baseline,
       generate it with --init, or write it to stdout with --print
+  tiger pattern [name] [--checklist] [--rule code]
+      print a pattern: the correct shape for what a rule cannot check, with
+      its code, tests and reviewer checklist; with no name list every
+      pattern, --rule lists the patterns behind a rule code; exit 0 printed,
+      2 unknown pattern or rule
   tiger pin [-C dir] [--dry-run] <Name> [<Name>...] [packages]
       freeze each named function's computed facts into //tiger: pins
       written at their targets; exit 0 written or already satisfied,
@@ -58,6 +63,8 @@ func Run(args []string, streams Streams) int {
 		return runBudget(args[1:], streams)
 	case "golangci":
 		return runGolangci(args[1:], streams)
+	case "pattern":
+		return runPattern(args[1:], streams)
 	case "pin":
 		return runPin(args[1:], streams)
 	case "help", "-h", "--help":

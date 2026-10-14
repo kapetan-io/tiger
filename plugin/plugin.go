@@ -78,20 +78,17 @@ func (tiger) BuildAnalyzers() ([]*analysis.Analyzer, error) {
 	analyzers := rules.Analyzers()
 	built := make([]*analysis.Analyzer, 0, len(analyzers))
 	for _, registered := range analyzers {
-		built = append(built, quietFacts(registered))
+		built = append(built, applyOutputPolicy(registered))
 	}
 	return built, nil
 }
 
-// quietFacts returns the analyzer as-is when it emits no fact category,
-// else a shallow clone whose Run drops fact diagnostics before they reach
-// golangci-lint. The clone's Requires still
-// name the original dependency analyzers, so golangci's own resolution and
-// facts plumbing are untouched.
-func quietFacts(registered *analysis.Analyzer) *analysis.Analyzer {
-	if !emitsFacts(registered) {
-		return registered
-	}
+// applyOutputPolicy returns a shallow clone whose Run drops fact diagnostics
+// before they reach golangci-lint and ends every rule finding with its
+// pattern pointer, the same two decisions tiger check makes. The clone's
+// Requires still name the original dependency analyzers, so golangci's own
+// resolution and facts plumbing are untouched.
+func applyOutputPolicy(registered *analysis.Analyzer) *analysis.Analyzer {
 	inner := registered.Run
 	clone := *registered
 	clone.Run = func(pass *analysis.Pass) (any, error) {
@@ -100,21 +97,12 @@ func quietFacts(registered *analysis.Analyzer) *analysis.Analyzer {
 			if _, isFact := rules.ByFact(diagnostic.Category); isFact {
 				return
 			}
+			diagnostic.Message += rules.Pointer(diagnostic.Category)
 			report(diagnostic)
 		}
 		return inner(pass)
 	}
 	return &clone
-}
-
-// emitsFacts reports whether the analyzer owns a fact category.
-func emitsFacts(registered *analysis.Analyzer) bool {
-	for _, fact := range rules.Facts() {
-		if fact.Analyzer == registered {
-			return true
-		}
-	}
-	return false
 }
 
 // GetLoadMode requests full type information; golangci-lint supplies the

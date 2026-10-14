@@ -81,6 +81,7 @@ type emitted struct {
 // rule ID its category binds to.
 type bound struct {
 	analyzer string
+	category string
 	ruleID   string
 	message  string
 }
@@ -126,7 +127,8 @@ func replay(t *testing.T, analyzer *analysis.Analyzer, dirs []string) []emitted 
 func resolve(diagnostic emitted) (bound, bool) {
 	if rule, known := rules.ByCategory(diagnostic.category); known {
 		return bound{
-			analyzer: rule.Analyzer.Name, ruleID: rule.RuleID, message: diagnostic.message,
+			analyzer: rule.Analyzer.Name, category: rule.Category, ruleID: rule.RuleID,
+			message: diagnostic.message,
 		}, true
 	}
 	if fact, known := rules.ByFact(diagnostic.category); known {
@@ -386,10 +388,13 @@ func bannedPattern(word string) *regexp.Regexp {
 // analyzer, the message, and the invariant in every failure.
 func checkStyle(t *testing.T, resolved bound) {
 	t.Helper()
-	analyzerName, ruleID, message := resolved.analyzer, resolved.ruleID, resolved.message
+	analyzerName, ruleID := resolved.analyzer, resolved.ruleID
+	// Every driver ends the message with the pattern pointer, so the style
+	// guide judges the message a reader sees.
+	message := resolved.message + rules.Pointer(resolved.category)
 	body, found := strings.CutPrefix(message, ruleID+": ")
 	require.True(t, found, "I1: %s: %q must lead with %s: ", analyzerName, message, ruleID)
-	assert.NotRegexp(t, ruleCodePattern, body,
+	assert.NotRegexp(t, ruleCodePattern, strings.TrimSuffix(body, rules.Pointer(resolved.category)),
 		"I2: %s: body of %q repeats a rule code", analyzerName, message)
 	assert.NotContains(t, message, "\n",
 		"I3: %s: %q spans more than one line", analyzerName, message)
@@ -409,8 +414,8 @@ func checkStyle(t *testing.T, resolved bound) {
 
 // TestEveryCorpusMessageFollowsTheStyleGuide enforces the diagnostic
 // style guide's invariants I1–I6 on every message every corpus emits: the
-// body carries no second rule code, no newline, at most 240 characters, no
-// banned internal vocabulary, and any directive it names is spelled
+// body, pattern pointer included, carries no second rule code, no newline,
+// at most 240 characters, no banned internal vocabulary, and any directive it names is spelled
 // //tiger:.
 //
 // Goal: a message a reader new to tiger cannot act on does not merge.

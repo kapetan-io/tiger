@@ -111,6 +111,10 @@ The policy that falls out:
 > but review does not re-check what CI already checked: termination, coverage, injection, layering.
 > Review spends its attention on the declarations and on what `tiger changed` reports.
 
+Patterns give the reviewer something concrete to hold a diff against. For the parts of a correct shape
+no rule can check, `tiger pattern <name> --checklist` prints the yes-or-no questions the reviewer answers
+while comparing the diff to the pattern's code.
+
 ## The nine benefits
 
 "Safety, performance, developer experience" is the right goal hierarchy and useless as a rationale,
@@ -1838,8 +1842,9 @@ not exist or a pattern names a rule that does not exist.
 
 The seed patterns are the shutdown loop, the goroutine owner, pool reuse, the capped worklist, a page
 over an outside stream, clamping a limit where it enters the program, sorted map output when the key
-has no order, and the filtered page, plus `examples/ledger`. Not built: today only `examples/ledger`
-exists.
+has no order, and the filtered page, plus `patterns/ledger`. All nine are built under `patterns/`; a
+rule backed by several patterns points at `tiger pattern --rule <code>` to keep its message under the
+length cap.
 
 ## `tiger golangci` and `tiger.yaml`
 
