@@ -9,11 +9,13 @@ tiger built from this branch. `tiger.layers.yaml` here is querator's layer
 file: 14 entries for querator's 14 packages. `benchmarks` holds only `_test.go`
 files, so it is not a package and needs no entry.
 
+From the tiger repository root:
+
 ```sh
 go build -o tigerbin ./cmd/tiger
 git clone --shared ~/Development/querator <clone>
-cp tiger.layers.yaml <clone>/
-tigerbin check -C <clone> ./... | grep TS-X03
+cp docs/features/ENG-328-enforce-package-layers-with-a-layer-file/experiments/querator-layers/tiger.layers.yaml <clone>/
+./tigerbin check -C <clone> ./... | grep TS-X03
 ```
 
 ## Result

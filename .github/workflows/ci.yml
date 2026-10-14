@@ -216,8 +216,10 @@ jobs:
           test "$code" -eq 1
           grep -q "layered/layered.go.*TS-X03" findings.txt
           grep -q "unlisted/unlisted.go.*has no entry" findings.txt
-          ! grep -q "pure/pure.go" findings.txt
-          ! grep -q "gone" findings.txt
+          # A negated grep under set -e does not stop the step when it matches,
+          # so each absence check exits explicitly.
+          if grep -q "pure/pure.go" findings.txt; then exit 1; fi
+          if grep -q "gone" findings.txt; then exit 1; fi
       # Releases ship the tiger binary next to the plugin, because the patterns
       # live in the binary and a plugin-only adopter has no other way to read one.
       - name: the plugin's pattern pointer names a pattern the shipped tiger prints
