@@ -1,10 +1,13 @@
 package maporder
 
 import (
+	"fmt"
 	"go/ast"
 	"go/token"
 	"go/types"
+	"maps"
 	"slices"
+	"strings"
 
 	"golang.org/x/tools/go/analysis"
 
@@ -12,14 +15,14 @@ import (
 	"github.com/kapetan-io/tiger/internal/worklist"
 )
 
-// The allowlist is tiger's maporder allowlist with two changes. First, when
-// carried is non-nil, no read may see state an earlier visit wrote: such a
-// read lets visit order pick which entries are written or what is written.
-// The accumulator forms (x += e, x = max(x, e), if e < x { x = e }) read
-// their own target by design; only e is checked for them. A nil carried
-// skips the check, which classifyMessage uses to name the cause. Second, an
-// assignment to anything but a plain identifier (a field, a slice element)
-// is not a local and is refused.
+// Allowlist notes. When carried is non-nil, no read may see state an earlier
+// visit wrote: such a read lets visit order pick which entries are written or
+// what is written. The accumulator forms (x += e, x = max(x, e),
+// if e < x { x = e }) read their own target by design; only e is checked for
+// them. A nil carried skips the check, which classifyMessage uses to name the
+// cause. An assignment to anything but a plain identifier (a field, a slice
+// element) is not a local and is refused. A body that can break or return
+// must change nothing but constant booleans and per-visit locals (walkBody).
 
 // carry is the state a loop's body writes that outlives one iteration.
 // Variables assigned or incremented are tracked by object. Maps written or
@@ -186,13 +189,18 @@ func bodyAllowed(pass *analysis.Pass, loop *ast.RangeStmt, carried *carry) bool 
 }
 
 // walkBody reports whether every statement of loop's body is allowlisted,
-// and whether the body both can leave the loop early and has an effect that
-// outlives one visit.
-func walkBody(pass *analysis.Pass, loop *ast.RangeStmt, carried *carry) (allowed, early bool) {
+// and whether it is unstable: the body can leave the loop early and either
+// has an effect that outlives one visit or has an exit that skips an outcome
+// another entry sets.
+func walkBody(pass *analysis.Pass, loop *ast.RangeStmt, carried *carry) (allowed, unstable bool) {
 	work := append([]ast.Stmt{}, loop.Body.List...)
 	exits, effects := false, false
+	outcomes := map[string]bool{}
 	i := 0
 	for ; i < len(work) && i < worklist.NodesMax; i++ {
+		if key, ok := outcomeKey(pass, work[i]); ok {
+			outcomes[key] = true
+		}
 		switch stmt := work[i].(type) {
 		case *ast.BranchStmt:
 			exits = exits || stmt.Tok == token.BREAK
@@ -209,13 +217,72 @@ func walkBody(pass *analysis.Pass, loop *ast.RangeStmt, carried *carry) (allowed
 		}
 		work = append(work, next...)
 	}
-	assert.Ok(i == len(work), "bodyAllowed: worklist reached worklist.NodesMax")
-	return true, exits && effects
+	assert.Ok(i == len(work), "walkBody: worklist reached worklist.NodesMax")
+	return true, exits && (effects || !exitsCarryOutcomes(pass, loop, outcomes))
+}
+
+// outcomeKey names what an assignment of a constant to a boolean or a
+// return of constants leaves behind once the loop is done.
+func outcomeKey(pass *analysis.Pass, stmt ast.Stmt) (string, bool) {
+	switch stmt := stmt.(type) {
+	case *ast.AssignStmt:
+		if !boolConstAssign(pass, stmt) {
+			return "", false
+		}
+		return fmt.Sprintf("%p=%s", identDecl(pass, stmt.Lhs[0]), types.ExprString(stmt.Rhs[0])), true
+	case *ast.ReturnStmt:
+		results := make([]string, len(stmt.Results))
+		for at, result := range stmt.Results {
+			results[at] = types.ExprString(result)
+		}
+		return "return " + strings.Join(results, ","), true
+	}
+	return "", false
+}
+
+// exitsCarryOutcomes reports whether every break and return in loop's body
+// comes with every outcome the body can leave. Then whichever entry stops
+// the loop, the result is the same: a flag set on one entry and a break on
+// another would not be, because the break can come first.
+func exitsCarryOutcomes(pass *analysis.Pass, loop *ast.RangeStmt, outcomes map[string]bool) bool {
+	type block struct {
+		list    []ast.Stmt
+		covered map[string]bool
+	}
+	work := []block{{list: loop.Body.List, covered: map[string]bool{}}}
+	i := 0
+	for ; i < len(work) && i < worklist.NodesMax; i++ {
+		covered := maps.Clone(work[i].covered)
+		for _, stmt := range work[i].list {
+			if key, ok := outcomeKey(pass, stmt); ok {
+				covered[key] = true
+			}
+			switch stmt := stmt.(type) {
+			case *ast.BranchStmt:
+				if stmt.Tok == token.BREAK && len(covered) < len(outcomes) {
+					return false
+				}
+			case *ast.ReturnStmt:
+				if len(covered) < len(outcomes) {
+					return false
+				}
+			case *ast.BlockStmt:
+				work = append(work, block{list: stmt.List, covered: covered})
+			case *ast.IfStmt:
+				work = append(work, block{list: stmt.Body.List, covered: covered})
+				if stmt.Else != nil {
+					work = append(work, block{list: []ast.Stmt{stmt.Else}, covered: covered})
+				}
+			}
+		}
+	}
+	assert.Ok(i == len(work), "exitsCarryOutcomes: worklist reached worklist.NodesMax")
+	return true
 }
 
 // outlivesVisit reports whether a leaf statement changes anything but
-// booleans set to a constant or variables declared inside the loop body. A
-// bool set to a constant gives the same final value whichever visit sets it.
+// booleans set to a constant or variables declared inside the loop body. Any
+// other kind of statement counts as an effect.
 func outlivesVisit(pass *analysis.Pass, loop *ast.RangeStmt, stmt ast.Stmt) bool {
 	switch stmt := stmt.(type) {
 	case *ast.BlockStmt, *ast.DeclStmt:

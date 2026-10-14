@@ -55,7 +55,7 @@ func checkIterators(pass *analysis.Pass, file *ast.File, facts fileFacts) {
 		}
 		// Parentheses change nothing about who consumes the iterator.
 		var use ast.Expr = call
-		parent := ast.Node(nil)
+		var parent ast.Node
 		for _, ancestor := range slices.Backward(stack[:len(stack)-1]) {
 			parent = ancestor
 			paren, ok := parent.(*ast.ParenExpr)
@@ -96,9 +96,9 @@ func iteratorFixed(pass *analysis.Pass, parent ast.Node, call ast.Expr, elem typ
 	return false
 }
 
-// collectedThenSorted reports whether use, the iterator at the top of
-// stack, is collected by slices.Collect or slices.AppendSeq into a local
-// slice whose first use afterward is a sort that fixes its order.
+// collectedThenSorted reports whether use (the iterator call with its
+// parentheses) is the argument of slices.Collect or slices.AppendSeq assigned
+// to a local slice whose first use afterward is a sort that fixes its order.
 func collectedThenSorted(
 	pass *analysis.Pass, stack []ast.Node, use ast.Expr, facts fileFacts,
 ) bool {

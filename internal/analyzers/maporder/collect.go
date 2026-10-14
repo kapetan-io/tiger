@@ -4,6 +4,7 @@ import (
 	"go/ast"
 	"go/token"
 	"go/types"
+	"slices"
 	"strings"
 
 	"golang.org/x/tools/go/analysis"
@@ -116,7 +117,7 @@ type indexedPair struct {
 	step           *ast.IncDecStmt
 }
 
-// indexedPairs finds the top-level statement pairs `s[i] = e; i++` in loop's
+// indexedPairs finds the adjacent top-level statement pairs `s[i] = e; i++` in loop's
 // body where s is a slice and i an integer, both declared outside loop, i
 // appears nowhere else in the body, s appears only as the store's target,
 // and e reads neither. Each visit then writes its own slot, so the slice
@@ -124,7 +125,7 @@ type indexedPair struct {
 // varies, exactly as with append.
 func indexedPairs(pass *analysis.Pass, loop *ast.RangeStmt) []indexedPair {
 	var pairs []indexedPair
-	for _, stmt := range loop.Body.List {
+	for at, stmt := range loop.Body.List {
 		store, ok := stmt.(*ast.AssignStmt)
 		if !ok || store.Tok != token.ASSIGN || len(store.Lhs) != 1 || len(store.Rhs) != 1 {
 			continue
@@ -144,7 +145,7 @@ func indexedPairs(pass *analysis.Pass, loop *ast.RangeStmt) []indexedPair {
 			readsAny(pass, store.Rhs[0], map[types.Object]bool{slice: true, counter: true}) {
 			continue
 		}
-		step := stepOf(pass, loop, counter)
+		step := stepAfter(pass, loop.Body.List, at, counter)
 		if step == nil || countMentions(pass, loop.Body, counter) != 2 ||
 			countMentions(pass, loop.Body, slice) != 1 {
 			continue
@@ -154,13 +155,16 @@ func indexedPairs(pass *analysis.Pass, loop *ast.RangeStmt) []indexedPair {
 	return pairs
 }
 
-// stepOf returns the top-level `counter++` statement of loop's body.
-func stepOf(pass *analysis.Pass, loop *ast.RangeStmt, counter types.Object) *ast.IncDecStmt {
-	for _, stmt := range loop.Body.List {
-		step, ok := stmt.(*ast.IncDecStmt)
-		if ok && step.Tok == token.INC && identDecl(pass, step.X) == counter {
-			return step
-		}
+// stepAfter returns the `counter++` statement directly after list[at]. Any
+// statement between them could skip the step, and the next visit would then
+// overwrite the slot, so which key survives would depend on visit order.
+func stepAfter(pass *analysis.Pass, list []ast.Stmt, at int, counter types.Object) *ast.IncDecStmt {
+	if at+1 >= len(list) {
+		return nil
+	}
+	step, ok := list[at+1].(*ast.IncDecStmt)
+	if ok && step.Tok == token.INC && identDecl(pass, step.X) == counter {
+		return step
 	}
 	return nil
 }
@@ -364,45 +368,158 @@ func sliceElem(obj types.Object) types.Type {
 
 // sharedVars returns, for each variable in file that code other than a plain
 // mention of the name can read, the first position where that becomes
-// possible: its address is taken, a function literal captures it, or it is
-// sliced, so the slice shares its backing array. A read through any of these
-// before the sort sees the map's order, and the first-use check looks only at
-// mentions of the name.
+// possible. A slice variable is aliased once its header is copied (assigned,
+// passed, returned, stored), its address is taken, a function literal
+// captures it, it is sliced, or it starts out as something other than a
+// fresh slice. All of these share the backing array, so a read through the
+// other name before the sort sees the map's order, and the first-use check
+// looks only at mentions of the name. Using the slice as `s = append(s, e)`,
+// `len(s)`, `cap(s)`, `s[i]` or a range operand leaves it unaliased.
 func sharedVars(pass *analysis.Pass, file *ast.File) map[types.Object]token.Pos {
 	shared := map[types.Object]token.Pos{}
-	mark := func(root ast.Node, keep func(types.Object) bool) {
+	mark := func(obj types.Object, pos token.Pos) {
+		if first, seen := shared[obj]; !seen || pos < first {
+			shared[obj] = pos
+		}
+	}
+	markAll := func(root ast.Node, keep func(types.Object) bool) {
 		ast.Inspect(root, func(node ast.Node) bool {
 			ident, ok := node.(*ast.Ident)
 			if !ok {
 				return true
 			}
-			obj, ok := pass.TypesInfo.ObjectOf(ident).(*types.Var)
-			if !ok || !keep(obj) {
-				return true
-			}
-			if first, seen := shared[obj]; !seen || ident.Pos() < first {
-				shared[obj] = ident.Pos()
+			if obj, ok := pass.TypesInfo.ObjectOf(ident).(*types.Var); ok && keep(obj) {
+				mark(obj, ident.Pos())
 			}
 			return true
 		})
 	}
 	always := func(types.Object) bool { return true }
+	var stack []ast.Node
 	ast.Inspect(file, func(node ast.Node) bool {
+		if node == nil {
+			stack = stack[:len(stack)-1]
+			return true
+		}
+		stack = append(stack, node)
 		switch expr := node.(type) {
 		case *ast.UnaryExpr:
 			if expr.Op == token.AND {
-				mark(expr.X, always)
+				markAll(expr.X, always)
 			}
 		case *ast.SliceExpr:
-			mark(expr.X, always)
+			markAll(expr.X, always)
 		case *ast.FuncLit:
-			mark(expr.Body, func(obj types.Object) bool {
+			markAll(expr.Body, func(obj types.Object) bool {
 				return obj.Pos() < expr.Pos() || obj.Pos() >= expr.End()
 			})
+		case *ast.AssignStmt:
+			for at, lhs := range expr.Lhs {
+				if at < len(expr.Rhs) && len(expr.Lhs) == len(expr.Rhs) {
+					markStaleStart(pass, lhs, mark, expr.Rhs[at])
+				}
+			}
+		case *ast.ValueSpec:
+			for at, name := range expr.Names {
+				if at < len(expr.Values) {
+					markStaleStart(pass, name, mark, expr.Values[at])
+				}
+			}
+		case *ast.Ident:
+			obj, ok := pass.TypesInfo.ObjectOf(expr).(*types.Var)
+			if ok && pass.TypesInfo.Defs[expr] == nil && isSliceType(obj.Type()) && copiesHeader(pass, stack, obj) {
+				mark(obj, expr.Pos())
+			}
 		}
 		return true
 	})
 	return shared
+}
+
+// markStaleStart marks the slice variable lhs when rhs is not a fresh slice
+// (make, a literal, nil, or the variable appended to), because it may then
+// share storage with whatever rhs came from.
+func markStaleStart(
+	pass *analysis.Pass, lhs ast.Expr, mark func(types.Object, token.Pos), rhs ast.Expr,
+) {
+	ident, ok := ast.Unparen(lhs).(*ast.Ident)
+	if !ok {
+		return
+	}
+	obj, ok := pass.TypesInfo.ObjectOf(ident).(*types.Var)
+	if !ok || !isSliceType(obj.Type()) {
+		return
+	}
+	switch fresh := ast.Unparen(rhs).(type) {
+	case *ast.CompositeLit:
+		return
+	case *ast.Ident:
+		if pass.TypesInfo.ObjectOf(fresh) == types.Universe.Lookup("nil") {
+			return
+		}
+	case *ast.CallExpr:
+		if isBuiltin(pass, fresh.Fun, "make") || isFunc(pass, fresh.Fun, "slices.Collect") {
+			return
+		}
+		if isFunc(pass, fresh.Fun, "slices.AppendSeq") && len(fresh.Args) > 0 && freshBase(pass, fresh.Args[0], obj) {
+			return
+		}
+		if isBuiltin(pass, fresh.Fun, "append") && len(fresh.Args) > 0 && identDecl(pass, fresh.Args[0]) == obj {
+			return
+		}
+	}
+	mark(obj, ident.Pos())
+}
+
+// freshBase reports whether expr is a make call or the variable obj itself.
+func freshBase(pass *analysis.Pass, expr ast.Expr, obj types.Object) bool {
+	if made, ok := ast.Unparen(expr).(*ast.CallExpr); ok && isBuiltin(pass, made.Fun, "make") {
+		return true
+	}
+	return identDecl(pass, expr) == obj
+}
+
+func isSliceType(t types.Type) bool {
+	_, ok := t.Underlying().(*types.Slice)
+	return ok
+}
+
+// copiesHeader reports whether the identifier at the top of stack uses the
+// slice obj in a way that can hand its backing array to another name.
+func copiesHeader(pass *analysis.Pass, stack []ast.Node, obj types.Object) bool {
+	if len(stack) < 2 {
+		return false
+	}
+	ident := stack[len(stack)-1]
+	switch parent := stack[len(stack)-2].(type) {
+	case *ast.AssignStmt:
+		return !slices.Contains(parent.Lhs, ident.(ast.Expr))
+	case *ast.ValueSpec:
+		return !slices.Contains(parent.Names, ident.(*ast.Ident))
+	case *ast.IndexExpr:
+		return parent.X != ident
+	case *ast.RangeStmt:
+		return parent.X != ident
+	case *ast.CallExpr:
+		if isBuiltin(pass, parent.Fun, "len") || isBuiltin(pass, parent.Fun, "cap") {
+			return false
+		}
+		extends := isBuiltin(pass, parent.Fun, "append") || isFunc(pass, parent.Fun, "slices.AppendSeq")
+		if extends && len(parent.Args) > 0 && parent.Args[0] == ident {
+			return !appendsToItself(pass, stack, parent, obj)
+		}
+	}
+	return true
+}
+
+// appendsToItself reports whether call is the right side of `obj = call`.
+func appendsToItself(pass *analysis.Pass, stack []ast.Node, call *ast.CallExpr, obj types.Object) bool {
+	if len(stack) < 3 {
+		return false
+	}
+	assign, ok := stack[len(stack)-3].(*ast.AssignStmt)
+	return ok && len(assign.Lhs) == 1 && len(assign.Rhs) == 1 && assign.Rhs[0] == ast.Expr(call) &&
+		identDecl(pass, assign.Lhs[0]) == obj
 }
 
 // compareElements reports whether less is func(i, j int) bool { return

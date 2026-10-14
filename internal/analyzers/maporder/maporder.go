@@ -5,17 +5,24 @@
 // allowlist of order-insensitive shapes (allowlist.go), with these
 // additions recorded in ADR-0021:
 //
-//  1. Collect-then-sort: a map loop that only appends into a local slice
-//     passes when the slice's first use after the loop is sort.Strings,
-//     sort.Ints or slices.Sort on string or integer elements.
+//  1. Collect-then-sort: a map loop that only appends into a function-local
+//     slice, or fills it by position (s[i] = e; i++), passes when the
+//     slice's first use after the loop is a sort that fixes its order:
+//     sort.Strings, sort.Ints, slices.Sort, or sort.Slice comparing the
+//     slice's own elements. A slice another name can read before the sort
+//     (address taken, captured, sliced, copied) never passes.
 //  2. Full coverage: slices.SortFunc and slices.SortStableFunc after such a
 //     loop, and slices.SortedFunc over maps.Keys or maps.Values, pass when
 //     the comparator compares every leaf of the element (coverage.go).
 //  3. Every maps.Keys, maps.Values and maps.All result is checked; one that
-//     reaches anything but a sort that fixes its order, a map, or a range is
+//     reaches anything but a sort that fixes its order, a map, a range, or
+//     slices.Collect or slices.AppendSeq into a local that is then sorted, is
 //     a finding (iterators.go).
 //  4. No read in an allowlisted loop body may see state an earlier visit
-//     wrote, so a counter can no longer pick which entries are handled.
+//     wrote, so a counter cannot pick which entries are handled.
+//  5. A body that can break or return must change nothing that outlives one
+//     visit, and each exit must carry every constant outcome the body can
+//     set, because which entries a break skips depends on visit order.
 //
 // The allowlist is closed and versioned with this analyzer: extending it to
 // a new provably-safe shape is an analyzer change with its own corpus case,
@@ -176,8 +183,8 @@ func classifyMessage(pass *analysis.Pass, loop *ast.RangeStmt, site *sortSite) s
 	if site != nil && !site.bodyImpure {
 		return msgSortTies
 	}
-	if allowed, early := walkBody(pass, loop, nil); allowed {
-		if early {
+	if allowed, unstable := walkBody(pass, loop, nil); allowed {
+		if unstable {
 			return msgEarlyExit
 		}
 		return msgCarried

@@ -1,7 +1,8 @@
 // Known false findings: each loop's output does not depend on map order, but
-// the shape is outside the allowlist, so TS-T02 fires. Trying the extension
-// that would clear each one found none that does not accept a leaking
-// shape or need a proof about the data.
+// the shape is outside the allowlist, so TS-T02 fires. Clearing these needs a
+// proof about the data (a key that is unique, an index that is distinct) or
+// alias analysis of a field. The module-cache scan found no site that a
+// comparator held in a variable or a sort.Sort would clear.
 package fixture
 
 import "sort"
