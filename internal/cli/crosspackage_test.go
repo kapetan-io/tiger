@@ -10,11 +10,11 @@ import (
 
 // TestCheckLedgerExampleIsClean covers acceptance criterion 1's baseline.
 //
-// Goal: examples/ledger — every invariant asserted in production and
+// Goal: patterns/ledger — every invariant asserted in production and
 // violated by a test — exits 0 with no output once the whole-program
 // rules register.
 func TestCheckLedgerExampleIsClean(t *testing.T) {
-	got := run(t, "check", "-C", "../../examples/ledger", "./...")
+	got := run(t, "check", "-C", "../../patterns/ledger", "./...")
 	assert.Equal(t, cli.ExitClean, got.code)
 	assert.Empty(t, got.stdout)
 	assert.Empty(t, got.stderr)
@@ -33,7 +33,7 @@ func TestCheckUnassertedInvariantFailsA07(t *testing.T) {
 	assert.Equal(t, "unasserted/inv/inv.go:9:2: TS-A07: invariant inv.HeaderSize is declared "+
 		"but no function outside _test.go files asserts it — add "+
 		"assert.Invariant(inv.HeaderSize, ...) where the property is established, or delete "+
-		"the declaration\n"+
+		"the declaration — see `tiger pattern ledger`\n"+
 		"tiger: 1 blocking\n", got.stdout)
 }
 
@@ -58,7 +58,7 @@ func TestCheckUnviolatedInvariantFailsA09(t *testing.T) {
 	assert.Empty(t, got.stderr)
 	assert.Equal(t, "unviolated/inv/inv.go:8:2: TS-A09: no test violates invariant "+
 		"inv.HeaderChecksum — add a _test.go function that calls "+
-		"assert.Violates(inv.HeaderChecksum, func() { ... })\n"+
+		"assert.Violates(inv.HeaderChecksum, func() { ... }) — see `tiger pattern ledger`\n"+
 		"tiger: 1 blocking\n", got.stdout)
 }
 

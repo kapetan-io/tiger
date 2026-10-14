@@ -9,7 +9,7 @@ import (
 	"hash/crc32"
 
 	"github.com/kapetan-io/tiger/assert"
-	"github.com/kapetan-io/tiger/examples/ledger/inv"
+	"github.com/kapetan-io/tiger/patterns/ledger/inv"
 )
 
 // HeaderSizeBytes = 4 checksum + 4 length + 4 sequence.

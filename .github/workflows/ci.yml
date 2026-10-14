@@ -19,6 +19,29 @@ jobs:
       - run: go vet ./...
       - run: go test ./...
 
+  # ADR-0025: a pattern is only worth shipping while it stays true. Every
+  # pattern passes tiger check with zero findings and its tests under -race.
+  # The patterns' own go test run is separate from the repository-wide one so
+  # a failing pattern names itself.
+  patterns:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go build -o bin/tiger ./cmd/tiger
+      - name: every pattern passes tiger check with zero findings
+        run: |
+          ./bin/tiger check ./patterns/... > patterns.txt 2>&1 || true
+          cat patterns.txt
+          test ! -s patterns.txt
+      - run: go test -race -count=1 ./patterns/...
+      - name: the binary prints a pattern
+        run: |
+          ./bin/tiger pattern shutdown-loop | grep -q '^## Tests: '
+          ./bin/tiger pattern --rule TS-C02 | grep -q shutdown-loop
+
   # Stage 0 of the adoption ladder, applied to tiger itself.
   lint:
     runs-on: ubuntu-latest
@@ -166,3 +189,16 @@ jobs:
           ! grep -q "TS-A09" findings.txt
           grep -q "outside/outside.go.*TS-N14" findings.txt
           ! grep -q "scoped/scoped.go" findings.txt
+      # Releases ship the tiger binary next to the plugin, because the patterns
+      # live in the binary and a plugin-only adopter has no other way to read one.
+      - name: the plugin's pattern pointer names a pattern the shipped tiger prints
+        run: |
+          go build -o bin/tiger ./cmd/tiger
+          grep -q 'TS-S01.*see `tiger pattern capped-worklist`' testdata/plugin-smoke/findings.txt
+          ./bin/tiger pattern capped-worklist | grep -q '^## Code: '
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tiger-and-plugin
+          path: |
+            bin/tiger
+            bin/tiger-gcl
