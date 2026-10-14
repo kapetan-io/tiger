@@ -61,5 +61,7 @@ func List(rows *bufio.Scanner, namespace string, limit int) ([]string, error) {
 	if scanned == scanMax && rows.Scan() {
 		return names, ErrScanLimit
 	}
-	return names, nil
+	// Scan is false for a read error as well as the end, so a failed read
+	// must not pass as a short page.
+	return names, rows.Err()
 }

@@ -25,21 +25,21 @@ func clampPage(requested int) int {
 }
 
 // countRows counts at most limit rows from a stream.
-func countRows(scanner *bufio.Scanner, limit int) int {
+func countRows(scanner *bufio.Scanner, limit int) (int, error) {
 	count := 0
 	for ; count < limit && scanner.Scan(); count++ {
 	}
-	return count
+	return count, scanner.Err()
 }
 
 // ListPage clamps the client's limit where the request enters, then passes
 // only the clamped value on.
-func ListPage(scanner *bufio.Scanner, req ListRequest) int {
+func ListPage(scanner *bufio.Scanner, req ListRequest) (int, error) {
 	return countRows(scanner, clampPage(int(req.Limit)))
 }
 
 // ListPageHuge clamps against pageHuge. Tiger sees a clamp against a declared
 // maximum and accepts it, but the maximum does not bound the loop in time.
-func ListPageHuge(scanner *bufio.Scanner, req ListRequest) int {
+func ListPageHuge(scanner *bufio.Scanner, req ListRequest) (int, error) {
 	return countRows(scanner, min(int(req.Limit), pageHuge))
 }

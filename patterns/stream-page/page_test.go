@@ -2,6 +2,7 @@ package streampage_test
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
 	"testing"
@@ -67,7 +68,8 @@ func TestListPageEndsAtTheLimitOnAnEndlessTable(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			last := &fakeTable{}
-			page := streampage.ListPage(open(t, endless, last), "", test.requested)
+			page, err := streampage.ListPage(open(t, endless, last), "", test.requested)
+			require.NoError(t, err)
 			assert.Len(t, page.Names, test.wantRows)
 			assert.Equal(t, test.wantRows, last.sent)
 		})
@@ -83,7 +85,8 @@ func TestListPageWalksTheWholeTable(t *testing.T) {
 	var seen []string
 	after := ""
 	for range 4 {
-		page := streampage.ListPage(open(t, total, &fakeTable{}), after, 10)
+		page, err := streampage.ListPage(open(t, total, &fakeTable{}), after, 10)
+		require.NoError(t, err)
 		seen = append(seen, page.Names...)
 		if page.After == "" {
 			break
@@ -104,7 +107,25 @@ func TestListFromStartRepeatsThePageForever(t *testing.T) {
 	second := streampage.ListFromStart(open(t, 25, &fakeTable{}), 10)
 	assert.Equal(t, first, second)
 
-	page1 := streampage.ListPage(open(t, 25, &fakeTable{}), "", 10)
-	page2 := streampage.ListPage(open(t, 25, &fakeTable{}), page1.After, 10)
+	page1, err := streampage.ListPage(open(t, 25, &fakeTable{}), "", 10)
+	require.NoError(t, err)
+	page2, err := streampage.ListPage(open(t, 25, &fakeTable{}), page1.After, 10)
+	require.NoError(t, err)
 	assert.NotEqual(t, page1.Names, page2.Names)
+}
+
+var errRead = errors.New("read failed")
+
+// failingTable fails every read.
+type failingTable struct{}
+
+func (failingTable) Read([]byte) (int, error) { return 0, errRead }
+
+// TestListPageReportsAFailedRead pages a table whose read fails.
+//
+// Goal: a read error comes back as an error, never as an empty last page.
+func TestListPageReportsAFailedRead(t *testing.T) {
+	failing := func(string, int) *bufio.Scanner { return bufio.NewScanner(failingTable{}) }
+	_, err := streampage.ListPage(failing, "", 10)
+	require.ErrorIs(t, err, errRead)
 }

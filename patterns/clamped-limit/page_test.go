@@ -2,6 +2,7 @@ package clampedlimit_test
 
 import (
 	"bufio"
+	"errors"
 	"io"
 	"math"
 	"strings"
@@ -75,7 +76,9 @@ func TestListPageClampsTheLimit(t *testing.T) {
 			defer close(stop)
 			scanner := bufio.NewScanner(endlessRows{stop: stop})
 			req := clampedlimit.ListRequest{Limit: test.limit}
-			assert.Equal(t, test.want, clampedlimit.ListPage(scanner, req))
+			got, err := clampedlimit.ListPage(scanner, req)
+			require.NoError(t, err)
+			assert.Equal(t, test.want, got)
 		})
 	}
 }
@@ -85,7 +88,9 @@ func TestListPageClampsTheLimit(t *testing.T) {
 // Goal: ListPage returns the rows that exist when the stream ends before the limit.
 func TestListPageStopsWhenTheStreamEnds(t *testing.T) {
 	scanner := bufio.NewScanner(strings.NewReader("a\nb\nc\n"))
-	assert.Equal(t, 3, clampedlimit.ListPage(scanner, clampedlimit.ListRequest{Limit: 500}))
+	got, err := clampedlimit.ListPage(scanner, clampedlimit.ListRequest{Limit: 500})
+	require.NoError(t, err)
+	assert.Equal(t, 3, got)
 }
 
 // TestListPageHugeNeverFinishes sends a large limit that is below the huge
@@ -98,9 +103,27 @@ func TestListPageHugeNeverFinishes(t *testing.T) {
 	defer close(stop)
 	req := clampedlimit.ListRequest{Limit: math.MaxInt32}
 	assert.False(t, finishes(func() {
-		clampedlimit.ListPageHuge(bufio.NewScanner(endlessRows{stop: stop}), req)
+		_, err := clampedlimit.ListPageHuge(bufio.NewScanner(endlessRows{stop: stop}), req)
+		assert.NoError(t, err)
 	}))
 	require.True(t, finishes(func() {
-		clampedlimit.ListPage(bufio.NewScanner(endlessRows{stop: stop}), req)
+		_, err := clampedlimit.ListPage(bufio.NewScanner(endlessRows{stop: stop}), req)
+		assert.NoError(t, err)
 	}))
 }
+
+// TestListPageReportsAFailedRead reads a stream that fails after one row.
+//
+// Goal: a read error comes back as an error and never as a short page.
+func TestListPageReportsAFailedRead(t *testing.T) {
+	scanner := bufio.NewScanner(io.MultiReader(strings.NewReader("a\n"), failingReader{}))
+	_, err := clampedlimit.ListPage(scanner, clampedlimit.ListRequest{Limit: 10})
+	require.ErrorIs(t, err, errRead)
+}
+
+var errRead = errors.New("read failed")
+
+// failingReader fails every read.
+type failingReader struct{}
+
+func (failingReader) Read([]byte) (int, error) { return 0, errRead }

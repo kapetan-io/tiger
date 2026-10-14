@@ -2,6 +2,7 @@ package filteredpage_test
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -129,4 +130,19 @@ func TestList(t *testing.T) {
 			assert.Equal(t, test.wantNext, following(rows))
 		})
 	}
+}
+
+var errRead = errors.New("read failed")
+
+// failingRows fails every read.
+type failingRows struct{}
+
+func (failingRows) Read([]byte) (int, error) { return 0, errRead }
+
+// TestListReportsAFailedRead lists a table whose read fails.
+//
+// Goal: a read error comes back as an error, never as a short page.
+func TestListReportsAFailedRead(t *testing.T) {
+	_, err := filteredpage.List(bufio.NewScanner(failingRows{}), "team", 10)
+	require.ErrorIs(t, err, errRead)
 }

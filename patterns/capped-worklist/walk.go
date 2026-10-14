@@ -27,6 +27,11 @@ func Walk(root *Node) (int, error) {
 	stack := []*Node{root}
 	i := 0
 	for ; i < len(stack) && i < nodesMax; i++ {
+		// Check before appending, so one node with a huge edge list cannot
+		// allocate past the cap.
+		if len(stack)+len(stack[i].Next) > nodesMax {
+			return 0, ErrWalkTooLarge
+		}
 		stack = append(stack, stack[i].Next...)
 	}
 	// A graph of exactly nodesMax nodes ends here too, with nothing left to visit.

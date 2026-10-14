@@ -85,7 +85,7 @@ func Find(all []Pattern, name string) (Pattern, bool) {
 	return Pattern{}, false
 }
 
-// Behind returns the patterns that back the rule code, ordered by name.
+// Behind returns the patterns that back the rule code, in the order of all.
 func Behind(all []Pattern, code string) []Pattern {
 	found := []Pattern{}
 	for _, each := range all {

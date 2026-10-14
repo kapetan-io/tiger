@@ -167,6 +167,12 @@ func call(
 	case result := <-request.Reply:
 		return result, nil
 	case <-done:
+		// done can win the select against a reply sent just before it closed.
+		select {
+		case result := <-request.Reply:
+			return result, nil
+		default:
+		}
 		return 0, ErrClosed
 	case <-ctx.Done():
 		return 0, ctx.Err()

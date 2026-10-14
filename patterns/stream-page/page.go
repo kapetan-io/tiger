@@ -33,17 +33,22 @@ func clampPage(requested int) int {
 // ListPage restates the clamped limit in the loop header, so the loop ends at
 // the limit whatever the stream does, and returns the row the next call
 // resumes after, so a client can walk the whole listing without a rescan.
-func ListPage(open Opener, after string, requested int) Page {
+func ListPage(open Opener, after string, requested int) (Page, error) {
 	limit := clampPage(requested)
 	lines := open(after, limit)
 	var names []string
 	for count := 0; count < limit && lines.Scan(); count++ {
 		names = append(names, lines.Text())
 	}
-	if len(names) < limit {
-		return Page{Names: names}
+	// Scan is false for a read error as well as the end, and a failed read
+	// must not pass as the last page.
+	if err := lines.Err(); err != nil {
+		return Page{}, err
 	}
-	return Page{Names: names, After: names[len(names)-1]}
+	if len(names) < limit {
+		return Page{Names: names}, nil
+	}
+	return Page{Names: names, After: names[len(names)-1]}, nil
 }
 
 // ListFromStart has the same bounded loop and no resume point. Tiger sees a
