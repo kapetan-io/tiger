@@ -111,8 +111,9 @@ changes to what the rule accepts and refuses:
   when an exit skips a constant outcome the body sets on another entry.
 - Parentheses around an iterator call and a label on the map loop change nothing.
 
-The module cache scan against the rule before ADR-0021's allowlist work found 53 false findings and 26
-real leaks among the sites the stricter allowlist adds (4 undecided), after these changes. The false
+A scan of 970 module-cache modules, comparing against the rule as it stood before ENG-340, finds 84
+sites that fire only now. A read of each found 26 real leaks, 54 false findings and 4 it could not
+decide. The false
 findings need a proof about the data and are recorded as known false findings in the rule
 reference. A comparator held in a variable and `sort.Sort` would clear none of them, so neither
 was added.
