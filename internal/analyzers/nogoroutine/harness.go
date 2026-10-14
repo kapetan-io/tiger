@@ -85,10 +85,17 @@ func mainUsesGoleak(file *ast.File) bool {
 }
 
 // refers reports whether body calls VerifyTestMain from the package imported
-// as local. Naming an option or any other goleak function checks nothing.
+// as local. Naming an option or any other goleak function checks nothing, and
+// neither does a call inside an `if false` body, which never runs.
 func refers(body *ast.BlockStmt, local string) bool {
 	found := false
 	ast.Inspect(body, func(node ast.Node) bool {
+		if branch, ok := node.(*ast.IfStmt); ok && isFalse(branch.Cond) {
+			if branch.Else != nil && refers(&ast.BlockStmt{List: []ast.Stmt{branch.Else}}, local) {
+				found = true
+			}
+			return false
+		}
 		call, ok := node.(*ast.CallExpr)
 		if !ok {
 			return !found
@@ -103,4 +110,9 @@ func refers(body *ast.BlockStmt, local string) bool {
 		return !found
 	})
 	return found
+}
+
+func isFalse(cond ast.Expr) bool {
+	ident, ok := cond.(*ast.Ident)
+	return ok && ident.Name == "false"
 }
