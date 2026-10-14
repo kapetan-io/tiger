@@ -24,7 +24,7 @@ func (t *tracer) clamped(expr ast.Expr) bool {
 	}
 	want := t.s.identity(expr)
 	path, _ := astutil.PathEnclosingInterval(file, expr.Pos(), expr.End())
-	if !insideLiteral(path) && t.rewrittenByClosure(expr) {
+	if t.rewrittenByClosure(expr, literalsAround(path)) {
 		return false
 	}
 	for _, enclosing := range path {
@@ -44,22 +44,23 @@ func (t *tracer) clamped(expr ast.Expr) bool {
 	return false
 }
 
-// insideLiteral reports whether the path from an expression up passes through
-// a function literal. A clamp written in the literal runs in order with its
-// use, so the literal's own writes do not undo it.
-func insideLiteral(path []ast.Node) bool {
+// literalsAround returns the function literals the path from an expression up
+// passes through. A clamp written in one runs in order with its use, so that
+// literal's own writes do not undo it.
+func literalsAround(path []ast.Node) []ast.Node {
+	var literals []ast.Node
 	for _, node := range path {
 		if _, ok := node.(*ast.FuncLit); ok {
-			return true
+			literals = append(literals, node)
 		}
 	}
-	return false
+	return literals
 }
 
 // rewrittenByClosure reports whether a function literal writes the variable or
 // any field along the chain expr names. The literal can run after the clamp,
 // so the clamp no longer bounds the value at the use.
-func (t *tracer) rewrittenByClosure(expr ast.Expr) bool {
+func (t *tracer) rewrittenByClosure(expr ast.Expr, except []ast.Node) bool {
 	expr = t.s.withoutConversions(expr)
 	for steps := 0; steps < unwrapMax; steps++ {
 		switch e := expr.(type) {
@@ -67,14 +68,14 @@ func (t *tracer) rewrittenByClosure(expr ast.Expr) bool {
 			selection := t.s.pass.TypesInfo.Selections[e]
 			if selection != nil && selection.Kind() == types.FieldVal {
 				field, ok := selection.Obj().(*types.Var)
-				if ok && t.fn.scope.ClosureWritesField(field) {
+				if ok && t.fn.scope.ClosureWritesField(field, except...) {
 					return true
 				}
 			}
 			expr = ast.Unparen(e.X)
 		case *ast.Ident:
 			v, ok := t.s.pass.TypesInfo.ObjectOf(e).(*types.Var)
-			return ok && t.fn.scope.ClosureWrites(v)
+			return ok && t.fn.scope.ClosureWrites(v, except...)
 		default:
 			return false
 		}

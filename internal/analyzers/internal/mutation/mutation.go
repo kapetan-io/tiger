@@ -18,6 +18,7 @@ import (
 	"go/token"
 	"go/types"
 	"math/big"
+	"slices"
 	"strings"
 
 	"golang.org/x/tools/go/analysis"
@@ -106,17 +107,19 @@ func (s Scope) Escapes(v *types.Var) bool {
 		s.ClosureWrites(v)
 }
 
-// ClosureWrites reports whether a function literal in scope writes v. A
-// literal can run at any point, so its writes cannot be ordered against the
-// statements around it.
-func (s Scope) ClosureWrites(v *types.Var) bool {
-	return s.closureWrites(func(expr ast.Expr) bool { return s.IsVar(expr, v) }, v.Pos())
+// ClosureWrites reports whether a function literal in scope writes v, leaving
+// out the literals in except. A literal can run at any point, so its writes
+// cannot be ordered against the statements around it.
+func (s Scope) ClosureWrites(v *types.Var, except ...ast.Node) bool {
+	return s.closureWrites(func(expr ast.Expr) bool { return s.IsVar(expr, v) }, v.Pos(), except)
 }
 
 // ClosureWritesField reports whether a function literal in scope writes the
-// struct field, whatever value holds the struct.
-func (s Scope) ClosureWritesField(field *types.Var) bool {
-	return s.closureWrites(func(expr ast.Expr) bool { return s.isField(expr, field) }, token.NoPos)
+// struct field, whatever value holds the struct, leaving out the literals in
+// except.
+func (s Scope) ClosureWritesField(field *types.Var, except ...ast.Node) bool {
+	return s.closureWrites(func(expr ast.Expr) bool { return s.isField(expr, field) },
+		token.NoPos, except)
 }
 
 // FieldEscapes reports whether something outside the loop body could write
@@ -318,7 +321,9 @@ func (s Scope) pointerMethod(selector *ast.SelectorExpr) bool {
 // target satisfying match. A literal that declares the target holds the
 // target's own writes, so it counts only for a target declared outside it;
 // token.NoPos says the target is declared nowhere in scope, as a field is.
-func (s Scope) closureWrites(match func(ast.Expr) bool, declared token.Pos) bool {
+func (s Scope) closureWrites(
+	match func(ast.Expr) bool, declared token.Pos, except []ast.Node,
+) bool {
 	found := false
 	ast.Inspect(s.root, func(n ast.Node) bool {
 		literal, ok := n.(*ast.FuncLit)
@@ -327,7 +332,8 @@ func (s Scope) closureWrites(match func(ast.Expr) bool, declared token.Pos) bool
 		}
 		ownsTarget := declared != token.NoPos &&
 			literal.Pos() <= declared && declared < literal.End()
-		if !ownsTarget && len(s.collect(literal.Body, match, CountInserts)) > 0 {
+		if !ownsTarget && !slices.Contains(except, ast.Node(literal)) &&
+			len(s.collect(literal.Body, match, CountInserts)) > 0 {
 			found = true
 		}
 		return !found

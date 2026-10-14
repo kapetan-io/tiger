@@ -33,3 +33,13 @@ func SpinFieldClampedClosureWritesOtherField(tuning, later Tuning, done func() b
 	note()
 	return lib.Spin(done, tuning.Spins)
 }
+
+// SpinClampedInsideTheLiteral clamps and uses the setting inside the one
+// literal that writes it, in order.
+func SpinClampedInsideTheLiteral(spins int, done func() bool) error {
+	run := func() error {
+		spins = min(spins, spinsMax)
+		return lib.Spin(done, spins)
+	}
+	return run()
+}

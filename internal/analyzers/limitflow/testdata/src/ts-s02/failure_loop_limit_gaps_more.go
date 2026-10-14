@@ -33,3 +33,14 @@ func SpinSetHugeInElse(tuning Tuning, done func() bool) error {
 	}
 	return lib.Spin(done, spins)
 }
+
+// SpinPassedFromLiteralAfterOtherLiteral clamps the setting outside both
+// literals, and the second literal replaces it before the first uses it.
+func SpinPassedFromLiteralAfterOtherLiteral(tuning, later Tuning, done func() bool) error {
+	spins := tuning.Spins
+	spins = min(spins, spinsMax)
+	use := func() error { return lib.Spin(done, spins) } // want `TS-S02: this value reaches a loop limit with no upper bound where it enters`
+	replace := func() { spins = later.Spins }
+	replace()
+	return use()
+}
