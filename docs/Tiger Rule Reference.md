@@ -1461,7 +1461,7 @@ A finding means the loop's shape is outside the allowlist, not that the output v
 the proof needs a fact about the data or about who else holds the slice. A `sort.Slice` that
 compares one field of a struct that is unique only because it came from a map key. Writes at an
 index that is distinct by the caller's invariant (`out[v] = k`). A slice held in a struct field or
-behind a pointer. A package-level slice sorted right after the loop. A collect whose sort happens in
+behind a pointer. A package-level slice sorted right after the loop. A delete of the current entry through a field of the value (`delete(m, e.Key)`). A collect whose sort happens in
 a helper. A labeled `continue` that targets the map loop, a `break` inside a nested `switch` or
 `for`, and a position counter that steps with `i += 1` or `i--`. Rewriting the loop to range over
 `slices.Sorted(maps.Keys(m))` clears each.

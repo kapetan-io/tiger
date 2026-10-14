@@ -44,3 +44,13 @@ func permute(m map[string]int, out []string) {
 		out[v] = k
 	}
 }
+
+type keyedEntry struct{ Key string }
+
+// The value carries the key it is stored under, so this deletes only the
+// current entry, but the rule only knows the range key.
+func dropByValueKey(m map[string]*keyedEntry) {
+	for _, e := range m { // want `TS-T02`
+		delete(m, e.Key)
+	}
+}
