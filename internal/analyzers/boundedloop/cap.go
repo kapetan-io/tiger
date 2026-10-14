@@ -147,8 +147,10 @@ func (c *checker) pageSize(term counter.Term, others []ast.Expr) bool {
 	return true
 }
 
-// drainsOutsideStream reports whether expr is a boolean method call on a
+// drainsOutsideStream reports whether expr is a call to Next or Scan on a
 // type declared outside the module, such as rows.Next() or scanner.Scan().
+// Other boolean methods, such as a clock check or a pattern match, say
+// nothing about a stream running dry.
 func (c *checker) drainsOutsideStream(expr ast.Expr) bool {
 	call, ok := expr.(*ast.CallExpr)
 	if !ok {
@@ -162,9 +164,16 @@ func (c *checker) drainsOutsideStream(expr ast.Expr) bool {
 	if selection == nil || selection.Kind() != types.MethodVal {
 		return false
 	}
+	if !streamMethods[selector.Sel.Name] {
+		return false
+	}
 	named := mutation.DerefNamed(selection.Recv())
 	return named != nil && c.scope.External(named.Obj().Pkg())
 }
+
+// streamMethods are the method names that advance a stream and report whether
+// it had another item.
+var streamMethods = map[string]bool{"Next": true, "Scan": true}
 
 // loopBreaks returns the breaks in the loop body that end this loop: an
 // unlabeled break outside any nested loop, switch or select, or a labeled

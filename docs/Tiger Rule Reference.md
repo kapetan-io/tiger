@@ -266,7 +266,8 @@ panic statement after the loop counts too.
 
 A counter cap is a page size, and needs no report, when its limit is not a constant and
 every other way out of the loop drains a stream whose type is declared outside the module
-(`rows.Next()`, `scanner.Scan()`). The drain can sit in the loop condition or in the body as an
+(`rows.Next()`, `scanner.Scan()`), where the method is named `Next` or `Scan`. A clock check
+or a pattern match does not count. The drain can sit in the loop condition or in the body as an
 `if !scanner.Scan() { break }` that does nothing else; any other `break` makes the cap a
 safety cap. Reaching a page size means the page is full.
 
@@ -360,6 +361,12 @@ that sits in another function and rejects there, rather than in the function tha
 passes the value, is not seen, so the call is flagged. A clamp caps a value's top only, so
 `min(x, max) * 2`, or the sum of two clamped values, wraps to a large positive count when `x`
 is near the bottom of its type. Closing that needs a lower bound on every clamped value.
+
+A clamp does not count when a function literal in the function writes the clamped variable
+or field chain, because the literal can run again after the clamp. The check does not track
+the order literals run in, so compliant code is flagged when a literal writes the limit
+before the clamp, makes the clamp itself, or holds both the clamp and the use. A literal
+that writes the same field on a different variable does not count against the clamp.
 
 <!-- rule: TS-S03 -->
 ### TS-S03 — an unbounded event loop selects on ctx.Done()

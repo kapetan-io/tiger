@@ -34,12 +34,11 @@ func SpinFieldClampedClosureWritesOtherField(tuning, later Tuning, done func() b
 	return lib.Spin(done, tuning.Spins)
 }
 
-// SpinClampedInsideTheLiteral clamps and uses the setting inside the one
-// literal that writes it, in order.
-func SpinClampedInsideTheLiteral(spins int, done func() bool) error {
-	run := func() error {
-		spins = min(spins, spinsMax)
-		return lib.Spin(done, spins)
-	}
-	return run()
+// SpinFieldClampedClosureWritesSameFieldElsewhere clamps one struct's field
+// while a function literal writes the same field of another struct.
+func SpinFieldClampedClosureWritesSameFieldElsewhere(tuning, other *Tuning, done func() bool) error {
+	note := func() { other.Spins = 3 }
+	note()
+	tuning.Spins = min(tuning.Spins, spinsMax)
+	return lib.Spin(done, tuning.Spins)
 }

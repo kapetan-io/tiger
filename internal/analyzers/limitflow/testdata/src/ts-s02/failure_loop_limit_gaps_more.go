@@ -44,3 +44,16 @@ func SpinPassedFromLiteralAfterOtherLiteral(tuning, later Tuning, done func() bo
 	replace()
 	return use()
 }
+
+// SpinPassedThenRewrittenBySecondCall uses the setting in a literal that
+// rewrites it afterwards, so the second call spins on the rewritten value.
+func SpinPassedThenRewrittenBySecondCall(tuning, later Tuning, done func() bool) error {
+	spins := min(tuning.Spins, spinsMax)
+	run := func() error {
+		err := lib.Spin(done, spins) // want `TS-S02: this value reaches a loop limit with no upper bound where it enters`
+		spins = later.Spins
+		return err
+	}
+	_ = run()
+	return run()
+}

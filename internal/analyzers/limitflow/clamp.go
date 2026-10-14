@@ -24,7 +24,7 @@ func (t *tracer) clamped(expr ast.Expr) bool {
 	}
 	want := t.s.identity(expr)
 	path, _ := astutil.PathEnclosingInterval(file, expr.Pos(), expr.End())
-	if t.rewrittenByClosure(expr, literalsAround(path)) {
+	if t.rewrittenByClosure(expr) {
 		return false
 	}
 	for _, enclosing := range path {
@@ -44,41 +44,29 @@ func (t *tracer) clamped(expr ast.Expr) bool {
 	return false
 }
 
-// literalsAround returns the function literals the path from an expression up
-// passes through. A clamp written in one runs in order with its use, so that
-// literal's own writes do not undo it.
-func literalsAround(path []ast.Node) []ast.Node {
-	var literals []ast.Node
-	for _, node := range path {
-		if _, ok := node.(*ast.FuncLit); ok {
-			literals = append(literals, node)
-		}
-	}
-	return literals
-}
-
-// rewrittenByClosure reports whether a function literal writes the variable or
-// any field along the chain expr names. The literal can run after the clamp,
-// so the clamp no longer bounds the value at the use.
-func (t *tracer) rewrittenByClosure(expr ast.Expr, except []ast.Node) bool {
+// rewrittenByClosure reports whether a function literal writes the variable
+// or any field along the chain expr names, on the same variable the use reads.
+// The literal can run after the clamp, so the clamp no longer bounds the value
+// at the use. Order is not tracked, so a literal that runs before the clamp
+// counts too.
+func (t *tracer) rewrittenByClosure(expr ast.Expr) bool {
 	expr = t.s.withoutConversions(expr)
 	for steps := 0; steps < unwrapMax; steps++ {
-		switch e := expr.(type) {
-		case *ast.SelectorExpr:
-			selection := t.s.pass.TypesInfo.Selections[e]
-			if selection != nil && selection.Kind() == types.FieldVal {
-				field, ok := selection.Obj().(*types.Var)
-				if ok && t.fn.scope.ClosureWritesField(field, except...) {
-					return true
-				}
-			}
-			expr = ast.Unparen(e.X)
-		case *ast.Ident:
-			v, ok := t.s.pass.TypesInfo.ObjectOf(e).(*types.Var)
-			return ok && t.fn.scope.ClosureWrites(v, except...)
-		default:
+		level := t.s.identity(expr)
+		declared := token.NoPos
+		if ident, isIdent := expr.(*ast.Ident); isIdent {
+			declared = t.s.pass.TypesInfo.ObjectOf(ident).Pos()
+		}
+		if t.fn.scope.ClosureWrites(func(target ast.Expr) bool {
+			return t.s.identity(target) == level
+		}, declared) {
+			return true
+		}
+		selector, isSelector := expr.(*ast.SelectorExpr)
+		if !isSelector {
 			return false
 		}
+		expr = ast.Unparen(selector.X)
 	}
 	assert.Fail("rewrittenByClosure: more than unwrapMax nested selectors")
 	return false
