@@ -1,4 +1,4 @@
-// Package unasserted mirrors examples/ledger's header pair with one deliberate
+// Package unasserted mirrors patterns/ledger's header pair with one deliberate
 // change to what it asserts.
 package unasserted
 

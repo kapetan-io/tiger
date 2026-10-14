@@ -1,4 +1,4 @@
-// Package unviolated mirrors examples/ledger's header pair with one deliberate
+// Package unviolated mirrors patterns/ledger's header pair with one deliberate
 // change to what it asserts.
 package unviolated
 

@@ -3,13 +3,14 @@ package maporder
 import (
 	"go/ast"
 	"go/types"
+	"slices"
 
 	"golang.org/x/tools/go/analysis"
 )
 
-const msgIterator = "TS-T02: this iterator yields map entries in a different order every run, " +
-	"and nothing here fixes the order — pass it straight to slices.Sorted, or to " +
-	"slices.SortedFunc with a comparator that compares every field of the element with cmp.Compare"
+const msgIterator = "TS-T02: this iterator yields map entries in a different order every run " +
+	"— pass it straight to slices.Sorted, or to slices.SortedFunc with a comparator that " +
+	"compares every field with cmp.Compare"
 
 // mapIterator returns the element type a maps.Keys or maps.Values call over
 // a map yields (nil for maps.All), and whether call is such an iterator.
@@ -40,24 +41,32 @@ func mapIterator(pass *analysis.Pass, call *ast.CallExpr) (types.Type, bool) {
 // map whose result reaches anything but a sort that fixes its order, a map
 // (maps.Collect, maps.Insert), or a range statement, which checkRange
 // judges as a map range.
-func checkIterators(pass *analysis.Pass, file *ast.File) {
+func checkIterators(pass *analysis.Pass, file *ast.File, facts fileFacts) {
 	var stack []ast.Node
 	ast.Inspect(file, func(node ast.Node) bool {
 		if node == nil {
 			stack = stack[:len(stack)-1]
 			return true
 		}
-		var parent ast.Node
-		if len(stack) > 0 {
-			parent = stack[len(stack)-1]
-		}
 		stack = append(stack, node)
 		call, ok := node.(*ast.CallExpr)
 		if !ok {
 			return true
 		}
+		// Parentheses change nothing about who consumes the iterator.
+		var use ast.Expr = call
+		var parent ast.Node
+		for _, ancestor := range slices.Backward(stack[:len(stack)-1]) {
+			parent = ancestor
+			paren, ok := parent.(*ast.ParenExpr)
+			if !ok {
+				break
+			}
+			use = paren
+		}
 		elem, ok := mapIterator(pass, call)
-		if !ok || iteratorFixed(pass, parent, call, elem) {
+		if !ok || iteratorFixed(pass, parent, use, elem) ||
+			collectedThenSorted(pass, stack, use, facts) {
 			return true
 		}
 		pass.Report(analysis.Diagnostic{Pos: call.Pos(), Category: "TS-T02", Message: msgIterator})
@@ -67,7 +76,7 @@ func checkIterators(pass *analysis.Pass, file *ast.File) {
 
 // iteratorFixed reports whether call's only consumer, parent, fixes or
 // discards its order, and records the sort sites it judges.
-func iteratorFixed(pass *analysis.Pass, parent ast.Node, call *ast.CallExpr, elem types.Type) bool {
+func iteratorFixed(pass *analysis.Pass, parent ast.Node, call ast.Expr, elem types.Type) bool {
 	switch p := parent.(type) {
 	case *ast.RangeStmt:
 		return p.X == call
@@ -85,4 +94,55 @@ func iteratorFixed(pass *analysis.Pass, parent ast.Node, call *ast.CallExpr, ele
 		}
 	}
 	return false
+}
+
+// collectedThenSorted reports whether use (the iterator call with its
+// parentheses) is the argument of slices.Collect or slices.AppendSeq assigned
+// to a local slice whose first use afterward is a sort that fixes its order.
+func collectedThenSorted(
+	pass *analysis.Pass, stack []ast.Node, use ast.Expr, facts fileFacts,
+) bool {
+	var collect *ast.CallExpr
+	var stmt ast.Stmt
+	if depth := slices.Index(stack, ast.Node(use)); depth >= 1 {
+		if call, ok := stack[depth-1].(*ast.CallExpr); ok {
+			collect = call
+		}
+		if depth >= 2 {
+			if parent, ok := stack[depth-2].(ast.Stmt); ok {
+				stmt = parent
+			}
+		}
+	}
+	assign, ok := stmt.(*ast.AssignStmt)
+	if collect == nil || !ok || len(assign.Lhs) != 1 || len(assign.Rhs) != 1 ||
+		assign.Rhs[0] != ast.Expr(collect) {
+		return false
+	}
+	target := identDecl(pass, assign.Lhs[0])
+	switch {
+	case isFunc(pass, collect.Fun, "slices.Collect"):
+		if len(collect.Args) != 1 {
+			return false
+		}
+	case isFunc(pass, collect.Fun, "slices.AppendSeq"):
+		if len(collect.Args) != 2 || collect.Args[1] != use {
+			return false
+		}
+		// A fresh slice from make, or the target extended in place.
+		fresh := false
+		if made, ok := ast.Unparen(collect.Args[0]).(*ast.CallExpr); ok {
+			fresh = isBuiltin(pass, made.Fun, "make")
+		}
+		if !fresh && identDecl(pass, collect.Args[0]) != target {
+			return false
+		}
+	default:
+		return false
+	}
+	if target == nil {
+		return false
+	}
+	sorted, aliased := facts.sortAfter(pass, assign, target)
+	return !aliased && sortFixesOrder(pass, sorted, target)
 }

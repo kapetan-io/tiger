@@ -5,17 +5,24 @@
 // allowlist of order-insensitive shapes (allowlist.go), with these
 // additions recorded in ADR-0021:
 //
-//  1. Collect-then-sort: a map loop that only appends into a local slice
-//     passes when the slice's first use after the loop is sort.Strings,
-//     sort.Ints or slices.Sort on string or integer elements.
+//  1. Collect-then-sort: a map loop that only appends into a function-local
+//     slice, or fills it by position (s[i] = e; i++), passes when the
+//     slice's first use after the loop is a sort that fixes its order:
+//     sort.Strings, sort.Ints, slices.Sort, or sort.Slice comparing the
+//     slice's own elements. A slice another name can read before the sort
+//     (address taken, captured, sliced, copied) never passes.
 //  2. Full coverage: slices.SortFunc and slices.SortStableFunc after such a
 //     loop, and slices.SortedFunc over maps.Keys or maps.Values, pass when
 //     the comparator compares every leaf of the element (coverage.go).
 //  3. Every maps.Keys, maps.Values and maps.All result is checked; one that
-//     reaches anything but a sort that fixes its order, a map, or a range is
+//     reaches anything but a sort that fixes its order, a map, a range, or
+//     slices.Collect or slices.AppendSeq into a local that is then sorted, is
 //     a finding (iterators.go).
 //  4. No read in an allowlisted loop body may see state an earlier visit
-//     wrote, so a counter can no longer pick which entries are handled.
+//     wrote, so a counter cannot pick which entries are handled.
+//  5. A body that can break or return must change nothing that outlives one
+//     visit, and each exit must carry every constant outcome the body can
+//     set, because which entries a break skips depends on visit order.
 //
 // The allowlist is closed and versioned with this analyzer: extending it to
 // a new provably-safe shape is an analyzer change with its own corpus case,
@@ -26,14 +33,14 @@ import (
 	"go/ast"
 	"go/token"
 	"go/types"
+	"slices"
 
 	"golang.org/x/tools/go/analysis"
 )
 
 const (
-	msgSortedKeys = " — range over the sorted keys instead: for _, k := range " +
-		"slices.Sorted(maps.Keys(m))"
-	msgAppend = "TS-T02: this loop appends to a slice while ranging over a map, and Go " +
+	msgSortedKeys = " — range over slices.Sorted(maps.Keys(m)) instead"
+	msgAppend     = "TS-T02: this loop appends to a slice while ranging over a map, and Go " +
 		"visits map entries in a different order every run, so the slice's order varies" +
 		msgSortedKeys
 	msgCall = "TS-T02: this loop calls a function on each map entry, and Go visits map " +
@@ -46,8 +53,10 @@ const (
 		"visits map entries in a different order every run, so the receiver's order varies" +
 		msgSortedKeys
 	msgCarried = "TS-T02: this loop reads state it changed while visiting earlier map entries, " +
-		"and Go visits entries in a different order every run, so which ones it " +
+		"and Go visits entries in a different order every run, so what it " +
 		"handles varies" + msgSortedKeys
+	msgEarlyExit = "TS-T02: this loop changes state and can stop early, and Go visits map " +
+		"entries in a different order every run, so which entries it handled varies" + msgSortedKeys
 	msgSortTies = "TS-T02: this sort can find two different map entries equal, and equal entries " +
 		"keep the map's order — compare every field with cmp.Compare, or use " +
 		"slices.Sorted(maps.Keys(m)), then slices.SortStableFunc"
@@ -74,12 +83,12 @@ type sortSite struct {
 func run(pass *analysis.Pass) (any, error) {
 	exportTotalFacts(pass)
 	for _, file := range pass.Files {
-		checkIterators(pass, file)
-		after := statementsAfter(file)
+		facts := newFileFacts(pass, file)
+		checkIterators(pass, file, facts)
 		ast.Inspect(file, func(node ast.Node) bool {
 			loop, ok := node.(*ast.RangeStmt)
 			if ok {
-				checkRange(pass, loop, after[loop])
+				checkRange(pass, loop, facts)
 			}
 			return true
 		})
@@ -87,10 +96,11 @@ func run(pass *analysis.Pass) (any, error) {
 	return nil, nil
 }
 
-// statementsAfter maps every range statement to the statements that follow
-// it in its enclosing statement list.
-func statementsAfter(file *ast.File) map[*ast.RangeStmt][]ast.Stmt {
-	after := map[*ast.RangeStmt][]ast.Stmt{}
+// statementsAfter maps every statement to the statements that follow it in
+// its enclosing statement list. A labeled statement is keyed by what it
+// labels.
+func statementsAfter(file *ast.File) map[ast.Stmt][]ast.Stmt {
+	after := map[ast.Stmt][]ast.Stmt{}
 	ast.Inspect(file, func(node ast.Node) bool {
 		var list []ast.Stmt
 		switch block := node.(type) {
@@ -102,18 +112,135 @@ func statementsAfter(file *ast.File) map[*ast.RangeStmt][]ast.Stmt {
 			list = block.Body
 		}
 		for i, stmt := range list {
-			if loop, ok := stmt.(*ast.RangeStmt); ok {
-				after[loop] = list[i+1:]
-			}
+			after[unlabel(stmt)] = list[i+1:]
 		}
 		return true
 	})
 	return after
 }
 
+// unlabel returns the statement a label sits on.
+func unlabel(stmt ast.Stmt) ast.Stmt {
+	for range maxPathDepth {
+		labeled, ok := stmt.(*ast.LabeledStmt)
+		if !ok {
+			return stmt
+		}
+		stmt = labeled.Stmt
+	}
+	return stmt
+}
+
+// span is a source range.
+type span struct{ pos, end token.Pos }
+
+// fileFacts is what the checks need to know about a file beyond one node.
+type fileFacts struct {
+	// after maps a statement to those following it in its statement list.
+	after map[ast.Stmt][]ast.Stmt
+	// shared maps a variable to where code first reads it other than by name.
+	shared map[types.Object]token.Pos
+	// loops maps a statement to the outermost loop around it in the same
+	// function, if any.
+	loops map[ast.Stmt]span
+	// results holds the named results of every function in the file.
+	results map[types.Object]bool
+}
+
+func newFileFacts(pass *analysis.Pass, file *ast.File) fileFacts {
+	facts := fileFacts{
+		after:   statementsAfter(file),
+		shared:  sharedVars(pass, file),
+		loops:   map[ast.Stmt]span{},
+		results: map[types.Object]bool{},
+	}
+	var stack []ast.Node
+	ast.Inspect(file, func(node ast.Node) bool {
+		if node == nil {
+			stack = stack[:len(stack)-1]
+			return true
+		}
+		switch node := node.(type) {
+		case *ast.FuncDecl:
+			facts.addResults(pass, node.Type)
+		case *ast.FuncLit:
+			facts.addResults(pass, node.Type)
+		case *ast.RangeStmt:
+			facts.noteLoop(stack, node)
+		case *ast.AssignStmt:
+			facts.noteLoop(stack, node)
+		}
+		stack = append(stack, node)
+		return true
+	})
+	return facts
+}
+
+func (facts fileFacts) noteLoop(stack []ast.Node, stmt ast.Stmt) {
+	if outer, ok := outermostLoop(stack); ok {
+		facts.loops[stmt] = outer
+	}
+}
+
+func (facts fileFacts) addResults(pass *analysis.Pass, sig *ast.FuncType) {
+	if sig.Results == nil {
+		return
+	}
+	for _, field := range sig.Results.List {
+		for _, name := range field.Names {
+			if obj := pass.TypesInfo.ObjectOf(name); obj != nil {
+				facts.results[obj] = true
+			}
+		}
+	}
+}
+
+// outermostLoop returns the outermost loop in stack that sits in the same
+// function as the node below the top of stack.
+func outermostLoop(stack []ast.Node) (span, bool) {
+	var outer span
+	found := false
+	for _, node := range slices.Backward(stack) {
+		switch node := node.(type) {
+		case *ast.FuncDecl, *ast.FuncLit:
+			return outer, found
+		case *ast.ForStmt, *ast.RangeStmt:
+			outer, found = span{node.Pos(), node.End()}, true
+		}
+	}
+	return outer, found
+}
+
+// sortAfter finds the sort that fixes target after at, and reports whether
+// code can read target under another name before that sort ends up in
+// target's hands again. A package-level target always can. Inside a loop, an
+// alias made later in the loop body reads target on the next pass, unless
+// target is declared inside that loop and so starts fresh each pass.
+func (facts fileFacts) sortAfter(
+	pass *analysis.Pass, at ast.Stmt, target types.Object,
+) (sorted *sortCall, aliased bool) {
+	mode := plainLocal
+	if facts.results[target] {
+		mode = namedResult
+	}
+	sorted = firstUseSort(pass, facts.after[at], target, mode)
+	if target.Parent() == pass.Pkg.Scope() {
+		return sorted, true
+	}
+	first, shared := facts.shared[target]
+	if !shared || sorted == nil {
+		return sorted, false
+	}
+	limit := sorted.call.Pos()
+	if loop, ok := facts.loops[at]; ok && target.Pos() < loop.pos {
+		limit = loop.end
+	}
+	return sorted, first < limit
+}
+
 // checkRange fires TS-T02 when loop ranges over a map and its body is
 // neither allowlisted nor a collect-then-sort the sort makes order-free.
-func checkRange(pass *analysis.Pass, loop *ast.RangeStmt, after []ast.Stmt) {
+func checkRange(pass *analysis.Pass, loop *ast.RangeStmt, facts fileFacts) {
 	if !isMapRange(pass, loop) {
 		return
 	}
@@ -121,7 +248,7 @@ func checkRange(pass *analysis.Pass, loop *ast.RangeStmt, after []ast.Stmt) {
 	if bodyAllowed(pass, loop, carried) {
 		return
 	}
-	site := collectSite(pass, loop, after, carried)
+	site := collectSite(pass, loop, carried, facts)
 	if site != nil && site.accepted {
 		return
 	}
@@ -155,7 +282,10 @@ func classifyMessage(pass *analysis.Pass, loop *ast.RangeStmt, site *sortSite) s
 	if site != nil && !site.bodyImpure {
 		return msgSortTies
 	}
-	if bodyAllowed(pass, loop, nil) {
+	if allowed, unstable := walkBody(pass, loop, nil); allowed {
+		if unstable {
+			return msgEarlyExit
+		}
 		return msgCarried
 	}
 	if site != nil && collectShape(pass, loop, nil) != nil {

@@ -288,3 +288,25 @@ func defaultSeverity(rules map[string]rule, severity string) {
 		rules[k] = r
 	}
 }
+
+// encodeAt advances an offset by each entry's size, so every entry lands at
+// an offset that depends on how many were visited before it.
+func encodeAt(m map[string][]byte, buf []byte) int {
+	off := 0
+	for _, v := range m { // want `TS-T02: this loop reads state it changed`
+		off += copy(buf[off:], v)
+	}
+	return off
+}
+
+// fieldKeys fills a struct field by position and returns the slice
+// unsorted, the way indexedKeys does for a local.
+type keyList struct{ keys []string }
+
+func (l *keyList) fill(m map[string]int) {
+	i := 0
+	for k := range m { // want `TS-T02: this loop's body may depend on the order`
+		l.keys[i] = k
+		i++
+	}
+}
