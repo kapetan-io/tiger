@@ -11,6 +11,7 @@ import (
 	"github.com/kapetan-io/tiger/internal/budget"
 	"github.com/kapetan-io/tiger/internal/config"
 	"github.com/kapetan-io/tiger/internal/driver"
+	"github.com/kapetan-io/tiger/internal/layerfile"
 	"github.com/kapetan-io/tiger/internal/rules"
 )
 
@@ -73,22 +74,28 @@ func runBudget(args []string, streams Streams) int {
 }
 
 // setup is what every analysis-running command loads from the run
-// directory before analysis: the module path, the installed config, and
-// the budget file.
+// directory before analysis: the module path, the installed config and
+// layer file, and the budget file.
 type setup struct {
 	module  config.Module
+	layers  *layerfile.File
 	budgets *budget.File
 }
 
-// prepare loads and installs dir's tiger.yaml, then loads tiger.budget.yaml;
-// either failure is a one-line error. Neither file is required; a module
-// path is, and only when a file exists.
+// prepare loads and installs dir's tiger.yaml and tiger.layers.yaml, then
+// loads tiger.budget.yaml; any failure is a one-line error. No file is
+// required; a module path is, and only when a file exists.
 func prepare(dir string) (setup, error) {
 	loaded, err := config.Load(dir, rules.Analyzers())
 	if err != nil {
 		return setup{}, err
 	}
 	config.Install(loaded)
+	layered, err := layerfile.Load(dir)
+	if err != nil {
+		return setup{}, err
+	}
+	layerfile.Install(layered)
 	budgets, err := budget.Load(dir, rules.CountedCodes())
 	if err != nil {
 		return setup{}, err
@@ -99,7 +106,7 @@ func prepare(dir string) (setup, error) {
 	if err != nil {
 		module = ""
 	}
-	return setup{module: module, budgets: budgets}, nil
+	return setup{module: module, layers: layered, budgets: budgets}, nil
 }
 
 // packageKey is the budget file's key for a package: its import path

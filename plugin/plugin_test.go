@@ -1,6 +1,7 @@
 package plugin_test
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -31,7 +32,8 @@ func TestPluginDropsFacts(t *testing.T) {
 	require.NoError(t, err)
 	analyzers, err := built.BuildAnalyzers()
 	require.NoError(t, err)
-	require.Len(t, analyzers, len(rules.Analyzers()))
+	// Every registered analyzer, plus the one that keys the layer file.
+	require.Len(t, analyzers, len(rules.Analyzers())+1)
 
 	testdata, err := filepath.Abs(
 		filepath.Join("..", "internal", "analyzers", "effects", "testdata"),
@@ -101,4 +103,175 @@ func TestPluginInstallsConfigFromSettings(t *testing.T) {
 	assert.Contains(t, err.Error(), "tiger.yaml")
 	assert.Contains(t, err.Error(), "frobnicate")
 	assert.NotContains(t, err.Error(), "\n")
+}
+
+// TestPluginInstallsLayerFileFromSettings covers TS-X03 at the plugin's
+// construction surface.
+//
+// Goal: a plugin built with a `config` setting naming a directory installs
+// that directory's tiger.layers.yaml, so the layers analyzer fails an import
+// the entry doesn't list and passes one it does, reports a loaded package with
+// no entry at its package clause, and a layer file that fails to load fails
+// plugin construction with one line.
+func TestPluginInstallsLayerFileFromSettings(t *testing.T) {
+	build, err := register.GetPlugin("tiger")
+	require.NoError(t, err)
+
+	corpus, err := filepath.Abs(filepath.Join("testdata", "corpus"))
+	require.NoError(t, err)
+	built, err := build(map[string]any{"config": filepath.Join("testdata", "withlayers")})
+	require.NoError(t, err)
+	// The layer file is process-global; leave nothing installed for other tests.
+	t.Cleanup(func() {
+		_, err := build(map[string]any{"config": t.TempDir()})
+		require.NoError(t, err)
+	})
+	analyzers, err := built.BuildAnalyzers()
+	require.NoError(t, err)
+	messages := []string{}
+	for _, analyzer := range analyzers {
+		if analyzer.Name != "layers" {
+			continue
+		}
+		for _, result := range analysistest.Run(quietRun{}, corpus, analyzer,
+			"smoke.example/plugin/layered") {
+			for _, diagnostic := range result.Diagnostics {
+				messages = append(messages, diagnostic.Message)
+			}
+		}
+	}
+	require.Len(t, messages, 1)
+	assert.Contains(t, messages[0], "doesn't list os, so this package can't import os")
+
+	messages = []string{}
+	for _, analyzer := range analyzers {
+		if analyzer.Name != "layers" {
+			continue
+		}
+		for _, result := range analysistest.Run(quietRun{}, corpus, analyzer,
+			"smoke.example/plugin/unlisted") {
+			for _, diagnostic := range result.Diagnostics {
+				messages = append(messages, diagnostic.Message)
+			}
+		}
+	}
+	require.Len(t, messages, 1)
+	assert.Contains(t, messages[0], "package ./unlisted has no entry in tiger.layers.yaml")
+
+	_, err = build(map[string]any{"config": filepath.Join("testdata", "badlayers")})
+	require.ErrorContains(t, err,
+		"tiger.layers.yaml: line 1: \"./layered\": \"strings\" is always allowed; remove it")
+	assert.NotContains(t, err.Error(), "\n")
+}
+
+// TestPluginJudgesDirectoryEndingInDotTest covers TS-X03 under the plugin for
+// a directory named like go test's synthesized main package.
+//
+// Goal: golangci-lint hands the layers analyzer a package in a directory whose
+// name ends in .test, and since the package is not main the analyzer judges
+// its imports, unlike tiger check, whose driver drops it.
+func TestPluginJudgesDirectoryEndingInDotTest(t *testing.T) {
+	build, err := register.GetPlugin("tiger")
+	require.NoError(t, err)
+
+	corpus, err := filepath.Abs(filepath.Join("testdata", "corpus"))
+	require.NoError(t, err)
+	built, err := build(map[string]any{"config": filepath.Join("testdata", "withlayers")})
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_, err := build(map[string]any{"config": t.TempDir()})
+		require.NoError(t, err)
+	})
+	analyzers, err := built.BuildAnalyzers()
+	require.NoError(t, err)
+	messages := []string{}
+	for _, analyzer := range analyzers {
+		if analyzer.Name != "layers" {
+			continue
+		}
+		for _, result := range analysistest.Run(quietRun{}, corpus, analyzer,
+			"smoke.example/plugin/tool.test") {
+			for _, diagnostic := range result.Diagnostics {
+				messages = append(messages, diagnostic.Message)
+			}
+		}
+	}
+	require.Len(t, messages, 1)
+	assert.Contains(t, messages[0], "the \"./tool.test\" entry in tiger.layers.yaml doesn't list "+
+		"os, so this package can't import os")
+}
+
+// TestPluginWithoutLayerFileLayersNothing covers TS-X03's opt-in contract at
+// the plugin's construction surface.
+//
+// Goal: a plugin built over a directory with no tiger.layers.yaml clears the
+// layer file an earlier construction installed, so the layers analyzer
+// reports nothing.
+func TestPluginWithoutLayerFileLayersNothing(t *testing.T) {
+	build, err := register.GetPlugin("tiger")
+	require.NoError(t, err)
+	_, err = build(map[string]any{"config": filepath.Join("testdata", "withlayers")})
+	require.NoError(t, err)
+
+	built, err := build(map[string]any{"config": t.TempDir()})
+	require.NoError(t, err)
+	analyzers, err := built.BuildAnalyzers()
+	require.NoError(t, err)
+	corpus, err := filepath.Abs(filepath.Join("testdata", "corpus"))
+	require.NoError(t, err)
+	messages := []string{}
+	for _, analyzer := range analyzers {
+		if analyzer.Name != "layers" {
+			continue
+		}
+		for _, result := range analysistest.Run(quietRun{}, corpus, analyzer,
+			"smoke.example/plugin/layered") {
+			for _, diagnostic := range result.Diagnostics {
+				messages = append(messages, diagnostic.Message)
+			}
+		}
+	}
+	assert.Empty(t, messages)
+}
+
+// TestPluginLayerFileEditChangesTheAnalyzerNames covers TS-X03 under
+// golangci-lint's issue cache, which keys a package's cached issues on the
+// sorted names of the analyzers that ran, salted with the golangci-lint
+// version string, the linters.settings block and go.mod, but not on the
+// plugin binary or tiger.layers.yaml.
+//
+// Goal: two different layer files give analyzer sets whose names differ, so
+// an edited file misses the cache rather than replaying stale results; the
+// same file gives the same names, so the cache still hits; and the layers
+// analyzer keeps its name, so issue text does not change.
+func TestPluginLayerFileEditChangesTheAnalyzerNames(t *testing.T) {
+	build, err := register.GetPlugin("tiger")
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_, err := build(map[string]any{"config": t.TempDir()})
+		require.NoError(t, err)
+	})
+	names := func(dir string) []string {
+		built, err := build(map[string]any{"config": dir})
+		require.NoError(t, err)
+		analyzers, err := built.BuildAnalyzers()
+		require.NoError(t, err)
+		found := []string{}
+		for _, analyzer := range analyzers {
+			found = append(found, analyzer.Name)
+		}
+		return found
+	}
+	edited := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(edited, "go.mod"),
+		[]byte("module smoke.example/plugin\n\ngo 1.26\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(edited, "tiger.layers.yaml"),
+		[]byte("\"./layered\": []\n"), 0o644))
+
+	first := names(filepath.Join("testdata", "withlayers"))
+	again := names(filepath.Join("testdata", "withlayers"))
+	other := names(edited)
+	assert.Equal(t, first, again)
+	assert.NotEqual(t, first, other)
+	assert.Contains(t, other, "layers")
 }

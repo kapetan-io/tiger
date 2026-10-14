@@ -1,0 +1,6 @@
+# The plugin tests' layer file. Keys resolve against this directory's go.mod,
+# module smoke.example/plugin, which is the path of the corpus packages under
+# testdata/corpus/src/smoke.example/plugin; ./unlisted is left out on purpose.
+"./layered":
+  - net
+"./tool.test": []

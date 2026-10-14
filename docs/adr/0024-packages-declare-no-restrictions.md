@@ -9,6 +9,10 @@ Accepted
 Supersedes the TS-P02 paragraph of [ADR-0012](0012-a-rule-either-blocks-or-does-not-exist.md),
 since TS-P02 is removed.
 
+Amended by [ADR-0029](0029-the-layer-file-is-checked-by-tiger-not-depguard.md): the TS-X03 layer
+file is built and checked by tiger, so import restrictions inside a module rest on it, not on
+hand-written depguard rules.
+
 ## Context
 
 A package could declare restrictions in its doc comment with `//tiger:restrict`, using three

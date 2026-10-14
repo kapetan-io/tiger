@@ -9,6 +9,9 @@
 // they are analyzing and never read files themselves (ADR-0002). With
 // nothing installed, Values returns nothing, so analysistest corpora run
 // exactly as they did before the file existed.
+//
+// The package also reads the module the file sits in: its path from go.mod,
+// and its package directories and nested modules from one walk of its tree.
 package config
 
 import (
@@ -37,22 +40,6 @@ type Entry struct {
 	Value    string   `yaml:"value"`
 	Reason   string   `yaml:"reason"`
 	Packages []string `yaml:"packages"`
-}
-
-// Module is a module path, as read from go.mod.
-type Module string
-
-// Relative rewrites pkgPath relative to the module: the module root is
-// ".", a package below it loses the module prefix, and a package outside
-// the module returns ok false.
-func (m Module) Relative(pkgPath string) (string, bool) {
-	if pkgPath == string(m) {
-		return ".", true
-	}
-	if rest, found := strings.CutPrefix(pkgPath, string(m)+"/"); found {
-		return rest, true
-	}
-	return "", false
 }
 
 // Key names one analyzer setting: the analyzer and its flag name, the
@@ -271,20 +258,6 @@ func byName(analyzers []*analysis.Analyzer, name string) *analysis.Analyzer {
 // oneLine collapses a multi-line yaml error into one line (ADR-0009).
 func oneLine(err error) string {
 	return strings.Join(strings.Fields(err.Error()), " ")
-}
-
-// ModulePath reads the module path from dir's go.mod.
-func ModulePath(dir string) (Module, error) {
-	raw, err := os.ReadFile(filepath.Join(dir, "go.mod"))
-	if err != nil {
-		return "", fmt.Errorf("reading module path: %w", err)
-	}
-	for _, line := range strings.Split(string(raw), "\n") {
-		if module, found := strings.CutPrefix(strings.TrimSpace(line), "module "); found {
-			return Module(strings.TrimSpace(module)), nil
-		}
-	}
-	return "", errors.New("go.mod has no module line")
 }
 
 // installed is the process-global config the current run installed — the

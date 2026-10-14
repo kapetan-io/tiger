@@ -1956,6 +1956,142 @@ type. A Skip reached through a struct that embeds `*testing.T` stays silent, bec
 receiver's static type is the wrapping struct.
 
 
+## Layers
+
+<!-- rule: TS-X03 -->
+### TS-X03 — the package import graph is declared and enforced
+
+**Severity:** blocking — a finding fails the run.
+
+A list of what each package may import keeps most IO and all randomness behind interfaces
+passed in, and keeps the direction of every dependency where a reviewer can see it. The list
+lives in `tiger.layers.yaml` at the module root, next to `go.mod`. Without the file, or with a
+file that has no keys, nothing here applies. With it, this rule also enforces TS-D01: a
+package takes the pure standard library and nothing else unless its entry names more.
+
+```yaml
+"./internal/store":
+  - database
+  - ./internal/types
+  - github.com/jackc/pgx/v5
+"./internal/types": []
+"./service":
+  - ./internal/store
+  - ./internal/types
+"./internal/domain/...": []
+```
+
+Keys are packages. `.` is the root package, `./dir` is one package, and `./dir/...` is a
+directory and everything below it. Keys may not overlap. Each list names what the package
+may import beyond the pure standard library, in three spellings, and tiger matches each
+one exactly. Write `[]` for a package that imports nothing beyond it.
+
+| Spelling | Allows |
+|---|---|
+| `./pkg` | that one package of this module (`.` for the root), not a package below it |
+| `module/path` | that path and every path below it, on a `/` boundary: `example.com/a/b` allows `example.com/a/b/c` but not `example.com/a/b-c` |
+| `net`, `os`, `database`, `syscall`, `plugin`, `io/ioutil`, `crypto/rand`, `math/rand` | that standard library subtree: naming `net` allows `net/http` |
+
+The rest of the standard library, every package under the GOROOT that `go env GOROOT`
+reports, is always allowed, so naming `strings` is an error, and so is naming `net/http`
+(name `net`). A module path whose first element has no dot, brought in by `replace` or
+`go.work`, is a module like any other and must be named. A nested module, a directory below
+the root with a `go.mod` of its own (as `go.work` joins), is not part of this module: its
+packages need no entry here, because they carry their own `go.mod` and layer file, and a
+package here that imports one names it by its module path. Packages under a
+`./dir/...` key share one list, and that list must still name each module package they import,
+even one under the same key. `_test.go` files are not layered, because surface tests cross
+layers.
+
+Code that fires it, under the file above, where `./service`'s entry names `./internal/store`
+and `./internal/types` but not `database`:
+
+```go
+package service
+
+import (
+	"database/sql"
+
+	"example.com/app/internal/store"
+)
+```
+
+```
+service/service.go:4:2: TS-X03: the "./service" entry in tiger.layers.yaml doesn't list database, so this package can't import database/sql — add "database" to it, or pass it in through an interface
+```
+
+The compliant rewrite takes what it needs through the store, which already names
+`database`:
+
+```go
+package service
+
+import "example.com/app/internal/store"
+
+func Ready(handle store.Handle) bool { return handle.Open() }
+```
+
+If `./service` really should hold the database, the fix is the name instead:
+
+```yaml
+"./service":
+  - database
+  - ./internal/store
+  - ./internal/types
+```
+
+The other findings name the edit the same way:
+
+```
+worker/worker.go:1:1: TS-X03: package ./worker has no entry in tiger.layers.yaml — add it as a key listing the module packages, modules and IO or random subtrees (os, net, ...) it imports, or [] for none
+service/cache.go:5:2: TS-X03: the "./service" entry in tiger.layers.yaml doesn't list github.com/redis/go-redis/v9 — add it, or its module path, to the entry
+service/handler.go:6:2: TS-X03: the "./service" entry in tiger.layers.yaml doesn't list ./web — add it, or pass what you need in through an interface
+tiger.layers.yaml:10:1: TS-X03: the "./web" entry matches no package directory — remove it, or fix its path
+```
+
+For the first, add the key with what the package imports, `"./worker": [os]`, or
+`"./worker": []` if it imports nothing beyond the pure standard library. The missing-entry
+finding sits at the package clause when the run loaded the package, and at `<file>:1:1`, the
+package's first non-test Go file by file name, when only `tiger check`'s scan of the module's
+directories found it.
+
+A layer file tiger can't use stops the run before analysis, with exit 2 and one line naming
+the key's line, the entry and the fix:
+
+```yaml
+"./internal/types": []
+"./store":
+  - strings
+```
+
+```
+tiger check: tiger.layers.yaml: line 2: "./store": "strings" is always allowed; remove it
+```
+
+A package is any directory holding a non-test Go file, whatever its build constraints, so a
+package built only on Windows still needs an entry when you run on Linux. Only `tiger check`
+reports an entry that matches no package directory, and a package with no entry that the run
+did not load: one outside the patterns you passed, built only for another platform, or holding
+only generated files. Both need the module's directories, which the golangci-lint plugin
+never sees. Under the plugin the import findings and the missing-entry finding for loaded
+packages still fire; stock golangci-lint without the tiger plugin reports none of this rule
+([ADR-0029](adr/0029-the-layer-file-is-checked-by-tiger-not-depguard.md)).
+
+**Known miss:** imports can't see interface shape, such as a `Store` with 40 methods, or
+business logic in a handler that imports nothing new. A package that names `net` may use
+anything under it, `net/http/httptest` included. The eight subtrees are not all of the
+standard library's IO: `path/filepath.Glob`, `html/template.ParseFiles`, `log/syslog` and
+`crypto/tls` reach the file system or the network without importing one of them. An import in
+a file built for another OS or behind a build tag is checked only on a platform that builds
+it. `tiger check` never judges a package in a directory whose name ends in `.test` import by
+import, because its driver drops every package ID ending in `.test` as the main package `go test`
+synthesizes; it still reports the package when no entry covers it. The golangci-lint plugin does
+judge it, because the analyzer skips only a package named `main` whose path ends in `.test`.
+Packages with cgo files are not judged import by import; the missing-entry check still applies.
+The driver takes the compiled cgo variant of a hand-written file for generated code, a limit every
+analyzer shares. A directory holding only a `//go:build ignore` file still needs an entry. An
+import in a generated file is not reported, because tiger drops findings in generated code.
+
 ## Auto rules
 
 Tiger does not reimplement what an off-the-shelf linter already enforces well. These rules
@@ -2010,7 +2146,10 @@ golangci-lint findings fail its run.
 | TS-L09 | every suppression carries a reason | nolintlint |
 | TS-L11 | imports grouped standard, external, internal | gci |
 | TS-T01 | time and randomness are injected | forbidigo |
-| TS-D01 | the standard library, and nothing else, in internal/domain packages | depguard |
+
+TS-T01's forbidigo half bans direct reads of the clock. Randomness is enforced through the
+layer file instead (TS-X03): a package may import `math/rand` or `crypto/rand` only when its
+entry names them, so without `tiger.layers.yaml` randomness is not checked.
 
 ## Computed facts
 

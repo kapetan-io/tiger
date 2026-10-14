@@ -231,10 +231,11 @@ previously unexercised.
 > removed effect sets and frames. The retired rules are listed under "Retiring a rule".
 
 Go's import granularity is the package, so a restriction on what code may import is package-scoped.
-Restrictions are not declared per package. `TS-D01` limits every package to the standard library by
-default, and the `TS-X03` layer file gives each package a role with an import allowlist (not built,
-ENG-328). Reflection, `unsafe`, and cgo are banned everywhere by `TS-S12`, with `unsafe` permitted
-only in `internal/sys`.
+Restrictions are not declared per package. The `TS-X03` layer file lists, for each package, what it
+may import beyond the pure standard library, and only the pure standard library is free; that is
+how `TS-D01` limits a package. A module without the file has no import limits. Reflection,
+`unsafe`, and cgo are banned everywhere by `TS-S12`, with `unsafe` permitted only in
+`internal/sys`.
 
 Facts about a single function are not computed into effect sets and are not pinned, except loop
 variants (`TS-V01`). When a change makes a struct or free function call something new, `tiger
@@ -325,7 +326,7 @@ hatches** (loosen one rule at one site, always with a reason, counted by `TS-D06
 | Postcondition | `//tiger:ensures result.Checksum == checksum(result.Payload)` | pin | TS-V03 |
 | Loop variant | `//tiger:variant len(pending)` | pin | TS-V01 |
 | Surface fault set | fault cases enumerated in the interface | intent | TS-I05 |
-| Layer graph | checked-in layer file (not built, ENG-328) | intent | TS-X03 |
+| Layer graph | checked-in `tiger.layers.yaml` | intent | TS-X03 |
 | Open enum | `//tiger:openenum <reason>`, counted by `TS-D06` | escape | TS-S08 |
 | Batched IO | `//tiger:batched <reason>` | escape | TS-M10 |
 | Deviation | `//tiger:<rule-id> <reason>` | escape (gated, does not ship before the first heuristic rules + TS-D06 ratchet) | TS-L09 |
@@ -548,8 +549,7 @@ predictable stack, and half your tooling. Reflection moves errors to run time an
 All three break the chain in Part I. The sanctioned exception is `unsafe.Sizeof` in a compile-time
 assertion, which executes nothing and reads no memory.
 Enforce. `depguard` plus `gocritic` (auto), everywhere; `unsafe` is permitted only in
-`internal/sys`. The generated golangci-lint config bans `reflect` only under `internal/domain`
-today, and widening it is a follow-up.
+`internal/sys`, and `reflect` is banned in every package.
 
 **`TS-S13` Declare variables at the smallest scope, at the point of first use.**
 Why. A variable declared thirty lines before use is thirty lines in which the wrong variable can be
@@ -1020,8 +1020,9 @@ function that reads them directly cannot be handed a substitute, so no test can 
 Injectability is the requirement; whether a given test substitutes the dependency or uses the real
 one is the coder's judgment per test, and tiger does not make it. Tiger does not require a fake,
 mock, or simulation to exist.
-Enforce. `forbidigo` and `depguard` (auto) for direct reads of the clock and randomness; `review`
-with the `tiger changed` report for the rest.
+Enforce. `forbidigo` (auto) for direct reads of the clock, and, when the module has a `TS-X03`
+layer file, that file for imports of randomness by a package whose entry doesn't name them;
+`review` with the `tiger changed` report for the rest.
 
 **`TS-I02` Every surface has a production implementation and a simulated one.**
 Status. **Deleted.** Fails the five-question test: its failure mode (a surface with one
@@ -1141,13 +1142,32 @@ Enforce. `passthrough` (custom). Budget of zero.
 **`TS-X03` The package import graph is declared and enforced.**
 Why. The control plane and data plane split cannot be verified, but its main consequence can. The
 direction of every dependency is a fact you write down once and check forever. Layering is the
-enforceable residue of architecture. A package that does IO has to import the package that does it,
-so a layer whose allowlist leaves out `net/http`, `database/sql`, and the drivers keeps IO behind an
-interface passed in.
-Enforce. `depguard` path rules generated from a checked-in layer file (auto). The layer file gives
-every package a role, and each role an import allowlist; `tiger golangci --init` writes one depguard
-rule per role, and the `tiger golangci` audit checks them. A package with no role is a finding,
-because depguard leaves a file no rule covers unrestricted. *(Not built, ENG-328.)*
+enforceable residue of architecture. A package that does IO almost always imports the package that
+does it, so a package whose list leaves out `net`, `database`, `os` and the drivers keeps that IO
+behind an interface passed in. A few pure standard library packages reach the file system or the
+network on their own (`path/filepath.Glob`, `html/template.ParseFiles`, `log/syslog`,
+`crypto/tls`), so the list is a strong default, not a proof.
+Enforce. `layers` (custom), against a checked-in layer file. `tiger.layers.yaml` sits at the module
+root. Its keys are packages, `.` for the root package, `./dir` for one package, and `./dir/...` for
+a directory and everything below it; keys may not overlap. Each key lists what that package may
+import beyond the pure standard library, in three spellings, each matched exactly. `./pkg` is one
+package of this module, not a package below it. `module/path` allows that path and every path below
+it on a `/` boundary. `net`, `os`, `database`, `syscall`, `plugin`, `io/ioutil`, `crypto/rand` and
+`math/rand` are the standard library that leaves the process or is nondeterministic, and naming one
+allows its whole subtree. The rest of the standard library, every package under the GOROOT that
+`go env GOROOT` reports, is always allowed; a dotless third-party module brought in by `replace` or
+`go.work` is a module like any other. A nested module, a directory with its own `go.mod`, is not
+part of this module: its packages need no entry, and an import of one names its module path.
+`_test.go` files are not layered, because surface tests cross layers. The analyzer reports each
+import the package's entry does not allow, at the import, and a package with no entry at its package
+clause. `tiger check` also reports, from the module's directories, an entry that matches no package
+directory and a package with no entry that the analyzer did not report (one outside the patterns
+passed, built only for another platform, or holding only generated files); a directory is a package
+when it holds a non-test Go file, whatever its build constraints. Those checks need the module's
+directories, so the golangci-lint plugin does not run them, and stock golangci-lint without the
+plugin reports nothing for this rule. Matching is exact, and the rule is tiger's own, because
+depguard's prefix match against the nearest allow entry cannot express it (ADR-0029).
+*(Amended 2026-10-14: built as the layers analyzer, not generated depguard rules, ADR-0029.)*
 
 ## Canonical form
 
@@ -1366,13 +1386,15 @@ Enforce. CI check on message shape (runtime).
 
 ## Dependencies and tooling
 
-**`TS-D01` The standard library, and nothing else, unless the layer file allows more.**
+**`TS-D01` The pure standard library, and nothing else, unless the layer file allows more.**
 Why. Every dependency is a supply chain, a safety surface, a performance unknown, and an install-time
 cost, amplified through everything built on top. Go's standard library makes this genuinely
 achievable, which is not true of most languages.
-Enforce. `depguard` (auto): the standard library only by default, widened per role by the `TS-X03`
-layer file (not built, ENG-328). *(Amended 2026-10-12: the per-package allowlists from `TS-P01` are
-removed, ADR-0024.)*
+Enforce. `layers` (custom), the `TS-X03` analyzer: with a layer file, a package imports the pure
+standard library only unless its entry names more. Without the file nothing is enforced. No finding
+prints `TS-D01`; every one is a `TS-X03` finding, so see `TS-X03` for how it is enforced. *(Amended
+2026-10-12: the per-package allowlists from `TS-P01` are removed, ADR-0024. Amended 2026-10-14:
+enforced by the `TS-X03` analyzer instead of `depguard`, ADR-0029.)*
 
 **`TS-D02` Dependencies are vendored and pinned, including the toolchain.**
 Why. Reproducible builds. `go.mod` pins the toolchain, `vendor/` pins the rest, CI verifies both.
@@ -1412,10 +1434,11 @@ Enforce. `skipcheck` (custom).
 **`TS-T01` Core logic is deterministic. Time, randomness, and IDs are injected.**
 Why. This is what makes simulation testing possible, and simulation testing is what found the bugs
 that made TigerBeetle worth imitating.
-Enforce. `depguard` and `forbidigo` (auto) ban direct reads of the clock and randomness. A helper
-that reads them is not caught statically; `tiger changed` reports a struct's new call into `time`
-or a random source for review, as `TS-I01` describes. *(Amended 2026-10-12: the `time` and `rand`
-effects are removed, ADR-0026.)*
+Enforce. `forbidigo` (auto) bans direct reads of the clock. When the module has a `TS-X03` layer
+file, it denies `math/rand` and `crypto/rand` to a package whose entry doesn't name them; without
+the file, randomness is not checked. A helper that reads them is not caught statically;
+`tiger changed` reports a struct's new call into `time` or a random source for review, as `TS-I01`
+describes. *(Amended 2026-10-12: the `time` and `rand` effects are removed, ADR-0026.)*
 
 **`TS-T02` Map iteration order never reaches an output.**
 Why. Go randomizes it deliberately. Sort the keys before you serialize, log, or hash.
@@ -1637,7 +1660,7 @@ that cannot fill the third column does not go in.
 | TS-L11 | Imports grouped standard, external, internal | B0 | Coord |
 | TS-L12 | A doc comment may not restate its identifier | B3 | Sub |
 | TS-L13 | Commit bodies contain a Why: section | B7 | Sub |
-| TS-D01 | The standard library, and nothing else, unless the layer fil... | B8, B6 | Sub |
+| TS-D01 | The pure standard library, and nothing else, unless the lay... | B8, B6 | Sub |
 | TS-D02 | Dependencies are vendored and pinned, including the too... | B4, B8 | Sub |
 | TS-D03 | Scripts are Go programs, not shell | B4, B0 | Mixed |
 | TS-D04 | Generated code is committed and verified | B4 | Sub |
@@ -1715,8 +1738,9 @@ All are `golang.org/x/tools/go/analysis` passes. Ship them as one binary via `mu
 use (`tiger check ./...`), and as a golangci-lint module plugin (`.custom-gcl.yml` plus
 `golangci-lint custom`) so they run in the same pass as everything else. Releases ship the `tiger`
 binary alongside the plugin, because patterns and `tiger changed` need it. The plugin skips the
-whole-program rules (`TS-A07`, `TS-A09`) and the budgets, and golangci-lint's `//nolint:tiger` and
-`exclusions` silence tiger's rules under it, so CI runs `tiger check`.
+whole-program rules (`TS-A07`, `TS-A09`), `TS-X03`'s whole-module checks, and the budgets, and
+golangci-lint's `//nolint:tiger` and `exclusions` silence tiger's rules under it, so CI runs
+`tiger check`.
 
 **Output contract:** the `variant` analyzer prints a synthesized loop variant in pin syntax, the
 exact `//tiger:variant` line a developer would paste. Report and pin are one format, so adopting a
@@ -1768,6 +1792,7 @@ changes what it checks), or **not built**.
 | `outptr` | TS-M04 | `types`, constructors returning oversized value types | not built |
 | `limitrelate` | TS-S21 | AST, every Max/Min constant appears in a relational assertion | built |
 | `passthrough` | TS-X02 | AST, body is a single forwarding call | not built |
+| `layers` | TS-X03, D01 | AST, each non-test import judged exactly against the package's `tiger.layers.yaml` entry; stale entries and packages the run did not load are checked by `tiger check` over the whole module | built (ADR-0029) |
 | `adapters` | TS-I06 | Deleted with TS-I06 | deleted |
 | `errignore` | TS-E02 | AST plus `types`, `_ =` on error requires a comment, except inside `defer` or `t.Cleanup` | built |
 | `returnarity` | TS-E06 | `types`, result count and composition | built |
@@ -1946,8 +1971,9 @@ prerequisite for everything else.
 **Chain 2, surfaces.** `TS-I01` through `TS-I07`. Independent of chain 1 and the thing that makes the
 test suite worth trusting. Do it early; `TS-I05` in particular is worth more than any three analyzers.
 
-**Chain 3, layering.** `TS-D01`, then the `TS-X03` layer file. A package that does IO has to import
-the package that does it, so once each package has a role, IO stays behind interfaces passed in.
+**Chain 3, layering.** `TS-D01`, then the `TS-X03` layer file. A package that does IO almost always
+imports the package that does it, so once each package has an entry, most IO stays behind
+interfaces passed in.
 `tiger changed` reports the calls the layer file cannot see.
 
 **Chain 4, termination.** `TS-S01`, `TS-S02`, `TS-V01`, `TS-V02`. Cheap, self-contained, makes
@@ -1975,7 +2001,14 @@ Structured output and the pull-request summarizer key on it, and no wording chan
 the budget file: `tiger.budget.yaml:<line>:` when the row exists, where `<line>` is the row's
 line in the file, and `tiger.budget.yaml:` alone when the package has no row. The counted
 findings that overran print as ordinary lines under the `TS-D06` line, with their own positions
-and no marker; under budget they do not print at all.
+and no marker; under budget they do not print at all. `TS-D06` lines print after every other
+blocking finding.
+
+Two `TS-X03` lines are also produced by the driver, from the module's directories rather than a
+loaded package, and they keep the full prefix and sort by position with the analyzers' findings.
+An entry that matches no package directory sits at the entry's key,
+`tiger.layers.yaml:<line>:1:`. A package with no entry that the analyzer did not report sits at
+the package's first non-test Go file, `<dir>/<file>.go:1:1:`.
 
 The body is prose for a reader who has never seen a `//tiger:` directive. It has three parts in
 a fixed order, separated by ` — `:

@@ -9,6 +9,9 @@ Accepted
 Amended by [ADR-0016](0016-remove-the-single-implementation-interface-rule.md), which removes
 TS-X01. The finish step stands for TS-A07 and TS-A09.
 
+Amended by [ADR-0029](0029-the-layer-file-is-checked-by-tiger-not-depguard.md): TS-X03's directory
+checks run in the CLI, not in a finish step.
+
 ## Context
 
 Tiger's custom rules are `golang.org/x/tools/go/analysis` passes, one package at a time, and

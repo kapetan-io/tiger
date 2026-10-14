@@ -114,6 +114,18 @@ jobs:
           test "$first" -eq 1
           test "$second" -eq 1
           diff first.txt second.txt
+      - name: double-run diff on a layer file fixture
+        run: |
+          set +e
+          ./bin/tiger check -C testdata/plugin-layers ./... > first.txt
+          first=$?
+          ./bin/tiger check -C testdata/plugin-layers ./... > second.txt
+          second=$?
+          set -e
+          test "$first" -eq 1
+          test "$second" -eq 1
+          grep -q "TS-X03" first.txt
+          diff first.txt second.txt
       - name: double-run diff on the repository tree
         run: |
           ./bin/tiger check ./... > first.txt
@@ -166,3 +178,20 @@ jobs:
           ! grep -q "TS-A09" findings.txt
           grep -q "outside/outside.go.*TS-N14" findings.txt
           ! grep -q "scoped/scoped.go" findings.txt
+      # The plugin installs the module's tiger.layers.yaml: the import of os
+      # that ./layered's entry leaves out and ./unlisted's missing entry
+      # surface, and the stale ./gone entry does not, because only tiger
+      # check sees the module's directories.
+      - name: layer file finding surfaces through the plugin
+        working-directory: testdata/plugin-layers
+        run: |
+          set +e
+          ../../bin/tiger-gcl run ./... > findings.txt 2>&1
+          code=$?
+          set -e
+          cat findings.txt
+          test "$code" -eq 1
+          grep -q "layered/layered.go.*TS-X03" findings.txt
+          grep -q "unlisted/unlisted.go.*has no entry" findings.txt
+          ! grep -q "pure/pure.go" findings.txt
+          ! grep -q "gone" findings.txt

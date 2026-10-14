@@ -392,10 +392,6 @@ var autoRules = []AutoRule{
 		RuleID: "TS-T01", Linter: "forbidigo", Section: SectionLinters,
 		Title: "time and randomness are injected",
 	},
-	{
-		RuleID: "TS-D01", Linter: "depguard", Section: SectionLinters,
-		Title: "the standard library, and nothing else, in internal/domain packages",
-	},
 }
 
 // AutoRules returns every registered auto rule.

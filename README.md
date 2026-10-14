@@ -57,7 +57,7 @@ frames; ADR-0026 removes them.) Output is
 deterministic and position-sorted; CI runs the check twice and diffs the
 bytes, with and without the facts channel.
 
-### The two committed files
+### The committed files
 
 `tiger.yaml` holds the facts a repository tells the analyzers: every entry
 is a value, a reason, and an optional package scope, reviewed like code. An
@@ -92,6 +92,23 @@ internal/cli:
   TS-L09: 1
 internal/store:
   TS-D07: 3
+```
+
+`tiger.layers.yaml`, optional, declares the import graph (TS-X03): every
+package gets one entry listing what it may import beyond the pure standard
+library, and `tiger check` fails an import its entry doesn't list, a package
+with no entry, and an entry that matches no package directory.
+`config/tiger.layers.yaml` is the template; without the file, imports are not
+checked.
+
+```yaml
+"./internal/store":
+  - database
+  - ./internal/types
+  - github.com/jackc/pgx/v5
+"./internal/types": []
+"./service":
+  - ./internal/store
 ```
 
 Two engines enforce the rules:
@@ -137,12 +154,16 @@ declarations (ADR-0024), and the `hot`, `wire`, and `owner` verbs do not exist
 | --- | --- |
 | `cmd/tiger/` | The CLI: a thin `main` over a testable run function. |
 | `internal/rules/` | The rule registry — the single source of the rule set. The binary's analyzer set, the finish functions, the corpus meta-tests, severity, the computed-facts table, and the `tiger golangci` audit are all derived from it. |
-| `internal/analyzers/` | The 29 analyzers, one package per analyzer, each with its corpus (failure-mode fires, compliant rewrite silent, known misses marked): an `analysistest` corpus for a per-package rule, a small module under `testdata/module/` run through the tiger driver for a whole-program rule. The shared internals live under `internal/analyzers/internal/`: `words` (identifier tokenization), `ssalib` (shared `go/ssa` call-graph walks used by `norecursion`, plus the effect lattice plumbing and curated stdlib effects table, which ADR-0026 removes with `effects` and `frames`), `assertpkg` (recognizes tiger's assert package by import path), and `invariants` (invariant const and assert-call collection). |
+| `internal/analyzers/` | The 31 analyzers, one package per analyzer, each with its corpus (failure-mode fires, compliant rewrite silent, known misses marked): an `analysistest` corpus for a per-package rule, a small module under `testdata/module/` run through the tiger driver for a whole-program rule. The shared internals live under `internal/analyzers/internal/`: `words` (identifier tokenization), `ssalib` (shared `go/ssa` call-graph walks used by `norecursion`, plus the effect lattice plumbing and curated stdlib effects table, which ADR-0026 removes with `effects` and `frames`), `assertpkg` (recognizes tiger's assert package by import path), and `invariants` (invariant const and assert-call collection). |
+| `internal/analyzers/layers/` | TS-X03 (and TS-D01): judges every non-test import against the package's `tiger.layers.yaml` entry, exactly, and reports a package with no entry. Its corpus installs its own layer file. |
+| `internal/layerfile/` | `tiger.layers.yaml`: loading and validation, the process-wide install the drivers do and the analyzer queries, the exact import judgment, the coverage comparison `tiger check` uses to report entries that match no package directory, and the wording of every TS-X03 message (ADR-0029). |
+| `internal/config/` | `tiger.yaml`, plus the module facts the committed files key on: the module path from `go.mod` and the module's package directories. |
 | `internal/directive/` | The `//tiger:` grammar: closed verb vocabulary, per-verb pin argument grammars (variant expressions and contract predicates; the effect lattice and frame lists go with ADR-0026), canonical printing, and the round-trip contract `Parse(Format(d)) == d`. |
-| `plugin/` + `.custom-gcl.yml` | The golangci-lint module plugin: the same analyzers under `golangci-lint run`, minus the finish step — TS-A07 and TS-A09 are `tiger check`-only. See "Running under golangci-lint" below. |
+| `plugin/` + `.custom-gcl.yml` | The golangci-lint module plugin: the same analyzers under `golangci-lint run`, minus the finish step — TS-A07, TS-A09 and TS-X03's directory checks (stale layer entries, packages the run did not load) are `tiger check`-only. See "Running under golangci-lint" below. |
 | `assert/` | The always-on assertion package, including `Invariant`/`Violates` generic over `~string`. Zero dependencies. Import it as `github.com/kapetan-io/tiger/assert`; tiger recognizes it by that import path only. |
 | `examples/ledger/` | The invariant vocabulary pattern: an `inv` package declaring IDs (TS-A07), a symmetric encode/decode pair asserting them (TS-A08), and a violation test per invariant (TS-A09). |
 | `config/golangci.yml` | The Stage 0 golangci-lint v2 template with rule-ID comments. `tiger golangci --init` generates the machine-audited baseline from the registry. |
+| `config/tiger.layers.yaml` | The layer file template (TS-X03): copy it next to `go.mod` and give every package an entry listing what it may import beyond the pure standard library. |
 
 This repository dogfoods itself: CI runs Stage 0 golangci-lint plus
 `tiger check ./...` over the tree against the committed `tiger.budget.yaml`,
@@ -159,19 +180,31 @@ required in the project's `.golangci.yml`, and one habit:
   on one signature — is dropped silently. Tiger's findings are all
   actionable; none may be hidden by another.
 - `linters.settings.custom.tiger.settings.config`, optionally, to name the
-  directory holding `tiger.yaml`. By default the plugin reads it from the
-  working directory, which is the module root under golangci-lint. A load
-  error fails the plugin's construction with the same one-line message
-  `tiger check` prints.
-- Run `golangci-lint cache clean` after rebuilding the plugin. The analysis
-  cache keys on source files, not on the plugin binary, so a rebuilt plugin
-  keeps serving the previous build's results until the cache is cleared.
+  directory holding `tiger.yaml` and `tiger.layers.yaml`. By default the
+  plugin reads them from the working directory, which is the module root
+  under golangci-lint. A load error fails the plugin's construction with the
+  same one-line message `tiger check` prints.
+- Run `golangci-lint cache clean` after rebuilding the plugin. The issue
+  cache key is the sorted analyzer names, salted with the golangci-lint
+  version string, the `linters.settings` block and `go.mod`. It does not
+  include the plugin binary, so a rebuilt plugin keeps serving the previous
+  build's results until the cache is cleared. It does not include
+  `tiger.layers.yaml` either, which is why the plugin adds an analyzer named
+  `layerfile_<digest>`: an edited layer file changes the key. `tiger.yaml`
+  has the same gap and nothing closes it yet, so clear the cache after
+  editing it.
 
 The plugin diverges from the CLI in one way: budgets are CLI-only. The
 plugin API has no end-of-run hook to aggregate counts across packages and
 no warning tier, so it reports every counted finding (escape directive,
 skipped test) as an issue. A repository that carries any budgeted debt needs
 `tiger check` for the verdict.
+
+TS-X03's directory checks are CLI-only for a similar reason: an entry in
+`tiger.layers.yaml` that matches no package directory, and a package with no
+entry that the run did not load, need the module's directories, which the
+plugin never sees. Its import and missing-entry findings for the packages it
+loads still fire.
 
 ## The acceptance contract
 

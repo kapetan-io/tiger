@@ -3,13 +3,16 @@ package rules_test
 import (
 	"bytes"
 	"fmt"
+	"io/fs"
 	"maps"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
 	"testing"
+	"testing/fstest"
 	"unicode/utf8"
 
 	"github.com/stretchr/testify/assert"
@@ -20,6 +23,7 @@ import (
 	"github.com/kapetan-io/tiger/internal/cli"
 	"github.com/kapetan-io/tiger/internal/driver/drivertest"
 	"github.com/kapetan-io/tiger/internal/finish"
+	"github.com/kapetan-io/tiger/internal/layerfile"
 	"github.com/kapetan-io/tiger/internal/rules"
 )
 
@@ -109,6 +113,7 @@ func replay(t *testing.T, analyzer *analysis.Analyzer, dirs []string) []emitted 
 		}
 		return collected
 	}
+	installLayerFile(t, analyzer.Name)
 	results := analysistest.Run(quietRun{}, testdataPath(t, analyzer.Name), analyzer, dirs...)
 	for _, result := range results {
 		for _, diagnostic := range result.Diagnostics {
@@ -118,6 +123,24 @@ func replay(t *testing.T, analyzer *analysis.Analyzer, dirs []string) []emitted 
 		}
 	}
 	return collected
+}
+
+// installLayerFile installs the layer file a corpus directory carries, the
+// way a driver installs the run directory's, so a corpus that needs one (the
+// layers analyzer's) replays here as it does under its own test.
+func installLayerFile(t *testing.T, analyzerName string) {
+	t.Helper()
+	src := filepath.Join(testdataPath(t, analyzerName), "src")
+	found, err := fs.Glob(os.DirFS(src), path.Join("*", layerfile.FileName))
+	require.NoError(t, err)
+	require.LessOrEqual(t, len(found), 1)
+	if len(found) == 0 {
+		return
+	}
+	loaded, err := layerfile.Load(filepath.Join(src, path.Dir(found[0])))
+	require.NoError(t, err)
+	layerfile.Install(loaded)
+	t.Cleanup(func() { layerfile.Install(nil) })
 }
 
 // resolve maps an emitted diagnostic to the analyzer and rule ID the
@@ -159,6 +182,11 @@ func corpusFiles(t *testing.T, corpus corpusFor) map[string]string {
 	entries, err := os.ReadDir(root)
 	require.NoError(t, err)
 	for _, entry := range entries {
+		// A corpus may hold more packages in subdirectories; the rule-id
+		// package's own files are what the conventions judge.
+		if entry.IsDir() {
+			continue
+		}
 		files[entry.Name()] = readCorpusFile(t, filepath.Join(root, entry.Name()))
 	}
 	return files
@@ -461,6 +489,58 @@ func TestRatchetMessagesFollowTheStyleGuide(t *testing.T) {
 		})
 	}
 	assert.GreaterOrEqual(t, rendered, 4)
+}
+
+// TestLayerMessagesFollowTheStyleGuide covers the TS-X03 wording contract.
+//
+// Goal: every TS-X03 line a real tiger check run prints — the analyzer's
+// import and missing-entry findings and the CLI's stale-entry and
+// unloaded-package lines — passes I1–I6 with package keys, module packages
+// and module paths as long as a real module's.
+func TestLayerMessagesFollowTheStyleGuide(t *testing.T) {
+	const (
+		module = "github.com/example-org/inventory-reconciliation-service"
+		sdk    = "github.com/example-org/platform-sdk-go/v2"
+	)
+	files := fstest.MapFS{}
+	for name, content := range map[string]string{
+		"go.mod": "module " + module + "\n\ngo 1.26\n\nrequire " + sdk + " v2.0.0\n\n" +
+			"replace " + sdk + " => ./third/sdk\n",
+		"third/sdk/go.mod": "module " + sdk + "\n\ngo 1.26\n",
+		"third/sdk/service/storage/types/types.go": "// Package types is deep in a module.\n" +
+			"package types\n",
+		"doc.go": "// Package service is the root package.\npackage service\n",
+		"internal/adapters/storage/postgres/migrations/m.go": "// Package migrations " +
+			"imports what its entry leaves out.\npackage migrations\n\nimport (\n" +
+			"\t_ \"database/sql/driver\"\n\n" +
+			"\t_ \"" + sdk + "/service/storage/types\"\n\n" +
+			"\t_ \"" + module + "/internal/platform/observability/tracing/exporters\"\n)\n",
+		"internal/platform/observability/tracing/exporters/e.go": "// Package exporters " +
+			"has no entry.\npackage exporters\n",
+		"internal/platform/observability/tracing/windowsonly/w_windows.go": "// Package " +
+			"windowsonly builds only on windows.\npackage windowsonly\n",
+		"tiger.layers.yaml": "\"./internal/adapters/storage/postgres/migrations\": []\n" +
+			"\"./internal/adapters/storage/postgres/migrations/legacy/...\": []\n",
+	} {
+		files[name] = &fstest.MapFile{Data: []byte(content)}
+	}
+	dir := t.TempDir()
+	require.NoError(t, os.CopyFS(dir, files))
+	rendered := map[string]bool{}
+	for _, line := range strings.Split(checkOutput(t, dir), "\n") {
+		_, message, found := strings.Cut(line, ": TS-X03: ")
+		if !found {
+			continue
+		}
+		rendered[message] = true
+		checkStyle(t, bound{analyzer: "layers", ruleID: "TS-X03", message: "TS-X03: " + message})
+	}
+	// The seven: the analyzer's missing entries for the root and for
+	// ./internal/platform/observability/tracing/exporters, tiger check's
+	// missing entry for the unloaded windowsonly package, the stale legacy
+	// entry, and the three import breaches in migrations (database/sql/driver,
+	// the sdk module, and the exporters package).
+	assert.Len(t, rendered, 7)
 }
 
 // checkOutput runs tiger check over dir through the CLI surface and returns

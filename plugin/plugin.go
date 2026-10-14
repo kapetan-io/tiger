@@ -17,12 +17,21 @@
 // breaks, but those two rule codes never appear in a golangci-lint run;
 // only `tiger check` reports them.
 //
-// The plugin also installs the repository's tiger.yaml (ADR-0002: the
-// driver loads config, analyzers only query it). It is read from the
-// working directory — golangci-lint runs from the module root — unless the
-// plugin's settings carry a `config` key naming another directory. A load
-// error fails plugin construction with the same one-line message tiger
-// check prints. Budgets (tiger.budget.yaml) are not enforced here: the
+// The plugin also installs the repository's tiger.yaml and tiger.layers.yaml
+// (ADR-0002: the driver loads config, analyzers only query it). Both are
+// read from the working directory — golangci-lint runs from the module root
+// — unless the plugin's settings carry a `config` key naming another
+// directory. A load error fails plugin construction with the same one-line
+// message tiger check prints. TS-X03's import and missing-entry findings
+// surface here for the packages golangci-lint loads; an entry that matches no
+// package, and a package with no entry that the run did not load or that
+// holds only generated files, do not, because those checks need the module's
+// directories and only tiger check runs them (ADR-0029). golangci-lint keys
+// its issue cache on the sorted analyzer names, salted with its version
+// string, the linters.settings block and go.mod, never on the plugin binary or
+// the layer file, so the plugin adds an analyzer that does nothing and whose
+// name carries the file's digest: an edited layer file changes the key and the
+// cached issues are not replayed. Budgets (tiger.budget.yaml) are not enforced here: the
 // plugin API has no end-of-run hook to aggregate counts, so every counted
 // finding surfaces as an issue.
 //
@@ -35,11 +44,15 @@ import (
 	"golang.org/x/tools/go/analysis"
 
 	"github.com/kapetan-io/tiger/internal/config"
+	"github.com/kapetan-io/tiger/internal/layerfile"
 	"github.com/kapetan-io/tiger/internal/rules"
 )
 
-// tiger satisfies register.LinterPlugin with the registry's analyzer set.
-type tiger struct{}
+// tiger satisfies register.LinterPlugin with the registry's analyzer set and
+// the layer file it installed.
+type tiger struct {
+	layers *layerfile.File
+}
 
 //nolint:gochecknoinits // The golangci-lint plugin contract registers by init.
 func init() {
@@ -49,8 +62,8 @@ func init() {
 // settings is the plugin's own configuration block under
 // linters.settings.custom.tiger.settings.
 type settings struct {
-	// Config is the directory holding tiger.yaml; the working directory
-	// when empty.
+	// Config is the directory holding tiger.yaml and tiger.layers.yaml; the
+	// working directory when empty.
 	Config string `json:"config"`
 }
 
@@ -68,19 +81,42 @@ func newPlugin(conf any) (register.LinterPlugin, error) {
 		return nil, err
 	}
 	config.Install(loaded)
-	return tiger{}, nil
+	layered, err := layerfile.Load(dir)
+	if err != nil {
+		return nil, err
+	}
+	layerfile.Install(layered)
+	return tiger{layers: layered}, nil
 }
 
 // BuildAnalyzers returns every registered analyzer, with fact diagnostics
-// filtered out (the golangci driver's output policy). Finish functions are
-// never consulted: golangci-lint has no end-of-module hook.
-func (tiger) BuildAnalyzers() ([]*analysis.Analyzer, error) {
+// filtered out (the golangci driver's output policy), plus the layer file's
+// cache key. Finish functions are never consulted: golangci-lint has no
+// end-of-module hook.
+func (t tiger) BuildAnalyzers() ([]*analysis.Analyzer, error) {
 	analyzers := rules.Analyzers()
-	built := make([]*analysis.Analyzer, 0, len(analyzers))
+	built := make([]*analysis.Analyzer, 0, len(analyzers)+1)
 	for _, registered := range analyzers {
 		built = append(built, quietFacts(registered))
 	}
-	return built, nil
+	return append(built, layerFileKey(t.layers)), nil
+}
+
+// layerFileKey returns an analyzer that reports nothing and whose name
+// carries the layer file's digest. The issue cache of golangci-lint is keyed
+// on the analyzers' names, so this is how an edit to the layer file reaches
+// it.
+func layerFileKey(layers *layerfile.File) *analysis.Analyzer {
+	digest := layers.Digest()
+	const shown = 16
+	if len(digest) > shown {
+		digest = digest[:shown]
+	}
+	return &analysis.Analyzer{
+		Name: "layerfile_" + digest,
+		Doc:  "Names the installed tiger.layers.yaml's digest for golangci-lint's issue cache.",
+		Run:  func(*analysis.Pass) (any, error) { return nil, nil },
+	}
 }
 
 // quietFacts returns the analyzer as-is when it emits no fact category,
