@@ -207,7 +207,9 @@ func (c *checker) drainBreak(guard *ast.IfStmt, breaks []*ast.BranchStmt) bool {
 	case isNot && negated.Op == token.NOT && guard.Else == nil:
 		cond, exit = ast.Unparen(negated.X), guard.Body
 	case !isNot:
-		exit, _ = guard.Else.(*ast.BlockStmt)
+		if other, isBlock := guard.Else.(*ast.BlockStmt); isBlock {
+			exit = other
+		}
 	}
 	if exit == nil || len(exit.List) != 1 {
 		return false

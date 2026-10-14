@@ -102,7 +102,8 @@ func (s Scope) Escapes(v *types.Var) bool {
 	if v.Parent() == v.Pkg().Scope() {
 		return true
 	}
-	return s.addressTaken(func(expr ast.Expr) bool { return s.IsVar(expr, v) }) || s.ClosureWrites(v)
+	return s.addressTaken(func(expr ast.Expr) bool { return s.IsVar(expr, v) }) ||
+		s.ClosureWrites(v)
 }
 
 // ClosureWrites reports whether a function literal in scope writes v. A
