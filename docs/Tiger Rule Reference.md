@@ -1427,8 +1427,18 @@ names `slices.Sorted(maps.Keys(m))` followed by `slices.SortStableFunc`.
 
 A result of `maps.Keys`, `maps.Values`, or `maps.All` fires unless it goes to `slices.Sorted`, a
 full-coverage `SortedFunc` or `SortedStableFunc`, `maps.Collect`, `maps.Insert`, or a range checked like a map range, so
-`slices.Collect(maps.Keys(m))` is a finding. A map write gated by a counter, such as copying the
-first three entries visited, fires too.
+`slices.Collect(maps.Keys(m))` is a finding. Parentheses around the call change nothing, and neither
+does a label on the loop. A map write gated by a counter, such as copying the first three entries
+visited, fires too.
+
+A collect-then-sort passes only for a slice that is a function local and that nothing else can read
+before the sort. A package-level slice fires. So does a slice whose address is taken (`p := &keys`),
+that a function literal captures, or that is sliced, because a read through any of those before the
+sort prints the keys in map order.
+
+A loop that can stop early (`break`, `return`) fires when it also writes a map, adds to a counter or
+deletes. Which entries it handled before stopping depends on visit order. A loop that only sets a
+boolean to a constant before it stops, such as a search for one value, passes.
 
 A finding means the loop's shape is outside the allowlist, not that the output varies.
 

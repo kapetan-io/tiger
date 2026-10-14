@@ -48,9 +48,8 @@ const (
 	msgCarried = "TS-T02: this loop reads state it changed while visiting earlier map entries, " +
 		"and Go visits entries in a different order every run, so which ones it " +
 		"handles varies" + msgSortedKeys
-	msgEarlyExit = "TS-T02: this loop changes something and can also stop early, and Go visits map " +
-		"entries in a different order every run, so which entries it handled before " +
-		"stopping varies" + msgSortedKeys
+	msgEarlyExit = "TS-T02: this loop changes state and can stop early, and Go visits map entries " +
+		"in a different order every run, so which entries it handled varies" + msgSortedKeys
 	msgSortTies = "TS-T02: this sort can find two different map entries equal, and equal entries " +
 		"keep the map's order — compare every field with cmp.Compare, or use " +
 		"slices.Sorted(maps.Keys(m)), then slices.SortStableFunc"
@@ -77,13 +76,12 @@ type sortSite struct {
 func run(pass *analysis.Pass) (any, error) {
 	exportTotalFacts(pass)
 	for _, file := range pass.Files {
-		checkIterators(pass, file)
-		after := statementsAfter(file)
-		shared := sharedVars(pass, file)
+		facts := fileFacts{after: statementsAfter(file), shared: sharedVars(pass, file)}
+		checkIterators(pass, file, facts)
 		ast.Inspect(file, func(node ast.Node) bool {
 			loop, ok := node.(*ast.RangeStmt)
 			if ok {
-				checkRange(pass, loop, after[loop], shared)
+				checkRange(pass, loop, facts)
 			}
 			return true
 		})
@@ -91,10 +89,11 @@ func run(pass *analysis.Pass) (any, error) {
 	return nil, nil
 }
 
-// statementsAfter maps every range statement to the statements that follow
-// it in its enclosing statement list.
-func statementsAfter(file *ast.File) map[*ast.RangeStmt][]ast.Stmt {
-	after := map[*ast.RangeStmt][]ast.Stmt{}
+// statementsAfter maps every statement to the statements that follow it in
+// its enclosing statement list. A labeled statement is keyed by what it
+// labels.
+func statementsAfter(file *ast.File) map[ast.Stmt][]ast.Stmt {
+	after := map[ast.Stmt][]ast.Stmt{}
 	ast.Inspect(file, func(node ast.Node) bool {
 		var list []ast.Stmt
 		switch block := node.(type) {
@@ -106,27 +105,36 @@ func statementsAfter(file *ast.File) map[*ast.RangeStmt][]ast.Stmt {
 			list = block.Body
 		}
 		for i, stmt := range list {
-			for {
-				labeled, ok := stmt.(*ast.LabeledStmt)
-				if !ok {
-					break
-				}
-				stmt = labeled.Stmt
-			}
-			if loop, ok := stmt.(*ast.RangeStmt); ok {
-				after[loop] = list[i+1:]
-			}
+			after[unlabel(stmt)] = list[i+1:]
 		}
 		return true
 	})
 	return after
 }
 
+// unlabel returns the statement a label sits on.
+func unlabel(stmt ast.Stmt) ast.Stmt {
+	for range maxPathDepth {
+		labeled, ok := stmt.(*ast.LabeledStmt)
+		if !ok {
+			return stmt
+		}
+		stmt = labeled.Stmt
+	}
+	return stmt
+}
+
+// fileFacts is what the checks need to know about a file beyond one node.
+type fileFacts struct {
+	// after maps a statement to those following it in its statement list.
+	after map[ast.Stmt][]ast.Stmt
+	// shared maps a variable to where code first reads it other than by name.
+	shared map[types.Object]token.Pos
+}
+
 // checkRange fires TS-T02 when loop ranges over a map and its body is
 // neither allowlisted nor a collect-then-sort the sort makes order-free.
-func checkRange(
-	pass *analysis.Pass, loop *ast.RangeStmt, after []ast.Stmt, shared map[types.Object]token.Pos,
-) {
+func checkRange(pass *analysis.Pass, loop *ast.RangeStmt, facts fileFacts) {
 	if !isMapRange(pass, loop) {
 		return
 	}
@@ -134,7 +142,7 @@ func checkRange(
 	if bodyAllowed(pass, loop, carried) {
 		return
 	}
-	site := collectSite(pass, loop, after, carried, shared)
+	site := collectSite(pass, loop, carried, facts)
 	if site != nil && site.accepted {
 		return
 	}

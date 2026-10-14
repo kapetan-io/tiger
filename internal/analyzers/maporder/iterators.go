@@ -3,6 +3,7 @@ package maporder
 import (
 	"go/ast"
 	"go/types"
+	"slices"
 
 	"golang.org/x/tools/go/analysis"
 )
@@ -40,7 +41,7 @@ func mapIterator(pass *analysis.Pass, call *ast.CallExpr) (types.Type, bool) {
 // map whose result reaches anything but a sort that fixes its order, a map
 // (maps.Collect, maps.Insert), or a range statement, which checkRange
 // judges as a map range.
-func checkIterators(pass *analysis.Pass, file *ast.File) {
+func checkIterators(pass *analysis.Pass, file *ast.File, facts fileFacts) {
 	var stack []ast.Node
 	ast.Inspect(file, func(node ast.Node) bool {
 		if node == nil {
@@ -55,8 +56,8 @@ func checkIterators(pass *analysis.Pass, file *ast.File) {
 		// Parentheses change nothing about who consumes the iterator.
 		var use ast.Expr = call
 		parent := ast.Node(nil)
-		for depth := len(stack) - 2; depth >= 0; depth-- {
-			parent = stack[depth]
+		for _, ancestor := range slices.Backward(stack[:len(stack)-1]) {
+			parent = ancestor
 			paren, ok := parent.(*ast.ParenExpr)
 			if !ok {
 				break
@@ -64,7 +65,8 @@ func checkIterators(pass *analysis.Pass, file *ast.File) {
 			use = paren
 		}
 		elem, ok := mapIterator(pass, call)
-		if !ok || iteratorFixed(pass, parent, use, elem) {
+		if !ok || iteratorFixed(pass, parent, use, elem) ||
+			collectedThenSorted(pass, stack, use, facts) {
 			return true
 		}
 		pass.Report(analysis.Diagnostic{Pos: call.Pos(), Category: "TS-T02", Message: msgIterator})
@@ -92,4 +94,54 @@ func iteratorFixed(pass *analysis.Pass, parent ast.Node, call ast.Expr, elem typ
 		}
 	}
 	return false
+}
+
+// collectedThenSorted reports whether use, the iterator at the top of
+// stack, is collected by slices.Collect or slices.AppendSeq into a local
+// slice whose first use afterward is a sort that fixes its order.
+func collectedThenSorted(
+	pass *analysis.Pass, stack []ast.Node, use ast.Expr, facts fileFacts,
+) bool {
+	var collect *ast.CallExpr
+	var stmt ast.Stmt
+	if depth := slices.Index(stack, ast.Node(use)); depth >= 1 {
+		collect, _ = stack[depth-1].(*ast.CallExpr)
+		if depth >= 2 {
+			stmt, _ = stack[depth-2].(ast.Stmt)
+		}
+	}
+	assign, ok := stmt.(*ast.AssignStmt)
+	if collect == nil || !ok || len(assign.Lhs) != 1 || len(assign.Rhs) != 1 ||
+		assign.Rhs[0] != ast.Expr(collect) {
+		return false
+	}
+	target := identDecl(pass, assign.Lhs[0])
+	switch {
+	case isFunc(pass, collect.Fun, "slices.Collect"):
+		if len(collect.Args) != 1 {
+			return false
+		}
+	case isFunc(pass, collect.Fun, "slices.AppendSeq"):
+		if len(collect.Args) != 2 || collect.Args[1] != use {
+			return false
+		}
+		// A fresh slice from make, or the target extended in place.
+		fresh := false
+		if made, ok := ast.Unparen(collect.Args[0]).(*ast.CallExpr); ok {
+			fresh = isBuiltin(pass, made.Fun, "make")
+		}
+		if !fresh && identDecl(pass, collect.Args[0]) != target {
+			return false
+		}
+	default:
+		return false
+	}
+	if target == nil || target.Parent() == pass.Pkg.Scope() {
+		return false
+	}
+	sorted := firstUseSort(pass, facts.after[assign], target)
+	if first, ok := facts.shared[target]; ok && sorted != nil && first < sorted.call.Pos() {
+		return false
+	}
+	return sortFixesOrder(pass, sorted, target)
 }

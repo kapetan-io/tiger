@@ -21,6 +21,12 @@ var orderedSorts = map[string]bool{
 	"slices.Sort":   true,
 }
 
+// indexSorts order a slice by a less function over indexes.
+var indexSorts = map[string]bool{
+	"sort.Slice":       true,
+	"sort.SliceStable": true,
+}
+
 // comparatorSorts are accepted only with a full-coverage comparator.
 var comparatorSorts = map[string]bool{
 	"slices.SortFunc":       true,
@@ -34,9 +40,9 @@ var comparatorSorts = map[string]bool{
 // fixes its order. A target that something else can read under another name
 // (sharedVars) before the sort makes the sort no proof, so such a loop is no collect site.
 func collectSite(
-	pass *analysis.Pass, loop *ast.RangeStmt, after []ast.Stmt, carried *carry,
-	shared map[types.Object]token.Pos,
+	pass *analysis.Pass, loop *ast.RangeStmt, carried *carry, facts fileFacts,
 ) *sortSite {
+	after := facts.after[loop]
 	targets := appendTargets(pass, loop)
 	var site *sortSite
 	accepted := true
@@ -45,7 +51,7 @@ func collectSite(
 		if target.Parent() == pass.Pkg.Scope() {
 			return nil
 		}
-		if first, ok := shared[target]; ok && sorted != nil && first < sorted.call.Pos() {
+		if first, ok := facts.shared[target]; ok && sorted != nil && first < sorted.call.Pos() {
 			return nil
 		}
 		accepted = accepted && sortFixesOrder(pass, sorted, target)
@@ -93,7 +99,91 @@ func appendTargets(pass *analysis.Pass, loop *ast.RangeStmt) []types.Object {
 		}
 		return true
 	})
+	for _, pair := range indexedPairs(pass, loop) {
+		if !seen[pair.slice] {
+			seen[pair.slice] = true
+			targets = append(targets, pair.slice)
+		}
+	}
 	return targets
+}
+
+// indexedPair is the pair of statements `s[i] = e` and `i++` that fill the
+// slice s by position.
+type indexedPair struct {
+	slice, counter types.Object
+	store          *ast.AssignStmt
+	step           *ast.IncDecStmt
+}
+
+// indexedPairs finds the top-level statement pairs `s[i] = e; i++` in loop's
+// body where s is a slice and i an integer, both declared outside loop, i
+// appears nowhere else in the body, s appears only as the store's target,
+// and e reads neither. Each visit then writes its own slot, so the slice
+// holds the same values whatever the visit order, and only their position
+// varies, exactly as with append.
+func indexedPairs(pass *analysis.Pass, loop *ast.RangeStmt) []indexedPair {
+	var pairs []indexedPair
+	for _, stmt := range loop.Body.List {
+		store, ok := stmt.(*ast.AssignStmt)
+		if !ok || store.Tok != token.ASSIGN || len(store.Lhs) != 1 || len(store.Rhs) != 1 {
+			continue
+		}
+		index, ok := ast.Unparen(store.Lhs[0]).(*ast.IndexExpr)
+		if !ok {
+			continue
+		}
+		slice, counter := identDecl(pass, index.X), identDecl(pass, index.Index)
+		if slice == nil || counter == nil || sliceElem(slice) == nil || !isIntVar(counter) {
+			continue
+		}
+		if declaredWithinObj(loop, slice) || declaredWithinObj(loop, counter) {
+			continue
+		}
+		if !pureExpr(pass, store.Rhs[0]) ||
+			readsAny(pass, store.Rhs[0], map[types.Object]bool{slice: true, counter: true}) {
+			continue
+		}
+		step := stepOf(pass, loop, counter)
+		if step == nil || countMentions(pass, loop.Body, counter) != 2 ||
+			countMentions(pass, loop.Body, slice) != 1 {
+			continue
+		}
+		pairs = append(pairs, indexedPair{slice: slice, counter: counter, store: store, step: step})
+	}
+	return pairs
+}
+
+// stepOf returns the top-level `counter++` statement of loop's body.
+func stepOf(pass *analysis.Pass, loop *ast.RangeStmt, counter types.Object) *ast.IncDecStmt {
+	for _, stmt := range loop.Body.List {
+		step, ok := stmt.(*ast.IncDecStmt)
+		if ok && step.Tok == token.INC && identDecl(pass, step.X) == counter {
+			return step
+		}
+	}
+	return nil
+}
+
+func isIntVar(obj types.Object) bool {
+	basic, ok := obj.Type().Underlying().(*types.Basic)
+	return ok && basic.Info()&types.IsInteger != 0
+}
+
+func declaredWithinObj(loop *ast.RangeStmt, obj types.Object) bool {
+	return obj.Pos() >= loop.Body.Pos() && obj.Pos() < loop.Body.End()
+}
+
+// countMentions counts the identifiers in node that refer to obj.
+func countMentions(pass *analysis.Pass, node ast.Node, obj types.Object) int {
+	count := 0
+	ast.Inspect(node, func(n ast.Node) bool {
+		if ident, ok := n.(*ast.Ident); ok && pass.TypesInfo.ObjectOf(ident) == obj {
+			count++
+		}
+		return true
+	})
+	return count
 }
 
 // collectShape reports the append targets when loop's body is allowlisted
@@ -103,8 +193,17 @@ func appendTargets(pass *analysis.Pass, loop *ast.RangeStmt) []types.Object {
 func collectShape(pass *analysis.Pass, loop *ast.RangeStmt, carried *carry) map[types.Object]bool {
 	targets := map[types.Object]bool{}
 	work := append([]ast.Stmt{}, loop.Body.List...)
+	pairs := indexedPairs(pass, loop)
 	i := 0
 	for ; i < len(work) && i < worklist.NodesMax; i++ {
+		if pair, ok := pairOf(pairs, work[i]); ok {
+			if pair.store == work[i] && clean(pass, pair.store.Rhs[0], carried) {
+				targets[pair.slice] = true
+			} else if pair.store == work[i] {
+				return nil
+			}
+			continue
+		}
 		switch stmt := work[i].(type) {
 		case *ast.AssignStmt:
 			if target := appendTarget(pass, loop, stmt, carried); target != nil {
@@ -130,6 +229,16 @@ func collectShape(pass *analysis.Pass, loop *ast.RangeStmt, carried *carry) map[
 		return nil
 	}
 	return targets
+}
+
+// pairOf returns the pair that stmt is the store or the step of.
+func pairOf(pairs []indexedPair, stmt ast.Stmt) (indexedPair, bool) {
+	for _, pair := range pairs {
+		if stmt == ast.Stmt(pair.store) || stmt == ast.Stmt(pair.step) {
+			return pair, true
+		}
+	}
+	return indexedPair{}, false
 }
 
 // appendTarget returns x when stmt is `x = append(x, e)` with x declared
@@ -222,6 +331,9 @@ func sortFixesOrder(pass *analysis.Pass, sorted *sortCall, target types.Object) 
 	switch {
 	case orderedSorts[sorted.name]:
 		return direct && len(call.Args) == 1 && orderedLeaf(elem)
+	case indexSorts[sorted.name]:
+		return direct && len(call.Args) == 2 && orderedLeaf(elem) &&
+			compareElements(pass, call.Args[1], target)
 	case comparatorSorts[sorted.name]:
 		total := len(call.Args) == 2 && totalComparator(pass, call.Args[1], elem)
 		return direct && total
@@ -291,4 +403,46 @@ func sharedVars(pass *analysis.Pass, file *ast.File) map[types.Object]token.Pos 
 		return true
 	})
 	return shared
+}
+
+// compareElements reports whether less is func(i, j int) bool { return
+// s[i] < s[j] } (or >) over the slice target itself, a total order on string
+// and integer elements.
+func compareElements(pass *analysis.Pass, less ast.Expr, target types.Object) bool {
+	lit, ok := ast.Unparen(less).(*ast.FuncLit)
+	if !ok || lit.Type.Params.NumFields() != 2 || len(lit.Body.List) != 1 {
+		return false
+	}
+	var params []types.Object
+	for _, field := range lit.Type.Params.List {
+		for _, name := range field.Names {
+			params = append(params, pass.TypesInfo.ObjectOf(name))
+		}
+	}
+	ret, ok := lit.Body.List[0].(*ast.ReturnStmt)
+	if !ok || len(ret.Results) != 1 || len(params) != 2 {
+		return false
+	}
+	cmp, ok := ast.Unparen(ret.Results[0]).(*ast.BinaryExpr)
+	if !ok || cmp.Op == token.EQL {
+		return false
+	}
+	if cmp.Op != token.LSS && cmp.Op != token.GTR {
+		return false
+	}
+	at := func(expr ast.Expr) types.Object {
+		index, ok := ast.Unparen(expr).(*ast.IndexExpr)
+		if !ok || identDecl(pass, index.X) != target {
+			return nil
+		}
+		return identDecl(pass, index.Index)
+	}
+	left, right := at(cmp.X), at(cmp.Y)
+	if left == nil || right == nil || left == right {
+		return false
+	}
+	if left == params[0] {
+		return right == params[1]
+	}
+	return left == params[1] && right == params[0]
 }
