@@ -102,15 +102,27 @@ func (s Scope) Escapes(v *types.Var) bool {
 	if v.Parent() == v.Pkg().Scope() {
 		return true
 	}
-	return s.addressTaken(func(expr ast.Expr) bool { return s.IsVar(expr, v) }) ||
-		s.closureWrites(func(expr ast.Expr) bool { return s.IsVar(expr, v) }, v.Pos())
+	return s.addressTaken(func(expr ast.Expr) bool { return s.IsVar(expr, v) }) || s.ClosureWrites(v)
+}
+
+// ClosureWrites reports whether a function literal in scope writes v. A
+// literal can run at any point, so its writes cannot be ordered against the
+// statements around it.
+func (s Scope) ClosureWrites(v *types.Var) bool {
+	return s.closureWrites(func(expr ast.Expr) bool { return s.IsVar(expr, v) }, v.Pos())
+}
+
+// ClosureWritesField reports whether a function literal in scope writes the
+// struct field, whatever value holds the struct.
+func (s Scope) ClosureWritesField(field *types.Var) bool {
+	return s.closureWrites(func(expr ast.Expr) bool { return s.isField(expr, field) }, token.NoPos)
 }
 
 // FieldEscapes reports whether something outside the loop body could write
 // the field: its address is taken or a function literal in scope writes it.
 func (s Scope) FieldEscapes(field *types.Var) bool {
 	return s.addressTaken(func(expr ast.Expr) bool { return s.isField(expr, field) }) ||
-		s.closureWrites(func(expr ast.Expr) bool { return s.isField(expr, field) }, token.NoPos)
+		s.ClosureWritesField(field)
 }
 
 // ReceivesOwner reports whether a call in node receives a value of the

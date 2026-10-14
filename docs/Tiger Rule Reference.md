@@ -266,7 +266,9 @@ panic statement after the loop counts too.
 
 A counter cap is a page size, and needs no report, when its limit is not a constant and
 every other way out of the loop drains a stream whose type is declared outside the module
-(`rows.Next()`, `scanner.Scan()`). Reaching a page size means the page is full.
+(`rows.Next()`, `scanner.Scan()`). The drain can sit in the loop condition or in the body as an
+`if !scanner.Scan() { break }` that does nothing else; any other `break` makes the cap a
+safety cap. Reaching a page size means the page is full.
 
 `for ctx.Err() == nil` on a `context.Context` parameter is a forever loop, like a
 `select` on `ctx.Done()`. On a context built inside the function, such as
@@ -1803,6 +1805,10 @@ not count. Growth through a pointer or a closure made before the loop defeats a 
 and so does a counter that wraps around at the end of its type (`i <= math.MaxInt`). A
 `continue`, a labeled `continue`, or a `goto` that can skip the shrink defeats it too.
 TS-S02 accepts a loop whose variant this rule verified.
+
+Known miss: a `goto` back above a counted loop restarts it with the counter reset, and
+neither TS-S02 nor TS-V01 fires. TS-S09 blocks every `goto`, so this matters only where
+TS-S09 is waived.
 
 A `//tiger:variant` comment on a loop that ends on its own, a range or a counted loop,
 is a finding too, because it says nothing: `TS-V01: this loop has a //tiger:variant

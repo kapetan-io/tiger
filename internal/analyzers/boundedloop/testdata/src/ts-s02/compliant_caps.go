@@ -88,3 +88,16 @@ func plainCount(limit int) int {
 	}
 	return total
 }
+
+// readLinesBodyCheck is readLines with the stream check in the body, which
+// ends the loop the same way.
+func readLinesBodyCheck(scanner *bufio.Scanner, limit int) []string {
+	var lines []string
+	for n := 0; n < limit; n++ {
+		if !scanner.Scan() {
+			break
+		}
+		lines = append(lines, scanner.Text())
+	}
+	return lines
+}
