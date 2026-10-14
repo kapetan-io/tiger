@@ -55,8 +55,8 @@ const (
 	msgCarried = "TS-T02: this loop reads state it changed while visiting earlier map entries, " +
 		"and Go visits entries in a different order every run, so which ones it " +
 		"handles varies" + msgSortedKeys
-	msgEarlyExit = "TS-T02: this loop changes state and can stop early, and Go visits map entries " +
-		"in a different order every run, so which entries it handled varies" + msgSortedKeys
+	msgEarlyExit = "TS-T02: this loop changes state and can stop early, and Go visits map " +
+		"entries in a different order every run, so which entries it handled varies" + msgSortedKeys
 	msgSortTies = "TS-T02: this sort can find two different map entries equal, and equal entries " +
 		"keep the map's order — compare every field with cmp.Compare, or use " +
 		"slices.Sorted(maps.Keys(m)), then slices.SortStableFunc"

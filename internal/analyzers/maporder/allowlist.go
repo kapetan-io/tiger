@@ -251,10 +251,11 @@ func outcomeKey(pass *analysis.Pass, loop *ast.RangeStmt, stmt ast.Stmt) (string
 		if !boolConstAssign(pass, stmt) {
 			return "", false
 		}
-		if declaredWithin(pass, loop, stmt.Lhs[0].(*ast.Ident)) {
+		target := identDecl(pass, stmt.Lhs[0])
+		if target == nil || declaredWithinObj(loop, target) {
 			return "", false
 		}
-		return fmt.Sprintf("%p=%s", identDecl(pass, stmt.Lhs[0]), types.ExprString(stmt.Rhs[0])), true
+		return fmt.Sprintf("%p=%s", target, types.ExprString(stmt.Rhs[0])), true
 	case *ast.ReturnStmt:
 		results := make([]string, len(stmt.Results))
 		for at, result := range stmt.Results {
@@ -296,7 +297,8 @@ func exitsCarryOutcomes(pass *analysis.Pass, loop *ast.RangeStmt, outcomes map[s
 			case *ast.IfStmt:
 				work = append(work, block{list: stmt.Body.List, covered: maps.Clone(covered)})
 				if stmt.Else != nil {
-					work = append(work, block{list: []ast.Stmt{stmt.Else}, covered: maps.Clone(covered)})
+					rest := block{list: []ast.Stmt{stmt.Else}, covered: maps.Clone(covered)}
+					work = append(work, rest)
 				}
 			}
 		}

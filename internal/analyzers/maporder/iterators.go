@@ -105,9 +105,13 @@ func collectedThenSorted(
 	var collect *ast.CallExpr
 	var stmt ast.Stmt
 	if depth := slices.Index(stack, ast.Node(use)); depth >= 1 {
-		collect, _ = stack[depth-1].(*ast.CallExpr)
+		if call, ok := stack[depth-1].(*ast.CallExpr); ok {
+			collect = call
+		}
 		if depth >= 2 {
-			stmt, _ = stack[depth-2].(ast.Stmt)
+			if parent, ok := stack[depth-2].(ast.Stmt); ok {
+				stmt = parent
+			}
 		}
 	}
 	assign, ok := stmt.(*ast.AssignStmt)

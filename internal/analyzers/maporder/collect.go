@@ -446,7 +446,10 @@ func sharedVars(pass *analysis.Pass, file *ast.File) map[types.Object]token.Pos 
 			}
 		case *ast.Ident:
 			obj, ok := pass.TypesInfo.ObjectOf(expr).(*types.Var)
-			if ok && pass.TypesInfo.Defs[expr] == nil && isSliceType(obj.Type()) && copiesHeader(pass, stack, obj) {
+			if !ok || pass.TypesInfo.Defs[expr] != nil || !isSliceType(obj.Type()) {
+				break
+			}
+			if copiesHeader(pass, stack, obj) {
 				mark(obj, expr.Pos())
 			}
 		}
@@ -497,10 +500,13 @@ func markStaleStart(
 		if isBuiltin(pass, fresh.Fun, "make") || isFunc(pass, fresh.Fun, "slices.Collect") {
 			return
 		}
-		if isFunc(pass, fresh.Fun, "slices.AppendSeq") && len(fresh.Args) > 0 && freshBase(pass, fresh.Args[0], obj) {
+		if len(fresh.Args) == 0 {
+			break
+		}
+		if isFunc(pass, fresh.Fun, "slices.AppendSeq") && freshBase(pass, fresh.Args[0], obj) {
 			return
 		}
-		if isBuiltin(pass, fresh.Fun, "append") && len(fresh.Args) > 0 && identDecl(pass, fresh.Args[0]) == obj {
+		if isBuiltin(pass, fresh.Fun, "append") && identDecl(pass, fresh.Args[0]) == obj {
 			return
 		}
 	}
@@ -529,9 +535,11 @@ func copiesHeader(pass *analysis.Pass, stack []ast.Node, obj types.Object) bool 
 	ident := stack[len(stack)-1]
 	switch parent := stack[len(stack)-2].(type) {
 	case *ast.AssignStmt:
-		return !slices.Contains(parent.Lhs, ident.(ast.Expr))
+		return !slices.ContainsFunc(parent.Lhs, func(lhs ast.Expr) bool { return lhs == ident })
 	case *ast.ValueSpec:
-		return !slices.Contains(parent.Names, ident.(*ast.Ident))
+		return !slices.ContainsFunc(parent.Names, func(name *ast.Ident) bool {
+			return name == ident
+		})
 	case *ast.IndexExpr:
 		return parent.X != ident
 	case *ast.RangeStmt:
@@ -540,7 +548,8 @@ func copiesHeader(pass *analysis.Pass, stack []ast.Node, obj types.Object) bool 
 		if isBuiltin(pass, parent.Fun, "len") || isBuiltin(pass, parent.Fun, "cap") {
 			return false
 		}
-		extends := isBuiltin(pass, parent.Fun, "append") || isFunc(pass, parent.Fun, "slices.AppendSeq")
+		extends := isBuiltin(pass, parent.Fun, "append") ||
+			isFunc(pass, parent.Fun, "slices.AppendSeq")
 		if extends && len(parent.Args) > 0 && parent.Args[0] == ident {
 			return !appendsToItself(pass, stack, parent, obj)
 		}
@@ -549,7 +558,9 @@ func copiesHeader(pass *analysis.Pass, stack []ast.Node, obj types.Object) bool 
 }
 
 // appendsToItself reports whether call is the right side of `obj = call`.
-func appendsToItself(pass *analysis.Pass, stack []ast.Node, call *ast.CallExpr, obj types.Object) bool {
+func appendsToItself(
+	pass *analysis.Pass, stack []ast.Node, call *ast.CallExpr, obj types.Object,
+) bool {
 	if len(stack) < 3 {
 		return false
 	}
