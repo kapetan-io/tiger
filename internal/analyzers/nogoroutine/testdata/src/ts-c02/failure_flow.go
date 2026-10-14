@@ -73,3 +73,10 @@ func waitBeforeGo() {
 	wg.Wait()
 	wg.Go(work) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
 }
+
+// waitAsValue takes Wait as a value and never calls it.
+func waitAsValue() {
+	var wg sync.WaitGroup
+	wg.Go(work) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+	_ = wg.Wait
+}
