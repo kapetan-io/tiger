@@ -4,7 +4,6 @@
 decisions recorded in ENG-191. Several pieces described here are not built yet:
 
 - the `tiger changed` report, and the removal of effect and frame pins it replaces
-- the patterns collection and the `tiger pattern` command
 - the end of `//tiger:batched` as a loop-bound waiver (ENG-183)
 - the changes to the goroutine and wait rules, including TS-C03's goleak check
 - the collect-then-sort part of the map-order rule, and TS-T11's double test run
@@ -174,7 +173,7 @@ func Drain(entries <-chan uint32) uint32 {
 
 ```
 $ tiger check ./...
-drain.go:6:2: TS-S02: this loop ranges over a channel, so it ends only when some other goroutine closes the channel — add a counter cap that fails when the cap is hit, or make it an event loop that selects on ctx.Done()
+drain.go:6:2: TS-S02: this loop ranges over a channel, so it ends only when some other goroutine closes the channel — add a counter cap that fails when the cap is hit, or make it an event loop that selects on ctx.Done() — see `tiger pattern --rule TS-S02`
 tiger: 1 blocking
 ```
 
@@ -390,8 +389,8 @@ func TestShortBufferViolatesSize(t *testing.T) {
 Deleting that test and running `tiger check` produces this:
 
 ```
-$ tiger check ./examples/ledger/...
-examples/ledger/inv/inv.go:13:2: TS-A09: no test violates invariant inv.HeaderSize — add a _test.go function that calls assert.Violates(inv.HeaderSize, func() { ... })
+$ tiger check ./patterns/ledger/...
+patterns/ledger/inv/inv.go:13:2: TS-A09: no test violates invariant inv.HeaderSize — add a _test.go function that calls assert.Violates(inv.HeaderSize, func() { ... }) — see `tiger pattern ledger`
 tiger: 1 blocking
 ```
 
@@ -425,8 +424,8 @@ without thinking, show what that classification finds.
 $ tiger check ./bugs/...
 bugs/drain.go:5:2: TS-V01: tiger can't prove this loop ends: nothing in its condition shrinks on every pass — add a cap (for tries := 0; tries < max; tries++ { if done { break } ... }) that fails when the cap is hit, or say what shrinks with //tiger:variant <expr>
 bugs/status.go:11:2: TS-S08: this switch over Status has no default arm — add default: assert.Unreachable("Status: unhandled value") so a new Status constant fails loudly
-bugs/wait.go:4:2: TS-C05: this select blocks with no case that ends the wait on shutdown — add case <-ctx.Done(): return ctx.Err()
-bugs/worker.go:4:2: TS-C02: this go statement starts a goroutine nobody owns: nothing says when it exits or ties it to a context — start it through errgroup.Group.Go
+bugs/wait.go:4:2: TS-C05: this select blocks with no case that ends the wait on shutdown — add case <-ctx.Done(): return ctx.Err() — see `tiger pattern shutdown-loop`
+bugs/worker.go:4:2: TS-C02: this go statement starts a goroutine nobody owns: nothing says when it exits or ties it to a context — start it through errgroup.Group.Go — see `tiger pattern --rule TS-C02`
 tiger: 4 blocking
 ```
 
@@ -528,15 +527,16 @@ only the reviewer's questions. A release ships this binary alongside the
 golangci-lint plugin.
 
 Each rule's registry entry names the patterns behind it, and every finding that
-rule reports ends with a pointer such as `see tiger pattern shutdown-loop`, so a
-rule violation leads straight to the right shape. A meta-test fails the build if
+rule reports ends with a pointer such as ``see `tiger pattern shutdown-loop` ``, so a
+rule violation leads straight to the right shape. A rule backed by several patterns points
+at ``tiger pattern --rule <code>``, which lists them. A meta-test fails the build if
 a pointer names a pattern that does not exist, or a pattern names a rule that
 does not exist. Because the pattern ships inside the same binary as the rule, the
 pattern an agent reads always matches the rule that flagged its code.
 
 A pattern is not meant to be imported as a dependency. It exists to be followed.
 
-The patterns decided so far are these eight, named with the rules each backs.
+The collection has these eight, named with the rules each backs.
 
 - The shutdown loop (stop and done, one exit), backing TS-C02, S03, and C05.
 - The goroutine owner (`wg.Go` and `Wait`), backing TS-C02.
@@ -548,11 +548,9 @@ The patterns decided so far are these eight, named with the rules each backs.
   backing TS-T02.
 - A filtered page with a page limit and a scan limit, backing TS-S02.
 
-The repository's `examples/ledger` joins them as the invariant pattern, backing
-TS-A07, A08, and A09.
-
-The collection is decided and not yet built. Today the repository has only
-`examples/ledger`.
+The repository's `patterns/ledger` joins them as the invariant pattern, backing
+TS-A07 and A09. TS-A08, the symmetric-pair rule, is specified and not built, so the
+ledger's card does not list it.
 
 ### Rules and the two severities
 
@@ -692,7 +690,7 @@ A sample of tiger's findings read against a reviewer's own judgment shows whethe
 of them name something worth fixing. When most do, gating CI on `tiger check` is
 warranted.
 
-The repository's [examples/ledger](../examples/ledger) is built to the invariant
+The repository's [patterns/ledger](../patterns/ledger) is built to the invariant
 pattern: an `inv` package declares the invariant IDs, an encode and decode pair asserts
 them, and each invariant has a violation test. It passes `tiger check` with zero findings.
 
@@ -706,7 +704,7 @@ drawn from.
 
 The transcripts on this page come from different runs and prototypes.
 
-The invariant run is against `examples/ledger`. The `Drain` run and the four-file `bugs`
+The invariant run is against `patterns/ledger`. The `Drain` run and the four-file `bugs`
 run use scratch packages instead, because the ledger has no loop, switch, goroutine, or
 wait written in a shape tiger rejects. Their findings use today's wording. It will
 change once the decided goroutine rules are built.

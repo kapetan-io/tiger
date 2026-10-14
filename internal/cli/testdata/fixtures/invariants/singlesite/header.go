@@ -1,4 +1,4 @@
-// Package singlesite mirrors examples/ledger's header pair with one deliberate
+// Package singlesite mirrors patterns/ledger's header pair with one deliberate
 // change to what it asserts.
 package singlesite
 

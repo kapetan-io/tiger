@@ -38,9 +38,8 @@ import (
 )
 
 const (
-	msgSortedKeys = " — range over the sorted keys instead: for _, k := range " +
-		"slices.Sorted(maps.Keys(m))"
-	msgAppend = "TS-T02: this loop appends to a slice while ranging over a map, and Go " +
+	msgSortedKeys = " — range over slices.Sorted(maps.Keys(m)) instead"
+	msgAppend     = "TS-T02: this loop appends to a slice while ranging over a map, and Go " +
 		"visits map entries in a different order every run, so the slice's order varies" +
 		msgSortedKeys
 	msgCall = "TS-T02: this loop calls a function on each map entry, and Go visits map " +
@@ -53,7 +52,7 @@ const (
 		"visits map entries in a different order every run, so the receiver's order varies" +
 		msgSortedKeys
 	msgCarried = "TS-T02: this loop reads state it changed while visiting earlier map entries, " +
-		"and Go visits entries in a different order every run, so which ones it " +
+		"and Go visits entries in a different order every run, so what it " +
 		"handles varies" + msgSortedKeys
 	msgEarlyExit = "TS-T02: this loop changes state and can stop early, and Go visits map " +
 		"entries in a different order every run, so which entries it handled varies" + msgSortedKeys

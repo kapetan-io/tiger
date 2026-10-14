@@ -8,9 +8,9 @@ import (
 	"golang.org/x/tools/go/analysis"
 )
 
-const msgIterator = "TS-T02: this iterator yields map entries in a different order every run, " +
-	"and nothing here fixes the order — pass it straight to slices.Sorted, or to " +
-	"slices.SortedFunc with a comparator that compares every field of the element with cmp.Compare"
+const msgIterator = "TS-T02: this iterator yields map entries in a different order every run " +
+	"— pass it straight to slices.Sorted, or to slices.SortedFunc with a comparator that " +
+	"compares every field with cmp.Compare"
 
 // mapIterator returns the element type a maps.Keys or maps.Values call over
 // a map yields (nil for maps.All), and whether call is such an iterator.

@@ -62,8 +62,8 @@ import (
 
 const (
 	msgUnbounded = "TS-S02: tiger can't tell how many times this loop runs: its condition is " +
-		"not a constant, a len, or a counter — add a cap (for tries := 0; tries < max; tries++) " +
-		"that fails when the cap is hit, or make it an event loop that selects on ctx.Done()"
+		"not a constant, a len, or a counter — add a cap that fails when the cap is hit, " +
+		"or make it an event loop that selects on ctx.Done()"
 	msgNoSelect = "TS-S02: this for loop has no condition and no select on ctx.Done(), so " +
 		"nothing bounds it — add a cap (for tries := 0; tries < max; tries++) that fails when " +
 		"the cap is hit, or select on ctx.Done() inside it"
@@ -71,8 +71,8 @@ const (
 		"other goroutine closes the channel — add a counter cap that fails when the cap is " +
 		"hit, or make it an event loop that selects on ctx.Done()"
 	msgCounterUnsound = "TS-S02: this counter does not bound the loop: it must count toward its " +
-		"limit in a top-level && term and arrive before wrapping around its type, and neither it " +
-		"nor the limit may change in the body — add a cap that fails when the cap is hit"
+		"limit in a top-level && term and arrive before wrapping around its type, and neither " +
+		"may change in the body — add a cap that fails when hit"
 	msgIterator = "TS-S02: this loop ranges over an iterator tiger can't see into, so nothing " +
 		"says it ends — range over a slice, a map, or a standard library iterator, or add a " +
 		"counter cap that fails when the cap is hit"

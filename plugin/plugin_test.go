@@ -2,7 +2,9 @@ package plugin_test
 
 import (
 	"path/filepath"
+	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/golangci/plugin-module-register/register"
 	"github.com/stretchr/testify/assert"
@@ -101,4 +103,86 @@ func TestPluginInstallsConfigFromSettings(t *testing.T) {
 	assert.Contains(t, err.Error(), "tiger.yaml")
 	assert.Contains(t, err.Error(), "frobnicate")
 	assert.NotContains(t, err.Error(), "\n")
+}
+
+// TestPluginEndsPatternBackedFindingsWithThePointer covers the golangci
+// driver's half of the pattern pointer.
+//
+// Goal: a TS-C02 diagnostic reaching golangci-lint ends with the pointer to
+// the patterns behind it, the same suffix tiger check prints.
+func TestPluginEndsPatternBackedFindingsWithThePointer(t *testing.T) {
+	build, err := register.GetPlugin("tiger")
+	require.NoError(t, err)
+	built, err := build(nil)
+	require.NoError(t, err)
+	analyzers, err := built.BuildAnalyzers()
+	require.NoError(t, err)
+
+	testdata, err := filepath.Abs(
+		filepath.Join("..", "internal", "analyzers", "nogoroutine", "testdata"),
+	)
+	require.NoError(t, err)
+	fired := 0
+	for _, analyzer := range analyzers {
+		if analyzer.Name != "nogoroutine" {
+			continue
+		}
+		for _, result := range analysistest.Run(quietRun{}, testdata, analyzer, "ts-c02") {
+			for _, diagnostic := range result.Diagnostics {
+				if diagnostic.Category != "TS-C02" {
+					continue
+				}
+				fired++
+				assert.True(t, strings.HasSuffix(diagnostic.Message, rules.Pointer("TS-C02")))
+			}
+		}
+	}
+	assert.Positive(t, fired)
+}
+
+// TestPluginPointersMatchTheRegistryWithinTheCap covers the golangci
+// driver's pointer for every pattern-backed boundedloop rule.
+//
+// Goal: each TS-S02 diagnostic (several patterns) and TS-S03 diagnostic
+// (one pattern) that reaches golangci-lint ends with exactly the pointer the
+// registry defines, and its body, pointer included, stays within 240
+// characters.
+func TestPluginPointersMatchTheRegistryWithinTheCap(t *testing.T) {
+	const maxBodyRunes = 240
+	build, err := register.GetPlugin("tiger")
+	require.NoError(t, err)
+	built, err := build(nil)
+	require.NoError(t, err)
+	analyzers, err := built.BuildAnalyzers()
+	require.NoError(t, err)
+
+	testdata, err := filepath.Abs(
+		filepath.Join("..", "internal", "analyzers", "boundedloop", "testdata"),
+	)
+	require.NoError(t, err)
+	fired := map[string]int{}
+	for _, analyzer := range analyzers {
+		if analyzer.Name != "boundedloop" {
+			continue
+		}
+		results := analysistest.Run(quietRun{}, testdata, analyzer, "ts-s02", "ts-s03")
+		for _, result := range results {
+			for _, diagnostic := range result.Diagnostics {
+				pointer := rules.Pointer(diagnostic.Category)
+				if pointer == "" {
+					continue
+				}
+				fired[diagnostic.Category]++
+				assert.True(t, strings.HasSuffix(diagnostic.Message, pointer), diagnostic.Message)
+				assert.Equal(t, 1, strings.Count(diagnostic.Message, "tiger pattern"))
+				_, body, _ := strings.Cut(diagnostic.Message, ": ")
+				runes := utf8.RuneCountInString(body)
+				assert.LessOrEqual(t, runes, maxBodyRunes, diagnostic.Message)
+			}
+		}
+	}
+	assert.Positive(t, fired["TS-S02"])
+	assert.Positive(t, fired["TS-S03"])
+	assert.Equal(t, " — see `tiger pattern shutdown-loop`", rules.Pointer("TS-S03"))
+	assert.Equal(t, " — see `tiger pattern --rule TS-S02`", rules.Pointer("TS-S02"))
 }
