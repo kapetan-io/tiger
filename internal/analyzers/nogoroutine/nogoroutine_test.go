@@ -18,5 +18,5 @@ import (
 func TestCorpus(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), nogoroutine.Analyzer,
 		"ts-c02", "ts-c03", "ts-c03eg", "ts-c03go", "ts-c03ignore", "ts-c03ok",
-		"ts-c03param", "ts-c03tests", "ts-c03verify", "ts-c09")
+		"ts-c03param", "ts-c03tests", "ts-c03verify", "ts-c03dead", "ts-c09")
 }
