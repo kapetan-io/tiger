@@ -104,8 +104,8 @@ type partitioned struct {
 
 // partition resolves every finding's category through the registry — the
 // facts table first, then the rules table — and splits the findings by
-// kind. An unregistered category is an error: the run cannot apply a
-// severity it does not know.
+// kind, ending each rule finding with its pattern pointer. An unregistered
+// category is an error: the run cannot apply a severity it does not know.
 func partition(module config.Module, findings []driver.Finding) (partitioned, error) {
 	sorted := partitioned{counts: newBudgetCounts()}
 	for _, finding := range findings {
@@ -118,6 +118,7 @@ func partition(module config.Module, findings []driver.Finding) (partitioned, er
 			return partitioned{}, fmt.Errorf("analyzer emitted unregistered category %q at %s",
 				finding.Category, finding.Position)
 		}
+		finding.Message += rules.Pointer(finding.Category)
 		switch entry.Severity {
 		case rules.SeverityBlocking:
 			sorted.blocking = append(sorted.blocking, finding)

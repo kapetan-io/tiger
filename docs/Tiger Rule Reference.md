@@ -13,13 +13,32 @@ It teaches the concepts this reference assumes.
 Every finding is one line with two halves.
 
 ```
-internal/handlers.go:117:2: TS-S02: this for loop has no condition and no select on ctx.Done(), so nothing bounds it — add a cap (for tries := 0; tries < max; tries++) that fails when the cap is hit, or select on ctx.Done() inside it
+internal/handlers.go:117:2: TS-S02: this for loop has no condition and no select on ctx.Done(), so nothing bounds it — add a cap (for tries := 0; tries < max; tries++) that fails when the cap is hit, or select on ctx.Done() inside it — see `tiger pattern --rule TS-S02`
 ```
 
 The head (`path:line:col: TS-XXX:`) is a parsing contract. Tools key on it and it never
 changes. The body is prose in up to three parts. What the code does, what tiger expected,
 and the edit to make. The body never uses tiger jargon and spells directives out literally,
 so you can act on it without this reference. This reference adds the why.
+
+## Patterns
+
+Some rules stop short of the whole correct shape, and a real bug lived in the gap. Those rules
+name a pattern: runnable code showing the right shape next to the broken one that still passes
+`tiger check`, with a checklist of the questions only a reviewer can answer. A finding from
+such a rule ends with ``— see `tiger pattern <name>` ``, or ``— see `tiger pattern --rule <code>` `` when
+several patterns back the rule. The pattern is embedded in the `tiger` binary, so it matches the release that
+flagged the code and needs no network.
+
+```
+tiger pattern                      list every pattern
+tiger pattern shutdown-loop        the card, the code and the tests
+tiger pattern shutdown-loop --checklist
+tiger pattern --rule TS-C02        the patterns behind a rule
+```
+
+A rule's entry below names its patterns on a `Pattern:` line. Projects on the golangci-lint plugin
+get the same pointer in their findings and need the `tiger` binary to read the pattern.
 
 ## Blocking and advisory
 
@@ -93,6 +112,8 @@ code to the statement.
 
 **Severity:** blocking — a finding fails the run.
 
+**Pattern:** `tiger pattern capped-worklist` shows the correct shape for what this rule cannot check.
+
 A recursive function's depth depends on its input data, not on anything in the code. Go
 lets a single call stack grow up to one gigabyte before it gives up. So a bad input does
 not fail fast. It quietly eats memory and crashes far from the real cause.
@@ -116,7 +137,7 @@ func chase(n *Node, visit func(*Node)) {
 ```
 
 ```
-tree.go:5:6: TS-S01: chase → chase is a cycle of calls (recursion) — replace it with a capped worklist loop (for i := 0; i < len(work) && i < max; i++ { work = append(work, next...) }) that returns an error when it stops at max with nodes left
+tree.go:5:6: TS-S01: chase → chase is a cycle of calls (recursion) — replace it with a capped worklist loop that returns an error when it stops at max with nodes left — see `tiger pattern capped-worklist`
 ```
 
 The compliant rewrite:
@@ -153,6 +174,8 @@ exactly `nodesMax` nodes ends here too, with nothing left to visit, and must pas
 
 **Severity:** blocking — a finding fails the run.
 
+**Patterns:** `tiger pattern capped-worklist`, `tiger pattern filtered-page`, `tiger pattern stream-page` show the correct shapes for what this rule cannot check.
+
 Every loop should state how many times it can run. A loop with no stated limit assumes
 its input is always well-formed. State a bound, and a bad input becomes a fast, loud
 failure instead of a silent hang. This rule caught five real bugs in trials on two
@@ -172,7 +195,7 @@ func newton(estimate float64) float64 {
 
 ```
 newton.go:2:2: TS-V01: tiger can't prove this loop ends: nothing in its condition shrinks on every pass — add a cap (for tries := 0; tries < max; tries++ { if done { break } ... }) that fails when the cap is hit, or say what shrinks with //tiger:variant <expr>
-newton.go:2:6: TS-S02: tiger can't tell how many times this loop runs: its condition is not a constant, a len, or a counter — add a cap (for tries := 0; tries < max; tries++) that fails when the cap is hit, or make it an event loop that selects on ctx.Done()
+newton.go:2:6: TS-S02: tiger can't tell how many times this loop runs: its condition is not a constant, a len, or a counter — add a cap that fails when the cap is hit, or make it an event loop that selects on ctx.Done() — see `tiger pattern --rule TS-S02`
 ```
 
 The compliant rewrite:
@@ -222,7 +245,7 @@ func spinCapped(done func() bool, limit int) {
 ```
 
 ```
-spin.go:2:14: TS-S02: this counter cap ends the loop without saying so, so a truncated result passes as complete — declare the counter before the loop and return an error or assert when it reaches the limit
+spin.go:2:14: TS-S02: this counter cap ends the loop without saying so, so a truncated result passes as complete — declare the counter before the loop and return an error or assert when it reaches the limit — see `tiger pattern --rule TS-S02`
 ```
 
 ```go
@@ -270,6 +293,8 @@ on a variable the loop assigns, so an unrelated check such as `if err != nil` co
 
 **Severity:** blocking — a finding fails the run.
 
+**Pattern:** `tiger pattern clamped-limit` shows the correct shape for what this rule cannot check.
+
 A loop that counts to a number is only as bounded as the number. A page size read from
 a request, a spin count from a config file, or an object count from a binary header lets
 the outside world pick how long the loop runs. Tiger traces each loop limit back to
@@ -298,7 +323,7 @@ func spin(config Config, done func() bool) error {
 ```
 
 ```
-spin.go:2:28: TS-S02: this value reaches a loop limit with no upper bound where it enters — clamp it there, for example min(x, xMax), or reject it with if x > xMax
+spin.go:2:28: TS-S02: this value reaches a loop limit with no upper bound where it enters — clamp it there, for example min(x, xMax), or reject it with if x > xMax — see `tiger pattern clamped-limit`
 ```
 
 The compliant rewrite:
@@ -320,7 +345,7 @@ func spin(done func() bool) error {
 ```
 
 ```
-spin.go:2:28: TS-S02: this value is too large for the loop to ever reach, so it bounds nothing — pass a declared maximum instead
+spin.go:2:28: TS-S02: this value is too large for the loop to ever reach, so it bounds nothing — pass a declared maximum instead — see `tiger pattern clamped-limit`
 ```
 
 Facts from other packages are read only when those packages are part of the run: a
@@ -338,6 +363,8 @@ is near the bottom of its type. Closing that needs a lower bound on every clampe
 ### TS-S03 — an unbounded event loop selects on a stop case
 
 **Severity:** blocking — a finding fails the run.
+
+**Pattern:** `tiger pattern shutdown-loop` shows the correct shape for what this rule cannot check.
 
 Some loops must run forever, like a server's main event loop. Give that loop a way to
 stop. Then shutdown works, and a stuck loop is a bug you can reach instead of a core you
@@ -357,7 +384,7 @@ func runNoTermination(input <-chan int, output chan<- int) {
 ```
 
 ```
-worker.go:3:3: TS-S03: this event loop's select has no case that stops the loop — add case <-ctx.Done(): return or a case on a channel the package closes. Copy: close a stop channel, make it the loop's only exit, close done, and have waiters select on done
+worker.go:3:3: TS-S03: this event loop's select has no case that stops the loop — add case <-ctx.Done(): return or a case on a channel the package closes — see `tiger pattern shutdown-loop`
 ```
 
 The compliant rewrite:
@@ -396,6 +423,8 @@ type counts.
 **Severity:** advisory — findings are counted per package against `tiger.budget.yaml`
 and never fail the run on their own.
 
+**Pattern:** `tiger pattern shutdown-loop` shows the correct shape for what this rule cannot check.
+
 An event loop that has a stop case should leave only through it. A `return` anywhere else
 ends the loop without the shutdown handshake, so whatever the stop case does on the way
 out, such as closing a `done` channel, never happens, and anyone waiting on `done` waits
@@ -425,7 +454,7 @@ func (l *Loop) run() {
 ```
 
 ```
-loop.go:11:5: TS-S23: this return leaves the event loop without its stop case, so cleanup after the stop never runs — make the stop case the loop's only exit, as net/http's Server.Shutdown does, and have the loop close done after it
+loop.go:11:5: TS-S23: this return leaves the event loop without its stop case, so cleanup after the stop never runs — make the stop case the loop's only exit, as net/http's Server.Shutdown does — see `tiger pattern shutdown-loop`
 ```
 
 The compliant rewrite closes a stop channel once and returns only from its case:
@@ -739,6 +768,8 @@ const batchMax = 8189
 
 **Severity:** blocking — a finding fails the run.
 
+**Patterns:** `tiger pattern goroutine-owner`, `tiger pattern shutdown-loop` show the correct shapes for what this rule cannot check.
+
 A goroutine nobody owns is a leak that keeps running after its caller moves on. Nobody
 notices until a server's memory climbs for no clear reason. A goroutine starts through
 `errgroup.Group.Go` or `sync.WaitGroup.Go`, and the group's `Wait` must be reached on the
@@ -763,7 +794,7 @@ func Launch() {
 ```
 
 ```
-worker.go:4:2: TS-C02: this go statement starts a goroutine nobody owns — start it with wg.Go or errgroup.Go and Wait for the group. Shutdown shape to copy: close a stop channel once, let the loop close done, and have every waiter select on done
+worker.go:4:2: TS-C02: this go statement starts a goroutine nobody owns — start it with wg.Go or errgroup.Go and Wait for the group — see `tiger pattern --rule TS-C02`
 ```
 
 Starting through a group nothing waits on fires too:
@@ -775,7 +806,7 @@ func (d *Daemon) Start() {
 ```
 
 ```
-daemon.go:8:2: TS-C02: this Go call starts a goroutine, but no Wait on the group is reached on the success path — Wait before returning, or from an exported method like Shutdown. Shape to copy: close a stop channel, close done, and have waiters select on done
+daemon.go:8:2: TS-C02: this Go call starts a goroutine, but no Wait on the group is reached on the success path — Wait before returning, or from an exported method like Shutdown — see `tiger pattern --rule TS-C02`
 ```
 
 The compliant rewrite:
@@ -832,6 +863,8 @@ func TestMain(m *testing.M) {
 
 **Severity:** blocking — a finding fails the run.
 
+**Pattern:** `tiger pattern shutdown-loop` shows the correct shape for what this rule cannot check.
+
 A blocking wait with no way out forces shutdown to hang until something kills the
 process, losing data mid-write. This rule caught a real bug in the trials. A queue's
 Produce, Complete, and Retry waits could never be cancelled, while the doc comment
@@ -855,7 +888,7 @@ func awaitBlocking(values chan int) {
 ```
 
 ```
-queue.go:4:2: TS-C05: this select blocks with no case that ends the wait on shutdown — add case <-ctx.Done(): return ctx.Err() or a case on a channel this package closes. Shape to copy: close a stop channel once, close done, and have waiters select on done
+queue.go:4:2: TS-C05: this select blocks with no case that ends the wait on shutdown — add case <-ctx.Done(): return ctx.Err() or a case on a channel the package closes — see `tiger pattern shutdown-loop`
 ```
 
 The compliant rewrite:
@@ -1287,6 +1320,8 @@ silent.
 
 **Severity:** blocking — a finding fails the run.
 
+**Pattern:** `tiger pattern pool-reuse` shows the correct shape for what this rule cannot check.
+
 Putting a value back into a `sync.Pool` without clearing it first leaves leftover data
 for the next caller. Go zeroes memory it allocates fresh, but a pooled value is reused,
 not freshly allocated, so that protection does not apply. Clearing the value right
@@ -1312,7 +1347,7 @@ func record(entry byte) {
 ```
 
 ```
-pool.go:7:2: TS-M05: this Put is not preceded by *b = T{} on every path to it — zero the value before every Put, because a Reset method can be empty and pooled data would leak to the next user
+pool.go:7:2: TS-M05: this Put is not preceded by *b = T{} on every path to it — zero the value before every Put, because a Reset method can be empty and pooled data would leak to the next user — see `tiger pattern pool-reuse`
 ```
 
 The compliant rewrite:
@@ -1510,6 +1545,8 @@ a participle stays silent.
 
 **Severity:** blocking — a finding fails the run.
 
+**Pattern:** `tiger pattern sorted-map-output` shows the correct shape for what this rule cannot check.
+
 Go deliberately randomizes the order it visits map entries in, on every single run. If a
 loop appends, builds a string, or sends those entries somewhere, that randomness leaks
 into the output. The fix is to collect and sort the keys first, then range over the
@@ -1528,7 +1565,7 @@ func Names(m map[string]int) []string {
 ```
 
 ```
-names.go:5:2: TS-T02: this loop appends to a slice while ranging over a map, and Go visits map entries in a different order every run, so the slice's order varies — range over the sorted keys instead: for _, k := range slices.Sorted(maps.Keys(m))
+names.go:5:2: TS-T02: this loop appends to a slice while ranging over a map, and Go visits map entries in a different order every run, so the slice's order varies — range over slices.Sorted(maps.Keys(m)) instead — see `tiger pattern sorted-map-output`
 ```
 
 The compliant rewrite:
@@ -1936,6 +1973,8 @@ stays silent and the check falls back to the callee's own runtime assertion.
 
 **Severity:** blocking — a finding fails the run.
 
+**Pattern:** `tiger pattern ledger` shows the correct shape for what this rule cannot check.
+
 An invariant is a property you name as a constant ID and check with `assert.Invariant`.
 A declared invariant that nothing ever asserts is a claim in the code that nothing
 checks. One production call site is enough. Evidence for this rule spans packages that
@@ -1964,7 +2003,7 @@ func encodeHeader(target []byte, size int) {
 ```
 
 ```
-consts.go:7:2: TS-A07: invariant inv.HeaderChecksum is declared but no function outside _test.go files asserts it — add assert.Invariant(inv.HeaderChecksum, ...) where the property is established, or delete the declaration
+consts.go:7:2: TS-A07: invariant inv.HeaderChecksum is declared but no function outside _test.go files asserts it — add assert.Invariant(inv.HeaderChecksum, ...) where the property is established, or delete the declaration — see `tiger pattern ledger`
 ```
 
 The compliant rewrite asserts both where the properties are established.
@@ -1985,6 +2024,8 @@ recognizes it by that shape, not by a special import.
 ### TS-A09 — every invariant has a test that violates it
 
 **Severity:** blocking — a finding fails the run.
+
+**Pattern:** `tiger pattern ledger` shows the correct shape for what this rule cannot check.
 
 Every invariant needs a test that proves it can actually fail. If no test can trigger
 the failure, one of two things is true. Either the property can never be reached, or the
@@ -2010,7 +2051,7 @@ func encodeHeader(checksum int) {
 ```
 
 ```
-consts.go:5:7: TS-A09: no test violates invariant inv.HeaderChecksum — add a _test.go function that calls assert.Violates(inv.HeaderChecksum, func() { ... })
+consts.go:5:7: TS-A09: no test violates invariant inv.HeaderChecksum — add a _test.go function that calls assert.Violates(inv.HeaderChecksum, func() { ... }) — see `tiger pattern ledger`
 ```
 
 The compliant rewrite adds the violation test.

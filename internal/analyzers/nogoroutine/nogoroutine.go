@@ -42,13 +42,10 @@ var Analyzer = &analysis.Analyzer{
 
 const (
 	msgUnowned = "TS-C02: this go statement starts a goroutine nobody owns — start it with " +
-		"wg.Go or errgroup.Go and Wait for the group. Shutdown shape to copy: close " +
-		"a stop channel once, let the loop close done, and have every waiter select " +
-		"on done"
+		"wg.Go or errgroup.Go and Wait for the group"
 	msgNoWaitFmt = "TS-C02: this %s starts a goroutine, but no Wait on the group is reached on " +
 		"the success path — Wait before returning, or from an exported method like " +
-		"Shutdown. Shape to copy: close a stop channel, close done, and have " +
-		"waiters select on done"
+		"Shutdown"
 	msgReactive = "TS-C09: this loop starts a goroutine per item, so the goroutines react to " +
 		"each item instead of working at their own pace — append the items to a bounded " +
 		"queue and drain it from one supervisor goroutine"

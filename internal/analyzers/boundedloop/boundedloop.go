@@ -61,8 +61,8 @@ import (
 
 const (
 	msgUnbounded = "TS-S02: tiger can't tell how many times this loop runs: its condition is " +
-		"not a constant, a len, or a counter — add a cap (for tries := 0; tries < max; tries++) " +
-		"that fails when the cap is hit, or make it an event loop that selects on ctx.Done()"
+		"not a constant, a len, or a counter — add a cap that fails when the cap is hit, " +
+		"or make it an event loop that selects on ctx.Done()"
 	msgNoSelect = "TS-S02: this for loop has no condition and no select on ctx.Done(), so " +
 		"nothing bounds it — add a cap (for tries := 0; tries < max; tries++) that fails when " +
 		"the cap is hit, or select on ctx.Done() inside it"
@@ -70,18 +70,16 @@ const (
 		"other goroutine closes the channel — add a counter cap that fails when the cap is " +
 		"hit, or make it an event loop that selects on ctx.Done()"
 	msgCounterUnsound = "TS-S02: this counter does not bound the loop: it must count toward its " +
-		"limit in a top-level && term and arrive before wrapping around its type, and neither it " +
-		"nor the limit may change in the body — add a cap that fails when the cap is hit"
+		"limit in a top-level && term and arrive before wrapping around its type, and neither " +
+		"may change in the body — add a cap that fails when hit"
 	msgIterator = "TS-S02: this loop ranges over an iterator tiger can't see into, so nothing " +
 		"says it ends — range over a slice, a map, or a standard library iterator, or add a " +
 		"counter cap that fails when the cap is hit"
 	msgSelectNoDone = "TS-S03: this event loop's select has no case that stops the loop — add " +
-		"case <-ctx.Done(): return or a case on a channel the package closes. Copy: " +
-		"close a stop channel, make it the loop's only exit, close done, and have " +
-		"waiters select on done"
+		"case <-ctx.Done(): return or a case on a channel the package closes"
 	msgExitsOutside = "TS-S23: this %s leaves the event loop without its stop case, so cleanup " +
-		"after the stop never runs — make the stop case the loop's only exit, as net/http's " +
-		"Server.Shutdown does, and have the loop close done after it"
+		"after the stop never runs — make the stop case the loop's only exit, as " +
+		"net/http's Server.Shutdown does"
 )
 
 // Analyzer enforces TS-S02 and TS-S03: every loop has an upper bound, or the

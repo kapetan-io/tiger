@@ -83,3 +83,33 @@ func TestDocsCarryNoRemovedVocabulary(t *testing.T) {
 		}
 	}
 }
+
+// patternLine returns the entry's "**Pattern:**" or "**Patterns:**" line.
+func patternLine(block string) string {
+	for _, line := range strings.Split(block, "\n") {
+		if strings.HasPrefix(line, "**Pattern") {
+			return line
+		}
+	}
+	return ""
+}
+
+// TestReferenceNamesEachRulesPatterns verifies the rule reference names the
+// patterns the registry attaches to a category, and only those.
+//
+// Goal: an entry's Pattern line lists exactly the registry's Patterns for
+// the category, so the reference and the finding pointer agree.
+func TestReferenceNamesEachRulesPatterns(t *testing.T) {
+	reference := docContent(t, referenceDoc)
+	for _, rule := range rules.CustomRules() {
+		line := patternLine(entryBlock(t, reference, rule))
+		if len(rule.Patterns) == 0 {
+			assert.Empty(t, line, rule.Category)
+			continue
+		}
+		for _, name := range rule.Patterns {
+			assert.Contains(t, line, "`tiger pattern "+name+"`", rule.Category)
+		}
+		assert.Equal(t, len(rule.Patterns), strings.Count(line, "`tiger pattern "), rule.Category)
+	}
+}

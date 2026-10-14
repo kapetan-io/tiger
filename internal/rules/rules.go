@@ -106,6 +106,11 @@ type CustomRule struct {
 	// Counted is the plural noun phrase a TS-D06 line uses for an advisory
 	// rule's findings ("skipped tests"); empty on every other severity.
 	Counted string
+	// Patterns names the patterns/ directories that teach the part of this
+	// rule's correct shape it cannot check (ADR-0025). Every finding from the
+	// category ends with a pointer to them; a meta-test keeps the names and
+	// the pattern cards in step.
+	Patterns []string
 }
 
 // CountedNoun renders the rule's counted noun phrase for n findings:
@@ -133,21 +138,25 @@ var customRules = []CustomRule{
 	{
 		Category: "TS-S02", RuleID: "TS-S02", Analyzer: boundedloop.Analyzer,
 		Severity: SeverityBlocking,
+		Patterns: []string{"capped-worklist", "filtered-page", "stream-page"},
 		Title:    "every loop has an upper bound",
 	},
 	{
 		Category: "TS-S02-limit", RuleID: "TS-S02", Analyzer: limitflow.Analyzer,
 		Severity: SeverityBlocking,
+		Patterns: []string{"clamped-limit"},
 		Title:    "every loop limit has an upper bound where it enters the program",
 	},
 	{
 		Category: "TS-S03", RuleID: "TS-S03", Analyzer: boundedloop.Analyzer,
 		Severity: SeverityBlocking,
+		Patterns: []string{"shutdown-loop"},
 		Title:    "an unbounded event loop selects on a stop case",
 	},
 	{
 		Category: "TS-S23", RuleID: "TS-S23", Analyzer: boundedloop.Analyzer,
 		Severity: SeverityAdvisory,
+		Patterns: []string{"shutdown-loop"},
 		Title:    "an event loop's only exit is its stop case",
 		Counted:  "extra event loop exits",
 	},
@@ -169,6 +178,7 @@ var customRules = []CustomRule{
 	{
 		Category: "TS-C02", RuleID: "TS-C02", Analyzer: nogoroutine.Analyzer,
 		Severity: SeverityBlocking,
+		Patterns: []string{"goroutine-owner", "shutdown-loop"},
 		Title:    "every goroutine starts through a group that waits for it",
 	},
 	{
@@ -184,6 +194,7 @@ var customRules = []CustomRule{
 	{
 		Category: "TS-C05", RuleID: "TS-C05", Analyzer: selectctx.Analyzer,
 		Severity: SeverityBlocking,
+		Patterns: []string{"shutdown-loop"},
 		Title:    "every blocking receive or send has a stop case",
 	},
 	{
@@ -283,16 +294,19 @@ var customRules = []CustomRule{
 	{
 		Category: "TS-S01", RuleID: "TS-S01", Analyzer: norecursion.Analyzer,
 		Severity: SeverityBlocking,
+		Patterns: []string{"capped-worklist"},
 		Title:    "no recursion; cycles in the static call graph are findings",
 	},
 	{
 		Category: "TS-T02", RuleID: "TS-T02", Analyzer: maporder.Analyzer,
 		Severity: SeverityBlocking,
+		Patterns: []string{"sorted-map-output"},
 		Title:    "map iteration order never reaches an output",
 	},
 	{
 		Category: "TS-M05", RuleID: "TS-M05", Analyzer: poolzero.Analyzer,
 		Severity: SeverityBlocking,
+		Patterns: []string{"pool-reuse"},
 		Title:    "Put is preceded by zeroing the value",
 	},
 	{
@@ -323,12 +337,14 @@ var customRules = []CustomRule{
 	{
 		Category: "TS-A07", RuleID: "TS-A07", Analyzer: invariantrefs.Analyzer,
 		Severity: SeverityBlocking,
+		Patterns: []string{"ledger"},
 		Title:    "every invariant is asserted in a function outside _test.go files",
 		Finish:   invariantrefs.Finish,
 	},
 	{
 		Category: "TS-A09", RuleID: "TS-A09", Analyzer: invariantnegative.Analyzer,
 		Severity: SeverityBlocking,
+		Patterns: []string{"ledger"},
 		Title:    "every invariant has a test that violates it",
 		Finish:   invariantnegative.Finish,
 	},
@@ -471,4 +487,21 @@ func CountedCodes() map[string]bool {
 // lowercased, for example ts-s09.
 func CorpusDir(ruleID string) string {
 	return strings.ToLower(ruleID)
+}
+
+// Pointer returns the clause that ends every finding from the category and
+// sends the reader to the pattern behind it, or "" when no pattern backs the
+// category. A category with several patterns points at the list for its rule
+// code, which keeps the clause short enough for the message length cap. Every
+// driver appends it to the analyzer's message; the analyzers themselves never
+// see it (ADR-0025).
+func Pointer(category string) string {
+	rule, known := ByCategory(category)
+	switch {
+	case !known || len(rule.Patterns) == 0:
+		return ""
+	case len(rule.Patterns) == 1:
+		return " — see `tiger pattern " + rule.Patterns[0] + "`"
+	}
+	return " — see `tiger pattern --rule " + rule.RuleID + "`"
 }
