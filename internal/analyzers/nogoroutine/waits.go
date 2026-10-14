@@ -255,5 +255,22 @@ func (o *owners) successExit(decl *ast.FuncDecl, block *cfg.Block) bool {
 		return true
 	}
 	ident, isIdent := result.(*ast.Ident)
-	return isIdent && ident.Name == "nil"
+	if !isIdent {
+		return false
+	}
+	return ident.Name == "nil" || o.unsetResult(decl, ident)
+}
+
+// unsetResult reports whether ident names a result of decl that nothing in the
+// function assigns, so it still holds nil when returned.
+func (o *owners) unsetResult(decl *ast.FuncDecl, ident *ast.Ident) bool {
+	result := o.index.Object(ident)
+	if result == nil || decl.Type.Results == nil {
+		return false
+	}
+	named := decl.Type.Results
+	if result.Pos() < named.Pos() || named.End() < result.Pos() {
+		return false
+	}
+	return len(o.index.Definitions(result, decl)) == 0
 }
