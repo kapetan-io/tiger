@@ -335,7 +335,7 @@ passes the value, is not seen, so the call is flagged. A clamp caps a value's to
 is near the bottom of its type. Closing that needs a lower bound on every clamped value.
 
 <!-- rule: TS-S03 -->
-### TS-S03 — an unbounded event loop selects on ctx.Done()
+### TS-S03 — an unbounded event loop selects on a stop case
 
 **Severity:** blocking — a finding fails the run.
 
@@ -357,7 +357,7 @@ func runNoTermination(input <-chan int, output chan<- int) {
 ```
 
 ```
-worker.go:3:3: TS-S03: this event loop's select has no case that stops the loop — add case <-ctx.Done(): return, or a case on a shutdown channel (struct{}-typed or named like one), so the loop can end
+worker.go:3:3: TS-S03: this event loop's select has no case that stops the loop — add case <-ctx.Done(): return, or a case on a channel this package closes. Copy net/http's Server.Shutdown: close a stop channel once, and have the loop close done
 ```
 
 The compliant rewrite:
@@ -375,8 +375,77 @@ func runWithTermination(ctx context.Context, input <-chan int, output chan<- int
 }
 ```
 
-**Known miss:** A `struct{}`-typed channel used only as a concurrency semaphore can be
-mistaken for a shutdown signal, leaving a genuinely unbounded loop unflagged.
+A stop case is one of two things. The first is a receive from `ctx.Done()` on a
+`context.Context` that does not trace, within the function, to `context.Background()` or
+`context.TODO()`. A context made from nothing in the same function is cancelled only by
+that function, so waiting on it proves nothing. The second is a receive or send on a
+channel the package itself closes or sends on. For a struct field, the close or send must
+sit in a method of the field's type that an exported method of that type reaches. A
+channel's name and its element type never count. A method named `Done` that returns a
+channel nothing fires, and a channel called `shutdown` that nothing closes, both fail.
+
+**Known misses:** A `close` in dead code counts, because the check sees that an exported
+method reaches the close and not whether it runs. A channel the package never closes but
+a caller does is not recognized, so the loop is flagged.
+
+<!-- rule: TS-S23 -->
+### TS-S23 — an event loop's only exit is its stop case
+
+**Severity:** advisory — findings are counted per package against `tiger.budget.yaml`
+and never fail the run on their own.
+
+An event loop that has a stop case should leave only through it. A `return` anywhere else
+ends the loop without the shutdown handshake, so whatever the stop case does on the way
+out, such as closing a `done` channel, never happens, and anyone waiting on `done` waits
+forever. This is the shape behind a real bug in the trials, where a request case returned
+once shutdown had started and the shutdown case never ran. The stop case here is a case
+on a live `ctx.Done()` or a channel the package closes. A case on a channel the package
+only sends on counts only when it ends in a `return`, since that channel may carry
+ordinary requests as easily as a shutdown handshake.
+
+A loop that fires it:
+
+```go
+func (l *Loop) run() {
+	for {
+		select {
+		case work := <-l.requests:
+			work()
+			if l.closing {
+				return
+			}
+		case <-l.stop:
+			close(l.done)
+			return
+		}
+	}
+}
+```
+
+```
+loop.go:11:5: TS-S23: this return leaves the event loop without its stop case, so cleanup after the stop never runs — make the stop case the loop's only exit, as net/http's Server.Shutdown does, and have the loop close done after it
+```
+
+The compliant rewrite closes a stop channel once and returns only from its case:
+
+```go
+func (l *Loop) run() {
+	for {
+		select {
+		case work := <-l.requests:
+			work()
+		case <-l.stop:
+			close(l.done)
+			return
+		}
+	}
+}
+```
+
+A `return` inside a function literal, and a `break` that leaves an inner `select`,
+`switch` or loop, do not leave the event loop and are not counted. A loop whose shutdown
+is a request handed through a channel is flagged too, if it returns anywhere but the
+handshake case. The fix is the shape above, which closes a stop channel instead.
 
 <!-- rule: TS-S06 -->
 ### TS-S06 — one logical operator per condition
@@ -664,15 +733,24 @@ const batchMax = 8189
 ## Concurrency
 
 <!-- rule: TS-C02 -->
-### TS-C02 — every goroutine starts through a supervisor
+### TS-C02 — every goroutine starts through a group that waits for it
 
 **Severity:** blocking — a finding fails the run.
 
 A goroutine nobody owns is a leak that keeps running after its caller moves on. Nobody
-notices until a server's memory climbs for no clear reason. Starting goroutines through
-a supervisor, such as `errgroup.Group.Go`, ties each one to code that tracks when it
-should stop. This rule caught a real bug in the trials. A daemon's WaitGroup went
+notices until a server's memory climbs for no clear reason. A goroutine starts through
+`errgroup.Group.Go` or `sync.WaitGroup.Go`, and the group's `Wait` must be reached on the
+success path. Starting through a group and never waiting on it is the same leak with a
+different spelling. This rule caught a real bug in the trials. A daemon's WaitGroup went
 unwaited, so Shutdown could return before its HTTP goroutines exited.
+
+A bare `go` statement is always a finding, and there is no list of functions allowed to
+use one. For a group held in a local variable, `Wait` must be reached in the same
+function. For a group held in a struct field, it must be reached in an exported method of
+the owning type, or in a method such a method calls. A `Wait` that only runs in the
+branch where the caller's context expired does not count. That branch is a `Shutdown`
+giving up early, and the early return is exempt from the check. A group handed in as a
+parameter is the caller's to wait on, and this check does not follow it.
 
 Code that fires it:
 
@@ -683,32 +761,86 @@ func Launch() {
 ```
 
 ```
-worker.go:4:2: TS-C02: this go statement starts a goroutine nobody owns: nothing says when it exits or ties it to a context — start it through errgroup.Group.Go
+worker.go:4:2: TS-C02: this go statement starts a goroutine nobody owns: nothing says when it exits or ties it to a context — start it with sync.WaitGroup.Go or errgroup.Group.Go and Wait for the group before shutdown returns
+```
+
+Starting through a group nothing waits on fires too:
+
+```go
+func (d *Daemon) Start() {
+	d.wg.Go(d.serve)
+}
+```
+
+```
+daemon.go:8:2: TS-C02: this Go call starts a goroutine, but no Wait on the group is reached on the success path — call Wait before the function returns, or for a group in a field, from an exported method like Shutdown
 ```
 
 The compliant rewrite:
 
 ```go
-func Launch(ctx context.Context) error {
-	g, ctx := errgroup.WithContext(ctx)
-	g.Go(func() error {
-		return run(ctx)
-	})
-	return g.Wait()
+func (d *Daemon) Start() {
+	d.wg.Go(d.serve)
+}
+
+func (d *Daemon) Shutdown() {
+	close(d.stop)
+	d.wg.Wait()
+}
+```
+
+The shutdown shape to copy is the one `net/http`'s `Server.Shutdown` uses. Set a flag, close
+a stop channel once, let the loop's only exit be its stop case, have the loop close `done`,
+start it with `wg.Go`, and have every waiter select on `done`.
+
+<!-- rule: TS-C03 -->
+### TS-C03 — a package that starts goroutines checks for leaks in its tests
+
+**Severity:** blocking — a finding fails the run.
+
+A leak is easy to see at run time and hard to see by reading, so the test suite should
+look for it, and tiger checks that the look is there. A package whose non-test files start
+a goroutine, with `go`, `wg.Go` or `errgroup.Go`, needs a `TestMain` that calls into
+`go.uber.org/goleak`, in the package's own tests or its `_test` package. The check is
+once per package, at the first goroutine start. `goleak` alone misses a goroutine that
+exits just after `Shutdown` returns, so TS-C02 and TS-S03 stay.
+
+Code that fires it, in a package with no `TestMain` that calls `goleak`:
+
+```go
+func (p *Pool) Start() {
+	p.wg.Go(p.work)
+}
+```
+
+```
+pool.go:9:2: TS-C03: this package starts goroutines but its tests have no goleak check — add a TestMain that calls goleak.VerifyTestMain(m)
+```
+
+The compliant rewrite adds the harness:
+
+```go
+func TestMain(m *testing.M) {
+	goleak.VerifyTestMain(m)
 }
 ```
 
 <!-- rule: TS-C05 -->
-### TS-C05 — every blocking receive or send has a ctx.Done() case
+### TS-C05 — every blocking receive or send has a stop case
 
 **Severity:** blocking — a finding fails the run.
 
 A blocking wait with no way out forces shutdown to hang until something kills the
 process, losing data mid-write. This rule caught a real bug in the trials. A queue's
 Produce, Complete, and Retry waits could never be cancelled, while the doc comment
-claimed cancellation that only the Lease method actually implemented. The check accepts
-a shutdown channel in place of `ctx.Done()`. That means a channel typed `struct{}`, or
-one named shutdown, stop, quit, or done. Do not wrap those in a redundant extra case.
+claimed cancellation that only the Lease method actually implemented.
+
+A stop case is the same thing TS-S03 accepts. It is a receive from `ctx.Done()` on a
+context that does not trace to `context.Background()` or `context.TODO()` in the same
+function, or a receive or send on a channel the package closes or sends on. A channel's
+name and its `struct{}` element type do not count. A bare receive outside a select is
+exempt when it is itself the wait, from a live `ctx.Done()` or a channel the package
+closes. A bare send is never exempt.
 
 Code that fires it:
 
@@ -721,7 +853,7 @@ func awaitBlocking(values chan int) {
 ```
 
 ```
-queue.go:4:2: TS-C05: this select blocks with no case that ends the wait on shutdown — add case <-ctx.Done(): return ctx.Err()
+queue.go:4:2: TS-C05: this select blocks with no case that ends the wait on shutdown — add case <-ctx.Done(): return ctx.Err(), or a case on a channel this package closes
 ```
 
 The compliant rewrite:
@@ -1149,7 +1281,7 @@ silent.
 ## Memory and IO
 
 <!-- rule: TS-M05 -->
-### TS-M05 — pooled types implement Reset, and Put is preceded by a reset
+### TS-M05 — Put is preceded by zeroing the value
 
 **Severity:** blocking — a finding fails the run.
 
@@ -1158,6 +1290,10 @@ for the next caller. Go zeroes memory it allocates fresh, but a pooled value is 
 not freshly allocated, so that protection does not apply. Clearing the value right
 before every `Put` closes the gap, and the owner who knew what was sensitive does the
 clearing, not some later caller.
+
+Only `*b = T{}` counts as the clearing. A call to a `Reset` method does not, because
+nothing makes a `Reset` clear anything and an empty one passes any check that trusts the
+name. A value put by value, such as an `int`, cannot be cleared in place and fires too.
 
 Code that fires it:
 
@@ -1173,7 +1309,7 @@ func record(entry byte) {
 ```
 
 ```
-pool.go:7:2: TS-M05: this Put is not preceded by a Reset (or a zeroing) of the same value on every path to it — call Reset() or zero the value before every Put, so pooled data can't leak to the next user
+pool.go:7:2: TS-M05: this Put is not preceded by *b = T{} on every path to it — zero the value before every Put, because a Reset method can be empty and pooled data would leak to the next user
 ```
 
 The compliant rewrite:
@@ -1185,7 +1321,7 @@ func record(entry byte) {
 		return
 	}
 	buf.data = append(buf.data, entry)
-	buf.Reset()
+	*buf = Buffer{}
 	bufferPool.Put(buf)
 }
 ```

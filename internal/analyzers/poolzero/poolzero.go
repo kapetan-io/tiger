@@ -1,6 +1,7 @@
-// Package poolzero enforces TS-M05: a type reused through a sync.Pool must
-// implement Reset, and every Put is preceded by a reset of the exact value
-// put, on every control-flow path reaching it.
+// Package poolzero enforces TS-M05: every Put into a sync.Pool is preceded by
+// zeroing the exact value put, with *b = T{}, on every control-flow path
+// reaching it. A Reset method does not count, because nothing makes it clear
+// anything: an empty Reset passes any check that trusts the name.
 //
 // Why. Go zeroes every make, so the classic buffer-bleed case is already
 // gone — but a sync.Pool exists specifically to skip that zeroing on reuse.
@@ -20,9 +21,9 @@
 // branch is caught even though a single-dominator check would miss it.
 //
 // Known-miss boundary. The analysis is intraprocedural and identity-exact:
-// a reset counts only when its receiver or store address is the SAME
-// ssa.Value as the argument boxed into Put, chased through
-// *ssa.MakeInterface with no alias analysis. Three shapes fall outside what
+// a zeroing counts only when its store address is the SAME ssa.Value as the
+// argument boxed into Put, chased through *ssa.MakeInterface with no alias
+// analysis. Three shapes fall outside what
 // this can prove, and all three stay silent rather than risk a false
 // positive on a blocking rule: a pooled value reset in one function and put
 // in another (the reset is invisible from the Put's function alone, so a
@@ -52,18 +53,18 @@ import (
 const (
 	resetName = "Reset"
 
-	msgNoResetFmt = "TS-M05: %s is put into a sync.Pool but has no Reset method — add a " +
-		"Reset() method that zeroes it, and call it before every Put"
-	msgNotReset = "TS-M05: this Put is not preceded by a Reset (or a zeroing) of the same " +
-		"value on every path to it — call Reset() or zero the value before every Put, so " +
-		"pooled data can't leak to the next user"
+	msgByValueFmt = "TS-M05: %s is put into a sync.Pool by value, so it can't be zeroed in " +
+		"place — put a pointer and write *b = T{} before every Put"
+	msgNotReset = "TS-M05: this Put is not preceded by *b = T{} on every path to it — zero " +
+		"the value before every Put, because a Reset method can be empty and pooled data " +
+		"would leak to the next user"
 )
 
-// Analyzer enforces TS-M05: pooled types implement Reset, and every Put is
-// preceded by a reset of the same value on every path.
+// Analyzer enforces TS-M05: every Put is preceded by *b = T{} on the same
+// value on every path.
 var Analyzer = &analysis.Analyzer{
 	Name:     "poolzero",
-	Doc:      "TS-M05: pooled types implement Reset, and every sync.Pool Put is reset-dominated.",
+	Doc:      "TS-M05: every sync.Pool Put is preceded by *b = T{} on every path.",
 	Run:      run,
 	Requires: []*analysis.Analyzer{buildssa.Analyzer},
 }
@@ -111,11 +112,11 @@ func checkFunc(pass *analysis.Pass, fn *ssa.Function) {
 		if !ok {
 			continue
 		}
-		if !hasResetMethod(pass, box.Type) {
+		if _, isPointer := box.Type.Underlying().(*types.Pointer); !isPointer {
 			pass.Report(analysis.Diagnostic{
 				Pos:      put.Instr.Pos(),
 				Category: "TS-M05",
-				Message:  fmt.Sprintf(msgNoResetFmt, box.Type.String()),
+				Message:  fmt.Sprintf(msgByValueFmt, box.Type.String()),
 			})
 			continue
 		}
@@ -178,28 +179,20 @@ func chaseBox(v ssa.Value) (boxed, bool) {
 	return boxed{X: box.X, Type: box.X.Type()}, true
 }
 
-// hasResetMethod reports whether t, dereferenced if it is a pointer, has a
-// method named Reset on either its value or pointer method set.
-func hasResetMethod(pass *analysis.Pass, t types.Type) bool {
-	lookup := t
-	if ptr, ok := lookup.(*types.Pointer); ok {
-		lookup = ptr.Elem()
-	}
-	obj, _, _ := types.LookupFieldOrMethod(lookup, true, pass.Pkg, resetName)
-	_, ok := obj.(*types.Func)
-	return ok
-}
-
-// anyReset reports whether fn resets x anywhere, in any block. A function
-// with no reset of x at all is the interprocedural known-miss: the reset
-// may already have happened in the caller, or through an alias this
+// anyReset reports whether fn zeroes x, or calls a Reset method on it, in
+// any block. A Reset call does not count as a zeroing, but it shows the
+// function means to clean x itself, so the dominance check below judges it.
+// A function that does neither is the interprocedural known-miss: the
+// zeroing may already have happened in the caller, or through an alias this
 // analyzer's identity-exact check cannot follow — either way, firing would
 // risk a false positive on a blocking rule, so this stays silent rather
 // than run the dominance check below.
 func anyReset(fn *ssa.Function, x ssa.Value) bool {
 	for _, block := range fn.Blocks {
-		if blockGen(block, x, nil) {
-			return true
+		for _, instr := range block.Instrs {
+			if isZeroing(instr, x) || isResetCall(instr, x) {
+				return true
+			}
 		}
 	}
 	return false
@@ -284,19 +277,16 @@ func blockGen(block *ssa.BasicBlock, x ssa.Value, stop ssa.Instruction) bool {
 		if instr == stop {
 			return false
 		}
-		if isReset(instr, x) {
+		if isZeroing(instr, x) {
 			return true
 		}
 	}
 	return false
 }
 
-// isReset reports whether instr resets x: a static call to x's Reset
-// method with x as the receiver, or a store through x of a zero value.
-func isReset(instr ssa.Instruction, x ssa.Value) bool {
-	if isResetCall(instr, x) {
-		return true
-	}
+// isZeroing reports whether instr is a store through x of a zero value, the
+// SSA form of *b = T{}.
+func isZeroing(instr ssa.Instruction, x ssa.Value) bool {
 	store, ok := instr.(*ssa.Store)
 	if !ok {
 		return false
@@ -331,16 +321,16 @@ func isResetCall(instr ssa.Instruction, x ssa.Value) bool {
 	return call.Args[0] == x
 }
 
-// isZeroed recognizes the two canonical zeroing-store forms: a nil or zero
-// constant, or a load of a freshly zero-Alloc'd local composite (the SSA
-// shape of a `T{}` literal assigned through a pointer). Anything cleverer
-// is not counted as a reset — a deliberate strictness this package's
-// corpus documents, matching maporder's closed allowlist, since the
-// compliant form (call Reset before Put) is always available.
+// isZeroed recognizes the two canonical zeroing-store forms: the zero
+// constant of any type (the SSA shape of an empty `T{}` assigned through a
+// pointer, a Const with no value), or a load of a freshly zero-Alloc'd local
+// composite. Anything cleverer is not counted as a zeroing — a deliberate
+// strictness this package's corpus documents, since the compliant form
+// (`*b = T{}` before Put) is always available.
 func isZeroed(v ssa.Value) bool {
 	switch operand := v.(type) {
 	case *ssa.Const:
-		return operand.IsNil()
+		return operand.Value == nil
 	case *ssa.UnOp:
 		if operand.Op != token.MUL {
 			return false

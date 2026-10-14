@@ -130,7 +130,7 @@ filters rows has a page limit and a scan limit.
 A select case TS-S03/TS-C05 accept as ending a wait on shutdown: a receive from `ctx.Done()` on a
 context that does not trace to `context.Background()` or `context.TODO()`, or a receive from or
 send on a channel the package itself closes or sends on (ADR-0020). A channel's name or `struct{}`
-element type no longer counts; today's analyzers still recognize both until the change is built.
+element type does not count.
 _Avoid_: shutdown channel (the name-based recognition ADR-0020 removes)
 
 **Open enum**:

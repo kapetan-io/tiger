@@ -1,6 +1,6 @@
-// Package boundedloop enforces TS-S02 and TS-S03: every loop has an upper
-// bound, and an unbounded event loop selects on ctx.Done() or a recognized
-// shutdown channel.
+// Package boundedloop enforces TS-S02, TS-S03 and TS-S23: every loop has an
+// upper bound, an unbounded event loop selects on a stop case, and the stop
+// case is the loop's only exit.
 //
 // A RangeStmt over a slice, array, map, string, integer, or a standard
 // library iterator is bounded by its own syntax. A RangeStmt over a channel
@@ -55,7 +55,7 @@ import (
 	"github.com/kapetan-io/tiger/internal/analyzers/internal/counter"
 	"github.com/kapetan-io/tiger/internal/analyzers/internal/intrange"
 	"github.com/kapetan-io/tiger/internal/analyzers/internal/mutation"
-	"github.com/kapetan-io/tiger/internal/analyzers/internal/shutdown"
+	"github.com/kapetan-io/tiger/internal/analyzers/internal/stopcase"
 	"github.com/kapetan-io/tiger/internal/analyzers/variant"
 	"github.com/kapetan-io/tiger/internal/worklist"
 )
@@ -77,8 +77,11 @@ const (
 		"says it ends — range over a slice, a map, or a standard library iterator, or add a " +
 		"counter cap that fails when the cap is hit"
 	msgSelectNoDone = "TS-S03: this event loop's select has no case that stops the loop — add " +
-		"case <-ctx.Done(): return, or a case on a shutdown channel (struct{}-typed or named " +
-		"like one), so the loop can end"
+		"case <-ctx.Done(): return, or a case on a channel this package closes. Copy net/http's " +
+		"Server.Shutdown: close a stop channel once, and have the loop close done"
+	msgExitsOutside = "TS-S23: this %s leaves the event loop without its stop case, so cleanup " +
+		"after the stop never runs — make the stop case the loop's only exit, as net/http's " +
+		"Server.Shutdown does, and have the loop close done after it"
 )
 
 // Analyzer enforces TS-S02 and TS-S03: every loop has an upper bound, or the
@@ -99,6 +102,7 @@ type checker struct {
 	verified  variant.Verified
 	following map[ast.Stmt][]ast.Stmt
 	params    map[*types.Var]bool
+	stops     *stopcase.Finder
 }
 
 func run(pass *analysis.Pass) (any, error) {
@@ -106,11 +110,12 @@ func run(pass *analysis.Pass) (any, error) {
 	if !ok {
 		return nil, errors.New("boundedloop: the variant result is missing")
 	}
+	stops := stopcase.New(pass)
 	for _, scope := range mutation.Declarations(pass) {
 		decl := scope.Root()
 		check := &checker{
 			pass: pass, scope: scope, verified: verified,
-			following: followingStatements(decl), params: scope.Parameters(),
+			following: followingStatements(decl), params: scope.Parameters(), stops: stops,
 		}
 		ast.Inspect(decl, func(node ast.Node) bool {
 			switch loop := node.(type) {
@@ -205,7 +210,7 @@ func (c *checker) standardIterator(expr ast.Expr) bool {
 // cursor-shaped loop, or a TS-S02 finding.
 func (c *checker) checkFor(loop *ast.ForStmt) {
 	if loop.Cond == nil {
-		checkEventLoop(c.pass, loop)
+		c.checkEventLoop(loop)
 		return
 	}
 	terms := counter.Terms(c.scope, loop)
@@ -263,15 +268,15 @@ func (c *checker) bounded(loop *ast.ForStmt) bool {
 }
 
 // checkEventLoop handles a for{} with no condition: the TS-S03 shape (a
-// direct select with a ctx.Done() or shutdown-channel case), a select
-// missing that case (TS-S03), or no select at all (TS-S02). A select with
-// a default clause is non-blocking — a drain loop, not an event loop
-// waiting on the outside world — so it needs no shutdown case, matching
-// TS-C05's treatment of the same shape.
-func checkEventLoop(pass *analysis.Pass, loop *ast.ForStmt) {
+// direct select with a stop case), a select missing that case (TS-S03), or
+// no select at all (TS-S02). A select with a default clause is non-blocking —
+// a drain loop, not an event loop waiting on the outside world — so it needs
+// no stop case, matching TS-C05's treatment of the same shape. An event loop
+// with a stop case must leave only through it (TS-S23).
+func (c *checker) checkEventLoop(loop *ast.ForStmt) {
 	sel := directSelect(loop.Body)
 	if sel == nil {
-		pass.Report(analysis.Diagnostic{
+		c.pass.Report(analysis.Diagnostic{
 			Pos:      loop.Pos(),
 			Category: "TS-S02",
 			Message:  msgNoSelect,
@@ -281,13 +286,15 @@ func checkEventLoop(pass *analysis.Pass, loop *ast.ForStmt) {
 	if selectHasDefault(sel) {
 		return
 	}
-	if !selectHasTerminationCase(pass, sel) {
-		pass.Report(analysis.Diagnostic{
+	if !c.selectHasStopCase(sel) {
+		c.pass.Report(analysis.Diagnostic{
 			Pos:      sel.Pos(),
 			Category: "TS-S03",
 			Message:  msgSelectNoDone,
 		})
+		return
 	}
+	c.checkExits(loop)
 }
 
 // selectHasDefault reports whether the select carries a default clause,
@@ -312,48 +319,16 @@ func directSelect(block *ast.BlockStmt) *ast.SelectStmt {
 	return nil
 }
 
-// selectHasTerminationCase reports whether the select has a comm case
-// receiving from a call to a method named Done, or from a recognized
-// shutdown channel (see internal/analyzers/internal/shutdown).
-func selectHasTerminationCase(pass *analysis.Pass, sel *ast.SelectStmt) bool {
+// selectHasStopCase reports whether the select has a case that can stop the
+// loop (see internal/analyzers/internal/stopcase).
+func (c *checker) selectHasStopCase(sel *ast.SelectStmt) bool {
 	for _, clause := range sel.Body.List {
 		comm, ok := clause.(*ast.CommClause)
-		if ok && receivesFromTermination(pass, comm.Comm) {
+		if ok && c.stops.Case(comm.Comm) {
 			return true
 		}
 	}
 	return false
-}
-
-// receivesFromTermination reports whether comm receives from a call to a
-// method named Done, or from a recognized shutdown channel, covering both
-// "<-ch" and "v, ok := <-ch" forms. A nil comm is a select's default case.
-func receivesFromTermination(pass *analysis.Pass, comm ast.Stmt) bool {
-	var recv ast.Expr
-	switch clause := comm.(type) {
-	case *ast.ExprStmt:
-		recv = clause.X
-	case *ast.AssignStmt:
-		if len(clause.Rhs) == 1 {
-			recv = clause.Rhs[0]
-		}
-	}
-	unary, ok := recv.(*ast.UnaryExpr)
-	if !ok || unary.Op != token.ARROW {
-		return false
-	}
-	return doneCall(unary.X) || shutdown.Channel(pass.TypesInfo, unary.X)
-}
-
-// doneCall reports whether expr is a call whose callee is a method named
-// Done, the ctx.Done() shape.
-func doneCall(expr ast.Expr) bool {
-	call, ok := expr.(*ast.CallExpr)
-	if !ok {
-		return false
-	}
-	selector, ok := call.Fun.(*ast.SelectorExpr)
-	return ok && selector.Sel.Name == "Done"
 }
 
 // polarity records whether an enclosing negation operator has inverted

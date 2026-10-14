@@ -1,8 +1,8 @@
-// The compliant rewrites: a blocking select carries a ctx.Done() case or a
-// recognized shutdown-channel case (element type struct{}, or a shutdown
-// name), a select with a default clause is non-blocking so it needs no
-// shutdown case at all, and a bare receive or send is exempt only when the
-// channel is shutdown-recognized by NAME — same as a bare <-ctx.Done().
+// The compliant rewrites: a blocking select carries a ctx.Done() case on a
+// context something outside the function cancels, or a case on a channel the
+// package closes or sends on. A select with a default clause is non-blocking
+// so it needs no stop case at all, and a bare receive is exempt only when it
+// is itself the wait for a ctx.Done() or a close the package performs.
 package fixture
 
 import "context"
@@ -48,32 +48,93 @@ func awaitShutdown(ctx context.Context) {
 	<-ctx.Done()
 }
 
-// A struct{}-element channel is the closed-channel broadcast shape: the
-// single case receiving from it is itself the shutdown handoff, so the
-// select needs no separate ctx.Done() case.
-func awaitStructShutdown(ready chan struct{}) {
+// Gate waits on a channel its exported Open method closes, so the select
+// case is a stop case the package can fire.
+type Gate struct {
+	open chan struct{}
+}
+
+// Open releases everyone waiting on the gate.
+func (g *Gate) Open() { close(g.open) }
+
+// Wait blocks until Open is called.
+func (g *Gate) Wait() {
 	select {
-	case <-ready:
+	case <-g.open:
 	}
 }
 
-// stopCh is a plain chan int, but its name carries the "stop" token, so
-// the name-based fallback recognizes it as a shutdown channel — the
-// request-carrying shutdown channel shape.
-func awaitNamedShutdown(stopCh chan int) {
+// WaitBare blocks on the same channel outside a select. The receive is the
+// wait for a close the package performs, so it is exempt like <-ctx.Done().
+func (g *Gate) WaitBare() {
+	<-g.open
+}
+
+// Mailbox is told to stop with a request on a channel that carries data, the
+// request-carrying shutdown shape: Shutdown sends on it.
+type Mailbox struct {
+	shutdownCh chan int
+	values     chan int
+}
+
+// Shutdown sends the stop request, or gives up when ctx does.
+func (m *Mailbox) Shutdown(ctx context.Context) error {
 	select {
-	case <-stopCh:
+	case m.shutdownCh <- 1:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
 	}
 }
 
-// A bare receive from a recognized shutdown channel is itself the
-// shutdown wait, the same exemption a bare <-ctx.Done() gets.
-func awaitBareShutdown(stopCh chan int) {
-	<-stopCh
+// Next waits for a value or the stop request.
+func (m *Mailbox) Next() int {
+	select {
+	case n := <-m.shutdownCh:
+		return n
+	case v := <-m.values:
+		return v
+	}
 }
 
-// A bare send to a recognized shutdown channel is the shutdown handoff
-// itself, so it needs no select wrapping it.
-func signalDone(done chan struct{}) {
-	done <- struct{}{}
+// awaitLocalStop owns the channel it waits on and closes it itself.
+func awaitLocalStop(values chan int) int {
+	stop := make(chan struct{})
+	go func() { close(stop) }()
+	select {
+	case <-stop:
+		return 0
+	case v := <-values:
+		return v
+	}
+}
+
+// awaitPassedStop waits on a channel its caller passes in, and the caller
+// closes it.
+func awaitPassedStop(stop chan struct{}, values chan int) int {
+	select {
+	case <-stop:
+		return 0
+	case v := <-values:
+		return v
+	}
+}
+
+// AwaitWithPassedStop passes awaitPassedStop a channel it closes.
+func AwaitWithPassedStop(values chan int) int {
+	stop := make(chan struct{})
+	close(stop)
+	return awaitPassedStop(stop, values)
+}
+
+// awaitDerived waits on a context derived from the caller's.
+func awaitDerived(parent context.Context, values chan int) (int, error) {
+	ctx, cancel := context.WithTimeout(parent, 1)
+	defer cancel()
+	select {
+	case v := <-values:
+		return v, nil
+	case <-ctx.Done():
+		return 0, ctx.Err()
+	}
 }

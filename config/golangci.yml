@@ -8,7 +8,7 @@
 #
 # Path patterns name the directories with their own import rules:
 #   internal/domain/  packages limited to the standard library
-#   internal/sys/     packages permitted unsafe, cgo, and goroutine supervision
+#   internal/sys/     packages permitted unsafe and cgo
 #
 # Verify linter availability with `golangci-lint linters` for your version.
 

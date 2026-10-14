@@ -485,7 +485,7 @@ The messages for TS-S03 and TS-C02 both point to the shutdown-loop pattern, desc
 - starts it with `wg.Go`
 - has every waiter select on `done`
 
-These changes to the goroutine and wait rules are decided but not yet built. Today's TS-C02 accepts only `errgroup.Group.Go`, and today's TS-S03 and TS-C05 still accept a channel by its name.
+These changes to the goroutine and wait rules are built. TS-C02 accepts only `errgroup.Group.Go` and `sync.WaitGroup.Go` and wants a `Wait`, and TS-S03 and TS-C05 accept a channel only when the package closes or sends on it. The shutdown-loop pattern they point to ships separately, so the messages describe its shape in words for now.
 
 ### A pattern covers the part a rule cannot see
 

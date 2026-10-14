@@ -1,42 +1,33 @@
-// Documented TS-S03 coverage gaps introduced by the second shutdown
-// shape: both recognitions only relax a check, so a false match silences
-// a real finding instead of creating one.
+// Documented TS-S03 coverage gaps: recognizing a stop case by what the package
+// does with the channel can still be fooled by code that never runs.
 package fixture
 
-// semaphoreSignalKnownMiss uses a struct{}-typed channel purely as a
-// concurrency-limiting token, not a shutdown signal — but the type-based
-// recognition treats every struct{}-element channel as a recognized
-// shutdown shape by type alone, so this select's real TS-S03 finding
-// (nothing here actually tells the loop to stop) goes silent.
-//
-// known-miss: distinguishing "signal used for shutdown" from "signal used
-// as a semaphore" needs usage-site judgment a single-package syntactic
-// check does not have; the type-based recognition is deliberately
-// permissive (a false match only relaxes a finding, never adds one).
-func semaphoreSignalKnownMiss(tokens chan struct{}, input <-chan int, output chan<- int) {
-	for {
-		select {
-		case <-tokens:
-			// a semaphore token freed up, not a shutdown signal
-		case value := <-input:
-			output <- value * 2
-		}
+// Dormant closes its channel in code that can never run.
+type Dormant struct {
+	stop  chan struct{}
+	input chan int
+}
+
+// Stop would end the loop, but only when its condition holds.
+func (d *Dormant) Stop() {
+	if false {
+		close(d.stop)
 	}
 }
 
-// doneCountsKnownMiss's channel just happens to have "done" in its name —
-// it reports completed-item counts, it is not a shutdown signal — but the
-// name-based fallback matches on substring alone, so this select's real
-// TS-S03 finding goes silent too.
+// Run runs the loop on the calling goroutine.
 //
-// known-miss: same permissive-by-design tradeoff as the struct{} case;
-// closing it needs a naming convention this heuristic does not enforce.
-func doneCountsKnownMiss(doneCounts chan int, input <-chan int, output chan<- int) {
+// known-miss: the close in Stop is dead code, but it is syntactically a
+// close an exported method reaches, so the stop case counts and the loop
+// that can never stop goes unreported. Seeing that the branch never runs
+// needs reachability analysis this check does not have; the goleak harness
+// and shutdown tests are the runtime backstop.
+func (d *Dormant) Run(output chan<- int) {
 	for {
 		select {
-		case n := <-doneCounts:
-			output <- n
-		case value := <-input:
+		case <-d.stop:
+			return
+		case value := <-d.input:
 			output <- value * 2
 		}
 	}
