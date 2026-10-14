@@ -1,10 +1,13 @@
 package maporder
 
 import (
+	"fmt"
 	"go/ast"
 	"go/token"
 	"go/types"
+	"maps"
 	"slices"
+	"strings"
 
 	"golang.org/x/tools/go/analysis"
 
@@ -12,14 +15,14 @@ import (
 	"github.com/kapetan-io/tiger/internal/worklist"
 )
 
-// The allowlist is tiger's maporder allowlist with two changes. First, when
-// carried is non-nil, no read may see state an earlier visit wrote: such a
-// read lets visit order pick which entries are written or what is written.
-// The accumulator forms (x += e, x = max(x, e), if e < x { x = e }) read
-// their own target by design; only e is checked for them. A nil carried
-// skips the check, which classifyMessage uses to name the cause. Second, an
-// assignment to anything but a plain identifier (a field, a slice element)
-// is not a local and is refused.
+// Allowlist notes. When carried is non-nil, no read may see state an earlier
+// visit wrote: such a read lets visit order pick which entries are written or
+// what is written. The accumulator forms (x += e, x = max(x, e),
+// if e < x { x = e }) read their own target by design; only e is checked for
+// them. A nil carried skips the check, which classifyMessage uses to name the
+// cause. An assignment to anything but a plain identifier (a field, a slice
+// element) is not a local and is refused. A body that can break or return
+// must change nothing but constant booleans and per-visit locals (walkBody).
 
 // carry is the state a loop's body writes that outlives one iteration.
 // Variables assigned or incremented are tracked by object. Maps written or
@@ -28,10 +31,14 @@ import (
 // m[k], with k the range key, each visit touches only its own entry, so
 // reading any map of that type at [k] sees nothing an earlier visit wrote.
 type carry struct {
-	objs    map[types.Object]bool
-	maps    []types.Type
-	unkeyed []types.Type
-	key     types.Object
+	// reshapes is set when the body writes or deletes an entry of the map
+	// being ranged over other than the current one, which changes which
+	// entries the range goes on to visit.
+	reshapes bool
+	objs     map[types.Object]bool
+	maps     []types.Type
+	unkeyed  []types.Type
+	key      types.Object
 }
 
 // carriedState collects what loop's body writes that is declared outside
@@ -41,10 +48,14 @@ func carriedState(pass *analysis.Pass, loop *ast.RangeStmt) *carry {
 	if key, ok := loop.Key.(*ast.Ident); ok && key.Name != "_" && distinctKeys(pass, loop) {
 		c.key = pass.TypesInfo.ObjectOf(key)
 	}
+	ranged := rangedMap(loop)
 	mapWrite := func(m, index ast.Expr) {
 		t := pass.TypesInfo.TypeOf(m)
 		if t == nil {
 			return
+		}
+		if ranged != "" && types.ExprString(ast.Unparen(m)) == ranged && !c.isKey(pass, index) {
+			c.reshapes = true
 		}
 		c.maps = append(c.maps, t)
 		if !c.isKey(pass, index) {
@@ -85,6 +96,17 @@ func carriedState(pass *analysis.Pass, loop *ast.RangeStmt) *carry {
 		return true
 	})
 	return c
+}
+
+// rangedMap returns the source text of the map loop ranges over, looking
+// through maps.Keys, maps.Values and maps.All, or "" when it is not a plain
+// expression.
+func rangedMap(loop *ast.RangeStmt) string {
+	expr := ast.Unparen(loop.X)
+	if call, ok := expr.(*ast.CallExpr); ok && len(call.Args) == 1 {
+		expr = ast.Unparen(call.Args[0])
+	}
+	return types.ExprString(expr)
 }
 
 // distinctKeys reports whether loop's first variable differs on every
@@ -177,18 +199,136 @@ func readsAny(pass *analysis.Pass, expr ast.Expr, objs map[types.Object]bool) bo
 
 // bodyAllowed walks loop's body against the closed allowlist. Nested
 // if/block statements are expanded onto the worklist rather than recursed
-// into, so the whole walk stays iterative.
+// into, so the whole walk stays iterative. A body that can leave the loop
+// early must have no effect outside one visit, because which entries a
+// break or return skips depends on visit order.
 func bodyAllowed(pass *analysis.Pass, loop *ast.RangeStmt, carried *carry) bool {
+	allowed, early := walkBody(pass, loop, carried)
+	return allowed && !early
+}
+
+// walkBody reports whether every statement of loop's body is allowlisted,
+// and whether it is unstable: the body can leave the loop early and either
+// has an effect that outlives one visit or has an exit that skips an outcome
+// another entry sets.
+func walkBody(pass *analysis.Pass, loop *ast.RangeStmt, carried *carry) (allowed, unstable bool) {
+	if carried != nil && carried.reshapes {
+		return false, false
+	}
 	work := append([]ast.Stmt{}, loop.Body.List...)
+	exits, effects := false, false
+	outcomes := map[string]bool{}
 	i := 0
 	for ; i < len(work) && i < worklist.NodesMax; i++ {
+		if key, ok := outcomeKey(pass, loop, work[i]); ok {
+			outcomes[key] = true
+		}
+		switch stmt := work[i].(type) {
+		case *ast.BranchStmt:
+			exits = exits || stmt.Tok == token.BREAK
+		case *ast.ReturnStmt:
+			exits = true
+		case *ast.IfStmt:
+			effects = effects || minMaxIfForm(pass, stmt, carried)
+		default:
+			effects = effects || outlivesVisit(pass, loop, stmt)
+		}
 		next, ok := stmtAllowed(pass, loop, work[i], carried)
 		if !ok {
-			return false
+			return false, false
 		}
 		work = append(work, next...)
 	}
-	assert.Ok(i == len(work), "bodyAllowed: worklist reached worklist.NodesMax")
+	assert.Ok(i == len(work), "walkBody: worklist reached worklist.NodesMax")
+	return true, exits && (effects || !exitsCarryOutcomes(pass, loop, outcomes))
+}
+
+// outcomeKey names what an assignment of a constant to a boolean or a
+// return of constants leaves behind once the loop is done.
+func outcomeKey(pass *analysis.Pass, loop *ast.RangeStmt, stmt ast.Stmt) (string, bool) {
+	switch stmt := stmt.(type) {
+	case *ast.AssignStmt:
+		if !boolConstAssign(pass, stmt) {
+			return "", false
+		}
+		target := identDecl(pass, stmt.Lhs[0])
+		if target == nil || declaredWithinObj(loop, target) {
+			return "", false
+		}
+		return fmt.Sprintf("%p=%s", target, types.ExprString(stmt.Rhs[0])), true
+	case *ast.ReturnStmt:
+		results := make([]string, len(stmt.Results))
+		for at, result := range stmt.Results {
+			results[at] = types.ExprString(result)
+		}
+		return "return " + strings.Join(results, ","), true
+	}
+	return "", false
+}
+
+// exitsCarryOutcomes reports whether every break and return in loop's body
+// comes with every outcome the body can leave. Then whichever entry stops
+// the loop, the result is the same: a flag set on one entry and a break on
+// another would not be, because the break can come first.
+func exitsCarryOutcomes(pass *analysis.Pass, loop *ast.RangeStmt, outcomes map[string]bool) bool {
+	type block struct {
+		list    []ast.Stmt
+		covered map[string]bool
+	}
+	work := []block{{list: loop.Body.List, covered: map[string]bool{}}}
+	i := 0
+	for ; i < len(work) && i < worklist.NodesMax; i++ {
+		covered := work[i].covered
+		for _, stmt := range work[i].list {
+			if key, ok := outcomeKey(pass, loop, stmt); ok {
+				covered[key] = true
+			}
+			switch stmt := stmt.(type) {
+			case *ast.BranchStmt:
+				if stmt.Tok == token.BREAK && len(covered) < len(outcomes) {
+					return false
+				}
+			case *ast.ReturnStmt:
+				if len(covered) < len(outcomes) {
+					return false
+				}
+			case *ast.BlockStmt:
+				work = append(work, block{list: stmt.List, covered: maps.Clone(covered)})
+			case *ast.IfStmt:
+				work = append(work, block{list: stmt.Body.List, covered: maps.Clone(covered)})
+				if stmt.Else != nil {
+					rest := block{list: []ast.Stmt{stmt.Else}, covered: maps.Clone(covered)}
+					work = append(work, rest)
+				}
+			}
+		}
+	}
+	assert.Ok(i == len(work), "exitsCarryOutcomes: worklist reached worklist.NodesMax")
+	return true
+}
+
+// outlivesVisit reports whether a leaf statement changes anything but
+// booleans set to a constant or variables declared inside the loop body. Any
+// other kind of statement counts as an effect.
+func outlivesVisit(pass *analysis.Pass, loop *ast.RangeStmt, stmt ast.Stmt) bool {
+	switch stmt := stmt.(type) {
+	case *ast.BlockStmt, *ast.DeclStmt:
+		return false
+	case *ast.AssignStmt:
+		if boolConstAssign(pass, stmt) {
+			return false
+		}
+		for _, lhs := range stmt.Lhs {
+			ident, ok := ast.Unparen(lhs).(*ast.Ident)
+			if !ok || !declaredWithin(pass, loop, ident) {
+				return true
+			}
+		}
+		return false
+	case *ast.IncDecStmt:
+		ident, ok := ast.Unparen(stmt.X).(*ast.Ident)
+		return !ok || !declaredWithin(pass, loop, ident)
+	}
 	return true
 }
 

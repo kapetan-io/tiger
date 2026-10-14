@@ -93,3 +93,28 @@ tests exercise.
   tiger misses across the module cache and adds 47 false findings to work down first.
 - The specification's TS-T02 line and Part V analyzer table, and the explainer, change to describe
   the allowlist, the closed escape, and the five misses.
+
+## Amendment (ENG-341)
+
+The follow-up named in the last Consequences bullet shipped. The decision above stands, with these
+changes to what the rule accepts and refuses:
+
+- The first-use check follows a slice by name only, so the slice must not be readable under another
+  name before its sort. A package-level slice, one whose address is taken, one a function literal
+  captures, one that is sliced or copied, and one that starts from anything but a fresh slice no
+  longer qualify.
+- A map loop may fill a preallocated local slice by position (`keys[i] = k` directly followed by
+  `i++`), and `slices.Collect` or `slices.AppendSeq` of a map iterator may fill one, when a plain
+  sort comes next. `sort.Slice` and `sort.SliceStable` count as a plain sort only when the less
+  function compares the slice's own string or integer elements.
+- A loop that can `break` or `return` fires when it writes a map, adds to a counter or deletes, or
+  when an exit skips a constant outcome the body sets on another entry.
+- A loop that writes or deletes an entry of its own map other than the current one fires. So does
+  a `break`, `continue` or `goto` between a collect and its sort.
+- Parentheses around an iterator call and a label on the map loop change nothing.
+
+A scan of the 685 module-cache modules that load in both builds, comparing against the rule as it
+stood before ENG-340, finds 91 sites that fire only now. A read of each found 33 real leaks, 54
+false findings and 4 it could not decide. The false findings need a proof about the data and are
+recorded as known false findings in the rule reference. A comparator held in a variable and
+`sort.Sort` would clear none of them, so neither was added.

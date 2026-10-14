@@ -301,7 +301,7 @@ func StoredComparator(m map[Hash]bool) []Hash {
 	return slices.SortedFunc(maps.Keys(m), byBytes)
 }
 
-// IndexComparator is total but uses sort.Slice: an expected false positive.
+// IndexComparator compares the slice's own strings by index, which is total.
 func IndexComparator(m map[string]int) []string {
 	var names []string
 	for name := range m {

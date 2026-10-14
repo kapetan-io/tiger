@@ -1462,10 +1462,49 @@ names `slices.Sorted(maps.Keys(m))` followed by `slices.SortStableFunc`.
 
 A result of `maps.Keys`, `maps.Values`, or `maps.All` fires unless it goes to `slices.Sorted`, a
 full-coverage `SortedFunc` or `SortedStableFunc`, `maps.Collect`, `maps.Insert`, or a range checked like a map range, so
-`slices.Collect(maps.Keys(m))` is a finding. A map write gated by a counter, such as copying the
-first three entries visited, fires too.
+`slices.Collect(maps.Keys(m))` is a finding. Parentheses around the call change nothing, and neither
+does a label on the loop. A map write gated by a counter, such as copying the first three entries
+visited, fires too.
+
+A collect-then-sort passes only for a slice that is a function local and that nothing else can read
+before the sort. A package-level slice fires. So does a slice whose address is taken (`p := &keys`),
+that a function literal captures, or that is sliced, because a read through any of those before the
+sort prints the keys in map order.
+
+A collect can also fill a preallocated local slice by position (`keys[i] = k` directly followed by
+`i++`, with `i` used nowhere else in the loop), and `slices.Collect` or `slices.AppendSeq` of a map iterator can fill one.
+Both pass when the slice's first use afterward is a sort that fixes its order. `sort.Slice` and
+`sort.SliceStable` count as such a sort only for a comparator that compares the slice's own
+elements, `s[i] < s[j]`, on strings or integers.
+
+A loop that can stop early (`break`, `return`) fires when it also writes a map, adds to a counter or
+deletes. Which entries it handled before stopping depends on visit order. It fires too when a
+boolean is set to a constant on one entry and the loop stops on another without setting it. A loop
+whose every exit sets the same constants, such as a search for one value, passes.
+
+A loop that writes or deletes an entry of the map it ranges over, other than the current one,
+fires, because Go may or may not visit entries added or removed during the range. A jump
+(`break`, `continue`, `goto`) between a collect and its sort also fires, since it can skip the sort for
+the rest of an enclosing loop.
+
+An alias made later in an enclosing loop counts as made before the sort, because the next pass
+reads it before the next sort. A slice declared inside that loop starts fresh each pass and is
+exempt. A bare `return` before the sort fires when the slice is a named result, since it hands the
+slice back unsorted.
+
+A slice also counts as aliased when it is copied (`t := s`), passed or returned before the sort, or
+started from anything but `make`, a literal, `nil` or `slices.Collect`.
 
 A finding means the loop's shape is outside the allowlist, not that the output varies.
+
+**Known false findings:** Some loops fire although their output does not depend on order, because
+the proof needs a fact about the data or about who else holds the slice. A `sort.Slice` that
+compares one field of a struct that is unique only because it came from a map key. Writes at an
+index that is distinct by the caller's invariant (`out[v] = k`). A slice held in a struct field or
+behind a pointer. A package-level slice sorted right after the loop. A delete of the current entry through a field of the value (`delete(m, e.Key)`). A collect whose sort happens in
+a helper. A labeled `continue` that targets the map loop, a `break` inside a nested `switch` or
+`for`, and a position counter that steps with `i += 1` or `i--`. Rewriting the loop to range over
+`slices.Sorted(maps.Keys(m))` clears each.
 
 **Known misses:** Five shapes pass although they depend on order. Last writer wins
 (`inverse[v] = k` when two keys share a value). A map write whose value calls a function
