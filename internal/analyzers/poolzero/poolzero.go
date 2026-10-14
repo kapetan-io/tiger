@@ -367,7 +367,10 @@ func zeroFieldAddr(ref ssa.Instruction) bool {
 	}
 	for _, use := range *addr.Referrers() {
 		store, isStore := use.(*ssa.Store)
-		if !isStore || !isZeroed(store.Val) {
+		if !isStore {
+			return false
+		}
+		if zero, isConst := store.Val.(*ssa.Const); !isConst || zero.Value != nil {
 			return false
 		}
 	}
