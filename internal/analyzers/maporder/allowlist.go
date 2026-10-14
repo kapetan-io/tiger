@@ -198,7 +198,7 @@ func walkBody(pass *analysis.Pass, loop *ast.RangeStmt, carried *carry) (allowed
 	outcomes := map[string]bool{}
 	i := 0
 	for ; i < len(work) && i < worklist.NodesMax; i++ {
-		if key, ok := outcomeKey(pass, work[i]); ok {
+		if key, ok := outcomeKey(pass, loop, work[i]); ok {
 			outcomes[key] = true
 		}
 		switch stmt := work[i].(type) {
@@ -223,10 +223,13 @@ func walkBody(pass *analysis.Pass, loop *ast.RangeStmt, carried *carry) (allowed
 
 // outcomeKey names what an assignment of a constant to a boolean or a
 // return of constants leaves behind once the loop is done.
-func outcomeKey(pass *analysis.Pass, stmt ast.Stmt) (string, bool) {
+func outcomeKey(pass *analysis.Pass, loop *ast.RangeStmt, stmt ast.Stmt) (string, bool) {
 	switch stmt := stmt.(type) {
 	case *ast.AssignStmt:
 		if !boolConstAssign(pass, stmt) {
+			return "", false
+		}
+		if declaredWithin(pass, loop, stmt.Lhs[0].(*ast.Ident)) {
 			return "", false
 		}
 		return fmt.Sprintf("%p=%s", identDecl(pass, stmt.Lhs[0]), types.ExprString(stmt.Rhs[0])), true
@@ -252,9 +255,9 @@ func exitsCarryOutcomes(pass *analysis.Pass, loop *ast.RangeStmt, outcomes map[s
 	work := []block{{list: loop.Body.List, covered: map[string]bool{}}}
 	i := 0
 	for ; i < len(work) && i < worklist.NodesMax; i++ {
-		covered := maps.Clone(work[i].covered)
+		covered := work[i].covered
 		for _, stmt := range work[i].list {
-			if key, ok := outcomeKey(pass, stmt); ok {
+			if key, ok := outcomeKey(pass, loop, stmt); ok {
 				covered[key] = true
 			}
 			switch stmt := stmt.(type) {
@@ -267,11 +270,11 @@ func exitsCarryOutcomes(pass *analysis.Pass, loop *ast.RangeStmt, outcomes map[s
 					return false
 				}
 			case *ast.BlockStmt:
-				work = append(work, block{list: stmt.List, covered: covered})
+				work = append(work, block{list: stmt.List, covered: maps.Clone(covered)})
 			case *ast.IfStmt:
-				work = append(work, block{list: stmt.Body.List, covered: covered})
+				work = append(work, block{list: stmt.Body.List, covered: maps.Clone(covered)})
 				if stmt.Else != nil {
-					work = append(work, block{list: []ast.Stmt{stmt.Else}, covered: covered})
+					work = append(work, block{list: []ast.Stmt{stmt.Else}, covered: maps.Clone(covered)})
 				}
 			}
 		}

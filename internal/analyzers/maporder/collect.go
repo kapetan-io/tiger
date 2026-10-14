@@ -415,15 +415,11 @@ func sharedVars(pass *analysis.Pass, file *ast.File) map[types.Object]token.Pos 
 			})
 		case *ast.AssignStmt:
 			for at, lhs := range expr.Lhs {
-				if at < len(expr.Rhs) && len(expr.Lhs) == len(expr.Rhs) {
-					markStaleStart(pass, lhs, mark, expr.Rhs[at])
-				}
+				markStaleStart(pass, lhs, mark, startOf(len(expr.Lhs), expr.Rhs, at))
 			}
 		case *ast.ValueSpec:
 			for at, name := range expr.Names {
-				if at < len(expr.Values) {
-					markStaleStart(pass, name, mark, expr.Values[at])
-				}
+				markStaleStart(pass, name, mark, startOf(len(expr.Names), expr.Values, at))
 			}
 		case *ast.Ident:
 			obj, ok := pass.TypesInfo.ObjectOf(expr).(*types.Var)
@@ -434,6 +430,19 @@ func sharedVars(pass *analysis.Pass, file *ast.File) map[types.Object]token.Pos 
 		return true
 	})
 	return shared
+}
+
+// startOf returns the expression that gives the at-th of count variables its
+// value, or nil when a single multi-value call or receive gives several of
+// them theirs, or when none is given (a plain declaration).
+func startOf(count int, values []ast.Expr, at int) ast.Expr {
+	if len(values) == count {
+		return values[at]
+	}
+	if len(values) == 1 {
+		return values[0]
+	}
+	return nil
 }
 
 // markStaleStart marks the slice variable lhs when rhs is not a fresh slice
@@ -447,7 +456,11 @@ func markStaleStart(
 		return
 	}
 	obj, ok := pass.TypesInfo.ObjectOf(ident).(*types.Var)
-	if !ok || !isSliceType(obj.Type()) {
+	if !ok || !isSliceType(obj.Type()) || rhs == nil {
+		return
+	}
+	if _, tuple := pass.TypesInfo.TypeOf(rhs).(*types.Tuple); tuple {
+		mark(obj, ident.Pos())
 		return
 	}
 	switch fresh := ast.Unparen(rhs).(type) {

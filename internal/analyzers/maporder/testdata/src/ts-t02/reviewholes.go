@@ -122,3 +122,54 @@ func freshLiteral(m map[string]int) []string {
 	sort.Strings(s)
 	return s
 }
+
+// A nested exit only sees outcomes set before it, not ones set later.
+func exitBeforeFlag(m map[string]int) bool {
+	found := false
+	for _, v := range m { // want `TS-T02`
+		if v > 0 {
+			break
+		}
+		found = true
+	}
+	return found
+}
+
+func returnBeforeFlag(m map[string]int) (ok bool) {
+	for _, v := range m { // want `TS-T02`
+		if v > 0 {
+			return
+		}
+		ok = true
+	}
+	return
+}
+
+// A boolean declared in the body is not an outcome of the loop.
+func localFlag(m map[string]int) bool {
+	for _, v := range m {
+		ok := false
+		if v > 3 {
+			ok = true
+		}
+		if ok {
+			return true
+		}
+	}
+	return false
+}
+
+var sharedBuf = make([]string, 0, 8)
+
+func allocShared() ([]string, error) { return sharedBuf[:0], nil }
+
+// A slice from a multi-value call may share storage.
+func aliasFromMulti(m map[string]int) string {
+	s, _ := allocShared()
+	for k := range m { // want `TS-T02`
+		s = append(s, k)
+	}
+	out := fmt.Sprint(sharedBuf[:len(m)])
+	sort.Strings(s)
+	return out
+}
