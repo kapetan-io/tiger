@@ -7,8 +7,11 @@
 # why.
 #
 # Path patterns name the directories with their own import rules:
-#   internal/domain/  packages limited to the standard library
 #   internal/sys/     packages permitted unsafe and cgo
+#
+# What each package may import is declared in tiger.layers.yaml next to
+# go.mod and checked by tiger, not depguard (TS-X03, TS-D01). Tiger ships a
+# template at config/tiger.layers.yaml.
 #
 # Verify linter availability with `golangci-lint linters` for your version.
 
@@ -26,7 +29,7 @@ linters:
     - exhaustive        # TS-S08 exhaustive switch over enums
     - gochecknoinits    # TS-S10 no init()
     - gochecknoglobals  # TS-S11 no package-level mutable state
-    - depguard          # TS-S12, TS-D01 package bans
+    - depguard          # TS-S12 package bans
     - forbidigo         # TS-C08, TS-T01, TS-T04 function bans
     - exhaustruct       # TS-S15 every struct field named
     - mnd               # TS-S16 no magic numbers
@@ -137,25 +140,8 @@ linters:
 
     depguard:
       rules:
-        internal-domain:
-          # TS-D01, TS-S12, TS-T01. Packages under internal/domain take the
-          # standard library only, no unsafe, no nondeterminism.
-          files:
-            - '**/internal/domain/**'
-          allow:
-            - $gostd
-            - myrepo/internal/assert
-          deny:
-            - pkg: unsafe
-              desc: TS-S12. unsafe removes the only memory guarantee Go gives you.
-            - pkg: reflect
-              desc: TS-S12. Reflection moves errors to run time and allocates doing it.
-            - pkg: math/rand
-              desc: TS-T01. Inject a deterministic source instead.
-            - pkg: math/rand/v2
-              desc: TS-T01. Inject a deterministic source instead.
-            - pkg: crypto/rand
-              desc: TS-T01. Inject through the platform interface so it can be replayed.
+        # Module-wide bans only; import limits per package are TS-X03
+        # (tiger.layers.yaml).
         baseline:
           # Bans for the whole module; internal/sys is the sanctioned exception
           # where the platform touches the world.

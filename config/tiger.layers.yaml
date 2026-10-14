@@ -1,0 +1,21 @@
+# Tiger Go, layer file (TS-X03). Copy next to go.mod.
+#
+# Every package in the module needs one key: "." for the root package,
+# "./dir" for one package, "./dir/..." for a directory and everything below it.
+# Its list names what the package may import beyond the pure standard library:
+#   ./pkg        a package of this module, exactly that package
+#   module/path  that import path and every path below it
+#   net os database syscall plugin io/ioutil crypto/rand math/rand
+#                the standard library that leaves the process or is
+#                nondeterministic; naming one allows its whole subtree
+# The rest of the standard library is always allowed; write [] for a package
+# that needs nothing more. _test.go files are not layered.
+#
+# tiger check fails an import a package's list doesn't allow, a package with
+# no key, and a key that matches no package directory. Under golangci-lint the
+# tiger plugin reports the first two for the packages it loads; stale keys and
+# packages the run did not load show only in tiger check. Stock golangci-lint
+# reports none of them.
+#
+# Replace the entry below with one key per package of your module.
+"./internal/domain/...": []

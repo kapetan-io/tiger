@@ -1,0 +1,8 @@
+# The corpus module's layer file. The test and the registry meta-test install
+# it before running the corpus.
+".":
+  - os
+  - ./store
+  - example.com/lib
+"./store": []
+"./domain/...": []

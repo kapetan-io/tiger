@@ -7,7 +7,6 @@ decisions recorded in ENG-191. Several pieces described here are not built yet:
 - the end of `//tiger:batched` as a loop-bound waiver (ENG-183)
 - the changes to the goroutine and wait rules, including TS-C03's goleak check
 - the collect-then-sort part of the map-order rule, and TS-T11's double test run
-- the layer file that declares which packages may import which (ENG-328)
 - the opt-in ban on `//nolint`
 - the removal of the single-implementation interface rule and of package-level restrictions
 
@@ -77,8 +76,8 @@ Taken directly from TigerStyle and Holzmann's Power of Ten rules for mission-cri
   variable is declared where it is first used, so when a value is wrong the functions that
   could have written it are few and tiger can name them.
 - **The dependency graph is written down.** A checked-in layer file says which packages may
-  import which, and golangci-lint's depguard fails an import that goes against it. Layering
-  is the part of architecture a tool can enforce.
+  import which, and tiger fails an import that goes against it. Layering is the part of
+  architecture a tool can enforce.
 - **Goroutines follow one set of rules.** Every goroutine has an owner and a context that
   ends it. A package shares state through channels or through a mutex, never both, and no
   wait blocks without a way to cancel it.
@@ -262,11 +261,11 @@ func ExpireDirect(deadline time.Time) bool {
 
 golangci-lint checks this, in the configuration tiger generates. The forbidigo
 linter forbids direct calls to `time.Now`, `time.Sleep`, and `time.After`, and
-to `panic`, so `ExpireDirect` is reported and `Expire` passes. The depguard
-linter forbids importing `math/rand`, `math/rand/v2`, and `crypto/rand` in a
-package under `internal/domain`. Both linters check calls and imports written in
-the module's own code, so a third-party library that reads the clock internally
-is not caught.
+to `panic`, so `ExpireDirect` is reported and `Expire` passes. When the module
+has a layer file, tiger denies `math/rand`, `math/rand/v2`, and `crypto/rand` to
+every package whose entry doesn't name them; without one, imports of randomness
+are not checked. Both checks see calls and imports written in the module's own
+code, so a third-party library that reads the clock internally is not caught.
 
 The coder decides whether a test hands in a substitute or the real dependency,
 per test. For a crypto library, the real one is usually the better choice. Tiger
@@ -551,6 +550,36 @@ The collection has these eight, named with the rules each backs.
 The repository's `patterns/ledger` joins them as the invariant pattern, backing
 TS-A07 and A09. TS-A08, the symmetric-pair rule, is specified and not built, so the
 ledger's card does not list it.
+
+### The layer file says what each package may import
+
+A module that wants its import graph checked keeps a `tiger.layers.yaml` next to `go.mod`
+(TS-X03). Each key is a package of the module, and its list names what that package may
+import beyond the pure standard library: other packages of the module, third-party modules,
+and the eight standard library subtrees that leave the process or are nondeterministic,
+such as `os`, `net` and `math/rand`.
+
+```yaml
+"./internal/store":
+  - database
+  - ./internal/types
+"./internal/types": []
+"./service":
+  - ./internal/store
+"./internal/domain/...": []
+```
+
+Here the store may open a database, the service may use the store but not the database, and
+every package under `internal/domain` imports nothing beyond the pure standard library. If
+the service imports `database/sql` anyway, `tiger check` fails at the import (this line is
+from the module in `TestLayersImportOutsideTheEntryFails`):
+
+```
+service/db.go:3:8: TS-X03: the "./service" entry in tiger.layers.yaml doesn't list database, so this package can't import database/sql — add "database" to it, or pass it in through an interface
+```
+
+A package with no key, and a key that matches no package directory, fail the run too, so the
+file can't fall behind the code. A module without the file has no import limits.
 
 ### Rules and the two severities
 

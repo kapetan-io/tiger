@@ -1,0 +1,7 @@
+# The plugin-layers fixture's layer file: ./layered names net but imports os
+# too, ./unlisted has no entry, and ./gone matches no package, which only
+# tiger check reports.
+"./layered":
+  - net
+"./pure": []
+"./gone": []

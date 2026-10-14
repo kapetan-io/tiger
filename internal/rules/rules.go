@@ -31,6 +31,7 @@ import (
 	"github.com/kapetan-io/tiger/internal/analyzers/invariantnegative"
 	"github.com/kapetan-io/tiger/internal/analyzers/invariantrefs"
 	"github.com/kapetan-io/tiger/internal/analyzers/ioinloop"
+	"github.com/kapetan-io/tiger/internal/analyzers/layers"
 	"github.com/kapetan-io/tiger/internal/analyzers/limitflow"
 	"github.com/kapetan-io/tiger/internal/analyzers/limitrelate"
 	"github.com/kapetan-io/tiger/internal/analyzers/maporder"
@@ -347,6 +348,11 @@ var customRules = []CustomRule{
 		Patterns: []string{"ledger"},
 		Title:    "every invariant has a test that violates it",
 		Finish:   invariantnegative.Finish,
+	},
+	{
+		Category: "TS-X03", RuleID: "TS-X03", Analyzer: layers.Analyzer,
+		Severity: SeverityBlocking,
+		Title:    "the package import graph is declared and enforced",
 	},
 }
 

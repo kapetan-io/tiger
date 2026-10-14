@@ -142,7 +142,7 @@ func Run(
 	}
 	relativize(findings, root)
 	sort.Slice(findings, func(i, j int) bool {
-		return findings[i].before(findings[j])
+		return findings[i].Before(findings[j])
 	})
 	return Report{Findings: findings, Packages: visited}, nil
 }
@@ -307,12 +307,15 @@ func load(root string, patterns []string) ([]*packages.Package, error) {
 }
 
 // dedupe drops the synthesized test main and, when a test-augmented variant
-// of a package is present, the plain variant it duplicates.
+// of a package is present, the plain variant it duplicates. Only
+// "p [p.test]" marks p as augmented. "p_test [p.test]" is p's external test
+// package, not a variant of a package named p_test, so a real directory named
+// foo_test keeps its plain variant.
 func dedupe(loaded []*packages.Package) []*packages.Package {
 	augmented := map[string]bool{}
 	for _, pkg := range loaded {
-		plain, _, found := strings.Cut(pkg.ID, " [")
-		if found && !strings.HasSuffix(plain, "_test") {
+		plain, variant, found := strings.Cut(pkg.ID, " [")
+		if found && variant == plain+".test]" {
 			augmented[plain] = true
 		}
 	}
@@ -720,9 +723,9 @@ func relativize(findings []Finding, root string) {
 	}
 }
 
-// before orders findings by position, then category and message so equal
+// Before orders findings by position, then category and message so equal
 // positions still sort deterministically.
-func (f Finding) before(other Finding) bool {
+func (f Finding) Before(other Finding) bool {
 	if f.Position.Filename != other.Position.Filename {
 		return f.Position.Filename < other.Position.Filename
 	}
