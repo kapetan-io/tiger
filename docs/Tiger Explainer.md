@@ -424,8 +424,8 @@ without thinking, show what that classification finds.
 $ tiger check ./bugs/...
 bugs/drain.go:5:2: TS-V01: tiger can't prove this loop ends: nothing in its condition shrinks on every pass — add a cap (for tries := 0; tries < max; tries++ { if done { break } ... }) that fails when the cap is hit, or say what shrinks with //tiger:variant <expr>
 bugs/status.go:11:2: TS-S08: this switch over Status has no default arm — add default: assert.Unreachable("Status: unhandled value") so a new Status constant fails loudly
-bugs/wait.go:4:2: TS-C05: this select blocks with no case that ends the wait on shutdown — add case <-ctx.Done(): return ctx.Err() — see `tiger pattern shutdown-loop`
-bugs/worker.go:4:2: TS-C02: this go statement starts a goroutine nobody owns: nothing says when it exits or ties it to a context — start it through errgroup.Group.Go — see `tiger pattern --rule TS-C02`
+bugs/wait.go:4:2: TS-C05: this select blocks with no case that ends the wait on shutdown — add case <-ctx.Done(): return ctx.Err() or a case on a channel the package closes — see `tiger pattern shutdown-loop`
+bugs/worker.go:4:2: TS-C02: this go statement starts a goroutine nobody owns — start it with wg.Go or errgroup.Go and Wait for the group — see `tiger pattern --rule TS-C02`
 tiger: 4 blocking
 ```
 
@@ -484,7 +484,7 @@ The messages for TS-S03 and TS-C02 both point to the shutdown-loop pattern, desc
 - starts it with `wg.Go`
 - has every waiter select on `done`
 
-These changes to the goroutine and wait rules are built. TS-C02 accepts only `errgroup.Group.Go` and `sync.WaitGroup.Go` and wants a `Wait`, and TS-S03 and TS-C05 accept a channel only when the package closes or sends on it. The shutdown-loop pattern they point to ships separately, so the messages describe its shape in words for now.
+These changes to the goroutine and wait rules are built. TS-C02 accepts only `errgroup.Group.Go` and `sync.WaitGroup.Go` and wants a `Wait`, and TS-S03 and TS-C05 accept a channel only when the package closes or sends on it. Their messages end with a pointer to the shutdown-loop pattern, which shows the shape to copy.
 
 ### A pattern covers the part a rule cannot see
 
