@@ -1487,6 +1487,11 @@ fires, because Go may or may not visit entries added or removed during the range
 (`break`, `continue`, `goto`) between a collect and its sort also fires, since it can skip the sort for
 the rest of an enclosing loop.
 
+An alias made later in an enclosing loop counts as made before the sort, because the next pass
+reads it before the next sort. A slice declared inside that loop starts fresh each pass and is
+exempt. A bare `return` before the sort fires when the slice is a named result, since it hands the
+slice back unsorted.
+
 A slice also counts as aliased when it is copied (`t := s`), passed or returned before the sort, or
 started from anything but `make`, a literal, `nil` or `slices.Collect`.
 

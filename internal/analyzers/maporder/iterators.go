@@ -140,12 +140,9 @@ func collectedThenSorted(
 	default:
 		return false
 	}
-	if target == nil || target.Parent() == pass.Pkg.Scope() {
+	if target == nil {
 		return false
 	}
-	sorted := firstUseSort(pass, facts.after[assign], target)
-	if first, ok := facts.shared[target]; ok && sorted != nil && first < sorted.call.Pos() {
-		return false
-	}
-	return sortFixesOrder(pass, sorted, target)
+	sorted, aliased := facts.sortAfter(pass, assign, target)
+	return !aliased && sortFixesOrder(pass, sorted, target)
 }

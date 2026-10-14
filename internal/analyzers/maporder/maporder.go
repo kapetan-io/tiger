@@ -33,6 +33,7 @@ import (
 	"go/ast"
 	"go/token"
 	"go/types"
+	"slices"
 
 	"golang.org/x/tools/go/analysis"
 )
@@ -82,7 +83,7 @@ type sortSite struct {
 func run(pass *analysis.Pass) (any, error) {
 	exportTotalFacts(pass)
 	for _, file := range pass.Files {
-		facts := fileFacts{after: statementsAfter(file), shared: sharedVars(pass, file)}
+		facts := newFileFacts(pass, file)
 		checkIterators(pass, file, facts)
 		ast.Inspect(file, func(node ast.Node) bool {
 			loop, ok := node.(*ast.RangeStmt)
@@ -130,12 +131,111 @@ func unlabel(stmt ast.Stmt) ast.Stmt {
 	return stmt
 }
 
+// span is a source range.
+type span struct{ pos, end token.Pos }
+
 // fileFacts is what the checks need to know about a file beyond one node.
 type fileFacts struct {
 	// after maps a statement to those following it in its statement list.
 	after map[ast.Stmt][]ast.Stmt
 	// shared maps a variable to where code first reads it other than by name.
 	shared map[types.Object]token.Pos
+	// loops maps a statement to the outermost loop around it in the same
+	// function, if any.
+	loops map[ast.Stmt]span
+	// results holds the named results of every function in the file.
+	results map[types.Object]bool
+}
+
+func newFileFacts(pass *analysis.Pass, file *ast.File) fileFacts {
+	facts := fileFacts{
+		after:   statementsAfter(file),
+		shared:  sharedVars(pass, file),
+		loops:   map[ast.Stmt]span{},
+		results: map[types.Object]bool{},
+	}
+	var stack []ast.Node
+	ast.Inspect(file, func(node ast.Node) bool {
+		if node == nil {
+			stack = stack[:len(stack)-1]
+			return true
+		}
+		switch node := node.(type) {
+		case *ast.FuncDecl:
+			facts.addResults(pass, node.Type)
+		case *ast.FuncLit:
+			facts.addResults(pass, node.Type)
+		case *ast.RangeStmt:
+			facts.noteLoop(stack, node)
+		case *ast.AssignStmt:
+			facts.noteLoop(stack, node)
+		}
+		stack = append(stack, node)
+		return true
+	})
+	return facts
+}
+
+func (facts fileFacts) noteLoop(stack []ast.Node, stmt ast.Stmt) {
+	if outer, ok := outermostLoop(stack); ok {
+		facts.loops[stmt] = outer
+	}
+}
+
+func (facts fileFacts) addResults(pass *analysis.Pass, sig *ast.FuncType) {
+	if sig.Results == nil {
+		return
+	}
+	for _, field := range sig.Results.List {
+		for _, name := range field.Names {
+			if obj := pass.TypesInfo.ObjectOf(name); obj != nil {
+				facts.results[obj] = true
+			}
+		}
+	}
+}
+
+// outermostLoop returns the outermost loop in stack that sits in the same
+// function as the node below the top of stack.
+func outermostLoop(stack []ast.Node) (span, bool) {
+	var outer span
+	found := false
+	for _, node := range slices.Backward(stack) {
+		switch node := node.(type) {
+		case *ast.FuncDecl, *ast.FuncLit:
+			return outer, found
+		case *ast.ForStmt, *ast.RangeStmt:
+			outer, found = span{node.Pos(), node.End()}, true
+		}
+	}
+	return outer, found
+}
+
+// sortAfter finds the sort that fixes target after at, and reports whether
+// code can read target under another name before that sort ends up in
+// target's hands again. A package-level target always can. Inside a loop, an
+// alias made later in the loop body reads target on the next pass, unless
+// target is declared inside that loop and so starts fresh each pass.
+func (facts fileFacts) sortAfter(
+	pass *analysis.Pass, at ast.Stmt, target types.Object,
+) (sorted *sortCall, aliased bool) {
+	mode := plainLocal
+	if facts.results[target] {
+		mode = namedResult
+	}
+	sorted = firstUseSort(pass, facts.after[at], target, mode)
+	if target.Parent() == pass.Pkg.Scope() {
+		return sorted, true
+	}
+	first, shared := facts.shared[target]
+	if !shared || sorted == nil {
+		return sorted, false
+	}
+	limit := sorted.call.Pos()
+	if loop, ok := facts.loops[at]; ok && target.Pos() < loop.pos {
+		limit = loop.end
+	}
+	return sorted, first < limit
 }
 
 // checkRange fires TS-T02 when loop ranges over a map and its body is

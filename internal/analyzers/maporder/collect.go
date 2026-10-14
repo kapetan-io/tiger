@@ -43,16 +43,12 @@ var comparatorSorts = map[string]bool{
 func collectSite(
 	pass *analysis.Pass, loop *ast.RangeStmt, carried *carry, facts fileFacts,
 ) *sortSite {
-	after := facts.after[loop]
 	targets := appendTargets(pass, loop)
 	var site *sortSite
 	accepted := true
 	for _, target := range targets {
-		sorted := firstUseSort(pass, after, target)
-		if target.Parent() == pass.Pkg.Scope() {
-			return nil
-		}
-		if first, ok := facts.shared[target]; ok && sorted != nil && first < sorted.call.Pos() {
+		sorted, aliased := facts.sortAfter(pass, loop, target)
+		if aliased {
 			return nil
 		}
 		accepted = accepted && sortFixesOrder(pass, sorted, target)
@@ -287,14 +283,25 @@ type sortCall struct {
 	name string
 }
 
+// resultMode says whether the slice a sort fixes is one of its function's
+// named results.
+type resultMode bool
+
+const (
+	plainLocal  resultMode = false
+	namedResult resultMode = true
+)
+
 // firstUseSort finds the first statement after the loop that mentions
 // target. It returns the call when the statement is a call to a function of
 // package sort, or a sort function of package slices, whose first argument
 // mentions target; otherwise nil.
-func firstUseSort(pass *analysis.Pass, after []ast.Stmt, target types.Object) *sortCall {
+func firstUseSort(
+	pass *analysis.Pass, after []ast.Stmt, target types.Object, results resultMode,
+) *sortCall {
 	for _, stmt := range after {
 		if !mentions(pass, stmt, target) {
-			if leavesList(stmt) {
+			if leavesList(stmt, results) {
 				return nil
 			}
 			continue
@@ -318,8 +325,9 @@ func firstUseSort(pass *analysis.Pass, after []ast.Stmt, target types.Object) *s
 
 // leavesList reports whether stmt holds a break, continue or goto outside a
 // function literal. Such a jump can skip the sort for the rest of an
-// enclosing loop, which then sees the slice in map order.
-func leavesList(stmt ast.Stmt) bool {
+// enclosing loop, which then sees the slice in map order. A bare return
+// counts when the target is a named result, because it hands back the named result unsorted.
+func leavesList(stmt ast.Stmt, results resultMode) bool {
 	found := false
 	ast.Inspect(stmt, func(node ast.Node) bool {
 		switch node := node.(type) {
@@ -327,6 +335,10 @@ func leavesList(stmt ast.Stmt) bool {
 			return false
 		case *ast.BranchStmt:
 			found = found || node.Tok != token.FALLTHROUGH
+		case *ast.ReturnStmt:
+			if results == namedResult && len(node.Results) == 0 {
+				found = true
+			}
 		}
 		return !found
 	})
