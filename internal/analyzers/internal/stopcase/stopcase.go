@@ -1,5 +1,6 @@
 // Package stopcase recognizes the case of a select that can end a wait,
-// shared by boundedloop (TS-S03, TS-S23) and selectctx (TS-C05).
+// shared by boundedloop (TS-S03, TS-S23), selectctx (TS-C05) and nogoroutine
+// (TS-C02, for the expired-context early return).
 //
 // A case is a stop case in one of two forms. The first is a receive from
 // ctx.Done() on a context.Context that does not trace, within the function,
@@ -20,6 +21,7 @@ import (
 	"go/ast"
 	"go/token"
 	"go/types"
+	"slices"
 
 	"golang.org/x/tools/go/analysis"
 
@@ -32,7 +34,7 @@ import (
 // argument is.
 var derivers = map[string]bool{
 	"WithCancel": true, "WithCancelCause": true, "WithTimeout": true, "WithTimeoutCause": true,
-	"WithDeadline": true, "WithDeadlineCause": true, "WithValue": true, "WithoutCancel": true,
+	"WithDeadline": true, "WithDeadlineCause": true, "WithValue": true,
 }
 
 // producer is one close or send on a channel.
@@ -47,6 +49,7 @@ type Finder struct {
 	index  *ownership.Index
 	closed map[*types.Var][]producer
 	sent   map[*types.Var][]producer
+	params []*types.Var
 }
 
 // New indexes where the package closes and sends on channels.
@@ -70,12 +73,33 @@ func New(pass *analysis.Pass) *Finder {
 			return true
 		})
 	}
+	finder.passDown(finder.closed)
+	finder.passDown(finder.sent)
 	return finder
+}
+
+// passDown credits a close or send on a parameter to the channels the package
+// passes for it, at the call that passes them, so a helper like shut(ch) that
+// closes its argument counts for the field its callers hand it.
+func (f *Finder) passDown(into map[*types.Var][]producer) {
+	for _, param := range f.params {
+		if len(into[param]) == 0 {
+			continue
+		}
+		for _, arg := range f.index.Arguments(param) {
+			if obj := f.index.Object(arg.Expr); obj != nil && obj != param {
+				into[obj] = append(into[obj], producer{node: arg.Expr, decl: arg.Decl})
+			}
+		}
+	}
 }
 
 // record notes node as a producer for the channel expr names.
 func (f *Finder) record(into map[*types.Var][]producer, expr ast.Expr, node ast.Node) {
 	if obj := f.index.Object(expr); obj != nil {
+		if f.index.IsParameter(obj) && len(into[obj]) == 0 && !slices.Contains(f.params, obj) {
+			f.params = append(f.params, obj)
+		}
 		into[obj] = append(into[obj], producer{node: node, decl: f.index.DeclOf(node)})
 	}
 }
@@ -120,7 +144,7 @@ func (f *Finder) ContextCase(comm ast.Stmt) bool {
 // case on it cannot tell the two apart.
 func (f *Finder) Closes(comm ast.Stmt) bool {
 	arrow := Receive(comm)
-	return arrow != nil && f.produced(arrow.X, probe{at: arrow, kinds: closesOnly})
+	return arrow != nil && f.BareReceive(arrow)
 }
 
 // BareReceive reports whether a receive outside a select is itself a wait for

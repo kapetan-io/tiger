@@ -23,19 +23,17 @@
 // Known-miss boundary. The analysis is intraprocedural and identity-exact:
 // a zeroing counts only when its store address is the SAME ssa.Value as the
 // argument boxed into Put, chased through *ssa.MakeInterface with no alias
-// analysis. Three shapes fall outside what
-// this can prove, and all three stay silent rather than risk a false
-// positive on a blocking rule: a pooled value reset in one function and put
-// in another (the reset is invisible from the Put's function alone, so a
-// function containing no reset instruction for the Put's exact value is
-// treated as this shape and never fires — unless the value provably came
-// from this pool's own Get, which no caller could have cleaned, so a
-// reset-free Put of it is the rule's primary failure mode and fires); the
-// same split read backward —
-// reset in the callee, put in the caller — is a real bleed this analyzer
-// also cannot see; and an aliased pooled value, reset through one
-// SSA-level name and put through a different one that happens to hold the
-// same object at runtime.
+// analysis. Three shapes fall outside what this can prove, and all three stay
+// silent rather than risk a false positive on a blocking rule: a pooled value
+// zeroed in one function and put in another (the zeroing is invisible from the
+// Put's function alone, so a function containing no zeroing or Reset call for
+// the Put's exact value is treated as this shape and never fires — unless the
+// value provably came from this pool's own Get, which no caller could have
+// cleaned, so a Put of it with no zeroing is the rule's primary failure mode
+// and fires); the same split read backward — zeroing in the callee, put in
+// the caller — is a real bleed this analyzer also cannot see; and an aliased
+// pooled value, zeroed through one SSA-level name and put through a different
+// one that happens to hold the same object at runtime.
 package poolzero
 
 import (
@@ -120,7 +118,7 @@ func checkFunc(pass *analysis.Pass, fn *ssa.Function) {
 			})
 			continue
 		}
-		if !anyReset(fn, box.X) {
+		if !handlesValue(fn, box.X) {
 			// A value taken straight from the pool is never known-clean, so
 			// the interprocedural silence below does not shelter it.
 			if !fromPoolGet(box.X) {
@@ -179,7 +177,7 @@ func chaseBox(v ssa.Value) (boxed, bool) {
 	return boxed{X: box.X, Type: box.X.Type()}, true
 }
 
-// anyReset reports whether fn zeroes x, or calls a Reset method on it, in
+// handlesValue reports whether fn zeroes x, or calls a Reset method on it, in
 // any block. A Reset call does not count as a zeroing, but it shows the
 // function means to clean x itself, so the dominance check below judges it.
 // A function that does neither is the interprocedural known-miss: the
@@ -187,7 +185,7 @@ func chaseBox(v ssa.Value) (boxed, bool) {
 // analyzer's identity-exact check cannot follow — either way, firing would
 // risk a false positive on a blocking rule, so this stays silent rather
 // than run the dominance check below.
-func anyReset(fn *ssa.Function, x ssa.Value) bool {
+func handlesValue(fn *ssa.Function, x ssa.Value) bool {
 	for _, block := range fn.Blocks {
 		for _, instr := range block.Instrs {
 			if isZeroing(instr, x) || isResetCall(instr, x) {
@@ -335,11 +333,28 @@ func isZeroed(v ssa.Value) bool {
 		if operand.Op != token.MUL {
 			return false
 		}
-		_, isAlloc := operand.X.(*ssa.Alloc)
-		return isAlloc
+		alloc, isAlloc := operand.X.(*ssa.Alloc)
+		return isAlloc && untouched(alloc, operand)
 	default:
 		return false
 	}
+}
+
+// untouched reports whether the composite literal alloc backs is read only by
+// load and written nowhere, so it still holds the zero value. A literal with a
+// field set, or a local filled in before `*b = t`, is not a zeroing.
+func untouched(alloc *ssa.Alloc, load *ssa.UnOp) bool {
+	if alloc.Comment != "complit" {
+		return false
+	}
+	for _, ref := range *alloc.Referrers() {
+		if ref != ssa.Instruction(load) {
+			if _, debug := ref.(*ssa.DebugRef); !debug {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 // fromPoolGet reports whether x originates from a (*sync.Pool).Get call,

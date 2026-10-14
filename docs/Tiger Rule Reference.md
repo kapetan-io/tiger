@@ -357,7 +357,7 @@ func runNoTermination(input <-chan int, output chan<- int) {
 ```
 
 ```
-worker.go:3:3: TS-S03: this event loop's select has no case that stops the loop — add case <-ctx.Done(): return, or a case on a channel this package closes. Copy net/http's Server.Shutdown: close a stop channel once, and have the loop close done
+worker.go:3:3: TS-S03: this event loop's select has no case that stops the loop — add case <-ctx.Done(): return or a case on a channel the package closes. Copy: close a stop channel, make it the loop's only exit, close done, and have waiters select on done
 ```
 
 The compliant rewrite:
@@ -386,7 +386,9 @@ channel nothing fires, and a channel called `shutdown` that nothing closes, both
 
 **Known misses:** A `close` in dead code counts, because the check sees that an exported
 method reaches the close and not whether it runs. A channel the package never closes but
-a caller does is not recognized, so the loop is flagged.
+a caller does is not recognized, so the loop is flagged. So is a channel closed by a free
+function or by a method of another type, since for a field only a method of the owning
+type counts.
 
 <!-- rule: TS-S23 -->
 ### TS-S23 — an event loop's only exit is its stop case
@@ -761,7 +763,7 @@ func Launch() {
 ```
 
 ```
-worker.go:4:2: TS-C02: this go statement starts a goroutine nobody owns: nothing says when it exits or ties it to a context — start it with sync.WaitGroup.Go or errgroup.Group.Go and Wait for the group before shutdown returns
+worker.go:4:2: TS-C02: this go statement starts a goroutine nobody owns — start it with wg.Go or errgroup.Go and Wait for the group. Shutdown shape to copy: close a stop channel once, let the loop close done, and have every waiter select on done
 ```
 
 Starting through a group nothing waits on fires too:
@@ -773,7 +775,7 @@ func (d *Daemon) Start() {
 ```
 
 ```
-daemon.go:8:2: TS-C02: this Go call starts a goroutine, but no Wait on the group is reached on the success path — call Wait before the function returns, or for a group in a field, from an exported method like Shutdown
+daemon.go:8:2: TS-C02: this Go call starts a goroutine, but no Wait on the group is reached on the success path — Wait before returning, or from an exported method like Shutdown. Shape to copy: close a stop channel, close done, and have waiters select on done
 ```
 
 The compliant rewrite:
@@ -853,7 +855,7 @@ func awaitBlocking(values chan int) {
 ```
 
 ```
-queue.go:4:2: TS-C05: this select blocks with no case that ends the wait on shutdown — add case <-ctx.Done(): return ctx.Err(), or a case on a channel this package closes
+queue.go:4:2: TS-C05: this select blocks with no case that ends the wait on shutdown — add case <-ctx.Done(): return ctx.Err() or a case on a channel this package closes. Shape to copy: close a stop channel once, close done, and have waiters select on done
 ```
 
 The compliant rewrite:

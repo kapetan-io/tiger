@@ -480,8 +480,9 @@ type that an exported method can reach. A channel's name and its `struct{}` elem
 count. `TS-S23` adds that the stop case is the loop's only exit. The message names one shape as the
 fix: set a flag, close a stop channel once, let the loop's only exit be its stop case, have the loop
 close `done`, start it with `wg.Go`, and have every waiter select on `done`. Pattern: shutdown loop.
-Known misses: a `close` in dead code counts; the goleak harness (`TS-C03`) and shutdown edge tests
-are the runtime backstop.
+Known misses: a `close` in dead code counts, and a `close` outside a method of the owning type, such as
+a free function or another type's method, is not seen, so that loop is flagged. The goleak harness
+(`TS-C03`) and shutdown edge tests are the runtime backstop.
 *(Amended 2026-10-12: ADR-0020 replaces the 2026-08-17 amendment that recognized a shutdown channel
 by its name or `struct{}` element type. Built (ENG-177).)*
 

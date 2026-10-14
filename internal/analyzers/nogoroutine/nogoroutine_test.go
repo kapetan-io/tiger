@@ -17,5 +17,6 @@ import (
 // whose group is waited on stays silent.
 func TestCorpus(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), nogoroutine.Analyzer,
-		"ts-c02", "ts-c03", "ts-c03ok", "ts-c09")
+		"ts-c02", "ts-c03", "ts-c03eg", "ts-c03go", "ts-c03ok", "ts-c03param", "ts-c03tests",
+		"ts-c03verify", "ts-c09")
 }

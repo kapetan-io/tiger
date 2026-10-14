@@ -10,10 +10,10 @@ import (
 
 // TestCorpus runs the TS-M05 corpus through the analysistest driver.
 //
-// Goal: a Put reached on some path without a reset, and a Put of a type
-// with no Reset method, both fire TS-M05; a reset immediately before Put, a
-// reset present on every branch that reaches Put, and the `*x = T{}`
-// zeroing-store form all stay silent; the documented known-misses — a
+// Goal: a Put reached on some path without a zeroing, a Put after only a
+// Reset call, and a Put by value all fire TS-M05; `*x = T{}` immediately
+// before Put, on every branch that reaches Put, and right after Get all stay
+// silent; the documented known-misses — a
 // reset and its Put split across a function boundary, and an aliased
 // pooled value — stay silent too.
 func TestCorpus(t *testing.T) {

@@ -6,9 +6,8 @@
 // library iterator is bounded by its own syntax. A RangeStmt over a channel
 // or any other iterator is not: termination depends on code the analyzer
 // cannot see, so it is a TS-S02 finding. A ForStmt with no Cond ("for {}")
-// is either the TS-S03 event-loop shape — a direct SelectStmt with a case
-// receiving from ctx.Done() or a recognized shutdown channel — or a TS-S02
-// finding.
+// is either the TS-S03 event-loop shape — a direct SelectStmt with a stop
+// case (see internal/analyzers/internal/stopcase) — or a TS-S02 finding.
 //
 // A ForStmt with a Cond is bounded when its Post advances a sound counter
 // (see internal/analyzers/internal/counter), when TS-V01 verified a variant
@@ -77,8 +76,9 @@ const (
 		"says it ends — range over a slice, a map, or a standard library iterator, or add a " +
 		"counter cap that fails when the cap is hit"
 	msgSelectNoDone = "TS-S03: this event loop's select has no case that stops the loop — add " +
-		"case <-ctx.Done(): return, or a case on a channel this package closes. Copy net/http's " +
-		"Server.Shutdown: close a stop channel once, and have the loop close done"
+		"case <-ctx.Done(): return or a case on a channel the package closes. Copy: " +
+		"close a stop channel, make it the loop's only exit, close done, and have " +
+		"waiters select on done"
 	msgExitsOutside = "TS-S23: this %s leaves the event loop without its stop case, so cleanup " +
 		"after the stop never runs — make the stop case the loop's only exit, as net/http's " +
 		"Server.Shutdown does, and have the loop close done after it"

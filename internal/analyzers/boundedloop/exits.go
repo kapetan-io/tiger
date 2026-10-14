@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"go/ast"
 	"go/token"
+	"strings"
 
 	"golang.org/x/tools/go/analysis"
 )
@@ -17,8 +18,8 @@ import (
 // handshake, and the case that returns unconditionally is the handshake.
 // A return inside a function literal leaves that function, not the loop, and
 // an unlabeled break inside a nested select, switch or loop leaves that
-// statement, so neither counts. A labeled break counts unless the label is
-// declared inside the loop.
+// statement, so neither counts. A labeled break or a goto counts unless the
+// label is declared inside the loop.
 func (c *checker) checkExits(loop *ast.ForStmt) {
 	inner := labelsWithin(loop.Body)
 	var ancestors []ast.Node
@@ -38,7 +39,7 @@ func (c *checker) checkExits(loop *ast.ForStmt) {
 			c.reportExit(stmt.Pos(), "return")
 		case *ast.BranchStmt:
 			if leavesLoop(stmt, inner, ancestors) {
-				c.reportExit(stmt.Pos(), "break")
+				c.reportExit(stmt.Pos(), strings.ToLower(stmt.Tok.String()))
 			}
 		}
 		ancestors = append(ancestors, node)
@@ -57,7 +58,7 @@ func (c *checker) reportExit(pos token.Pos, kind string) {
 // break to a label outside the loop, or an unlabeled break with no select,
 // switch or loop between it and the loop.
 func leavesLoop(stmt *ast.BranchStmt, inner map[string]bool, ancestors []ast.Node) bool {
-	if stmt.Tok != token.BREAK {
+	if stmt.Tok != token.BREAK && stmt.Tok != token.GOTO {
 		return false
 	}
 	if stmt.Label != nil {

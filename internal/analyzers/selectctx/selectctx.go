@@ -36,7 +36,9 @@ var Analyzer = &analysis.Analyzer{
 
 const (
 	msgNoShutdown = "TS-C05: this select blocks with no case that ends the wait on shutdown — " +
-		"add case <-ctx.Done(): return ctx.Err(), or a case on a channel this package closes"
+		"add case <-ctx.Done(): return ctx.Err() or a case on a channel this " +
+		"package closes. Shape to copy: close a stop channel once, close done, and " +
+		"have waiters select on done"
 	msgUnwrapped = "TS-C05: this channel operation blocks outside a select, so shutdown can't " +
 		"interrupt it — wrap it in a select that also has case <-ctx.Done(): return ctx.Err()"
 )

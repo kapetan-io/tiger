@@ -21,6 +21,7 @@ import (
 	"go/ast"
 	"go/token"
 	"go/types"
+	"strings"
 
 	"golang.org/x/tools/go/analysis"
 
@@ -39,6 +40,7 @@ type Argument struct {
 // arguments its calls pass.
 type Index struct {
 	info    *types.Info
+	fset    *token.FileSet
 	pkg     *types.Package
 	decls   []*ast.FuncDecl
 	byFunc  map[*types.Func]*ast.FuncDecl
@@ -52,6 +54,7 @@ type Index struct {
 func New(pass *analysis.Pass) *Index {
 	index := &Index{
 		info:    pass.TypesInfo,
+		fset:    pass.Fset,
 		pkg:     pass.Pkg,
 		byFunc:  map[*types.Func]*ast.FuncDecl{},
 		edges:   map[*ast.FuncDecl][]*ast.FuncDecl{},
@@ -159,17 +162,20 @@ type Link struct {
 	Reader *ast.FuncDecl
 }
 
-// Reaches reports whether the actor can act on obj for the reader. An actor
-// that is nil never can.
+// Reaches reports whether the actor can act on obj for the reader. A local
+// belongs to the one function that declares it, or to the one initializer
+// outside any function (both nil). A field also counts when the actor and the
+// reader are the same function. An actor outside any function never reaches a
+// field or a package variable.
 func (index *Index) Reaches(obj *types.Var, link Link) bool {
-	if link.Actor == nil {
-		return false
-	}
 	switch {
 	case obj.IsField():
-		return index.fieldReached(obj, link.Actor)
+		if link.Actor == nil {
+			return false
+		}
+		return link.Actor == link.Reader || index.fieldReached(obj, link.Actor)
 	case obj.Parent() == index.pkg.Scope():
-		return index.reachedFrom(nil)[link.Actor]
+		return link.Actor != nil && index.reachedFrom(nil)[link.Actor]
 	default:
 		return link.Actor == link.Reader
 	}
@@ -243,8 +249,12 @@ func (index *Index) reachedFrom(owner *types.TypeName) map[*ast.FuncDecl]bool {
 	return seen
 }
 
-// isRoot reports whether fn starts a walk for owner.
+// isRoot reports whether fn starts a walk for owner. Code in a _test.go file
+// never does: a close that only a test performs is not the package's.
 func (index *Index) isRoot(fn *ast.FuncDecl, owner *types.TypeName) bool {
+	if strings.HasSuffix(index.fset.PositionFor(fn.Pos(), false).Filename, "_test.go") {
+		return false
+	}
 	if owner != nil {
 		return fn.Name.IsExported() && index.receiverType(fn) == owner
 	}

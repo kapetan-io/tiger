@@ -130,8 +130,9 @@ filters rows has a page limit and a scan limit.
 A select case TS-S03/TS-C05 accept as ending a wait on shutdown: a receive from `ctx.Done()` on a
 context that does not trace to `context.Background()` or `context.TODO()`, or a receive from or
 send on a channel the package itself closes or sends on (ADR-0020). A channel's name or `struct{}`
-element type does not count.
-_Avoid_: shutdown channel (the name-based recognition ADR-0020 removes)
+element type does not count. TS-S23 narrows it for its own question: a channel the package only sends
+on is the stop case only when its case ends in a `return`.
+_Avoid_: shutdown channel (the name-based recognition ADR-0020 removed)
 
 **Open enum**:
 A named type marked `//tiger:openenum <reason>` whose vocabulary is deliberately extensible; switches

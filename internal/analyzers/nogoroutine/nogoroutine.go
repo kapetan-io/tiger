@@ -41,12 +41,14 @@ var Analyzer = &analysis.Analyzer{
 }
 
 const (
-	msgUnowned = "TS-C02: this go statement starts a goroutine nobody owns: nothing says when " +
-		"it exits or ties it to a context — start it with sync.WaitGroup.Go or errgroup.Group.Go " +
-		"and Wait for the group before shutdown returns"
+	msgUnowned = "TS-C02: this go statement starts a goroutine nobody owns — start it with " +
+		"wg.Go or errgroup.Go and Wait for the group. Shutdown shape to copy: close " +
+		"a stop channel once, let the loop close done, and have every waiter select " +
+		"on done"
 	msgNoWaitFmt = "TS-C02: this %s starts a goroutine, but no Wait on the group is reached on " +
-		"the success path — call Wait before the function returns, or for a group in a field, " +
-		"from an exported method like Shutdown"
+		"the success path — Wait before returning, or from an exported method like " +
+		"Shutdown. Shape to copy: close a stop channel, close done, and have " +
+		"waiters select on done"
 	msgReactive = "TS-C09: this loop starts a goroutine per item, so the goroutines react to " +
 		"each item instead of working at their own pace — append the items to a bounded " +
 		"queue and drain it from one supervisor goroutine"
@@ -68,7 +70,7 @@ func run(pass *analysis.Pass) (any, error) {
 			case *ast.GoStmt:
 				check(pass, stmt, ancestors)
 				starts = append(starts, stmt)
-			case *ast.CallExpr:
+			case *ast.SelectorExpr:
 				if owners.checkStart(stmt) {
 					starts = append(starts, stmt)
 				}

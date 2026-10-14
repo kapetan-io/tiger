@@ -3,12 +3,14 @@ package nogoroutine
 import (
 	"fmt"
 	"go/ast"
+	"go/token"
 	"go/types"
 
 	"golang.org/x/tools/go/analysis"
 
 	"github.com/kapetan-io/tiger/internal/analyzers/internal/ownership"
 	"github.com/kapetan-io/tiger/internal/analyzers/internal/stopcase"
+	"github.com/kapetan-io/tiger/internal/worklist"
 )
 
 // groupTypes are the types whose Go method starts a goroutine and whose Wait
@@ -46,8 +48,8 @@ func newOwners(pass *analysis.Pass) *owners {
 				expired = expired[:len(expired)-1]
 				return false
 			}
-			if call, ok := node.(*ast.CallExpr); ok && !found.inExpiredPath(expired) {
-				found.recordWait(call)
+			if sel, ok := node.(*ast.SelectorExpr); ok && !found.inExpiredPath(expired) {
+				found.recordWait(sel)
 			}
 			expired = append(expired, node)
 			return true
@@ -68,26 +70,21 @@ func (o *owners) inExpiredPath(ancestors []ast.Node) bool {
 	return false
 }
 
-// recordWait notes call as a Wait on its group.
-func (o *owners) recordWait(call *ast.CallExpr) {
-	recv, ok := o.groupMethod(call, "Wait")
-	if !ok {
-		return
-	}
-	if obj := o.index.Object(recv); obj != nil {
-		o.waits[obj] = append(o.waits[obj], wait{decl: o.index.DeclOf(call)})
+// recordWait notes sel as a Wait on its group.
+func (o *owners) recordWait(sel *ast.SelectorExpr) {
+	group, ok := o.groupMethod(sel, "Wait")
+	if ok && group != nil {
+		o.waits[group] = append(o.waits[group], wait{decl: o.index.DeclOf(sel)})
 	}
 }
 
-// groupMethod returns the receiver expression of a call to a method of a
-// group type, when the method is named by want, or is one of startMethods if
-// want is empty.
-func (o *owners) groupMethod(call *ast.CallExpr, want string) (ast.Expr, bool) {
-	selector, ok := ast.Unparen(call.Fun).(*ast.SelectorExpr)
-	if !ok {
-		return nil, false
-	}
-	fn, ok := o.pass.TypesInfo.Uses[selector.Sel].(*types.Func)
+// groupMethod returns the group a selector picks a method of, when the method
+// is named by want, or is one of startMethods if want is empty. The group is
+// the variable the selector names, or the embedded field the method is
+// promoted from. It is nil when the code names the group by an expression
+// tiger cannot follow, such as a call result.
+func (o *owners) groupMethod(sel *ast.SelectorExpr, want string) (*types.Var, bool) {
+	fn, ok := o.pass.TypesInfo.Uses[sel.Sel].(*types.Func)
 	if !ok {
 		return nil, false
 	}
@@ -101,9 +98,9 @@ func (o *owners) groupMethod(call *ast.CallExpr, want string) (ast.Expr, bool) {
 	if recv == nil {
 		return nil, false
 	}
-	typ := recv.Type()
+	typ := types.Unalias(recv.Type())
 	if ptr, isPtr := typ.(*types.Pointer); isPtr {
-		typ = ptr.Elem()
+		typ = types.Unalias(ptr.Elem())
 	}
 	named, ok := typ.(*types.Named)
 	if !ok || named.Obj().Pkg() == nil {
@@ -112,47 +109,101 @@ func (o *owners) groupMethod(call *ast.CallExpr, want string) (ast.Expr, bool) {
 	if !groupTypes[named.Obj().Pkg().Path()+"."+named.Obj().Name()] {
 		return nil, false
 	}
-	return selector.X, true
+	if embedded := o.embeddedField(sel); embedded != nil {
+		return embedded, true
+	}
+	return o.unalias(o.index.Object(sel.X), sel), true
 }
 
-// checkStart reports TS-C02 when call starts a goroutine through a group that
-// nothing waits on, and reports whether call starts a goroutine at all.
-func (o *owners) checkStart(call *ast.CallExpr) bool {
-	recv, ok := o.groupMethod(call, "")
+// aliasHopsMax bounds how many local aliases of a group are followed.
+const aliasHopsMax = 8
+
+const _ = uint(worklist.NodesMax - aliasHopsMax)
+
+// unalias follows a local variable assigned once from another variable, such
+// as group := &a.wg, to the variable it names, so a Wait on a.wg is a Wait on
+// group.
+func (o *owners) unalias(group *types.Var, at ast.Node) *types.Var {
+	decl := o.index.DeclOf(at)
+	for range aliasHopsMax {
+		if group == nil || group.IsField() || o.index.IsParameter(group) {
+			return group
+		}
+		if group.Parent() == group.Pkg().Scope() {
+			return group
+		}
+		defs := o.index.Definitions(group, decl)
+		if len(defs) != 1 {
+			return group
+		}
+		source := ast.Unparen(defs[0])
+		if address, ok := source.(*ast.UnaryExpr); ok && address.Op == token.AND {
+			source = address.X
+		}
+		next := o.index.Object(source)
+		if next == nil {
+			return group
+		}
+		group = next
+	}
+	return group
+}
+
+// embeddedField returns the field a promoted method is reached through, or
+// nil when the selector names the group directly.
+func (o *owners) embeddedField(sel *ast.SelectorExpr) *types.Var {
+	selection := o.pass.TypesInfo.Selections[sel]
+	if selection == nil || len(selection.Index()) < 2 {
+		return nil
+	}
+	typ := selection.Recv()
+	var field *types.Var
+	path := selection.Index()
+	for i := 0; i < len(path)-1; i++ {
+		if ptr, isPtr := types.Unalias(typ).Underlying().(*types.Pointer); isPtr {
+			typ = ptr.Elem()
+		}
+		fields, ok := types.Unalias(typ).Underlying().(*types.Struct)
+		if !ok {
+			return nil
+		}
+		field = fields.Field(path[i])
+		typ = field.Type()
+	}
+	if field == nil {
+		return nil
+	}
+	return field.Origin()
+}
+
+// checkStart reports TS-C02 when sel starts a goroutine through a group that
+// nothing waits on, and reports whether sel starts a goroutine at all.
+func (o *owners) checkStart(sel *ast.SelectorExpr) bool {
+	group, ok := o.groupMethod(sel, "")
 	if !ok {
 		return false
 	}
-	if !o.waited(recv, call) {
+	if !o.waited(group, sel) {
 		o.pass.Report(analysis.Diagnostic{
-			Pos:      call.Pos(),
+			Pos:      sel.Pos(),
 			Category: "TS-C02",
-			Message:  fmt.Sprintf(msgNoWaitFmt, methodName(call)),
+			Message:  fmt.Sprintf(msgNoWaitFmt, sel.Sel.Name+" call"),
 		})
 	}
 	return true
 }
 
-// methodName names the group method call invokes, as "wg.Go" would read.
-func methodName(call *ast.CallExpr) string {
-	selector, ok := ast.Unparen(call.Fun).(*ast.SelectorExpr)
-	if !ok {
-		return "call"
-	}
-	return selector.Sel.Name + " call"
-}
-
-// waited reports whether a Wait on the group recv names is reached for a
-// start at call. A group the code cannot name, such as a call result, has no
-// Wait to find. A parameter is the caller's to wait on.
-func (o *owners) waited(recv ast.Expr, call *ast.CallExpr) bool {
-	group := o.index.Object(recv)
+// waited reports whether a Wait on group is reached for a start at node. A
+// group the code cannot name has no Wait to find. A parameter is the caller's
+// to wait on.
+func (o *owners) waited(group *types.Var, node ast.Node) bool {
 	if group == nil {
 		return false
 	}
 	if o.index.IsParameter(group) {
 		return true
 	}
-	use := o.index.DeclOf(call)
+	use := o.index.DeclOf(node)
 	for _, site := range o.waits[group] {
 		if o.index.Reaches(group, ownership.Link{Actor: site.decl, Reader: use}) {
 			return true
