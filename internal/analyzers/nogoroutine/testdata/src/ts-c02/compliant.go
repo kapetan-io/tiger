@@ -77,6 +77,7 @@ type Loop struct {
 
 // Start runs the loop.
 func (l *Loop) Start() {
+	l.stop, l.done = make(chan struct{}), make(chan struct{})
 	l.wg.Go(func() { <-l.stop; close(l.done) })
 }
 

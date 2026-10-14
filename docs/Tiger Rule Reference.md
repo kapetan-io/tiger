@@ -402,7 +402,7 @@ out, such as closing a `done` channel, never happens, and anyone waiting on `don
 forever. This is the shape behind a real bug in the trials, where a request case returned
 once shutdown had started and the shutdown case never ran. The stop case here is a case
 on a live `ctx.Done()` or a channel the package closes. A case on a channel the package
-only sends on counts only when it ends in a `return`, since that channel may carry
+sends on but does not close counts only when the case ends in a `return`, since that channel may carry
 ordinary requests as easily as a shutdown handshake.
 
 A loop that fires it:
@@ -1293,7 +1293,8 @@ not freshly allocated, so that protection does not apply. Clearing the value rig
 before every `Put` closes the gap, and the owner who knew what was sensitive does the
 clearing, not some later caller.
 
-Only `*b = T{}` counts as the clearing. A call to a `Reset` method does not, because
+Only `*b = T{}` counts as the clearing, and so does a literal that spells out zero values,
+such as `*b = T{N: 0}`. A call to a `Reset` method does not, because
 nothing makes a `Reset` clear anything and an empty one passes any check that trusts the
 name. A value put by value, such as an `int`, cannot be cleared in place and fires too.
 
