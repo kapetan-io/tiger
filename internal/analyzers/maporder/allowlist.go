@@ -177,18 +177,64 @@ func readsAny(pass *analysis.Pass, expr ast.Expr, objs map[types.Object]bool) bo
 
 // bodyAllowed walks loop's body against the closed allowlist. Nested
 // if/block statements are expanded onto the worklist rather than recursed
-// into, so the whole walk stays iterative.
+// into, so the whole walk stays iterative. A body that can leave the loop
+// early must have no effect outside one visit, because which entries a
+// break or return skips depends on visit order.
 func bodyAllowed(pass *analysis.Pass, loop *ast.RangeStmt, carried *carry) bool {
+	allowed, early := walkBody(pass, loop, carried)
+	return allowed && !early
+}
+
+// walkBody reports whether every statement of loop's body is allowlisted,
+// and whether the body both can leave the loop early and has an effect that
+// outlives one visit.
+func walkBody(pass *analysis.Pass, loop *ast.RangeStmt, carried *carry) (allowed, early bool) {
 	work := append([]ast.Stmt{}, loop.Body.List...)
+	exits, effects := false, false
 	i := 0
 	for ; i < len(work) && i < worklist.NodesMax; i++ {
+		switch stmt := work[i].(type) {
+		case *ast.BranchStmt:
+			exits = exits || stmt.Tok == token.BREAK
+		case *ast.ReturnStmt:
+			exits = true
+		case *ast.IfStmt:
+			effects = effects || minMaxIfForm(pass, stmt, carried)
+		default:
+			effects = effects || outlivesVisit(pass, loop, stmt)
+		}
 		next, ok := stmtAllowed(pass, loop, work[i], carried)
 		if !ok {
-			return false
+			return false, false
 		}
 		work = append(work, next...)
 	}
 	assert.Ok(i == len(work), "bodyAllowed: worklist reached worklist.NodesMax")
+	return true, exits && effects
+}
+
+// outlivesVisit reports whether a leaf statement changes anything but
+// booleans set to a constant or variables declared inside the loop body. A
+// bool set to a constant gives the same final value whichever visit sets it.
+func outlivesVisit(pass *analysis.Pass, loop *ast.RangeStmt, stmt ast.Stmt) bool {
+	switch stmt := stmt.(type) {
+	case *ast.BlockStmt, *ast.DeclStmt:
+		return false
+	case *ast.AssignStmt:
+		if boolConstAssign(pass, stmt) {
+			return false
+		}
+		for _, lhs := range stmt.Lhs {
+			ident, ok := ast.Unparen(lhs).(*ast.Ident)
+			if !ok || !declaredWithin(pass, loop, ident) {
+				return true
+			}
+		}
+		return false
+	case *ast.IncDecStmt:
+		ident, ok := ast.Unparen(stmt.X).(*ast.Ident)
+		return !ok || !declaredWithin(pass, loop, ident)
+	}
 	return true
 }
 

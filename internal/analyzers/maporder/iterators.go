@@ -47,17 +47,24 @@ func checkIterators(pass *analysis.Pass, file *ast.File) {
 			stack = stack[:len(stack)-1]
 			return true
 		}
-		var parent ast.Node
-		if len(stack) > 0 {
-			parent = stack[len(stack)-1]
-		}
 		stack = append(stack, node)
 		call, ok := node.(*ast.CallExpr)
 		if !ok {
 			return true
 		}
+		// Parentheses change nothing about who consumes the iterator.
+		var use ast.Expr = call
+		parent := ast.Node(nil)
+		for depth := len(stack) - 2; depth >= 0; depth-- {
+			parent = stack[depth]
+			paren, ok := parent.(*ast.ParenExpr)
+			if !ok {
+				break
+			}
+			use = paren
+		}
 		elem, ok := mapIterator(pass, call)
-		if !ok || iteratorFixed(pass, parent, call, elem) {
+		if !ok || iteratorFixed(pass, parent, use, elem) {
 			return true
 		}
 		pass.Report(analysis.Diagnostic{Pos: call.Pos(), Category: "TS-T02", Message: msgIterator})
@@ -67,7 +74,7 @@ func checkIterators(pass *analysis.Pass, file *ast.File) {
 
 // iteratorFixed reports whether call's only consumer, parent, fixes or
 // discards its order, and records the sort sites it judges.
-func iteratorFixed(pass *analysis.Pass, parent ast.Node, call *ast.CallExpr, elem types.Type) bool {
+func iteratorFixed(pass *analysis.Pass, parent ast.Node, call ast.Expr, elem types.Type) bool {
 	switch p := parent.(type) {
 	case *ast.RangeStmt:
 		return p.X == call

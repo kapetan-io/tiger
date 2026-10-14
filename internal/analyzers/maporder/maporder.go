@@ -48,6 +48,9 @@ const (
 	msgCarried = "TS-T02: this loop reads state it changed while visiting earlier map entries, " +
 		"and Go visits entries in a different order every run, so which ones it " +
 		"handles varies" + msgSortedKeys
+	msgEarlyExit = "TS-T02: this loop changes something and can also stop early, and Go visits map " +
+		"entries in a different order every run, so which entries it handled before " +
+		"stopping varies" + msgSortedKeys
 	msgSortTies = "TS-T02: this sort can find two different map entries equal, and equal entries " +
 		"keep the map's order — compare every field with cmp.Compare, or use " +
 		"slices.Sorted(maps.Keys(m)), then slices.SortStableFunc"
@@ -76,10 +79,11 @@ func run(pass *analysis.Pass) (any, error) {
 	for _, file := range pass.Files {
 		checkIterators(pass, file)
 		after := statementsAfter(file)
+		shared := sharedVars(pass, file)
 		ast.Inspect(file, func(node ast.Node) bool {
 			loop, ok := node.(*ast.RangeStmt)
 			if ok {
-				checkRange(pass, loop, after[loop])
+				checkRange(pass, loop, after[loop], shared)
 			}
 			return true
 		})
@@ -102,6 +106,13 @@ func statementsAfter(file *ast.File) map[*ast.RangeStmt][]ast.Stmt {
 			list = block.Body
 		}
 		for i, stmt := range list {
+			for {
+				labeled, ok := stmt.(*ast.LabeledStmt)
+				if !ok {
+					break
+				}
+				stmt = labeled.Stmt
+			}
 			if loop, ok := stmt.(*ast.RangeStmt); ok {
 				after[loop] = list[i+1:]
 			}
@@ -113,7 +124,9 @@ func statementsAfter(file *ast.File) map[*ast.RangeStmt][]ast.Stmt {
 
 // checkRange fires TS-T02 when loop ranges over a map and its body is
 // neither allowlisted nor a collect-then-sort the sort makes order-free.
-func checkRange(pass *analysis.Pass, loop *ast.RangeStmt, after []ast.Stmt) {
+func checkRange(
+	pass *analysis.Pass, loop *ast.RangeStmt, after []ast.Stmt, shared map[types.Object]token.Pos,
+) {
 	if !isMapRange(pass, loop) {
 		return
 	}
@@ -121,7 +134,7 @@ func checkRange(pass *analysis.Pass, loop *ast.RangeStmt, after []ast.Stmt) {
 	if bodyAllowed(pass, loop, carried) {
 		return
 	}
-	site := collectSite(pass, loop, after, carried)
+	site := collectSite(pass, loop, after, carried, shared)
 	if site != nil && site.accepted {
 		return
 	}
@@ -155,7 +168,10 @@ func classifyMessage(pass *analysis.Pass, loop *ast.RangeStmt, site *sortSite) s
 	if site != nil && !site.bodyImpure {
 		return msgSortTies
 	}
-	if bodyAllowed(pass, loop, nil) {
+	if allowed, early := walkBody(pass, loop, nil); allowed {
+		if early {
+			return msgEarlyExit
+		}
 		return msgCarried
 	}
 	if site != nil && collectShape(pass, loop, nil) != nil {
