@@ -255,6 +255,15 @@ loop. That is one whose condition is a boolean method call that advances itself,
 `for it.Valid()` or `for rows.Next()`. The store behind it is finite, which is why the
 waiver applies. Every use still counts against the package's escape-directive budget.
 
+**Known false findings:** Some loops fire although their output does not depend on order, because
+the proof needs a fact about the data. A `sort.Slice` that compares one field of a struct that is
+unique only because it came from a map key. Writes at an index that is distinct by the caller's
+invariant (`out[v] = k`). A slice held in a struct field or behind a pointer, since something else
+may read it before the sort. A collect whose sort happens in a helper. A scan of the module cache
+(970 modules) found 53 such sites among the 83 that fire on the allowlist and not on the rule before
+it; the other 26 were real leaks and 4 could not be decided. Rewriting the loop to range over
+`slices.Sorted(maps.Keys(m))` clears each.
+
 **Known misses:** A limit passed through a function value or an interface method is not
 traced. A constant below half the type's maximum, such as `1 << 40`, passes as a limit. A
 standard library stream over an endless in-program source counts as an outside stream.
@@ -1435,6 +1444,12 @@ A collect-then-sort passes only for a slice that is a function local and that no
 before the sort. A package-level slice fires. So does a slice whose address is taken (`p := &keys`),
 that a function literal captures, or that is sliced, because a read through any of those before the
 sort prints the keys in map order.
+
+A collect can also fill a preallocated local slice by position (`keys[i] = k; i++`, with `i` used
+nowhere else in the loop), and `slices.Collect` or `slices.AppendSeq` of a map iterator can fill one.
+Both pass when the slice's first use afterward is a sort that fixes its order. `sort.Slice` and
+`sort.SliceStable` count as such a sort only for a comparator that compares the slice's own
+elements, `s[i] < s[j]`, on strings or integers.
 
 A loop that can stop early (`break`, `return`) fires when it also writes a map, adds to a counter or
 deletes. Which entries it handled before stopping depends on visit order. A loop that only sets a
