@@ -103,14 +103,14 @@ func (s Scope) Escapes(v *types.Var) bool {
 		return true
 	}
 	return s.addressTaken(func(expr ast.Expr) bool { return s.IsVar(expr, v) }) ||
-		s.closureWrites(func(expr ast.Expr) bool { return s.IsVar(expr, v) }, v.Pos())
+		s.ClosureWrites(func(expr ast.Expr) bool { return s.IsVar(expr, v) }, v.Pos())
 }
 
 // FieldEscapes reports whether something outside the loop body could write
 // the field: its address is taken or a function literal in scope writes it.
 func (s Scope) FieldEscapes(field *types.Var) bool {
 	return s.addressTaken(func(expr ast.Expr) bool { return s.isField(expr, field) }) ||
-		s.closureWrites(func(expr ast.Expr) bool { return s.isField(expr, field) }, token.NoPos)
+		s.ClosureWrites(func(expr ast.Expr) bool { return s.isField(expr, field) }, token.NoPos)
 }
 
 // ReceivesOwner reports whether a call in node receives a value of the
@@ -301,11 +301,11 @@ func (s Scope) pointerMethod(selector *ast.SelectorExpr) bool {
 	return !held
 }
 
-// closureWrites reports whether any function literal in scope writes a
+// ClosureWrites reports whether any function literal in scope writes a
 // target satisfying match. A literal that declares the target holds the
 // target's own writes, so it counts only for a target declared outside it;
 // token.NoPos says the target is declared nowhere in scope, as a field is.
-func (s Scope) closureWrites(match func(ast.Expr) bool, declared token.Pos) bool {
+func (s Scope) ClosureWrites(match func(ast.Expr) bool, declared token.Pos) bool {
 	found := false
 	ast.Inspect(s.root, func(n ast.Node) bool {
 		literal, ok := n.(*ast.FuncLit)

@@ -24,6 +24,9 @@ func (t *tracer) clamped(expr ast.Expr) bool {
 	}
 	want := t.s.identity(expr)
 	path, _ := astutil.PathEnclosingInterval(file, expr.Pos(), expr.End())
+	if t.rewrittenByClosure(expr) {
+		return false
+	}
 	for _, enclosing := range path {
 		loop, isLoop := enclosing.(ast.Stmt)
 		if !isLoop || !isLoopStmt(enclosing) {
@@ -38,6 +41,34 @@ func (t *tracer) clamped(expr ast.Expr) bool {
 			return true
 		}
 	}
+	return false
+}
+
+// rewrittenByClosure reports whether a function literal writes the variable
+// or any field along the chain expr names, on the same variable the use reads.
+// The literal can run after the clamp, so the clamp no longer bounds the value
+// at the use. Order is not tracked, so a literal that runs before the clamp
+// counts too.
+func (t *tracer) rewrittenByClosure(expr ast.Expr) bool {
+	expr = t.s.withoutConversions(expr)
+	for steps := 0; steps < unwrapMax; steps++ {
+		level := t.s.identity(expr)
+		declared := token.NoPos
+		if ident, isIdent := expr.(*ast.Ident); isIdent {
+			declared = t.s.pass.TypesInfo.ObjectOf(ident).Pos()
+		}
+		if t.fn.scope.ClosureWrites(func(target ast.Expr) bool {
+			return t.s.identity(target) == level
+		}, declared) {
+			return true
+		}
+		selector, isSelector := expr.(*ast.SelectorExpr)
+		if !isSelector {
+			return false
+		}
+		expr = ast.Unparen(selector.X)
+	}
+	assert.Fail("rewrittenByClosure: more than unwrapMax nested selectors")
 	return false
 }
 
@@ -236,13 +267,21 @@ func (t *tracer) isBuiltin(call *ast.CallExpr, name string) bool {
 	return ok && builtin.Name() == name
 }
 
-// declaredMaximum reports whether expr is a constant, a len or a cap.
+// declaredMaximum reports whether expr is a constant small enough for a loop
+// to reach, a len, or a cap.
 func (t *tracer) declaredMaximum(expr ast.Expr) bool {
-	if t.s.pass.TypesInfo.Types[expr].Value != nil {
+	if t.reachable(expr) {
 		return true
 	}
 	call, ok := ast.Unparen(expr).(*ast.CallExpr)
 	return ok && (t.isBuiltin(call, "len") || t.isBuiltin(call, "cap"))
+}
+
+// reachable reports whether expr is a constant small enough for a loop to
+// count up to.
+func (t *tracer) reachable(expr ast.Expr) bool {
+	known := t.s.pass.TypesInfo.Types[expr]
+	return known.Value != nil && !t.tooLarge(known)
 }
 
 // exceeds reports whether cond, split on ||, has a term true when the
@@ -290,7 +329,7 @@ func (t *tracer) comparesWithMaximum(term ast.Expr, want string, how ordering) b
 	if op != how.strict && op != how.loose {
 		return false
 	}
-	return t.s.pass.TypesInfo.Types[right].Value != nil
+	return t.reachable(right)
 }
 
 // unwrapMax bounds how many nested conversions or selectors withoutConversions

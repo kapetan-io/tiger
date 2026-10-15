@@ -5,6 +5,7 @@
 package fixture
 
 import (
+	"bufio"
 	"database/sql"
 	"errors"
 )
@@ -147,4 +148,20 @@ func steppedPastTheLimit(done func() bool, limit int) error {
 		return errors.New("hit the limit")
 	}
 	return nil
+}
+
+// readLinesBodyOtherBreak ends on a break that is not a stream check, so the
+// limit is a safety cap.
+func readLinesBodyOtherBreak(scanner *bufio.Scanner, limit int, stop func() bool) []string {
+	var lines []string
+	for n := 0; n < limit; n++ { // want `TS-S02: this counter cap ends the loop without saying so`
+		if !scanner.Scan() {
+			break
+		}
+		if stop() {
+			break
+		}
+		lines = append(lines, scanner.Text())
+	}
+	return lines
 }

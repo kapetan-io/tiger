@@ -4,6 +4,7 @@ import (
 	"go/ast"
 	"go/token"
 	"go/types"
+	"slices"
 
 	"golang.org/x/tools/go/analysis"
 
@@ -40,7 +41,8 @@ func (c *checker) checkCap(loop *ast.ForStmt, terms []counter.Term) {
 // size over an outside stream.
 func (c *checker) capTerms(loop *ast.ForStmt, terms []counter.Term) []counter.Term {
 	var caps []counter.Term
-	broken := breaksOut(c.pass.TypesInfo, loop)
+	breaks := loopBreaks(c.pass.TypesInfo, loop)
+	broken := len(breaks) > 0
 	for _, term := range terms {
 		if lengthLimit(c.pass.TypesInfo, term.Limit) {
 			continue
@@ -49,8 +51,10 @@ func (c *checker) capTerms(loop *ast.ForStmt, terms []counter.Term) []counter.Te
 		if len(others) == 0 && !broken {
 			continue
 		}
-		if !broken && c.pageSize(term, others) {
-			continue
+		if c.pageSize(term, others) {
+			if c.breaksDrain(loop, breaks) {
+				continue
+			}
 		}
 		caps = append(caps, term)
 	}
@@ -143,8 +147,10 @@ func (c *checker) pageSize(term counter.Term, others []ast.Expr) bool {
 	return true
 }
 
-// drainsOutsideStream reports whether expr is a boolean method call on a
+// drainsOutsideStream reports whether expr is a call to Next or Scan on a
 // type declared outside the module, such as rows.Next() or scanner.Scan().
+// Other boolean methods, such as a clock check or a pattern match, say
+// nothing about a stream running dry.
 func (c *checker) drainsOutsideStream(expr ast.Expr) bool {
 	call, ok := expr.(*ast.CallExpr)
 	if !ok {
@@ -158,23 +164,67 @@ func (c *checker) drainsOutsideStream(expr ast.Expr) bool {
 	if selection == nil || selection.Kind() != types.MethodVal {
 		return false
 	}
+	if !streamMethods[selector.Sel.Name] {
+		return false
+	}
 	named := mutation.DerefNamed(selection.Recv())
 	return named != nil && c.scope.External(named.Obj().Pkg())
 }
 
-// breaksOut reports whether the loop body has a break that ends this loop:
-// an unlabeled break outside any nested loop, switch or select, or a labeled
+// streamMethods are the method names that advance a stream and report whether
+// it had another item.
+var streamMethods = map[string]bool{"Next": true, "Scan": true}
+
+// loopBreaks returns the breaks in the loop body that end this loop: an
+// unlabeled break outside any nested loop, switch or select, or a labeled
 // break to a label declared outside the body.
-func breaksOut(info *types.Info, loop *ast.ForStmt) bool {
-	found := false
+func loopBreaks(info *types.Info, loop *ast.ForStmt) []*ast.BranchStmt {
+	var found []*ast.BranchStmt
 	ast.Inspect(loop.Body, func(n ast.Node) bool {
 		branch, ok := n.(*ast.BranchStmt)
 		if ok && branch.Tok == token.BREAK && endsThisLoop(info, loop, branch) {
-			found = true
+			found = append(found, branch)
 		}
-		return !found
+		return true
 	})
 	return found
+}
+
+// breaksDrain reports whether every break is the whole body of an if that
+// runs when a stream from outside the module has nothing left, as in
+// "if !scanner.Scan() { break }". Like a header condition, it ends the loop
+// because the stream is empty. A loop with no breaks drains trivially.
+func (c *checker) breaksDrain(loop *ast.ForStmt, breaks []*ast.BranchStmt) bool {
+	drains := 0
+	ast.Inspect(loop.Body, func(n ast.Node) bool {
+		guard, ok := n.(*ast.IfStmt)
+		if ok && guard.Init == nil && c.drainBreak(guard, breaks) {
+			drains++
+		}
+		return true
+	})
+	return drains == len(breaks)
+}
+
+// drainBreak reports whether guard is "if !stream.Next() { break }" or
+// "if stream.Next() { ... } else { break }" for one of the loop's breaks.
+func (c *checker) drainBreak(guard *ast.IfStmt, breaks []*ast.BranchStmt) bool {
+	cond := ast.Unparen(guard.Cond)
+	var exit *ast.BlockStmt
+	negated, isNot := cond.(*ast.UnaryExpr)
+	switch {
+	case isNot && negated.Op == token.NOT && guard.Else == nil:
+		cond, exit = ast.Unparen(negated.X), guard.Body
+	case !isNot:
+		if other, isBlock := guard.Else.(*ast.BlockStmt); isBlock {
+			exit = other
+		}
+	}
+	if exit == nil || len(exit.List) != 1 {
+		return false
+	}
+	branch, ok := exit.List[0].(*ast.BranchStmt)
+	return ok && slices.Contains(breaks, branch) && c.drainsOutsideStream(cond)
 }
 
 // endsThisLoop reports whether branch, found somewhere in loop's body,
