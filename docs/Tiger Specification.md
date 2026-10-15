@@ -485,10 +485,11 @@ type that an exported method can reach. A channel's name and its `struct{}` elem
 count. `TS-S23` adds that the stop case is the loop's only exit. The message names one shape as the
 fix: set a flag, close a stop channel once, let the loop's only exit be its stop case, have the loop
 close `done`, start it with `wg.Go`, and have every waiter select on `done`. Pattern: shutdown loop.
-Known misses: a `close` in dead code counts; the goleak harness (`TS-C03`) and shutdown edge tests
-are the runtime backstop.
+Known misses: a `close` in dead code counts, and a `close` outside a method of the owning type, such as
+a free function or another type's method, is not seen, so that loop is flagged. The goleak harness
+(`TS-C03`) and shutdown edge tests are the runtime backstop.
 *(Amended 2026-10-12: ADR-0020 replaces the 2026-08-17 amendment that recognized a shutdown channel
-by its name or `struct{}` element type. Decided and not built (ENG-177, revised).)*
+by its name or `struct{}` element type. Built (ENG-177).)*
 
 **`TS-S04` Hard limit of 70 lines per function.**
 Why. The discontinuity between a function you can see and one you must scroll is real. Go functions
@@ -640,7 +641,11 @@ handshake, so waiters block on a `done` channel nobody closes. This is the shape
 Enforce. `boundedloop` (custom). In a `TS-S03` loop, no `return` or break-out may sit outside the
 recognized stop case. It is a syntax check, so it is exact. It enters as an advisory trial under
 ADR-0006, measured on querator and git-server, before it blocks. It also flags a correct
-handshake design, so its message names the `net/http` shape, closing a stop channel, as the fix. Pattern: shutdown loop. Decided and not built (ADR-0020).
+handshake design, so its message names the `net/http` shape, closing a stop channel, as the fix. Pattern: shutdown loop. Built (ENG-177).
+The stop case here is a case on a live `ctx.Done()` or a channel the package closes. A case on a
+channel the package only sends on, which carries requests as easily as a shutdown handshake, counts
+only when it ends in a `return`. Without that, a request channel that `Submit` sends on would count
+as a stop case and exempt the return that skips shutdown, which is the ENG-160 shape.
 
 ## Assertions and invariants
 
@@ -845,13 +850,13 @@ Why. A goroutine with no owner is a leak you will find in production, at a memor
 explain. Start it through a group whose `Wait` is reached, never with a bare `go` mid-function.
 Enforce. `nogoroutine` (custom). Only `errgroup.Group.Go` and `sync.WaitGroup.Go` start a goroutine;
 a bare `go` statement is always a finding, and there is no supervisor allowlist. The group's `Wait`
-must be reached on the success path: in the same function, or, for a group held in a struct field,
-in an exported method of the owning type. A `Shutdown` that returns early because its own context
+must be reached on every success path after the start: in the same function, or, for a group held in
+a struct field, in an exported method of the owning type. A path that returns a non-nil error is not a
+success path. A `Shutdown` that returns early because its own context
 expired is exempt on that path. The message names the shutdown-loop shape as the fix (see
 `TS-S03`). Patterns: goroutine owner, shutdown loop.
-*(Amended 2026-10-12: decided and not built, ADR-0020. Today only `errgroup.Group.Go` is accepted,
-and `config/golangci.yml` still describes `internal/sys` as permitted goroutine supervision, which
-is a follow-up.)*
+*(Amended 2026-10-12: built, ADR-0020 and ENG-177. A group received as a parameter is the caller's
+to wait on, and `nogoroutine` does not follow it.)*
 
 **`TS-C03` Goroutine leaks fail the test suite.**
 Why. Checkable at run time and not at compile time, so check it at run time, and check statically
@@ -859,8 +864,8 @@ that the run-time check exists.
 Enforce. `goleak` in `TestMain` (runtime), plus `nogoroutine` (custom) for the harness: a package
 that starts goroutines through `go`, `wg.Go`, or `errgroup.Go` and has no goleak harness in
 `TestMain` is a finding. goleak alone misses a goroutine that exits just after `Shutdown`, so the
-static `TS-C02` and `TS-S03` checks stay. *(Amended 2026-10-12: the harness check is decided and not
-built, ADR-0020.)*
+static `TS-C02` and `TS-S03` checks stay. *(Amended 2026-10-12: the harness check is built, ADR-0020 and
+ENG-177. It reads the package's `_test.go` files from disk, so a `TestMain` in the `_test` package counts.)*
 
 **`TS-C04` Every channel has an explicit capacity, and the capacity is a named constant.**
 Why. Put a limit on everything. An unbuffered channel is a bound of zero and that is a fine answer; an
@@ -878,7 +883,7 @@ package itself closes or sends on (for a struct field, in a method of the owning
 an exported method). A channel's name or `struct{}` element type does not count, and a bare receive
 or send gets no exemption by name. Pattern: shutdown loop.
 *(Amended 2026-10-12: ADR-0020 replaces the 2026-08-17 amendment that recognized a shutdown channel
-by name or `struct{}` element type. Decided and not built.)*
+by name or `struct{}` element type. Built (ENG-177).)*
 
 **`TS-C06` No mutex held across a channel operation or a call that can block.**
 Why. It is how you build a deadlock without noticing.
@@ -1104,8 +1109,8 @@ reuse bring it straight back. Zero on release, not on acquire, so the leak canno
 who knew how much was sensitive.
 Enforce. `poolzero` (custom). Only `*b = T{}` before `Put` counts as a reset; a `Reset` method call
 does not, since an empty `Reset` passes any name check. Exact. Pattern: pool reuse.
-*(Amended 2026-10-12: decided and not built, ADR-0020; `poolzero`'s false finding on `*b = T{}`
-after `pool.Get` is fixed first.)*
+*(Amended 2026-10-12: built, ADR-0020 and ENG-177; `poolzero`'s false finding on `*b = T{}`
+after `pool.Get` is fixed.)*
 
 **`TS-M07` No `fmt.Sprintf` where `strconv` will do.**
 Why. Each formatting call is an allocation and a dynamic dispatch. `strconv` over `fmt` is usually a
@@ -1775,7 +1780,7 @@ changes what it checks), or **not built**.
 | `invariantsymmetry` | TS-A08 | Pair functions by naming convention, compare invariant sets | not built (ENG-182) |
 | `invariantnegative` | TS-A09 | Require `assert.Violates` per declared invariant | built |
 | `norecursion` | TS-S01 | `buildssa`, static call graph (`ssalib.StaticCalls`), report any strongly connected component that is a cycle | built |
-| `boundedloop` | TS-S02, S03, S23 | AST, classify every loop; unclassifiable loops are findings and no directive waives TS-S02, except the `//tiger:batched` cursor waiver, which stays until ADR-0014 is built. Checks counter soundness and cap reporting, accepts a loop whose variant `variant` verified, and treats a range over a non-standard-library iterator as a finding | built; changes decided (ADR-0014, ADR-0020) |
+| `boundedloop` | TS-S02, S03, S23 | AST, classify every loop; unclassifiable loops are findings and no directive waives TS-S02, except the `//tiger:batched` cursor waiver, which stays until ADR-0014 is built. Checks counter soundness and cap reporting, accepts a loop whose variant `variant` verified, and treats a range over a non-standard-library iterator as a finding | built; changes decided (ADR-0014) |
 | `limitflow` | TS-S02 (limit) | `go/types` and cross-package facts; traces each loop limit through parameters, fields, locals and function results back to where it enters the program; a value must be a constant, a length, another bounded limit, or clamped against a declared maximum | built (ADR-0013) |
 | `compoundcond` | TS-S06, S07, S08 | AST, count binary logical operators per condition | built |
 | `assertdensity` | TS-A01, A02 | AST plus `types`, count assert calls per function and package | not built |
@@ -1788,11 +1793,11 @@ changes what it checks), or **not built**.
 | `escapecheck` | TS-C11 | AST, returns of `&x.field`, `x.slice`, `x.map` from exported methods | not built |
 | `paradigm` | TS-C13 | `types`, mutex fields versus channel fields per package | not built |
 | `chandecl` | TS-C12 | AST, channel type declarations per package | built |
-| `selectctx` | TS-C05 | AST, every blocking select needs a `default` or a stop case: `ctx.Done()` on a context that is not `Background` or `TODO`, or a channel the package closes or sends on | built; changes decided (ADR-0020) |
-| `nogoroutine` | TS-C02, C03, C09 | AST, only `errgroup.Group.Go` and `sync.WaitGroup.Go` start goroutines, with `Wait` reached; a goleak harness in `TestMain` where goroutines start; `_test.go` files skipped for TS-C09 | built; changes decided (ADR-0020) |
+| `selectctx` | TS-C05 | AST, every blocking select needs a `default` or a stop case: `ctx.Done()` on a context that is not `Background` or `TODO`, or a channel the package closes or sends on | built |
+| `nogoroutine` | TS-C02, C03, C09 | AST, only `errgroup.Group.Go` and `sync.WaitGroup.Go` start goroutines, with `Wait` reached; a goleak harness in `TestMain` where goroutines start; `_test.go` files skipped for TS-C09 | built |
 | `queuebound` | TS-C04 | AST, slice-backed queues with unbounded append | not built |
 | `ioinloop` | TS-M10 | `types`, IO calls inside loop bodies | built |
-| `poolzero` | TS-M05 | `buildssa`, the `sync.Pool.Put` argument must be zeroed with `*b = T{}` | built; changes decided (ADR-0020) |
+| `poolzero` | TS-M05 | `buildssa`, the `sync.Pool.Put` argument must be zeroed with `*b = T{}` | built |
 | `outptr` | TS-M04 | `types`, constructors returning oversized value types | not built |
 | `limitrelate` | TS-S21 | AST, every Max/Min constant appears in a relational assertion | built |
 | `passthrough` | TS-X02 | AST, body is a single forwarding call | not built |

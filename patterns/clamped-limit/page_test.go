@@ -6,6 +6,7 @@ import (
 	"io"
 	"math"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -37,8 +38,13 @@ func (rows endlessRows) Read(buffer []byte) (int, error) {
 	return len(buffer), nil
 }
 
+// releaseFunc ends an endless stream.
+type releaseFunc func()
+
 // finishes reports whether loop returns within stuck, without hanging the test.
-func finishes(loop func()) bool {
+// A loop that does not return is released through release, so its goroutine
+// ends before finishes does.
+func finishes(loop func(), release releaseFunc) bool {
 	done := make(chan struct{})
 	var group errgroup.Group
 	group.Go(func() error {
@@ -46,11 +52,30 @@ func finishes(loop func()) bool {
 		close(done)
 		return nil
 	})
+	finished := false
 	select {
 	case <-done:
-		return true
+		finished = true
 	case <-time.After(stuck):
-		return false
+		release()
+	}
+	return group.Wait() == nil && finished
+}
+
+// stream is an endless stream and the function that ends it, which may run
+// more than once.
+type stream struct {
+	rows    endlessRows
+	release releaseFunc
+}
+
+// endless returns a stream that never ends until its release runs.
+func endless() stream {
+	stop := make(chan struct{})
+	var once sync.Once
+	return stream{
+		rows:    endlessRows{stop: stop},
+		release: func() { once.Do(func() { close(stop) }) },
 	}
 }
 
@@ -99,17 +124,19 @@ func TestListPageStopsWhenTheStreamEnds(t *testing.T) {
 // Goal: the broken shape is clamped and still runs without end, where ListPage
 // finishes with the same input.
 func TestListPageHugeNeverFinishes(t *testing.T) {
-	stop := make(chan struct{})
-	defer close(stop)
 	req := clampedlimit.ListRequest{Limit: math.MaxInt32}
+	huge := endless()
+	defer huge.release()
 	assert.False(t, finishes(func() {
-		_, err := clampedlimit.ListPageHuge(bufio.NewScanner(endlessRows{stop: stop}), req)
+		_, err := clampedlimit.ListPageHuge(bufio.NewScanner(huge.rows), req)
 		assert.NoError(t, err)
-	}))
+	}, huge.release))
+	clamped := endless()
+	defer clamped.release()
 	require.True(t, finishes(func() {
-		_, err := clampedlimit.ListPage(bufio.NewScanner(endlessRows{stop: stop}), req)
+		_, err := clampedlimit.ListPage(bufio.NewScanner(clamped.rows), req)
 		assert.NoError(t, err)
-	}))
+	}, clamped.release))
 }
 
 // TestListPageReportsAFailedRead reads a stream that fails after one row.

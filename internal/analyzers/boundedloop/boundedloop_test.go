@@ -15,5 +15,5 @@ import (
 // TS-S02; a select missing a ctx.Done() case fires TS-S03; every compliant
 // rewrite stays silent; documented known-miss cases stay silent too.
 func TestCorpus(t *testing.T) {
-	analysistest.Run(t, analysistest.TestData(), boundedloop.Analyzer, "ts-s02", "ts-s03")
+	analysistest.Run(t, analysistest.TestData(), boundedloop.Analyzer, "ts-s02", "ts-s03", "ts-s23")
 }

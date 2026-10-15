@@ -5,14 +5,16 @@ caller that waits on the loop also selects on done. Shutdown's context bounds on
 
 ## Rules
 
-TS-C02, TS-S03, TS-C05
+TS-C02, TS-S03, TS-C05, TS-S23
 
 ## Gap
 
 Tiger checks how the loop starts and stops, and that channel operations sit inside a select. It
-cannot check the order of the exit. `EarlyExitLoop` returns from its request case when
-`inShutdown` is set, so `close(done)` runs and the cleanup in the stop case never does. Tiger stays
-silent because the goroutine is owned, waited on and select-based. `Loop` has one exit, `serve`
+flags the early exit, but only as an advisory TS-S23 count, so `EarlyExitLoop` is recorded in
+`tiger.budget.yaml` and the run stays clean. It cannot check that cleanup runs before `done` closes.
+`EarlyExitLoop` returns from its request case when `inShutdown` is set, so `close(done)` runs and
+the cleanup in the stop case never does. The goroutine is owned, waited on and select-based, so
+nothing blocking fires. `Loop` has one exit, `serve`
 returns only from the stop case, and `run` sets `cleaned` before `close(l.done)`. Tiger also cannot
 see whether `Call` selects on `done` while it waits for the reply.
 

@@ -1,19 +1,21 @@
 // Package selectctx enforces TS-C05: every blocking receive or send has a
-// ctx.Done() case or a recognized shutdown-channel case.
+// stop case.
 //
-// A select with no default clause blocks, so it must carry a comm case
-// receiving from a call to a method named Done — the ctx.Done() shape —
-// or a comm case that receives from or sends to a recognized shutdown
-// channel (see internal/analyzers/internal/shutdown): a struct{}-element
-// channel, or one named with a shutdown/stop/quit/done token. Either way
-// the shutdown handoff is itself a termination path. A select with a
-// default clause is non-blocking and needs none. A send or a bare receive
-// that sits outside any select's own comm clause blocks unconditionally
-// and has no shutdown path at all, so it must be wrapped in a select —
-// unless the channel is shutdown-recognized by NAME, the same exemption a
-// bare <-ctx.Done() gets. Element type alone never exempts a bare
-// operation: outside a select, a struct{} channel is just as often a
-// completion wait with no cancellation — the very bug this rule catches.
+// A select with no default clause blocks, so it must carry a stop case: a
+// receive from ctx.Done() on a context that does not trace to Background or
+// TODO within the function, or a receive or send on a channel the package
+// itself closes or sends on (see internal/analyzers/internal/stopcase). A
+// select with a default clause is non-blocking and needs none. A send, or a
+// receive that sits outside any select's own comm clause, blocks
+// unconditionally, so it must be wrapped in a select — unless it is a receive
+// that is itself the wait for shutdown, from a live ctx.Done() or a channel
+// the package closes. A channel's name never exempts a bare operation, and
+// neither does its element type: outside a select, a struct{} channel is just
+// as often a completion wait with no cancellation, the very bug this rule
+// catches.
+//
+// Known miss: a bare receive from a channel the package closes is accepted
+// even when it is a completion wait rather than a shutdown wait.
 package selectctx
 
 import (
@@ -22,44 +24,44 @@ import (
 
 	"golang.org/x/tools/go/analysis"
 
-	"github.com/kapetan-io/tiger/internal/analyzers/internal/shutdown"
+	"github.com/kapetan-io/tiger/internal/analyzers/internal/stopcase"
 )
 
-// Analyzer enforces TS-C05: every blocking receive or send has a
-// ctx.Done() case or a recognized shutdown-channel case.
+// Analyzer enforces TS-C05: every blocking receive or send has a stop case.
 var Analyzer = &analysis.Analyzer{
 	Name: "selectctx",
-	Doc:  "TS-C05: every blocking receive or send has a ctx.Done() case or a shutdown case.",
+	Doc:  "TS-C05: every blocking receive or send has a stop case.",
 	Run:  run,
 }
 
 const (
 	msgNoShutdown = "TS-C05: this select blocks with no case that ends the wait on shutdown — " +
-		"add case <-ctx.Done(): return ctx.Err()"
+		"add case <-ctx.Done(): return ctx.Err() or a case on a channel the package " +
+		"closes"
 	msgUnwrapped = "TS-C05: this channel operation blocks outside a select, so shutdown can't " +
 		"interrupt it — wrap it in a select that also has case <-ctx.Done(): return ctx.Err()"
 )
 
 func run(pass *analysis.Pass) (any, error) {
+	stops := stopcase.New(pass)
 	for _, file := range pass.Files {
 		protected := commHeadlines(file)
 		ast.Inspect(file, func(node ast.Node) bool {
 			switch stmt := node.(type) {
 			case *ast.SelectStmt:
-				checkSelect(pass, stmt)
+				checkSelect(pass, stops, stmt)
 			case *ast.SendStmt:
-				if !protected[stmt] && !shutdown.Named(pass.TypesInfo, stmt.Chan) {
+				if !protected[stmt] {
 					pass.Report(analysis.Diagnostic{
 						Pos: stmt.Pos(), Category: "TS-C05", Message: msgUnwrapped,
 					})
 				}
 			case *ast.UnaryExpr:
-				// A bare receive from a Done() call, or from a
-				// shutdown-named channel, is itself the shutdown wait;
-				// asking to wrap it in a select would restate the code
-				// that is already there.
-				if stmt.Op == token.ARROW && !protected[stmt] && !doneCall(stmt.X) &&
-					!shutdown.Named(pass.TypesInfo, stmt.X) {
+				// A bare receive from a live ctx.Done() or a channel the
+				// package closes is itself the shutdown wait; asking to
+				// wrap it in a select would restate the code that is
+				// already there.
+				if stmt.Op == token.ARROW && !protected[stmt] && !stops.BareReceive(stmt) {
 					pass.Report(analysis.Diagnostic{
 						Pos: stmt.Pos(), Category: "TS-C05", Message: msgUnwrapped,
 					})
@@ -72,9 +74,9 @@ func run(pass *analysis.Pass) (any, error) {
 }
 
 // checkSelect fires TS-C05 for a blocking select (no default clause) that
-// carries no case satisfying the shutdown requirement.
-func checkSelect(pass *analysis.Pass, sel *ast.SelectStmt) {
-	if hasDefault(sel) || hasShutdownCase(pass, sel) {
+// carries no stop case.
+func checkSelect(pass *analysis.Pass, stops *stopcase.Finder, sel *ast.SelectStmt) {
+	if hasDefault(sel) || hasStopCase(stops, sel) {
 		return
 	}
 	pass.Report(analysis.Diagnostic{Pos: sel.Pos(), Category: "TS-C05", Message: msgNoShutdown})
@@ -91,43 +93,14 @@ func hasDefault(sel *ast.SelectStmt) bool {
 	return false
 }
 
-// hasShutdownCase reports whether sel carries a comm case receiving from a
-// call to a method named Done, or a comm case that receives from or sends
-// to a recognized shutdown channel — the shutdown handoff is itself a
-// termination path.
-func hasShutdownCase(pass *analysis.Pass, sel *ast.SelectStmt) bool {
+// hasStopCase reports whether sel carries a case that ends the wait.
+func hasStopCase(stops *stopcase.Finder, sel *ast.SelectStmt) bool {
 	for _, clause := range sel.Body.List {
-		if comm, ok := clause.(*ast.CommClause); ok && shutdownComm(pass, comm.Comm) {
+		if comm, ok := clause.(*ast.CommClause); ok && stops.Case(comm.Comm) {
 			return true
 		}
 	}
 	return false
-}
-
-// shutdownComm reports whether comm — a select case's headline statement —
-// receives from a call to Done() (covering both "case <-ctx.Done():" and
-// "case v := <-ctx.Done():"), or receives from / sends to a recognized
-// shutdown channel.
-func shutdownComm(pass *analysis.Pass, comm ast.Stmt) bool {
-	if send, ok := comm.(*ast.SendStmt); ok {
-		return shutdown.Channel(pass.TypesInfo, send.Chan)
-	}
-	arrow := commArrow(comm)
-	if arrow == nil {
-		return false
-	}
-	return doneCall(arrow.X) || shutdown.Channel(pass.TypesInfo, arrow.X)
-}
-
-// doneCall reports whether expr is a call whose callee is a method named
-// Done, the ctx.Done() shape.
-func doneCall(expr ast.Expr) bool {
-	call, ok := expr.(*ast.CallExpr)
-	if !ok {
-		return false
-	}
-	selector, ok := call.Fun.(*ast.SelectorExpr)
-	return ok && selector.Sel.Name == "Done"
 }
 
 // commHeadlines collects every select case's headline receive expression
@@ -150,30 +123,11 @@ func commHeadlines(file *ast.File) map[ast.Node]bool {
 				protected[send] = true
 				continue
 			}
-			if arrow := commArrow(comm.Comm); arrow != nil {
+			if arrow := stopcase.Receive(comm.Comm); arrow != nil {
 				protected[arrow] = true
 			}
 		}
 		return true
 	})
 	return protected
-}
-
-// commArrow extracts the receive expression from a comm clause's headline
-// statement, covering "<-ch" and "v := <-ch" / "v, ok := <-ch" forms.
-func commArrow(comm ast.Stmt) *ast.UnaryExpr {
-	var expr ast.Expr
-	switch stmt := comm.(type) {
-	case *ast.ExprStmt:
-		expr = stmt.X
-	case *ast.AssignStmt:
-		if len(stmt.Rhs) == 1 {
-			expr = stmt.Rhs[0]
-		}
-	}
-	arrow, ok := expr.(*ast.UnaryExpr)
-	if !ok || arrow.Op != token.ARROW {
-		return nil
-	}
-	return arrow
 }

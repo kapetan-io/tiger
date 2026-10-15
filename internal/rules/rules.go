@@ -152,7 +152,14 @@ var customRules = []CustomRule{
 		Category: "TS-S03", RuleID: "TS-S03", Analyzer: boundedloop.Analyzer,
 		Severity: SeverityBlocking,
 		Patterns: []string{"shutdown-loop"},
-		Title:    "an unbounded event loop selects on ctx.Done()",
+		Title:    "an unbounded event loop selects on a stop case",
+	},
+	{
+		Category: "TS-S23", RuleID: "TS-S23", Analyzer: boundedloop.Analyzer,
+		Severity: SeverityAdvisory,
+		Patterns: []string{"shutdown-loop"},
+		Title:    "an event loop's only exit is its stop case",
+		Counted:  "extra event loop exits",
 	},
 	{
 		Category: "TS-S06", RuleID: "TS-S06", Analyzer: compoundcond.Analyzer,
@@ -173,7 +180,12 @@ var customRules = []CustomRule{
 		Category: "TS-C02", RuleID: "TS-C02", Analyzer: nogoroutine.Analyzer,
 		Severity: SeverityBlocking,
 		Patterns: []string{"goroutine-owner", "shutdown-loop"},
-		Title:    "every goroutine starts through a supervisor",
+		Title:    "every goroutine starts through a group that waits for it",
+	},
+	{
+		Category: "TS-C03", RuleID: "TS-C03", Analyzer: nogoroutine.Analyzer,
+		Severity: SeverityBlocking,
+		Title:    "a package that starts goroutines checks for leaks in its tests",
 	},
 	{
 		Category: "TS-C09", RuleID: "TS-C09", Analyzer: nogoroutine.Analyzer,
@@ -184,7 +196,7 @@ var customRules = []CustomRule{
 		Category: "TS-C05", RuleID: "TS-C05", Analyzer: selectctx.Analyzer,
 		Severity: SeverityBlocking,
 		Patterns: []string{"shutdown-loop"},
-		Title:    "every blocking receive or send has a ctx.Done() case",
+		Title:    "every blocking receive or send has a stop case",
 	},
 	{
 		Category: "TS-C12", RuleID: "TS-C12", Analyzer: chandecl.Analyzer,
@@ -296,7 +308,7 @@ var customRules = []CustomRule{
 		Category: "TS-M05", RuleID: "TS-M05", Analyzer: poolzero.Analyzer,
 		Severity: SeverityBlocking,
 		Patterns: []string{"pool-reuse"},
-		Title:    "pooled types implement Reset, and Put is preceded by a reset",
+		Title:    "Put is preceded by zeroing the value",
 	},
 	{
 		Category: "TS-F01", RuleID: "TS-F01", Analyzer: effects.Analyzer,

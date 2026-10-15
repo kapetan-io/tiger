@@ -5,6 +5,7 @@ go 1.26.2
 require (
 	github.com/golangci/plugin-module-register v0.1.2
 	github.com/stretchr/testify v1.11.1
+	go.uber.org/goleak v1.3.0
 	golang.org/x/mod v0.39.0
 	golang.org/x/sync v0.22.0
 	golang.org/x/tools v0.49.0
@@ -13,5 +14,6 @@ require (
 
 require (
 	github.com/davecgh/go-spew v1.1.1 // indirect
+	github.com/kr/text v0.2.0 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 )

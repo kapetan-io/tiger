@@ -16,27 +16,27 @@ func releaseHelperKnownMiss(buf *Buffer) {
 	bufferPool.Put(buf)
 }
 
-// releaseCallerKnownMiss resets buf and hands it to a helper that puts it —
+// releaseCallerKnownMiss zeroes buf and hands it to a helper that puts it —
 // safe in practice, silent here for the same reason: this analyzer never
 // looks past a function's own boundary.
 func releaseCallerKnownMiss(buf *Buffer) {
-	buf.Reset()
+	*buf = Buffer{}
 	releaseHelperKnownMiss(buf)
 }
 
-// aliasKnownMiss resets buf through one SSA-level load of a slice element
+// aliasKnownMiss zeroes buf through one SSA-level load of a slice element
 // and puts it through a second, separate load of the same element. Both
 // loads read the same pointer at run time, but the identity-exact check
 // only recognizes the literal same ssa.Value, so the reset does not count
 // for the Put.
 //
-// known-miss: reset(a) does not make Put(b) provably reset even when a and
+// known-miss: zeroing a does not make Put(b) provably zeroed even when a and
 // b hold the same object, because this analyzer performs no alias
 // analysis. The reverse direction — reset through the alias, Put through
 // the original name — would be a real bleed this analyzer equally cannot
 // see; it is not special-cased safe, it is simply invisible either way.
 func aliasKnownMiss(buf *Buffer) {
 	holders := []*Buffer{buf}
-	holders[0].Reset()
+	*holders[0] = Buffer{}
 	bufferPool.Put(holders[0])
 }
