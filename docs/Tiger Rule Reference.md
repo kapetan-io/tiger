@@ -97,7 +97,7 @@ code to the statement.
 
 | Verb | Kind | Rules it affects |
 |---|---|---|
-| `//tiger:batched <reason>` | escape | TS-M10 (per-item IO in a loop); TS-S02 (cursor-shaped loops only); counted by TS-L09 |
+| `//tiger:batched <reason>` | escape | TS-M10 (per-item IO in a loop); counted by TS-L09 |
 | `//tiger:openenum <reason>` | escape | TS-S08 (default arm instead of `assert.Unreachable`); counted by TS-L09 |
 | `//tiger:effects <set>` | pin | TS-F01, TS-F02 |
 | `//tiger:frame <set>` | pin | TS-F07 |
@@ -276,12 +276,77 @@ safety cap. Reaching a page size means the page is full.
 `context.Background()`, it is a finding. Ranging over an iterator is bounded only when it
 comes from the standard library.
 
-**Directives:** `//tiger:batched <reason>` waives this rule only on a cursor-shaped
-loop. That is one whose condition is a boolean method call that advances itself, like
-`for it.Valid()` or `for rows.Next()`. The store behind it is finite, which is why the
-waiver applies. Every use still counts against the package's escape-directive budget.
+A loop over a database cursor states its limit in the header, restating the one its query
+already declares. The counter is the proof, so the loop needs no annotation and ends after
+`opts.Limit` rows even if the database ignores its `LIMIT`:
 
-**Known misses:** A limit passed through a function value or an interface method is not
+```go
+for count := 0; count < opts.Limit && rows.Next(); count++ {
+	names = append(names, rows.Value())
+}
+```
+
+A cursor loop with no counter fires, with or without `//tiger:batched`:
+
+```go
+for rows.Next() {
+	names = append(names, rows.Value())
+}
+```
+
+A loop that filters rows before keeping them needs two limits. Counting every row read
+against the page limit returns a short page when the filter skips rows, and counting only
+kept rows reads the whole table to fill one page. The page limit counts kept rows, clamped
+to a declared `pageMax`. The scan limit counts every row read, a declared `scanMax` tied to
+the page limit by `const _ = uint(scanMax - pageMax)`. The scan limit is a safety cap, so
+the loop returns an error when it reaches `scanMax`:
+
+```go
+const (
+	pageMax = 1_000
+	scanMax = 10_000
+)
+
+const _ = uint(scanMax - pageMax)
+
+var ErrScanLimit = errors.New("list read scanMax rows before the page filled")
+
+func list(rows Rows, namespace string, limit int) ([]string, error) {
+	if limit <= 0 {
+		return nil, nil
+	}
+	limit = min(limit, pageMax)
+	var names []string
+	scanned := 0
+	for ; scanned < scanMax && rows.Next(); scanned++ {
+		name := rows.Value()
+		if !strings.HasPrefix(name, namespace+"/") {
+			continue
+		}
+		names = append(names, name)
+		if len(names) == limit {
+			return names, nil
+		}
+	}
+	if scanned == scanMax {
+		return names, ErrScanLimit
+	}
+	return names, nil
+}
+```
+
+A whole-partition scan with no limit takes one of two shapes. It declares a maximum
+partition size, caps the loop at it, and asserts when it is exceeded. Or it pages and checks
+`ctx` on every pass so the scan can be cancelled.
+
+**Directives:** none waive this rule. `//tiger:batched <reason>` waives only TS-M10.
+
+**Known misses:** A cursor loop that counts every row read against the page limit passes
+even when its filter skips rows, because its only other exit drains the cursor and the
+counter reads as a page size. The result is a short page while matches exist. Tiger cannot
+see that, and `tiger pattern filtered-page` teaches the two-limit shape.
+
+A limit passed through a function value or an interface method is not
 traced. A constant below half the type's maximum, such as `1 << 40`, passes as a limit. A
 standard library stream over an endless in-program source counts as an outside stream.
 Ranging over a slice while appending to it ends, so it stays a correctness bug for
@@ -1431,7 +1496,17 @@ func readAll(paths []string) error {
 
 **Directives:** `//tiger:batched <reason>` waives per-item IO in a loop when the outside
 system has no bulk endpoint to call instead. The directive is still counted against the
-package's budget as a TS-L09 escape.
+package's budget as a TS-L09 escape. It does not waive TS-S02, so a batched loop over a
+cursor still states its limit in the header:
+
+```go
+//tiger:batched provider offers no bulk endpoint
+for count := 0; count < opts.Limit && rows.Next(); count++ {
+	fetch(rows.Value())
+}
+```
+
+A loop that filters rows takes the page limit and scan limit form shown under TS-S02.
 
 **Known miss:** IO hidden behind a same-package helper is invisible. The analyzer checks
 direct calls, not a call graph, so a loop calling a local helper that itself calls

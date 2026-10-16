@@ -165,3 +165,25 @@ func readLinesBodyOtherBreak(scanner *bufio.Scanner, limit int, stop func() bool
 	}
 	return lines
 }
+
+// filteredCountMatches counts only kept rows, so a table of non-matching
+// rows is read to the end. The header has no counter step to prove.
+func filteredCountMatches(rows *sql.Rows, keep func() bool, limit int) int {
+	kept := 0
+	for kept < limit && rows.Next() { // want `TS-S02: tiger can't tell how many times this loop runs`
+		if !keep() {
+			continue
+		}
+		kept++
+	}
+	return kept
+}
+
+// uncappedRows runs until the database stops sending rows.
+func uncappedRows(rows *sql.Rows) int {
+	total := 0
+	for rows.Next() { // want `TS-S02: tiger can't tell how many times this loop runs`
+		total++
+	}
+	return total
+}

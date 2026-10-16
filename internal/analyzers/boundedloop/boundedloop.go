@@ -30,11 +30,9 @@
 // A counter whose limit stands in for a proof is a safety cap, and the loop
 // must report when the cap is hit (see cap.go).
 //
-// Any other Cond is a TS-S02 finding, unless the loop matches the cursor
-// shape — Cond is a boolean method call on a plain identifier (it.Valid(),
-// rows.Next()) — and carries a well-formed //tiger:batched directive: the
-// store's finiteness is a fact of the world the analyzer cannot derive, so
-// the waiver is shape-gated rather than a blanket suppression.
+// Any other Cond is a TS-S02 finding, a store cursor loop (rows.Next())
+// included. //tiger:batched waives TS-M10 only; a cursor loop states its
+// limit in the header (ADR-0014).
 package boundedloop
 
 import (
@@ -49,7 +47,6 @@ import (
 	"golang.org/x/tools/go/analysis"
 
 	"github.com/kapetan-io/tiger/assert"
-	"github.com/kapetan-io/tiger/internal/analyzers/internal/attach"
 	"github.com/kapetan-io/tiger/internal/analyzers/internal/cancel"
 	"github.com/kapetan-io/tiger/internal/analyzers/internal/counter"
 	"github.com/kapetan-io/tiger/internal/analyzers/internal/intrange"
@@ -204,8 +201,8 @@ func (c *checker) standardIterator(expr ast.Expr) bool {
 }
 
 // checkFor classifies a for statement: the event-loop shape (no Cond), a
-// loop a sound counter bounds, a bounded or verified loop, a waived
-// cursor-shaped loop, or a TS-S02 finding.
+// loop a sound counter bounds, a bounded or verified loop, or a TS-S02
+// finding.
 func (c *checker) checkFor(loop *ast.ForStmt) {
 	if loop.Cond == nil {
 		c.checkEventLoop(loop)
@@ -219,13 +216,6 @@ func (c *checker) checkFor(loop *ast.ForStmt) {
 	if c.bounded(loop) {
 		return
 	}
-	if cursorShape(c.pass, loop) {
-		if file := fileOf(c.pass.Files, loop); file != nil {
-			if _, ok := attach.Directive(c.pass.Fset, file, loop, "batched"); ok {
-				return
-			}
-		}
-	}
 	message := msgUnbounded
 	if counter.Counted(c.scope, loop) {
 		message = msgCounterUnsound
@@ -235,16 +225,6 @@ func (c *checker) checkFor(loop *ast.ForStmt) {
 		Category: "TS-S02",
 		Message:  message,
 	})
-}
-
-// fileOf returns the file holding node.
-func fileOf(files []*ast.File, node ast.Node) *ast.File {
-	for _, file := range files {
-		if file.Pos() <= node.Pos() && node.End() <= file.End() {
-			return file
-		}
-	}
-	return nil
 }
 
 // bounded reports whether loop's condition proves a bound without a sound
@@ -831,28 +811,6 @@ func assignmentsTo(pass *analysis.Pass, target *types.Var, node ast.Node) []ast.
 		return true
 	})
 	return found
-}
-
-// cursorShape reports whether loop's Cond is a method call on a plain
-// identifier — the it.Valid() / rows.Next() store-cursor pattern the
-// //tiger:batched waiver recognizes. A package-qualified call such as
-// strings.Contains is not a method on a cursor value, so it stays
-// outside the waiver's shape gate.
-func cursorShape(pass *analysis.Pass, loop *ast.ForStmt) bool {
-	call, ok := loop.Cond.(*ast.CallExpr)
-	if !ok {
-		return false
-	}
-	selector, ok := call.Fun.(*ast.SelectorExpr)
-	if !ok {
-		return false
-	}
-	ident, ok := selector.X.(*ast.Ident)
-	if !ok {
-		return false
-	}
-	_, isPkg := pass.TypesInfo.Uses[ident].(*types.PkgName)
-	return !isPkg
 }
 
 // isBoundOperand reports whether expr is a literal, a resolved constant, or

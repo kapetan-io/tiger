@@ -400,8 +400,7 @@ Why. Everything in reality has a limit. A loop that does not state its limit is 
 input will always be well-formed. Bound it and an infinite hang becomes a fast, loud failure at the
 boundary. See `TS-V01` for the stronger form.
 Enforce. `boundedloop` (custom). A `for` with no condition, or a condition that states no bound, is a
-finding, and no directive waives it (until ADR-0014 is built, `//tiger:batched` still waives a
-cursor-shaped loop). A bound is a constant, a `len`, a sound counter, or a variant
+finding, and no directive waives it. A bound is a constant, a `len`, a sound counter, or a variant
 `TS-V01` verified. Where none exists, the compliant forms are an explicit counter cap and the
 `TS-S03` event-loop shape.
 
@@ -469,10 +468,8 @@ Patterns: capped worklist, page over an outside stream, clamp a limit, filtered 
 admission test, since a reason is shape-checkable but not truth-checkable and every terminating
 loop can state a cap. See "Declarations at a glance".)*
 *(Amended 2026-10-12: ADR-0014 supersedes the 2026-08-17 amendment that let `//tiger:batched`
-waive this rule on cursor-shaped loops. ADR-0014 decides that no directive waives it; that part is
-not built. ADR-0013 is built: the counter,
-cap, limit, `ctx.Err()` and iterator requirements above. The store-loop requirement is decided and
-not built (ADR-0014, ENG-183).)*
+waive this rule on cursor-shaped loops. No directive waives it. ADR-0013 and ADR-0014 are built: the
+counter, cap, limit, `ctx.Err()`, iterator and store-loop requirements above (ENG-183).)*
 
 **`TS-S03` An unbounded event loop selects on a stop case and asserts progress.**
 Why. Some loops genuinely run forever. Those get an explicit termination path and an assertion that
@@ -974,7 +971,7 @@ the analyzer's predicate language takes a counter cap that reports when it is hi
 `TS-S02` accepts a loop whose variant this rule verified, whether synthesized or pinned.
 *(Amended 2026-10-12: the four shapes after the fixed step, the soundness fixes, and `TS-S02`
 accepting a verified variant are built, ADR-0013. ADR-0014 closes the ENG-183 clash with
-`//tiger:batched`, which no longer waives a loop bound; that part is not built.)*
+`//tiger:batched`, which no longer waives a loop bound; that is built.)*
 
 **`TS-V02` Functions are total.**
 Why. Total means it returns for all inputs satisfying its preconditions. With `TS-S01` and `TS-V01`
@@ -1780,7 +1777,7 @@ changes what it checks), or **not built**.
 | `invariantsymmetry` | TS-A08 | Pair functions by naming convention, compare invariant sets | not built (ENG-182) |
 | `invariantnegative` | TS-A09 | Require `assert.Violates` per declared invariant | built |
 | `norecursion` | TS-S01 | `buildssa`, static call graph (`ssalib.StaticCalls`), report any strongly connected component that is a cycle | built |
-| `boundedloop` | TS-S02, S03, S23 | AST, classify every loop; unclassifiable loops are findings and no directive waives TS-S02, except the `//tiger:batched` cursor waiver, which stays until ADR-0014 is built. Checks counter soundness and cap reporting, accepts a loop whose variant `variant` verified, and treats a range over a non-standard-library iterator as a finding | built; changes decided (ADR-0014) |
+| `boundedloop` | TS-S02, S03, S23 | AST, classify every loop; unclassifiable loops are findings and no directive waives TS-S02, `//tiger:batched` included (ADR-0014). Checks counter soundness and cap reporting, accepts a loop whose variant `variant` verified, and treats a range over a non-standard-library iterator as a finding | built (ADR-0013, ADR-0014) |
 | `limitflow` | TS-S02 (limit) | `go/types` and cross-package facts; traces each loop limit through parameters, fields, locals and function results back to where it enters the program; a value must be a constant, a length, another bounded limit, or clamped against a declared maximum | built (ADR-0013) |
 | `compoundcond` | TS-S06, S07, S08 | AST, count binary logical operators per condition | built |
 | `assertdensity` | TS-A01, A02 | AST plus `types`, count assert calls per function and package | not built |

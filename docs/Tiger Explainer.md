@@ -4,7 +4,6 @@
 decisions recorded in ENG-191. Several pieces described here are not built yet:
 
 - the `tiger changed` report, and the removal of effect and frame pins it replaces
-- the end of `//tiger:batched` as a loop-bound waiver (ENG-183)
 - the changes to the goroutine and wait rules, including TS-C03's goleak check
 - the collect-then-sort part of the map-order rule, and TS-T11's double test run
 - the opt-in ban on `//nolint`
@@ -452,7 +451,7 @@ Every loop limit is also checked at its source. Tiger traces the limit backward 
 
 A few loop shapes have fixed answers. Ranging over a standard-library iterator such as `maps.Keys` counts as bounded, while ranging over any other iterator is a finding, the same as ranging over a channel. A `for` loop testing `ctx.Err() == nil` against a `context.Context` parameter counts as running until cancelled, the same as a `select` on `ctx.Done()`. Testing `context.Background()` does not.
 
-A loop pulling rows from a store cursor restates the limit its query already declared, as in `for count := 0; count < opts.Limit && rows.Next(); count++`. A loop that filters rows before keeping them needs two separate limits instead, a page size that counts the rows it keeps and a scan maximum that counts every row it reads, returning an error if that maximum is reached. These changes to the loop rules are built. The one exception is `//tiger:batched`, which still waives a store-cursor loop until ADR-0014 is built (ENG-183).
+A loop pulling rows from a store cursor restates the limit its query already declared, as in `for count := 0; count < opts.Limit && rows.Next(); count++`. A loop that filters rows before keeping them needs two separate limits instead, a page size that counts the rows it keeps and a scan maximum that counts every row it reads, returning an error if that maximum is reached. These changes to the loop rules are built. `//tiger:batched` waives only TS-M10, never a store-cursor loop's bound (ADR-0014).
 
 A `switch` over a type with a fixed, closed set of values must cover every value and end
 in a `default` arm that calls `assert.Unreachable`. Go's compiler cannot check that such a

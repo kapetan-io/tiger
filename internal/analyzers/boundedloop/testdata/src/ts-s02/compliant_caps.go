@@ -101,3 +101,35 @@ func readLinesBodyCheck(scanner *bufio.Scanner, limit int) []string {
 	}
 	return lines
 }
+
+const (
+	pageMax = 1_000
+	scanMax = 10_000
+)
+
+const _ = uint(scanMax - pageMax)
+
+var errScanLimit = errors.New("list read scanMax rows before the page filled")
+
+// filteredPage counts kept rows against a clamped page limit and every row
+// read against scanMax, and fails when scanMax ends the scan.
+func filteredPage(rows *sql.Rows, keep func() bool, limit int) (int, error) {
+	if limit <= 0 {
+		return 0, nil
+	}
+	limit = min(limit, pageMax)
+	kept, scanned := 0, 0
+	for ; scanned < scanMax && rows.Next(); scanned++ {
+		if !keep() {
+			continue
+		}
+		kept++
+		if kept == limit {
+			return kept, nil
+		}
+	}
+	if scanned == scanMax {
+		return kept, errScanLimit
+	}
+	return kept, nil
+}
