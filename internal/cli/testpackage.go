@@ -65,6 +65,8 @@ func internalTestFiles(root string, names []string, reported map[string]bool) []
 		file, err := parser.ParseFile(fset, filepath.Join(root, filepath.FromSlash(name)), nil,
 			parser.PackageClauseOnly)
 		if err != nil {
+			// The loader fails the run on a file it loads; one a build
+			// constraint excludes fails only when built under its tag.
 			continue
 		}
 		position := fset.Position(file.Name.Pos())
