@@ -88,9 +88,8 @@ at a time (a fact of the world no rewrite removes). `openenum` claims a type's s
 is open to growth, which no analyzer can verify. Every escape is counted against its
 package's budget on every run, whether it waives anything or not.
 
-**Pins** freeze a fact tiger computed (what a function does, what it writes, why a loop
-ends) into a contract. Absence of a pin is never a finding. `tiger pin <Name>` writes one;
-after that, any drift from the pinned fact blocks.
+**Pins** freeze a fact tiger computed (why a loop ends) into a contract. Absence of a pin
+is never a finding. `tiger pin <Name>` writes one; after that, any drift from the pinned fact blocks.
 
 **Intent declarations** state something no analyzer can compute, and analyzers hold the
 code to the statement.
@@ -99,8 +98,6 @@ code to the statement.
 |---|---|---|
 | `//tiger:batched <reason>` | escape | TS-M10 (per-item IO in a loop); counted by TS-L09 |
 | `//tiger:openenum <reason>` | escape | TS-S08 (default arm instead of `assert.Unreachable`); counted by TS-L09 |
-| `//tiger:effects <set>` | pin | TS-F01, TS-F02 |
-| `//tiger:frame <set>` | pin | TS-F07 |
 | `//tiger:variant <expr>` | pin | TS-V01 |
 | `//tiger:requires <cond>` | pin | TS-V03 |
 | `//tiger:ensures <cond>` | pin | TS-V03 |
@@ -1902,142 +1899,6 @@ Under golangci-lint the rule sees only the files the build loads.
 loaded by the run, so its test files are not checked.
 
 
-## Effects and frames
-
-<!-- rule: TS-F01 -->
-### TS-F01 — an effects pin is an exact, bidirectional contract
-
-**Severity:** blocking — a finding fails the run.
-
-A `//tiger:effects` pin is a two-way promise. Nothing undeclared may happen, and nothing
-declared may be missing. Tiger computes a function's real effects (network calls, disk
-access, allocation, panics) across its whole call chain, which catches a behavior hiding
-behind a helper three calls deep that a name-only check would miss.
-
-Code that fires it:
-
-```go
-//tiger:effects none
-func Grow() []int {
-	return make([]int, 4)
-}
-```
-
-```
-ring.go:3:1: TS-F01: this function allocates (heap allocation at ring.go:5:13) but its //tiger:effects comment doesn't list alloc — add alloc to the comment, or remove that code
-```
-
-The compliant rewrite:
-
-```go
-//tiger:effects alloc
-func Grow() []int {
-	return make([]int, 4)
-}
-```
-
-**Directives:** `//tiger:effects <set>` pins a function's effects (for example
-`//tiger:effects io(net)`, or `//tiger:effects none` for purity). The pin is exact both
-ways. An undeclared effect fails, and a declared-but-absent effect fails too. Absence of
-a pin is never a finding; `tiger pin <Name>` writes one for you.
-
-**Known miss:** Tiger follows calls it can resolve statically. What a stored function
-value (a callback, an injected dependency) does never joins the computed effect set, so
-a pin can pass even though the callback does something the pin does not declare.
-
-<!-- rule: TS-F02 -->
-### TS-F02 — a pin bounds the entire subtree beneath it
-
-**Severity:** blocking — a finding fails the run.
-
-A pin covers everything a function calls, not just its own body. If any function beneath
-it starts doing something new, the pin fails and names the call that introduced it.
-Pinning one exported function locks down every private helper it calls, directly or
-indirectly, so sparse pins still give dense enforcement.
-
-Code that fires it:
-
-```go
-//tiger:effects none
-func Serve() {
-	dial()
-}
-
-func dial() {
-	net.Dial("tcp", "localhost:0")
-}
-```
-
-```
-logger.go:5:1: TS-F02: this function makes a network call (app.example/logger.dial at logger.go:7:6) but its //tiger:effects comment doesn't list io(net) — add io(net) to the comment, or remove the call
-```
-
-The compliant rewrite:
-
-```go
-//tiger:effects io(net)
-func Serve() {
-	dial()
-}
-
-func dial() {
-	net.Dial("tcp", "localhost:0")
-}
-```
-
-**Directives:** The same `//tiger:effects <set>` pin as TS-F01, exact both ways.
-Absence of a pin is never a finding; `tiger pin <Name>` writes one.
-
-<!-- rule: TS-F07 -->
-### TS-F07 — writes outside a pinned frame fail, bidirectionally
-
-**Severity:** blocking — a finding fails the run.
-
-A `//tiger:frame` pin lists every location a function is allowed to write. Tiger
-computes the real set, every location reachable from the function's parameters and
-receiver that the function writes. A pinned frame answers "which function could have
-written this value" with one search instead of a read of the whole program.
-
-Code that fires it:
-
-```go
-type Recorder struct {
-	log        string
-	checkpoint string
-}
-
-//tiger:frame r.log
-func (r *Recorder) WriteBoth(msg string) {
-	r.log = msg
-	r.checkpoint = msg
-}
-```
-
-```
-recorder.go:8:1: TS-F07: this function writes r.checkpoint (at recorder.go:11:4) but its //tiger:frame comment doesn't list it — add r.checkpoint to the comment (//tiger:frame r.checkpoint, r.log), or remove the write
-```
-
-The compliant rewrite:
-
-```go
-//tiger:frame r.log, r.checkpoint
-func (r *Recorder) WriteBoth(msg string) {
-	r.log = msg
-	r.checkpoint = msg
-}
-```
-
-**Directives:** `//tiger:frame <locations>` pins which locations a function may write,
-exact both ways. A write outside the list fails, and a listed location the function
-never touches fails too. Absence of a pin is never a finding; `tiger pin <Name>` writes
-one.
-
-**Known miss:** Tiger traces a write back to the function's own parameters and receiver.
-When a helper returns a pointer into that state instead of taking it as a parameter, a
-write through the returned pointer never joins the computed frame, so a pin can look
-exact while the function quietly writes something the pin never mentions.
-
-
 ## Termination and contracts
 
 <!-- rule: TS-V01 -->
@@ -2534,16 +2395,14 @@ entry names them, so without `tiger.layers.yaml` randomness is not checked.
 
 ## Computed facts
 
-Three things tiger computes are not rules. They carry no severity, never count, and print
-only when you ask with `tiger check --show-facts`. Each prints in pin syntax, ready to
+The loop variant is a computed fact, not a rule. It carries no severity, never counts, and
+prints only when you ask with `tiger check --show-facts`. It prints in pin syntax, ready to
 freeze with `tiger pin`.
 
 | Fact | What it is | Pin it freezes |
 |---|---|---|
-| effect set | what a function does (allocate, do IO, block, panic, read time or randomness, mutate, spawn), including everything reachable beneath it | `//tiger:effects` (TS-F01, TS-F02) |
-| frame | which locations reachable from parameters and receiver a function writes | `//tiger:frame` (TS-F07) |
 | variant | the value that shrinks every iteration and proves a loop ends | `//tiger:variant` (TS-V01) |
 
-An unpinned fact is just the current value. Pin it and drift becomes a blocking finding.
-That is the change-detection half of tiger. A silent edit to what a function does cannot
-land without either updating the pin (visible in review) or failing the run.
+An unpinned variant is just the current value. Pin it and drift becomes a blocking finding.
+Changes in what a function does are not pinned. `tiger changed <base>` reports the calls a
+branch added and removed instead (ADR-0026, ADR-0030).

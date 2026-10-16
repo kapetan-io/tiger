@@ -25,9 +25,7 @@ import (
 	"github.com/kapetan-io/tiger/internal/analyzers/deferdistance"
 	"github.com/kapetan-io/tiger/internal/analyzers/derivation"
 	"github.com/kapetan-io/tiger/internal/analyzers/directives"
-	"github.com/kapetan-io/tiger/internal/analyzers/effects"
 	"github.com/kapetan-io/tiger/internal/analyzers/errignore"
-	"github.com/kapetan-io/tiger/internal/analyzers/frames"
 	"github.com/kapetan-io/tiger/internal/analyzers/invariantnegative"
 	"github.com/kapetan-io/tiger/internal/analyzers/invariantrefs"
 	"github.com/kapetan-io/tiger/internal/analyzers/ioinloop"
@@ -72,7 +70,7 @@ const (
 
 // Fact binds one computed-fact category to the analyzer that emits it. A
 // fact is not a rule: it is the current value of something a pin can
-// freeze (an effect set, a frame, a loop variant), printed only under
+// freeze (a loop variant), printed only under
 // --show-facts, never counted, never a verdict. Its RuleID names the rule
 // whose pin the fact feeds.
 type Fact struct {
@@ -317,21 +315,6 @@ var customRules = []CustomRule{
 		Title:    "Put is preceded by zeroing the value",
 	},
 	{
-		Category: "TS-F01", RuleID: "TS-F01", Analyzer: effects.Analyzer,
-		Severity: SeverityBlocking,
-		Title:    "an effects pin is an exact, bidirectional contract",
-	},
-	{
-		Category: "TS-F02", RuleID: "TS-F02", Analyzer: effects.Analyzer,
-		Severity: SeverityBlocking,
-		Title:    "a pin bounds the entire subtree beneath it",
-	},
-	{
-		Category: "TS-F07", RuleID: "TS-F07", Analyzer: frames.Analyzer,
-		Severity: SeverityBlocking,
-		Title:    "writes outside a pinned frame fail, bidirectionally",
-	},
-	{
 		Category: "TS-V01", RuleID: "TS-V01", Analyzer: variant.Analyzer,
 		Severity: SeverityBlocking,
 		Title:    "every unbounded loop has a verified variant",
@@ -364,14 +347,6 @@ var customRules = []CustomRule{
 
 // facts is the computed-facts channel: one category per pinnable fact.
 var facts = []Fact{
-	{
-		Category: "TS-F01-facts", RuleID: "TS-F01", Analyzer: effects.Analyzer,
-		Title: "computed effect sets print in pin syntax under --show-facts",
-	},
-	{
-		Category: "TS-F07-facts", RuleID: "TS-F07", Analyzer: frames.Analyzer,
-		Title: "computed frames print in pin syntax under --show-facts",
-	},
 	{
 		Category: "TS-V01-facts", RuleID: "TS-V01", Analyzer: variant.Analyzer,
 		Title: "synthesized variants print in pin syntax under --show-facts",

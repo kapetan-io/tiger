@@ -1,7 +1,6 @@
 // Package smoke contains known violations for the plugin smoke test. Per-
 // package rules must surface through a golangci-lint run: TS-S09, TS-M10,
-// TS-S01, and TS-F02 — which can only fire if helper's effects fact crossed
-// the import. The whole-program rules must not: Orphan is an invariant
+// and TS-S01. The whole-program rules must not: Orphan is an invariant
 // asserted nowhere and violated by no test (TS-A07, TS-A09); only `tiger
 // check` reports those two, and a CLI test proves it does on this same
 // fixture.
@@ -11,7 +10,6 @@ import (
 	"os"
 
 	"github.com/kapetan-io/tiger/assert"
-	"github.com/kapetan-io/tiger/helper"
 )
 
 // ID names one invariant.
@@ -39,13 +37,6 @@ func (d *diskStore) Put(data []byte) int {
 // Open returns the only store there is.
 func Open() *diskStore {
 	return &diskStore{written: 0}
-}
-
-// Notify claims purity but reaches the network through the helper.
-//
-//tiger:effects none
-func Notify() {
-	helper.Widen()
 }
 
 // Spin loops with a goto so nogoto fires.

@@ -96,8 +96,6 @@ func (e *MalformedArgsError) Error() string {
 // escapes, then the pin verbs.
 var vocabulary = []Verb{
 	{Name: "batched", Kind: KindEscape},
-	{Name: "effects", Kind: KindPin},
-	{Name: "frame", Kind: KindPin},
 	{Name: "requires", Kind: KindPin},
 	{Name: "ensures", Kind: KindPin},
 	{Name: "variant", Kind: KindPin},
@@ -147,12 +145,6 @@ func Parse(text string) (Directive, error) {
 // validateArgs applies the per-verb argument grammar to a pin.
 func validateArgs(parsed Directive) error {
 	switch parsed.Verb {
-	case "effects":
-		_, err := ParseEffects(parsed.Args)
-		return err
-	case "frame":
-		_, err := ParseFrame(parsed.Args)
-		return err
 	case "variant":
 		_, err := ParseVariant(parsed.Args)
 		return err

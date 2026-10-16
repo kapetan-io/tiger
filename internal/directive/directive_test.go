@@ -20,7 +20,6 @@ func TestRoundTripEveryVerb(t *testing.T) {
 		"reason",
 		"provider offers no bulk endpoint; rate limiter caps us at 10 rps",
 		"ENG-147 flaky on windows",
-		"mutate(r.log, r.checkpoint), io(disk)",
 		"len(pending)",
 		"internal  double  spaces",
 		"unicode: bounded by léngth",
@@ -56,9 +55,9 @@ func TestParseKnownVerbs(t *testing.T) {
 			want: directive.Directive{Verb: "batched", Args: "provider offers no bulk endpoint"},
 		},
 		{
-			name: "EffectsPin",
-			text: "//tiger:effects mutate(r.log), io(disk)",
-			want: directive.Directive{Verb: "effects", Args: "mutate(r.log), io(disk)"},
+			name: "RequiresPin",
+			text: "//tiger:requires len(target) == HeaderSizeBytes",
+			want: directive.Directive{Verb: "requires", Args: "len(target) == HeaderSizeBytes"},
 		},
 		{
 			name: "OpenEnumWithReason",
@@ -179,6 +178,12 @@ func TestVocabularyKinds(t *testing.T) {
 
 	_, ok = directive.Lookup("bounded")
 	assert.False(t, ok)
+
+	// ADR-0026 retired the effect and frame pins in favor of tiger changed.
+	for _, retired := range []string{"effects", "frame"} {
+		_, ok = directive.Lookup(retired)
+		assert.False(t, ok)
+	}
 
 	// The skip verb was withdrawn when TS-D07 moved from demanding a
 	// directive to reporting every skip as a standing advisory.

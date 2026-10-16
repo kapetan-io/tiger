@@ -38,28 +38,28 @@ func TestPluginDropsFacts(t *testing.T) {
 	require.Len(t, analyzers, len(rules.Analyzers())+1)
 
 	testdata, err := filepath.Abs(
-		filepath.Join("..", "internal", "analyzers", "effects", "testdata"),
+		filepath.Join("..", "internal", "analyzers", "variant", "testdata"),
 	)
 	require.NoError(t, err)
-	var effects, blocking int
+	var variants, blocking int
 	for _, analyzer := range analyzers {
-		if analyzer.Name != "effects" {
+		if analyzer.Name != "variant" {
 			continue
 		}
-		for _, result := range analysistest.Run(quietRun{}, testdata, analyzer, "ts-f01") {
+		for _, result := range analysistest.Run(quietRun{}, testdata, analyzer, "ts-v01") {
 			for _, diagnostic := range result.Diagnostics {
 				_, isFact := rules.ByFact(diagnostic.Category)
 				assert.False(t, isFact)
 				entry, known := rules.ByCategory(diagnostic.Category)
 				require.True(t, known)
-				effects++
+				variants++
 				if entry.Severity == rules.SeverityBlocking {
 					blocking++
 				}
 			}
 		}
 	}
-	assert.Positive(t, effects)
+	assert.Positive(t, variants)
 	assert.Positive(t, blocking)
 }
 

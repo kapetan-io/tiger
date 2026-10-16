@@ -33,8 +33,7 @@
 // is non-increasing, every negative term is non-decreasing, at least one
 // term moves strictly, and none is unknown. A pin the analyzer cannot
 // verify is blocking even when the loop plausibly terminates: a pin
-// freezes the analyzer's own computed verification, in both directions —
-// the same bidirectional-exactness principle TS-F01 applies to effects —
+// freezes the analyzer's own computed verification, in both directions,
 // so an unverifiable pin is not a weaker claim than an unpinned loop, it is
 // a broken contract. A pin on a loop that needs no variant at all (a
 // RangeStmt, a counted ForStmt) is blocking for the same reason: it

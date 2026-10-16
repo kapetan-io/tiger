@@ -119,8 +119,7 @@ and every skipped test — which are counted per package against
 row (or with no row) fails the run with a `TS-D06` line followed by the
 counted findings. A synthesized loop variant is a computed fact, not a rule:
 it prints only under `--show-facts`, in exact, freeze-ready pin syntax, and is
-what `tiger pin` freezes. (Today `--show-facts` also prints effect sets and
-frames; ADR-0026 removes them.) Output is
+what `tiger pin` freezes. Output is
 deterministic and position-sorted; CI runs the check twice and diffs the
 bytes, with and without the facts channel.
 
@@ -190,11 +189,9 @@ Two engines enforce the rules:
   `directives`, `skipcheck`, `tablename`, `testdoc`, `testpackage`, `derivation`,
   `limitrelate`, `sametypeparams`, `participle`, `deferdistance`); the SSA
   wave adds the analyzers that check what code does rather than how it is
-  written (`norecursion`, `maporder`, `poolzero`, `effects`, `frames`,
-  `variant`, `contracts`), with effect sets and frames crossing package
-  boundaries through `go/analysis` facts; the cross-package wave adds the
-  rules whose evidence spans the module (`invariantrefs`,
-  `invariantnegative`). ENG-191 removes `effects` and `frames` (ADR-0026); the
+  written (`norecursion`, `maporder`, `poolzero`, `variant`, `contracts`); the
+  cross-package wave adds the rules whose evidence spans the module
+  (`invariantrefs`, `invariantnegative`). The
   specification's analyzer table shows what is built and what is decided. Analyzers are driver-agnostic
   `go/analysis` passes; severity and exit codes live in the driver, per
   ADR-0002. TS-A07 and TS-A09 are whole-program rules: their finding is decided in a finish step the tiger driver
@@ -222,11 +219,11 @@ declarations (ADR-0024), and the `hot`, `wire`, and `owner` verbs do not exist
 | `cmd/tiger/` | The CLI: a thin `main` over a testable run function. |
 | `internal/pattern/` | Reads the embedded patterns: the card sections, the Go files, lookup by name and by rule. |
 | `internal/rules/` | The rule registry — the single source of the rule set. The binary's analyzer set, the finish functions, the corpus meta-tests, severity, the computed-facts table, and the `tiger golangci` audit are all derived from it. |
-| `internal/analyzers/` | The 31 analyzers, one package per analyzer, each with its corpus (failure-mode fires, compliant rewrite silent, known misses marked): an `analysistest` corpus for a per-package rule, a small module under `testdata/module/` run through the tiger driver for a whole-program rule. The shared internals live under `internal/analyzers/internal/`: `words` (identifier tokenization), `ssalib` (shared `go/ssa` call-graph walks used by `norecursion`, plus the effect lattice plumbing and curated stdlib effects table, which ADR-0026 removes with `effects` and `frames`), `assertpkg` (recognizes tiger's assert package by import path), and `invariants` (invariant const and assert-call collection). |
+| `internal/analyzers/` | The 29 analyzers, one package per analyzer, each with its corpus (failure-mode fires, compliant rewrite silent, known misses marked): an `analysistest` corpus for a per-package rule, a small module under `testdata/module/` run through the tiger driver for a whole-program rule. The shared internals live under `internal/analyzers/internal/`: `words` (identifier tokenization), `ssalib` (shared `go/ssa` call-graph walks used by `norecursion`), `assertpkg` (recognizes tiger's assert package by import path), and `invariants` (invariant const and assert-call collection). |
 | `internal/analyzers/layers/` | TS-X03 (and TS-D01): judges every non-test import against the package's `tiger.layers.yaml` entry, exactly, and reports a package with no entry. Its corpus installs its own layer file. |
 | `internal/layerfile/` | `tiger.layers.yaml`: loading and validation, the process-wide install the drivers do and the analyzer queries, the exact import judgment, the coverage comparison `tiger check` uses to report entries that match no package directory, and the wording of every TS-X03 message (ADR-0029). |
 | `internal/config/` | `tiger.yaml`, plus the module facts the committed files key on: the module path from `go.mod` and the module's package directories. |
-| `internal/directive/` | The `//tiger:` grammar: closed verb vocabulary, per-verb pin argument grammars (variant expressions and contract predicates; the effect lattice and frame lists go with ADR-0026), canonical printing, and the round-trip contract `Parse(Format(d)) == d`. |
+| `internal/directive/` | The `//tiger:` grammar: closed verb vocabulary, per-verb pin argument grammars (variant expressions and contract predicates), canonical printing, and the round-trip contract `Parse(Format(d)) == d`. |
 | `plugin/` + `.custom-gcl.yml` | The golangci-lint module plugin: the same analyzers under `golangci-lint run`, minus the finish step — TS-A07, TS-A09 and TS-X03's directory checks (stale layer entries, packages the run did not load) are `tiger check`-only. See "Running under golangci-lint" below. |
 | `assert/` | The always-on assertion package, including `Invariant`/`Violates` generic over `~string`. Zero dependencies. Import it as `github.com/kapetan-io/tiger/assert`; tiger recognizes it by that import path only. |
 | `patterns/` | The patterns collection (ADR-0025): for each gap a rule cannot check, runnable code showing the right shape beside the broken one that passes `tiger check`, a `PATTERN.md` card, and a reviewer checklist. The binary embeds it: `tiger pattern <name>`. `patterns/ledger/` is the invariant vocabulary pattern: an `inv` package declaring IDs (TS-A07), a symmetric encode/decode pair asserting them, and a violation test per invariant (TS-A09). |

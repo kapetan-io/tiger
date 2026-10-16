@@ -92,11 +92,11 @@ func TestInsertWithNoDocComment(t *testing.T) {
 	insertion := pins.Insert(pins.Target{
 		Fset: loaded.fset, File: loaded.file, Src: []byte(unpinned), Node: bare,
 		Directives: []directive.Directive{
-			{Verb: "effects", Args: "none"},
-			{Verb: "frame", Args: "none"},
+			{Verb: "requires", Args: "r != nil"},
+			{Verb: "ensures", Args: "result == 0"},
 		},
 	})
-	assert.Equal(t, "//tiger:effects none\n//tiger:frame none\n", insertion.Text)
+	assert.Equal(t, "//tiger:requires r != nil\n//tiger:ensures result == 0\n", insertion.Text)
 
 	trip := roundTrip(t, unpinned, insertion)
 	rebound := find(trip.file, func(node ast.Node) bool {
@@ -104,9 +104,9 @@ func TestInsertWithNoDocComment(t *testing.T) {
 		return ok && decl.Name.Name == "Bare"
 	})
 	require.NotNil(t, rebound)
-	require.Len(t, trip.collected.At(rebound, "effects"), 1)
-	require.Len(t, trip.collected.At(rebound, "frame"), 1)
-	assert.Equal(t, "none", trip.collected.At(rebound, "effects")[0].Directive.Args)
+	require.Len(t, trip.collected.At(rebound, "requires"), 1)
+	require.Len(t, trip.collected.At(rebound, "ensures"), 1)
+	assert.Equal(t, "r != nil", trip.collected.At(rebound, "requires")[0].Directive.Args)
 }
 
 // TestInsertAfterProseDocComment covers the second placement case.
@@ -123,9 +123,9 @@ func TestInsertAfterProseDocComment(t *testing.T) {
 
 	insertion := pins.Insert(pins.Target{
 		Fset: loaded.fset, File: loaded.file, Src: []byte(unpinned), Node: flush,
-		Directives: []directive.Directive{{Verb: "effects", Args: "mutate(r)"}},
+		Directives: []directive.Directive{{Verb: "requires", Args: "r != nil"}},
 	})
-	assert.Equal(t, "//\n//tiger:effects mutate(r)\n", insertion.Text)
+	assert.Equal(t, "//\n//tiger:requires r != nil\n", insertion.Text)
 
 	trip := roundTrip(t, unpinned, insertion)
 	rebound := find(trip.file, func(node ast.Node) bool {
@@ -133,8 +133,8 @@ func TestInsertAfterProseDocComment(t *testing.T) {
 		return ok && decl.Name.Name == "Flush"
 	})
 	require.NotNil(t, rebound)
-	require.Len(t, trip.collected.At(rebound, "effects"), 1)
-	assert.Equal(t, "mutate(r)", trip.collected.At(rebound, "effects")[0].Directive.Args)
+	require.Len(t, trip.collected.At(rebound, "requires"), 1)
+	assert.Equal(t, "r != nil", trip.collected.At(rebound, "requires")[0].Directive.Args)
 }
 
 // TestInsertAfterDirectiveDocComment covers the third placement case.
@@ -151,13 +151,13 @@ func TestInsertAfterDirectiveDocComment(t *testing.T) {
 
 	insertion := pins.Insert(pins.Target{
 		Fset: loaded.fset, File: loaded.file, Src: []byte(unpinned), Node: batched,
-		Directives: []directive.Directive{{Verb: "effects", Args: "none"}},
+		Directives: []directive.Directive{{Verb: "requires", Args: "r != nil"}},
 	})
-	assert.Equal(t, "//tiger:effects none\n", insertion.Text)
+	assert.Equal(t, "//tiger:requires r != nil\n", insertion.Text)
 
 	written := apply(unpinned, insertion)
 	assert.Contains(t, written,
-		"//tiger:batched provider offers no bulk endpoint\n//tiger:effects none\nfunc Batched")
+		"//tiger:batched provider offers no bulk endpoint\n//tiger:requires r != nil\nfunc Batched")
 
 	trip := roundTrip(t, unpinned, insertion)
 	rebound := find(trip.file, func(node ast.Node) bool {
@@ -165,7 +165,7 @@ func TestInsertAfterDirectiveDocComment(t *testing.T) {
 		return ok && decl.Name.Name == "Batched"
 	})
 	require.NotNil(t, rebound)
-	require.Len(t, trip.collected.At(rebound, "effects"), 1)
+	require.Len(t, trip.collected.At(rebound, "requires"), 1)
 }
 
 // TestInsertAboveNestedLoop covers loop placement.
@@ -217,7 +217,7 @@ func TestInsertTextIsFormatOutput(t *testing.T) {
 
 	insertion := pins.Insert(pins.Target{
 		Fset: loaded.fset, File: loaded.file, Src: []byte(unpinned), Node: bare,
-		Directives: []directive.Directive{{Verb: "effects", Args: "alloc, io(disk)"}},
+		Directives: []directive.Directive{{Verb: "requires", Args: "len(items) > 0"}},
 	})
 	for _, line := range strings.Split(strings.TrimSuffix(insertion.Text, "\n"), "\n") {
 		trimmed := strings.TrimLeft(line, "\t ")
