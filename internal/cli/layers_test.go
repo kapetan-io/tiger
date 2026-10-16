@@ -1374,6 +1374,24 @@ func TestLayersLegacyPlusBuildIgnoreNeedsNoEntry(t *testing.T) {
 	assert.Empty(t, got.stdout)
 }
 
+// TestLayersPlusBuildIgnoreWithoutBlankLineNeedsAnEntry covers the coverage
+// contract for a constraint the go command does not honor.
+//
+// Goal: a // +build ignore line that no blank line separates from the package
+// clause is not a constraint, so the file builds and its directory needs an
+// entry, even in a run whose patterns don't load it.
+func TestLayersPlusBuildIgnoreWithoutBlankLineNeedsAnEntry(t *testing.T) {
+	dir := writeModuleFiles(t, map[string]string{
+		"go.mod":            "module " + layerModule + "\n\ngo 1.26\n",
+		"lib/lib.go":        "// Package lib is pure.\npackage lib\n",
+		"tools/doc.go":      "// Package tools is documented.\n// +build ignore\npackage tools\n",
+		"tiger.layers.yaml": "\"./lib\": []\n",
+	})
+	got := run(t, "check", "-C", dir, "./lib")
+	assert.Equal(t, cli.ExitFindings, got.code)
+	assert.Contains(t, got.stdout, "TS-X03: package ./tools has no entry")
+}
+
 // TestLayersEntryForIgnoredOnlyDirectoryIsStale covers the coverage contract
 // for adopters who added an entry to satisfy the old rule.
 //

@@ -143,7 +143,8 @@ func isSource(name string) bool {
 // Other constraints are left as packages, because a file tiger can't
 // prove unbuildable must keep its entry.
 func neverBuilt(file string) bool {
-	parsed, err := parser.ParseFile(token.NewFileSet(), file, nil,
+	fset := token.NewFileSet()
+	parsed, err := parser.ParseFile(fset, file, nil,
 		parser.PackageClauseOnly|parser.ParseComments)
 	if err != nil {
 		return false
@@ -154,6 +155,12 @@ func neverBuilt(file string) bool {
 		}
 		for _, comment := range group.List {
 			if !constraint.IsGoBuild(comment.Text) && !constraint.IsPlusBuild(comment.Text) {
+				continue
+			}
+			// The go command ignores a // +build line unless a blank line
+			// follows its comment group.
+			adjacent := fset.Position(group.End()).Line+1 >= fset.Position(parsed.Package).Line
+			if constraint.IsPlusBuild(comment.Text) && adjacent {
 				continue
 			}
 			expr, err := constraint.Parse(comment.Text)
