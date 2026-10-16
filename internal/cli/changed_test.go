@@ -730,7 +730,7 @@ func TestChangedAllowsARunDirectoryPackageNamedLikeAModuleDirectory(t *testing.T
 	got := run(t, "changed", "-C", filepath.Join(c.dir, "a", "b"), "main")
 	assert.Empty(t, got.stderr)
 	require.Equal(t, cli.ExitClean, got.code)
-	assert.Contains(t, got.stdout, "+   b.Open\n")
+	assert.Contains(t, got.stdout, "+   example.com/shop/b.Open\n")
 }
 
 // TestChangedIgnoresGitLocationVariables covers a run inside a git hook.
