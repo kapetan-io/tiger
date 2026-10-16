@@ -14,10 +14,10 @@ const (
 		"package, or a function in their own package that calls one. " +
 		"Check that each one is intended."
 
-	// marker is the first line of the comment; CI finds its one sticky comment by it.
+	// The marker is the first line of the comment; CI finds its one sticky comment by it.
 	marker = "<!-- tiger-changed -->"
 
-	// maxComment is where the report starts dropping detail. GitHub rejects a
+	// The cap is where the report starts dropping detail. GitHub rejects a
 	// comment over 65,536 characters; the difference is headroom.
 	maxComment = 60000
 )
@@ -42,7 +42,8 @@ func (r Report) Markdown(rev revision.Comparison) string {
 func tooLong(comment string) bool { return utf8.RuneCountInString(comment) > maxComment }
 
 // view says how much of the report a comment shows: how many of the main
-// list's functions, and whether the new packages' call lists are left out for a pointer to the terminal.
+// list's functions, and whether the new packages' call lists are left out
+// for a pointer to the terminal.
 type view struct {
 	shown     int
 	omitCalls bool
@@ -78,7 +79,8 @@ func (r Report) markdown(rev revision.Comparison, show view) string {
 			for _, fn := range hidden {
 				calls += len(fn.Calls)
 			}
-			fmt.Fprintf(&out, "%d more calls in %d functions not shown; run `tiger changed %s` for the rest.\n\n",
+			fmt.Fprintf(&out, "%d more calls in %d functions not shown; "+
+				"run `tiger changed %s` for the rest.\n\n",
 				calls, len(hidden), rev.BaseRef)
 		}
 	}
@@ -91,7 +93,8 @@ func (r Report) markdown(rev revision.Comparison, show view) string {
 		writeNewPackageMarkdown(&out, pkg, show, rev.BaseRef)
 	}
 	for _, pkg := range r.RemovedPackages {
-		fmt.Fprintf(&out, "**Removed package `%s`** — %d types and functions.\n\n", pkg.Name, pkg.Owners)
+		fmt.Fprintf(&out, "**Removed package `%s`** — %d types and functions.\n\n",
+			pkg.Name, pkg.Owners)
 	}
 	out.WriteString("<sub>" + r.Scope.footer() + "<br>\n" + blindSpots + "</sub>\n")
 	return out.String()
@@ -125,7 +128,8 @@ func writeNewPackageMarkdown(out *strings.Builder, pkg NewPackage, show view, ba
 	case show.omitCalls:
 		fmt.Fprintf(out, "Too long for a comment; run `tiger changed %s` for every call.\n\n", base)
 	default:
-		fmt.Fprintf(out, "<details>\n<summary>Every call from <code>%s</code>, by function (%d)</summary>\n\n",
+		fmt.Fprintf(out, "<details>\n<summary>Every call from <code>%s</code>, "+
+			"by function (%d)</summary>\n\n",
 			pkg.Name, pkg.calls())
 		out.WriteString("```diff\n")
 		writeList(out, pkg.Functions, "")

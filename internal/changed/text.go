@@ -129,7 +129,8 @@ func usesText(uses []Use, quote string) string {
 	}
 	parts := make([]string, len(uses))
 	for i, use := range uses {
-		parts[i] = fmt.Sprintf("%s%s%s (%s)", quote, use.Package, quote, strings.Join(use.Symbols, ", "))
+		symbols := strings.Join(use.Symbols, ", ")
+		parts[i] = fmt.Sprintf("%s%s%s (%s)", quote, use.Package, quote, symbols)
 	}
 	return strings.Join(parts, "; ")
 }

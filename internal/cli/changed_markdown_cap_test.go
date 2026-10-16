@@ -21,7 +21,8 @@ func TestChangedMarkdownCutsTheMainListAfterDroppingNewPackageCalls(t *testing.T
 	got := bulkCheckout(t, bulkSize{existing: 3600, fresh: 50}).changed("--format", "markdown")
 	require.Equal(t, cli.ExitClean, got.code)
 	assert.LessOrEqual(t, utf8.RuneCountInString(got.stdout), commentLimit)
-	assert.Contains(t, got.stdout, "Too long for a comment; run `tiger changed main` for every call.\n")
+	assert.Contains(t, got.stdout,
+		"Too long for a comment; run `tiger changed main` for every call.\n")
 	assert.Contains(t, got.stdout, " more calls in ")
 	assert.NotContains(t, got.stdout, "<details>")
 	assert.Contains(t, got.stdout, "**New package `bulk`**")

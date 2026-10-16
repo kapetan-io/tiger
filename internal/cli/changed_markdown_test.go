@@ -76,7 +76,8 @@ func TestChangedMarkdownBoldsOnlyWhatChanged(t *testing.T) {
 // bulkSource is a package of count functions that each call one outside function.
 func bulkSource(pkg string, count int) string {
 	var src strings.Builder
-	fmt.Fprintf(&src, "package %s\n\nimport \"example.com/fakedb\"\n\nvar pool *fakedb.Pool\n\n", pkg)
+	fmt.Fprintf(&src,
+		"package %s\n\nimport \"example.com/fakedb\"\n\nvar pool *fakedb.Pool\n\n", pkg)
 	for i := range count {
 		fmt.Fprintf(&src, "func Call%05d() { _ = pool.Exec(\"x\") }\n\n", i)
 	}
@@ -133,7 +134,8 @@ func TestChangedMarkdownStaysUnderTheCommentLimit(t *testing.T) {
 
 	t.Run("dropsNewPackageCallsFirst", func(t *testing.T) {
 		t.Parallel()
-		got := bulkCheckout(t, bulkSize{existing: 100, fresh: spillsCalls}).changed("--format", "markdown")
+		got := bulkCheckout(t, bulkSize{existing: 100, fresh: spillsCalls}).
+			changed("--format", "markdown")
 		require.Equal(t, cli.ExitClean, got.code)
 		assert.LessOrEqual(t, utf8.RuneCountInString(got.stdout), commentLimit)
 		assert.Contains(t, got.stdout,
@@ -142,7 +144,8 @@ func TestChangedMarkdownStaysUnderTheCommentLimit(t *testing.T) {
 		assert.NotContains(t, got.stdout, "not shown")
 		assert.Contains(t, got.stdout, "- Uses outside packages: `example.com/fakedb` (Pool)\n")
 		assert.Contains(t, got.stdout, "**Calls added: 100**")
-		assert.Contains(t, got.stdout, fmt.Sprintf("**New package `bulk`** — 1800 types and functions, %d calls:", spillsCalls))
+		assert.Contains(t, got.stdout, fmt.Sprintf(
+			"**New package `bulk`** — 1800 types and functions, %d calls:", spillsCalls))
 	})
 
 	t.Run("cutsTheMainListAtAWholeFunction", func(t *testing.T) {
@@ -158,13 +161,15 @@ func TestChangedMarkdownStaysUnderTheCommentLimit(t *testing.T) {
 		hidden := total - shown
 		require.Positive(t, hidden)
 		assert.Contains(t, out, fmt.Sprintf(
-			"```\n\n%d more calls in %d functions not shown; run `tiger changed main` for the rest.\n",
+			"```\n\n%d more calls in %d functions not shown; "+
+				"run `tiger changed main` for the rest.\n",
 			hidden, hidden))
 
 		// Every shown header keeps its one call line, and the footer survives.
 		assert.Equal(t, shown, strings.Count(out, "\nweb.Call"))
-		assert.True(t, strings.HasSuffix(out, "or a new implementation behind an unchanged interface. "+
-			"A call moved into a new helper, or a renamed type whose calls changed, shows as removed plus added.</sub>\n"))
+		assert.True(t, strings.HasSuffix(out,
+			"A call moved into a new helper, or a renamed type whose calls changed, "+
+				"shows as removed plus added.</sub>\n"))
 		assert.Equal(t, 1, strings.Count(out, "<!-- tiger-changed -->"))
 	})
 }
