@@ -37,6 +37,10 @@ const usage = `usage:
       its code, tests and reviewer checklist; with no name list every
       pattern, --rule lists the patterns behind a rule code; exit 0 printed,
       2 unknown pattern or rule
+  tiger changed [-C dir] <base>
+      print, for each function, the calls it started or stopped making since
+      the merge base of <base> and HEAD; flags go before <base>; exit 0 for
+      any report, 2 when no report can be produced
   tiger pin [-C dir] [--dry-run] <Name> [<Name>...] [packages]
       freeze each named function's computed facts into //tiger: pins
       written at their targets; exit 0 written or already satisfied,
@@ -65,6 +69,8 @@ func Run(args []string, streams Streams) int {
 		return runGolangci(args[1:], streams)
 	case "pattern":
 		return runPattern(args[1:], streams)
+	case "changed":
+		return runChanged(args[1:], streams)
 	case "pin":
 		return runPin(args[1:], streams)
 	case "help", "-h", "--help":

@@ -37,11 +37,14 @@ tiger budget --write ./...      # lower tiger.budget.yaml to the current counts
 tiger golangci                  # audit .golangci.yml against the auto-rule baseline
 tiger golangci --init           # generate the baseline config for a new project
 tiger golangci --print          # write the baseline to stdout for hand merging
+tiger changed main              # calls each function started or stopped making since main
 ```
 
-Decided in ENG-191 and not built yet: `tiger changed <base>`, which reports
-each struct that started calling something new since the base revision, and
-`tiger pattern <name>`, which prints the pattern a finding points to.
+`tiger changed <base>` compares the merge base of `<base>` and HEAD with the
+working tree and prints, for each function, the calls it added and removed in
+other packages (or in functions of its own package that call another package), then what the report could not see. It exits 0 for any report
+and 2 when no report can be produced. Flags go before `<base>`. ADR-0030
+records the rule.
 
 Exit codes: 0 clean, 1 findings, 2 operational failure (a package that fails
 to load is never reported as clean). A rule either blocks or it is not a rule
