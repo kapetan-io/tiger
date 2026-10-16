@@ -41,7 +41,33 @@ type Function struct {
 type Call struct {
 	Added  bool
 	Callee string
+	// The fields from Target to Sites exist for the JSON report; the text report
+	// prints only Callee. Target is the callee's type or free function, and
+	// Method the method called on it, or the function's own name for a free function.
+	Target        string
+	Method        string
+	TargetPackage string
+	InModule      bool
+	SamePackage   bool
+	// Dependency says whether the call changed which packages the function's
+	// owner depends on. It is empty for a same-package call.
+	Dependency Dependency
+	// Sites are where the call is written, at head for an added call and at
+	// base for a removed one.
+	Sites []callinventory.Site
 }
+
+// Dependency is what a call did to the owner's dependency on the callee's package.
+type Dependency string
+
+const (
+	// DependencyNew is an added call into a package the owner did not call at base.
+	DependencyNew Dependency = "new"
+	// DependencyDropped is a removed call into a package the owner no longer calls.
+	DependencyDropped Dependency = "dropped"
+	// DependencyKept is a call into a package the owner calls at both revisions.
+	DependencyKept Dependency = "kept"
+)
 
 // Rename is an owner that disappeared while one with identical callees
 // appeared in the same package.
@@ -64,8 +90,13 @@ type NewPackage struct {
 
 // calls counts the added calls in the package.
 func (p NewPackage) calls() int {
+	return callTotal(p.Functions)
+}
+
+// callTotal counts the calls under a list of functions.
+func callTotal(functions []Function) int {
 	total := 0
-	for _, fn := range p.Functions {
+	for _, fn := range functions {
 		total += len(fn.Calls)
 	}
 	return total
@@ -86,8 +117,14 @@ type Use struct {
 
 // RemovedPackage is a package that no longer exists at head.
 type RemovedPackage struct {
-	Name   string
-	Owners int
+	Name      string
+	Owners    int
+	Functions []Function
+}
+
+// calls counts the removed calls in the package.
+func (p RemovedPackage) calls() int {
+	return callTotal(p.Functions)
 }
 
 // Scope says what was compared and what was left out.
@@ -138,6 +175,9 @@ type owner struct {
 type side struct {
 	inv    callinventory.Inventory
 	owners map[string]owner
+	// reached is the printed name of every other package each owner calls,
+	// initializers included, since a call they make is still a dependency.
+	reached map[string]map[string]bool
 	// count is how many owners each package has.
 	count map[string]int
 }
@@ -174,12 +214,14 @@ func Compare(sides Sides) Report {
 
 	report := Report{Renamed: renamed}
 	folded := map[string][]Function{}
+	sunk := map[string][]Function{}
 	for _, name := range c.functionNames() {
 		fn := c.function(name)
 		if len(fn.Calls) == 0 || renamedOwners[fn.Owner] {
 			continue
 		}
 		if slices.Contains(gonePackages, fn.Package) {
+			sunk[fn.Package] = append(sunk[fn.Package], fn)
 			continue
 		}
 		if slices.Contains(newPackages, fn.Package) {
@@ -198,8 +240,9 @@ func Compare(sides Sides) Report {
 	}
 	for _, pkg := range gonePackages {
 		report.RemovedPackages = append(report.RemovedPackages, RemovedPackage{
-			Name:   pkg,
-			Owners: c.base.count[pkg],
+			Name:      pkg,
+			Owners:    c.base.count[pkg],
+			Functions: sunk[pkg],
 		})
 	}
 	report.Scope = Scope{
@@ -244,9 +287,20 @@ func without(inv callinventory.Inventory, skip map[string]bool) callinventory.In
 // newSide gathers each owner and the types and functions in other packages it
 // calls. An init function is not an owner a reviewer would name.
 func newSide(inv callinventory.Inventory) side {
-	s := side{inv: inv, owners: map[string]owner{}, count: map[string]int{}}
+	s := side{
+		inv: inv, owners: map[string]owner{}, count: map[string]int{},
+		reached: map[string]map[string]bool{},
+	}
 	for _, name := range slices.Sorted(maps.Keys(inv.Functions)) {
 		fn := inv.Functions[name]
+		if s.reached[fn.Owner] == nil {
+			s.reached[fn.Owner] = map[string]bool{}
+		}
+		for _, callee := range slices.Sorted(maps.Keys(fn.Calls)) {
+			if call := fn.Calls[callee]; !call.SamePackage {
+				s.reached[fn.Owner][call.Package] = true
+			}
+		}
 		if fn.Initializer {
 			continue
 		}
@@ -333,12 +387,12 @@ func (c comparison) function(name string) Function {
 	}
 	for _, key := range slices.Sorted(maps.Keys(before.Calls)) {
 		if _, kept := after.Calls[key]; !kept && counts(before.Calls[key], c.base.inv) {
-			fn.Calls = append(fn.Calls, Call{Callee: before.Calls[key].Callee})
+			fn.Calls = append(fn.Calls, c.call(before.Calls[key], removal, fn.Owner))
 		}
 	}
 	for _, key := range slices.Sorted(maps.Keys(after.Calls)) {
 		if _, was := before.Calls[key]; !was && counts(after.Calls[key], c.head.inv) {
-			fn.Calls = append(fn.Calls, Call{Added: true, Callee: after.Calls[key].Callee})
+			fn.Calls = append(fn.Calls, c.call(after.Calls[key], addition, fn.Owner))
 		}
 	}
 	slices.SortFunc(fn.Calls, func(a, b Call) int {
@@ -351,6 +405,42 @@ func (c comparison) function(name string) Function {
 		return strings.Compare(a.Callee, b.Callee)
 	})
 	return fn
+}
+
+// direction says which revision a call exists at.
+type direction int
+
+const (
+	removal direction = iota
+	addition
+)
+
+// call builds the line for a call that exists at one revision only. An added
+// call reads the owner's packages at base and a removed one reads them at head.
+func (c comparison) call(found callinventory.Call, change direction, owner string) Call {
+	call := Call{
+		Added:         change == addition,
+		Callee:        found.Callee,
+		Target:        found.Target,
+		Method:        found.Method,
+		TargetPackage: found.Package,
+		InModule:      found.InModule,
+		SamePackage:   found.SamePackage,
+		Sites:         found.Sites,
+	}
+	if found.SamePackage {
+		return call
+	}
+	other := c.head
+	call.Dependency = DependencyDropped
+	if change == addition {
+		other = c.base
+		call.Dependency = DependencyNew
+	}
+	if other.reached[owner][found.Package] {
+		call.Dependency = DependencyKept
+	}
+	return call
 }
 
 // counts decides whether a call prints. A call into another package always

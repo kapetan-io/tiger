@@ -1,0 +1,89 @@
+{
+  "schema": "tiger.changed/v1",
+  "base": {
+    "ref": "main",
+    "commit": "826d5efe7c423a8f0dd4938b9c546f0bf5f6c325",
+    "merge_base": true
+  },
+  "head": {
+    "commit": "c65c19ba76a25051a9c977aebcffaefc2d6f3232",
+    "dirty": false
+  },
+  "scope": {
+    "owners": 3,
+    "packages": 1,
+    "skipped_generated_files": [],
+    "not_compared": []
+  },
+  "counts": {
+    "calls_added": 2,
+    "calls_removed": 0,
+    "new_packages": 0,
+    "removed_packages": 0,
+    "renamed": 0
+  },
+  "functions": [
+    {
+      "function": "service.Service.Delete",
+      "owner": "service.Service",
+      "method": "Delete",
+      "calls": [
+        {
+          "change": "added",
+          "callee": "service.Audit.Record",
+          "target": "service.Audit",
+          "method": "Record",
+          "target_package": "service",
+          "target_in_module": true,
+          "same_package": true,
+          "package_dependency": null,
+          "sites": [
+            {
+              "file": "service/service.go",
+              "line": 32,
+              "rev": "head"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "function": "service.Service.trim",
+      "owner": "service.Service",
+      "method": "trim",
+      "calls": [
+        {
+          "change": "added",
+          "callee": "example.com/fakedb.Ping",
+          "target": "example.com/fakedb.Ping",
+          "method": "Ping",
+          "target_package": "example.com/fakedb",
+          "target_in_module": false,
+          "same_package": false,
+          "package_dependency": "new",
+          "sites": [
+            {
+              "file": "service/service.go",
+              "line": 39,
+              "rev": "head"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "renamed": [],
+  "new_packages": [],
+  "removed_packages": [],
+  "blind_spots": [
+    "outside-without-os",
+    "io-writer",
+    "channel-send",
+    "interface-implementation",
+    "same-owner",
+    "same-package-leaf",
+    "same-package-interface",
+    "moved-to-helper",
+    "renamed-type"
+  ]
+}

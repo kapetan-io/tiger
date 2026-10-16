@@ -316,8 +316,8 @@ func TestChangedRefusesWhatItCannotCompare(t *testing.T) {
 		},
 		{
 			name:    "unknownFormat",
-			args:    []string{"changed", "-C", c.dir, "--format", "json", "main"},
-			wantErr: `unknown format "json"`,
+			args:    []string{"changed", "-C", c.dir, "--format", "yaml", "main"},
+			wantErr: `unknown format "yaml"`,
 		},
 		{
 			name:    "unknownFlag",

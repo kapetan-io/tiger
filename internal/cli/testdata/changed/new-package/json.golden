@@ -1,0 +1,188 @@
+{
+  "schema": "tiger.changed/v1",
+  "base": {
+    "ref": "main",
+    "commit": "5182b9f532334cfcafb62b25cc5e1cb543bd4ff0",
+    "merge_base": true
+  },
+  "head": {
+    "commit": "729bd71e2dbfd14e70a5136b1fc7a235ff0174c5",
+    "dirty": false
+  },
+  "scope": {
+    "owners": 4,
+    "packages": 3,
+    "skipped_generated_files": [],
+    "not_compared": []
+  },
+  "counts": {
+    "calls_added": 1,
+    "calls_removed": 0,
+    "new_packages": 1,
+    "removed_packages": 0,
+    "renamed": 0
+  },
+  "functions": [
+    {
+      "function": "web.Handler.Greet",
+      "owner": "web.Handler",
+      "method": "Greet",
+      "calls": [
+        {
+          "change": "added",
+          "callee": "billing.Ledger.Charge",
+          "target": "billing.Ledger",
+          "method": "Charge",
+          "target_package": "billing",
+          "target_in_module": true,
+          "same_package": false,
+          "package_dependency": "new",
+          "sites": [
+            {
+              "file": "web/web.go",
+              "line": 10,
+              "rev": "head"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "renamed": [],
+  "new_packages": [
+    {
+      "package": "billing",
+      "owners": 2,
+      "calls": 4,
+      "uses": {
+        "existing": [
+          {
+            "package": "store",
+            "symbols": [
+              "Users"
+            ]
+          }
+        ],
+        "new": [],
+        "outside": [
+          {
+            "package": "example.com/fakedb",
+            "symbols": [
+              "Pool"
+            ]
+          }
+        ]
+      },
+      "functions": [
+        {
+          "function": "billing.Ledger.Charge",
+          "owner": "billing.Ledger",
+          "method": "Charge",
+          "calls": [
+            {
+              "change": "added",
+              "callee": "store.Users.Find",
+              "target": "store.Users",
+              "method": "Find",
+              "target_package": "store",
+              "target_in_module": true,
+              "same_package": false,
+              "package_dependency": "new",
+              "sites": [
+                {
+                  "file": "billing/billing.go",
+                  "line": 14,
+                  "rev": "head"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "function": "billing.Ledger.flush",
+          "owner": "billing.Ledger",
+          "method": "flush",
+          "calls": [
+            {
+              "change": "added",
+              "callee": "billing.record",
+              "target": "billing.record",
+              "method": "record",
+              "target_package": "billing",
+              "target_in_module": true,
+              "same_package": true,
+              "package_dependency": null,
+              "sites": [
+                {
+                  "file": "billing/billing.go",
+                  "line": 24,
+                  "rev": "head"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "function": "billing.Ledger.write",
+          "owner": "billing.Ledger",
+          "method": "write",
+          "calls": [
+            {
+              "change": "added",
+              "callee": "example.com/fakedb.Pool.Exec",
+              "target": "example.com/fakedb.Pool",
+              "method": "Exec",
+              "target_package": "example.com/fakedb",
+              "target_in_module": false,
+              "same_package": false,
+              "package_dependency": "new",
+              "sites": [
+                {
+                  "file": "billing/billing.go",
+                  "line": 20,
+                  "rev": "head"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "function": "billing.record",
+          "owner": "billing.record",
+          "method": null,
+          "calls": [
+            {
+              "change": "added",
+              "callee": "example.com/fakedb.Pool.Close",
+              "target": "example.com/fakedb.Pool",
+              "method": "Close",
+              "target_package": "example.com/fakedb",
+              "target_in_module": false,
+              "same_package": false,
+              "package_dependency": "new",
+              "sites": [
+                {
+                  "file": "billing/billing.go",
+                  "line": 28,
+                  "rev": "head"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "removed_packages": [],
+  "blind_spots": [
+    "outside-without-os",
+    "io-writer",
+    "channel-send",
+    "interface-implementation",
+    "same-owner",
+    "same-package-leaf",
+    "same-package-interface",
+    "moved-to-helper",
+    "renamed-type"
+  ]
+}

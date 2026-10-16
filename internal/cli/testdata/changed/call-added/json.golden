@@ -1,0 +1,65 @@
+{
+  "schema": "tiger.changed/v1",
+  "base": {
+    "ref": "main",
+    "commit": "60a62aa14ab50e7914ea8c5f56bd1d4a23922ff3",
+    "merge_base": true
+  },
+  "head": {
+    "commit": "fc112d7de911fe8cb82f4ad2caf6539926c9a0bc",
+    "dirty": false
+  },
+  "scope": {
+    "owners": 1,
+    "packages": 1,
+    "skipped_generated_files": [],
+    "not_compared": []
+  },
+  "counts": {
+    "calls_added": 1,
+    "calls_removed": 0,
+    "new_packages": 0,
+    "removed_packages": 0,
+    "renamed": 0
+  },
+  "functions": [
+    {
+      "function": "web.Handler.Greet",
+      "owner": "web.Handler",
+      "method": "Greet",
+      "calls": [
+        {
+          "change": "added",
+          "callee": "example.com/fakedb.Pool.Exec",
+          "target": "example.com/fakedb.Pool",
+          "method": "Exec",
+          "target_package": "example.com/fakedb",
+          "target_in_module": false,
+          "same_package": false,
+          "package_dependency": "new",
+          "sites": [
+            {
+              "file": "web/web.go",
+              "line": 10,
+              "rev": "head"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "renamed": [],
+  "new_packages": [],
+  "removed_packages": [],
+  "blind_spots": [
+    "outside-without-os",
+    "io-writer",
+    "channel-send",
+    "interface-implementation",
+    "same-owner",
+    "same-package-leaf",
+    "same-package-interface",
+    "moved-to-helper",
+    "renamed-type"
+  ]
+}
