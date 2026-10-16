@@ -21,7 +21,7 @@ func runChanged(args []string, streams Streams) int {
 	flags := flag.NewFlagSet("tiger changed", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	chdir := flags.String("C", ".", "run as if tiger was started in this directory")
-	format := flags.String("format", "text", "report format")
+	format := flags.String("format", "text", "report format: text or json")
 	if err := flags.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			err = errors.New("usage: tiger changed [-C dir] <base>")
@@ -38,9 +38,9 @@ func runChanged(args []string, streams Streams) int {
 				"as in: tiger changed [-C dir] <base>",
 			flags.Arg(1)))
 	}
-	if *format != "text" {
+	if *format != "text" && *format != "json" {
 		return changedFailure(streams, fmt.Errorf(
-			"unknown format %q; the formats are: text", *format))
+			"unknown format %q; the formats are: text, json", *format))
 	}
 	repo, err := revision.Open(*chdir)
 	if err != nil {
@@ -53,6 +53,14 @@ func runChanged(args []string, streams Streams) int {
 	report, err := compareRevisions(*chdir, rev)
 	if err != nil {
 		return changedFailure(streams, err)
+	}
+	if *format == "json" {
+		data, err := report.JSON(rev)
+		if err != nil {
+			return changedFailure(streams, err)
+		}
+		streams.Stdout.Write(data)
+		return ExitClean
 	}
 	fmt.Fprint(streams.Stdout, report.Text(rev))
 	return ExitClean

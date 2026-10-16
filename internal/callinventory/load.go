@@ -6,6 +6,7 @@ import (
 	"go/ast"
 	"go/token"
 	"go/types"
+	"maps"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -80,6 +81,14 @@ func Load(dir string) (Inventory, error) {
 	}
 	if load.err != nil {
 		return Inventory{}, load.err
+	}
+	for _, header := range slices.Sorted(maps.Keys(inv.Functions)) {
+		fn := inv.Functions[header]
+		for _, key := range slices.Sorted(maps.Keys(fn.Calls)) {
+			call := fn.Calls[key]
+			call.Sites = orderedSites(call.Sites)
+			fn.Calls[key] = call
+		}
 	}
 	slices.Sort(inv.Generated)
 	slices.Sort(inv.NotCompared)
@@ -322,6 +331,7 @@ func (l *loader) function(decl *ssa.Function) error {
 				if !ok {
 					continue
 				}
+				found.Sites = append(record.Calls[found.Key()].Sites, l.site(instr))
 				record.Calls[found.Key()] = found
 				record.CallsOut = record.CallsOut || !found.SamePackage
 			}
@@ -333,6 +343,26 @@ func (l *loader) function(decl *ssa.Function) error {
 	}
 	l.inv.Functions[site.Header] = record
 	return nil
+}
+
+// site is where an instruction is written, relative to the run directory.
+func (l *loader) site(instr ssa.Instruction) Site {
+	pos := l.fset.Position(instr.Pos())
+	rel, err := filepath.Rel(l.run, pos.Filename)
+	if err != nil {
+		rel = pos.Filename
+	}
+	return Site{File: filepath.ToSlash(rel), Line: pos.Line}
+}
+
+// orderedSites puts sites in file and line order and drops repeats, because a
+// site is a file and line: two calls on one line, or one call compiled to
+// several instructions, give a reader the same place to open.
+func orderedSites(sites []Site) []Site {
+	slices.SortFunc(sites, func(a, b Site) int {
+		return cmp.Or(strings.Compare(a.File, b.File), cmp.Compare(a.Line, b.Line))
+	})
+	return slices.Compact(sites)
 }
 
 func receiver(t types.Type) *types.Named {
@@ -399,6 +429,7 @@ func (l *loader) other(pkg *types.Package, target callTarget) Call {
 		Callee:   name,
 		Target:   name,
 		Symbol:   target.Member,
+		Method:   cmp.Or(target.Method, target.Member),
 		Package:  l.packageName(refOf(pkg)),
 		Path:     pkg.Path(),
 		InModule: l.inModule(pkg.Path()),
