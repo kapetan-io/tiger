@@ -2,6 +2,7 @@ package cli_test
 
 import (
 	"flag"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -177,6 +178,9 @@ func TestChangedGoldens(t *testing.T) {
 		{name: "context-shown"},
 		{name: "generated-head-only"},
 		{name: "partial-load"},
+		{name: "sibling-owner-removed"},
+		{name: "owner-replaced"},
+		{name: "generated-base-only"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
@@ -459,4 +463,162 @@ func TestChangedReportsAnEmptyDiffWithItsFooter(t *testing.T) {
 	assert.True(t, strings.HasPrefix(lines[len(lines)-2],
 		"Compared 1 types and functions in 1 packages; skipped all test files"))
 	assert.True(t, strings.HasPrefix(lines[len(lines)-1], "Tiger can't see:"))
+}
+
+// TestChangedCountsEqualTheVisibleLines covers invariant 3 and the single
+// category of each difference.
+//
+// Goal: the numbers on the counts line equal the unindented + and - lines of
+// the main list, so a call folded under a new package or a removed package is
+// never also counted in the main list.
+func TestChangedCountsEqualTheVisibleLines(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		added   int
+		removed int
+	}{
+		{name: "call-added", added: 1},
+		{name: "call-removed", removed: 1},
+		{name: "sibling-owner", added: 2},
+		{name: "sibling-owner-removed", removed: 2},
+		{name: "unchanged-caller", added: 1, removed: 1},
+		{name: "new-package", added: 1},
+		{name: "removed-package", removed: 1},
+		{name: "rename"},
+		{name: "rename-changed-calls", added: 2, removed: 1},
+		{name: "owner-replaced", added: 1, removed: 1},
+		{name: "closure", added: 2},
+		{name: "partial-load", added: 1},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			got := fixture(t, test.name).changed()
+			require.Equal(t, cli.ExitClean, got.code)
+			var added, removed int
+			for _, line := range strings.Split(got.stdout, "\n") {
+				switch {
+				case strings.HasPrefix(line, "+   "):
+					added++
+				case strings.HasPrefix(line, "-   "):
+					removed++
+				}
+			}
+			assert.Equal(t, test.added, added)
+			assert.Equal(t, test.removed, removed)
+			assert.Contains(t, got.stdout,
+				fmt.Sprintf("\nCalls added: %d · Calls removed: %d", test.added, test.removed))
+		})
+	}
+}
+
+// TestChangedNamesTheBaseRevision covers the base label.
+//
+// Goal: the title prints the ref and its short hash for a branch name, the
+// short hash alone for a hash prefix of any length, and the merge base when
+// it differs from the tip of the ref, whether the ref is a name or a hash.
+func TestChangedNamesTheBaseRevision(t *testing.T) {
+	c := fixture(t, "call-added")
+	head := c.short("HEAD")
+	title := func(base string) string {
+		got := run(t, "changed", "-C", c.dir, base)
+		require.Equal(t, cli.ExitClean, got.code)
+		first, _, _ := strings.Cut(got.stdout, "\n")
+		return first
+	}
+
+	tip := c.git("rev-parse", "main")
+	split := c.short("main")
+	assert.Equal(t, "tiger changed: main ("+split+") -> "+head, title("main"))
+	assert.Equal(t, "tiger changed: "+split+" -> "+head, title(split))
+	assert.Equal(t, "tiger changed: "+split+" -> "+head, title(tip[:10]))
+	assert.Equal(t, "tiger changed: "+split+" -> "+head, title(tip))
+	assert.Equal(t, "tiger changed: HEAD~1 ("+split+") -> "+head, title("HEAD~1"))
+
+	c.git("checkout", "-q", "main")
+	c.write("store/store.go", queueSource)
+	c.commit("main moves on")
+	c.git("checkout", "-q", "feature")
+	moved := c.short("main")
+	assert.Equal(t, "tiger changed: main (merge base "+split+") -> "+head, title("main"))
+	assert.Equal(t, "tiger changed: "+moved+" (merge base "+split+") -> "+head, title(moved))
+	assert.Equal(t, "tiger changed: main~1 ("+split+") -> "+head, title("main~1"))
+}
+
+const extraSource = `package web
+
+import "example.com/fakedb"
+
+func Extra() error {
+	return fakedb.Ping(1)
+}
+`
+
+// TestChangedCountsAnUntrackedFileAsUncommitted covers the dirty head.
+//
+// Goal: a Go file git has never seen marks the head as having uncommitted
+// changes, and its calls are reported.
+func TestChangedCountsAnUntrackedFileAsUncommitted(t *testing.T) {
+	c := fixture(t, "call-added")
+	c.write("web/extra.go", extraSource)
+
+	got := c.changed()
+	require.Equal(t, cli.ExitClean, got.code)
+	assert.Contains(t, got.stdout, " -> "+c.short("HEAD")+" + uncommitted changes\n")
+	assert.Contains(t, got.stdout, "web.Extra\n+   example.com/fakedb.Ping\n")
+	assert.Contains(t, got.stdout, "Calls added: 2 · Calls removed: 0\n")
+}
+
+// TestChangedPrintsIdenticalBytesForSeveralChanges covers determinism.
+//
+// Goal: reports with several functions, callees, removals and a rename print
+// the same bytes on every run, whatever order the maps inside the tool visit.
+func TestChangedPrintsIdenticalBytesForSeveralChanges(t *testing.T) {
+	for _, name := range []string{"sibling-owner", "closure", "rename-changed-calls"} {
+		c := fixture(t, name)
+		first := c.changed()
+		require.Equal(t, cli.ExitClean, first.code)
+		for range 4 {
+			assert.Equal(t, first.stdout, c.changed().stdout)
+		}
+	}
+}
+
+const spinSource = `package fakedb
+
+// Spin and Twirl call each other and never reach os, so a walk that finds
+// nothing has to stop on the cycle.
+func Spin(n int) int {
+	if n <= 0 {
+		return 0
+	}
+	return Twirl(n - 1)
+}
+
+func Twirl(n int) int {
+	return Spin(n)
+}
+`
+
+// TestChangedStopsOnARecursiveOutsideFunction covers the syscall-reach walk.
+//
+// Goal: a free function of an outside package whose body recurses without ever
+// reaching the operating system is left out, the walk ends, and a sibling that
+// does reach it still prints.
+func TestChangedStopsOnARecursiveOutsideFunction(t *testing.T) {
+	c := newCheckout(t)
+	c.write("go.mod", shopModule)
+	c.copyFixture("fakedb", "fakedb")
+	c.write("fakedb/spin.go", spinSource)
+	c.copyFixture("recursive-pure/base", ".")
+	c.commit("base")
+	c.git("checkout", "-q", "-b", "feature")
+	c.git("rm", "-rfq", "--", "web")
+	c.copyFixture("recursive-pure/head", ".")
+	c.commit("head")
+
+	got := c.changed()
+	require.Equal(t, cli.ExitClean, got.code)
+	assert.Contains(t, got.stdout, "Calls added: 1 · Calls removed: 0\n")
+	assert.Contains(t, got.stdout, "web.Handler.Greet\n+   example.com/fakedb.Ping\n\n")
+	assert.NotContains(t, got.stdout, "Spin")
 }
