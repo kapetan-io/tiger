@@ -6,6 +6,10 @@ Date: 2026-10-12
 
 Accepted
 
+Amended by [ADR-0030](0030-tiger-changed-reports-every-added-and-removed-call.md): the report lists
+every call added and removed by function, and the syscall-reach filter applies only to packages
+outside the module.
+
 Amends [ADR-0007](0007-tiger-pin-never-rewrites-an-existing-pin.md) and
 [ADR-0008](0008-pin-placement-lives-in-one-writer-not-in-suggested-fixes.md), which now cover
 variant pins only. Amends [ADR-0012](0012-a-rule-either-blocks-or-does-not-exist.md), whose

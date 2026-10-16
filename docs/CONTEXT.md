@@ -73,9 +73,32 @@ removed both, with their pins, the stdlib effects table, and the `effects` and `
 because they missed every call through an interface or a library.
 
 **`tiger changed`**:
-The report, not a rule, that lists for each struct or free function the types and functions it
-calls now that it did not call at a base revision. It replaces effect and frame pins (ADR-0026).
-Decided, not built.
+The report, not a rule, that lists for each **function** the **calls added** and **calls removed**
+between the merge base of a base revision and the working tree; it replaces effect and frame pins
+(ADR-0026 and its amendment, ADR-0030).
+_Avoid_: diff, effect report
+
+**Owner**:
+In a `tiger changed` report, the named type that holds a method where a call is written, or the free
+function itself.
+
+**Function header**:
+In a `tiger changed` report, the line naming where calls are written: `<pkg>.<Type>.<method>` for a
+method, `<pkg>.<function>` for a free function.
+
+**Callee**:
+In a `tiger changed` report, what a function calls: a function, type or interface in another package
+(outside the module only if it passes the mixed filter), or a function of a different owner in the
+same package whose own body calls another package.
+_Avoid_: edge, target (the prototype's terms)
+
+**Call added** / **Call removed**:
+One (function, callee) pair present at head and not at the merge base, or the reverse, printed as one
+`+` or `-` line.
+_Avoid_: new edge, `~` change
+
+Relationships: a **function header** has one or more **calls added** or **calls removed** under it;
+each names one **callee**; every function belongs to one **owner**.
 
 **Pattern**:
 A runnable Go package under `patterns/<name>/` showing the correct shape where a rule stops short

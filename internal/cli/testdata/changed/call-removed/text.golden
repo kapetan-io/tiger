@@ -1,0 +1,10 @@
+tiger changed: main (6e42a58) -> 2a18093
+Functions in this change that started or stopped calling another package, or a function in their own package that calls one. Check that each one is intended.
+
+Calls added: 0 · Calls removed: 1
+
+web.Handler.Greet
+-   example.com/fakedb.Pool.Exec
+
+Compared 1 types and functions in 1 packages; skipped all test files (no generated files found).
+Tiger can't see: calls into outside packages that never reach the operating system (fmt, strings, error libraries), calls between methods of one type, calls inside a package to a function that calls no other package or to an interface the package declares, writes through io.Writer, work handed over a channel, or a new implementation behind an unchanged interface. A call moved into a new helper, or a renamed type whose calls changed, shows as removed plus added.
