@@ -64,6 +64,12 @@ permissions:
   contents: read
   pull-requests: write
 
+# One run per pull request at a time. Without this, two quick pushes can both find
+# no comment and post two, or an older run can finish last and overwrite the newer report.
+concurrency:
+  group: tiger-changed-${{ github.event.number }}
+  cancel-in-progress: true
+
 jobs:
   changed:
     runs-on: ubuntu-latest
@@ -79,7 +85,7 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-      - run: go install github.com/kapetan-io/tiger/cmd/tiger@<version>   # a released tag, as in the plugin install above
+      - run: go install github.com/kapetan-io/tiger/cmd/tiger@<version>   # a released tag, as in "Running under golangci-lint" below
       - name: post the report as one sticky comment
         env:
           GH_TOKEN: ${{ github.token }}
@@ -268,7 +274,7 @@ loads still fire.
 
 Findings from a rule that a pattern backs end with ``— see `tiger pattern <name>` ``, under the plugin as under
 `tiger check`. The pattern text lives in the `tiger` binary, so a project that runs only the plugin still
-installs `tiger` (`go install github.com/kapetan-io/tiger/cmd/tiger@<version>   # a released tag, as in the plugin install above`, the same version as the
+installs `tiger` (`go install github.com/kapetan-io/tiger/cmd/tiger@<version>   # a released tag, as in "Running under golangci-lint" below`, the same version as the
 plugin) for its agents to run `tiger pattern`. CI publishes both binaries together as the
 `tiger-and-plugin` artifact.
 

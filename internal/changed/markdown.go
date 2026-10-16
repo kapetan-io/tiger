@@ -52,7 +52,7 @@ type view struct {
 func (r Report) markdown(rev revision.Comparison, show view) string {
 	var out strings.Builder
 	base := splitBase(rev)
-	fmt.Fprintf(&out, "%s\n#### tiger changed: `%s`", marker, base.name)
+	fmt.Fprintf(&out, "%s\n#### tiger changed: %s", marker, codeSpan(base.name))
 	if base.note != "" {
 		fmt.Fprintf(&out, " (%s)", base.note)
 	}
@@ -80,8 +80,8 @@ func (r Report) markdown(rev revision.Comparison, show view) string {
 				calls += len(fn.Calls)
 			}
 			fmt.Fprintf(&out, "%d more calls in %d functions not shown; "+
-				"run `tiger changed %s` for the rest.\n\n",
-				calls, len(hidden), rev.BaseRef)
+				"run %s for the rest.\n\n",
+				calls, len(hidden), codeSpan("tiger changed "+rev.BaseRef))
 		}
 	}
 	for _, rename := range r.Renamed {
@@ -126,7 +126,8 @@ func writeNewPackageMarkdown(out *strings.Builder, pkg NewPackage, show view, ba
 	switch {
 	case pkg.calls() == 0:
 	case show.omitCalls:
-		fmt.Fprintf(out, "Too long for a comment; run `tiger changed %s` for every call.\n\n", base)
+		fmt.Fprintf(out, "Too long for a comment; run %s for every call.\n\n",
+			codeSpan("tiger changed "+base))
 	default:
 		fmt.Fprintf(out, "<details>\n<summary>Every call from <code>%s</code>, "+
 			"by function (%d)</summary>\n\n",
@@ -135,4 +136,23 @@ func writeNewPackageMarkdown(out *strings.Builder, pkg NewPackage, show view, ba
 		writeList(out, pkg.Functions, "")
 		out.WriteString("```\n\n</details>\n\n")
 	}
+}
+
+// codeSpan quotes text for markdown. Git accepts backticks in a ref name, so
+// the delimiter is one backtick longer than the longest run inside the text.
+func codeSpan(text string) string {
+	longest, run := 0, 0
+	for _, char := range text {
+		if char == '`' {
+			run++
+			longest = max(longest, run)
+		} else {
+			run = 0
+		}
+	}
+	fence := strings.Repeat("`", longest+1)
+	if longest > 0 {
+		return fence + " " + text + " " + fence
+	}
+	return fence + text + fence
 }

@@ -173,3 +173,16 @@ func TestChangedMarkdownStaysUnderTheCommentLimit(t *testing.T) {
 		assert.Equal(t, 1, strings.Count(out, "<!-- tiger-changed -->"))
 	})
 }
+
+// TestChangedMarkdownQuotesABaseRefWithBackticks covers a ref that would end a code span.
+//
+// Goal: a base ref containing a backtick sits inside a code span whose
+// delimiter is longer than any backtick run in it.
+func TestChangedMarkdownQuotesABaseRefWithBackticks(t *testing.T) {
+	c := fixture(t, "call-added")
+	c.git("branch", "release`candidate", "main")
+
+	got := run(t, "changed", "-C", c.dir, "--format", "markdown", "release`candidate")
+	require.Equal(t, cli.ExitClean, got.code)
+	assert.Contains(t, got.stdout, "#### tiger changed: `` release`candidate `` (")
+}
