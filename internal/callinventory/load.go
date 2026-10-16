@@ -55,14 +55,15 @@ func Load(dir string) (Inventory, error) {
 		prefix = ""
 	}
 	load := &loader{
-		run:     run,
-		module:  module.Path,
-		prefix:  filepath.ToSlash(prefix),
-		inv:     &inv,
-		reaches: importReach(roots),
-		body:    newBodyReach(),
-		roots:   map[string]bool{},
-		skipped: map[string]bool{},
+		run:      run,
+		module:   module.Path,
+		prefix:   filepath.ToSlash(prefix),
+		inv:      &inv,
+		reaches:  importReach(roots),
+		body:     newBodyReach(),
+		compared: map[string]bool{},
+		skipped:  map[string]bool{},
+		names:    map[string]string{},
 	}
 	load.classify(roots)
 	prog, _ := ssautil.AllPackages(roots, 0)
@@ -99,10 +100,13 @@ type loader struct {
 	inv     *Inventory
 	reaches map[string]bool
 	body    *bodyReach
-	// roots is the healthy module packages under the run directory, by import path.
-	roots map[string]bool
+	// compared is the healthy module packages under the run directory, by import path.
+	compared map[string]bool
 	// skipped is the set of generated files, by absolute path.
 	skipped map[string]bool
+	// names maps each printed package name to its import path, to catch two
+	// packages that would print the same.
+	names map[string]string
 	// err is the first failure of a bounded walk, which stops the load.
 	err error
 }
@@ -144,6 +148,11 @@ func (l *loader) classify(roots []*packages.Package) {
 			return
 		}
 		name := l.packageName(pkgRef{Path: pkg.PkgPath, Name: pkg.Name})
+		if other, taken := l.names[name]; taken && other != pkg.PkgPath {
+			l.err = cmp.Or(l.err, fmt.Errorf(
+				"two packages print as %s (%s and %s)", name, other, pkg.PkgPath))
+		}
+		l.names[name] = pkg.PkgPath
 		if pkg.IllTyped || len(pkg.Errors) > 0 {
 			l.inv.NotCompared = append(l.inv.NotCompared, name)
 			return
@@ -152,7 +161,7 @@ func (l *loader) classify(roots []*packages.Package) {
 		if !underRun[pkg.PkgPath] {
 			return
 		}
-		l.roots[pkg.PkgPath] = true
+		l.compared[pkg.PkgPath] = true
 		for _, file := range pkg.Syntax {
 			if ast.IsGenerated(file) {
 				l.skip(pkg.Fset.File(file.Pos()).Name())
@@ -216,7 +225,7 @@ var errTooManyClosures = fmt.Errorf("a function holds more than %d function lite
 func (l *loader) walk(prog *ssa.Program, roots []*packages.Package) error {
 	for _, pkg := range roots {
 		built := prog.ImportedPackage(pkg.PkgPath)
-		if built == nil || !l.roots[pkg.PkgPath] {
+		if built == nil || !l.compared[pkg.PkgPath] {
 			continue
 		}
 		for _, file := range pkg.Syntax {
@@ -254,8 +263,8 @@ type declaration struct {
 	Method string
 }
 
-// declared names a declared function. Both a function called init#1 and the
-// package initializer belong to the package's init.
+// declared names a declared function. SSA calls a second init function init#1; it
+// files under the package's init with the synthesized package initializer.
 func (l *loader) declared(fn *ssa.Function) declaration {
 	pkg := fn.Package().Pkg
 	if recv := fn.Signature.Recv(); recv != nil {
@@ -276,13 +285,13 @@ func (l *loader) function(decl *ssa.Function) error {
 		return nil
 	}
 	from := decl.Package().Pkg
-	named := l.declared(decl)
-	record, ok := l.inv.Functions[named.Header]
+	site := l.declared(decl)
+	record, ok := l.inv.Functions[site.Header]
 	if !ok {
 		record = Function{
 			Package:     l.packageName(refOf(from)),
-			Owner:       named.Owner,
-			Initializer: decl.Signature.Recv() == nil && named.Method == "init",
+			Owner:       site.Owner,
+			Initializer: decl.Signature.Recv() == nil && site.Method == "init",
 			Calls:       map[string]Call{},
 		}
 	}
@@ -295,7 +304,7 @@ func (l *loader) function(decl *ssa.Function) error {
 				if !ok || l.skipped[l.fset.Position(instr.Pos()).Filename] {
 					continue
 				}
-				found, ok := l.callee(call.Common(), from, named.Owner)
+				found, ok := l.callee(call.Common(), from, site.Owner)
 				if !ok {
 					continue
 				}
@@ -308,7 +317,7 @@ func (l *loader) function(decl *ssa.Function) error {
 	if i == maxClosures && i < len(queue) {
 		return errTooManyClosures
 	}
-	l.inv.Functions[named.Header] = record
+	l.inv.Functions[site.Header] = record
 	return nil
 }
 
@@ -396,9 +405,9 @@ func (l *loader) sibling(pkg *types.Package, target callTarget, owner string) (C
 	return call, true
 }
 
-// keep decides whether an outside callee talks to the world. A free function
-// is judged by its own body, a method by its package, because a static walk
-// loses the path from os.File.Close to syscall but fmt.Errorf never reaches it.
+// keep decides whether an outside callee talks to the world. A free function is
+// judged by its own body. A method is judged by whether its package imports
+// syscall, because a static walk cannot follow os.File.Close down to it.
 func (l *loader) keep(callee *ssa.Function, pkg *types.Package) bool {
 	if callee.Signature.Recv() == nil {
 		found, err := l.body.reaches(callee)

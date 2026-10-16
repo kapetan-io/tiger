@@ -1,5 +1,6 @@
 // Package callinventory records, for one checkout of a Go module, which
-// function makes which calls into other packages. It knows nothing about git
+// function makes which calls into other packages. Callees outside the module
+// are kept only when they reach package syscall. It knows nothing about git
 // or about comparing two checkouts; it loads whatever directory it is given.
 package callinventory
 
@@ -8,14 +9,16 @@ type Inventory struct {
 	// Functions holds every function of the compared packages, keyed by its
 	// printed header (internal.Daemon.OnStart, internal/storage.ParseOID).
 	Functions map[string]Function
-	// Packages is the printed name of every module package that loaded.
+	// Packages is the printed name of every module package that loaded, including
+	// ones above the run directory; only those under it have Functions.
 	Packages map[string]bool
 	// Generated lists the generated files that were skipped, as slash paths
 	// relative to the run directory, in byte order.
 	Generated []string
 	// NotCompared names the module packages that did not load, in byte order.
 	NotCompared []string
-	// LoadError is the first package error met, empty when every package loaded.
+	// LoadError is the package error that sorts first by package path then message,
+	// empty when every package loaded.
 	LoadError string
 }
 
@@ -25,11 +28,11 @@ type Function struct {
 	Package string
 	// Owner is the type holding a method, or the free function itself.
 	Owner string
-	// Initializer marks init functions and package variable initializers,
-	// which are not a type or function a reviewer names.
+	// Initializer marks init functions and package variable initializers. They
+	// are not counted as owners.
 	Initializer bool
-	// CallsOut is true when the function's own body makes at least one call
-	// of the first kind (into another package).
+	// CallsOut is true when the function's own body calls into another package,
+	// not only into sibling owners of its own.
 	CallsOut bool
 	// Calls is keyed by Call.Callee.
 	Calls map[string]Call
@@ -48,8 +51,8 @@ type Call struct {
 	Package string
 	// InModule is true when the callee's package belongs to the module.
 	InModule bool
-	// SamePackage marks the second kind of callee, a function of a different
-	// owner in the caller's own package. Whether it counts depends on what the
-	// callee itself calls, which the comparison decides.
+	// SamePackage marks a callee that is a function of a different owner in the
+	// caller's own package. Whether it counts depends on what the callee itself
+	// calls, which the comparison decides.
 	SamePackage bool
 }

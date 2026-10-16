@@ -64,9 +64,9 @@ func Open(dir string) (Repository, error) {
 
 func notRepository(err error) error {
 	if errors.Is(err, exec.ErrNotFound) {
-		return errors.New("tiger changed needs the git program, and it is not installed")
+		return errors.New("this command needs the git program, and it is not installed")
 	}
-	return errors.New("tiger changed compares against a git revision; run it inside a git checkout")
+	return errors.New("run it inside a git checkout, because it compares against a git revision")
 }
 
 // Compare finds the merge base of base and HEAD. It never changes the working
@@ -90,7 +90,7 @@ func (r Repository) Compare(base string) (Comparison, error) {
 		return Comparison{}, fmt.Errorf(
 			"no common ancestor of %s and HEAD; in CI fetch full history (fetch-depth: 0)", base)
 	}
-	status, err := r.git("status", "--porcelain")
+	status, err := r.git("status", "--porcelain", "--untracked-files=all")
 	if err != nil {
 		return Comparison{}, fmt.Errorf("git status failed: %w", err)
 	}
@@ -122,9 +122,17 @@ func Short(hash string) string {
 // standard output. GIT_OPTIONAL_LOCKS stops git status from refreshing the
 // index on disk.
 func (r Repository) git(args ...string) (string, error) {
+	return r.gitEnv(nil, args...)
+}
+
+// environ is extra environment entries for a git command.
+type environ []string
+
+// gitEnv is git with extra environment entries, such as a scratch index file.
+func (r Repository) gitEnv(env environ, args ...string) (string, error) {
 	cmd := exec.Command("git", args...)
 	cmd.Dir = r.dir
-	cmd.Env = append(os.Environ(), "GIT_OPTIONAL_LOCKS=0")
+	cmd.Env = append(append(os.Environ(), "GIT_OPTIONAL_LOCKS=0"), env...)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	if err := cmd.Run(); err != nil {

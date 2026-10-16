@@ -23,6 +23,9 @@ func runChanged(args []string, streams Streams) int {
 	chdir := flags.String("C", ".", "run as if tiger was started in this directory")
 	format := flags.String("format", "text", "report format")
 	if err := flags.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			err = errors.New("usage: tiger changed [-C dir] <base>")
+		}
 		return changedFailure(streams, err)
 	}
 	if flags.NArg() == 0 {

@@ -29,15 +29,19 @@ const (
 // maxNamed is how many names a footer lists before it counts the rest.
 const maxNamed = 5
 
+// minPrefix is the shortest ref taken for an abbreviated commit hash, git's
+// own minimum abbreviation.
+const minPrefix = 4
+
 // Text renders the report for a terminal. The bytes depend only on the report
 // and the revisions, never on the terminal, the clock or the map order.
 func (r Report) Text(rev revision.Comparison) string {
 	var out strings.Builder
-	fmt.Fprintf(&out, "tiger changed: %s -> %s\n", BaseLabel(rev), HeadLabel(rev))
+	fmt.Fprintf(&out, "tiger changed: %s -> %s\n", baseLabel(rev), headLabel(rev))
 	out.WriteString(purposeText + "\n\n")
 	out.WriteString(r.countsLine() + "\n\n")
 	switch {
-	case r.Empty():
+	case r.empty():
 		out.WriteString(emptyEverything + "\n\n")
 	case len(r.Functions) == 0:
 		out.WriteString(emptyList + "\n\n")
@@ -62,8 +66,8 @@ func (r Report) Text(rev revision.Comparison) string {
 
 func (r Report) countsLine() string {
 	parts := []string{
-		fmt.Sprintf("Calls added: %d", r.Added()),
-		fmt.Sprintf("Calls removed: %d", r.Removed()),
+		fmt.Sprintf("Calls added: %d", r.added()),
+		fmt.Sprintf("Calls removed: %d", r.removed()),
 	}
 	for _, extra := range []struct {
 		label string
@@ -95,11 +99,11 @@ func writeList(out *strings.Builder, functions []Function, indent string) {
 
 func writeNewPackage(out *strings.Builder, pkg NewPackage) {
 	fmt.Fprintf(out, "New package %s: %d types and functions, %d calls\n",
-		pkg.Name, pkg.Owners, pkg.Calls())
+		pkg.Name, pkg.Owners, pkg.calls())
 	fmt.Fprintf(out, "  Uses existing packages: %s\n", usesText(pkg.Uses.Prior))
 	fmt.Fprintf(out, "  Uses new packages: %s\n", usesText(pkg.Uses.New))
 	fmt.Fprintf(out, "  Uses outside packages: %s\n", usesText(pkg.Uses.Outside))
-	if pkg.Calls() > 0 {
+	if pkg.calls() > 0 {
 		out.WriteString("  Every call, by function:\n")
 		writeList(out, pkg.Functions, "    ")
 	}
@@ -142,29 +146,26 @@ func named(names []string) string {
 	return fmt.Sprintf("%s and %d more", strings.Join(names[:maxNamed], ", "), len(names)-maxNamed)
 }
 
-// BaseLabel names the base side: the ref and its short hash, or just the hash
-// when the ref is a hash prefix, and the merge base when it is not the tip.
-func BaseLabel(rev revision.Comparison) string {
+// baseLabel prints the ref with its tip hash, or the tip hash alone when the ref is a
+// hash prefix, and says "merge base" with that hash when it is not the tip.
+func baseLabel(rev revision.Comparison) string {
 	tip := revision.Short(rev.BaseTip)
-	named := len(rev.BaseRef) < minPrefix || !strings.HasPrefix(rev.BaseTip, rev.BaseRef)
+	prefix := strings.HasPrefix(rev.BaseTip, strings.ToLower(rev.BaseRef))
+	byName := len(rev.BaseRef) < minPrefix || !prefix
 	switch {
-	case rev.MergeBase != rev.BaseTip && named:
+	case rev.MergeBase != rev.BaseTip && byName:
 		return fmt.Sprintf("%s (merge base %s)", rev.BaseRef, revision.Short(rev.MergeBase))
 	case rev.MergeBase != rev.BaseTip:
 		return fmt.Sprintf("%s (merge base %s)", tip, revision.Short(rev.MergeBase))
-	case named:
+	case byName:
 		return fmt.Sprintf("%s (%s)", rev.BaseRef, tip)
 	}
 	return tip
 }
 
-// minPrefix is the shortest ref taken for an abbreviated commit hash, git's
-// own minimum abbreviation.
-const minPrefix = 4
-
-// HeadLabel names the head side by commit, never by branch, because CI checks
+// headLabel names the head side by commit, never by branch, because CI checks
 // out a detached merge commit that has no branch.
-func HeadLabel(rev revision.Comparison) string {
+func headLabel(rev revision.Comparison) string {
 	label := revision.Short(rev.Head)
 	if rev.Dirty {
 		label += " + uncommitted changes"

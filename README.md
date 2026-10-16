@@ -42,7 +42,7 @@ tiger changed main              # calls each function started or stopped making 
 
 `tiger changed <base>` compares the merge base of `<base>` and HEAD with the
 working tree and prints, for each function, the calls it added and removed in
-other packages, then what the report could not see. It exits 0 for any report
+other packages (or in functions of its own package that call another package), then what the report could not see. It exits 0 for any report
 and 2 when no report can be produced. Flags go before `<base>`. ADR-0030
 records the rule.
 

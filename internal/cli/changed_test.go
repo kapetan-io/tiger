@@ -341,7 +341,7 @@ func (c checkout) gitState() []string {
 	}
 }
 
-// TestChangedLeavesTheRepositoryAlone covers invariant 6.
+// TestChangedLeavesTheRepositoryAlone covers the working tree, index and stash.
 //
 // Goal: a run on a dirty tree changes neither the status, the stash, the
 // worktree list nor the index file.
@@ -421,7 +421,7 @@ func Save() error {
 `
 )
 
-// TestChangedNamesPackagesRelativeToTheRunDirectory covers section 3 naming.
+// TestChangedNamesPackagesRelativeToTheRunDirectory covers package naming.
 //
 // Goal: packages under the run directory print relative to it, the package at
 // the run directory by its name, and module packages above it relative to the
@@ -621,4 +621,68 @@ func TestChangedStopsOnARecursiveOutsideFunction(t *testing.T) {
 	assert.Contains(t, got.stdout, "Calls added: 1 · Calls removed: 0\n")
 	assert.Contains(t, got.stdout, "web.Handler.Greet\n+   example.com/fakedb.Ping\n\n")
 	assert.NotContains(t, got.stdout, "Spin")
+}
+
+// TestChangedReadsTheBaseTreeWithoutExportAttributes covers .gitattributes.
+//
+// Goal: a package marked export-ignore still exists at the merge base, so a
+// call it changed prints as a change and the package does not read as new.
+func TestChangedReadsTheBaseTreeWithoutExportAttributes(t *testing.T) {
+	c := fixture(t, "call-added")
+	c.git("checkout", "-q", "main")
+	c.write(".gitattributes", "web/** export-ignore\n")
+	c.commit("ignore web in archives")
+	c.git("checkout", "-q", "feature")
+	c.git("merge", "-q", "--no-edit", "main")
+
+	got := c.changed()
+	require.Equal(t, cli.ExitClean, got.code)
+	assert.NotContains(t, got.stdout, "New package")
+	assert.Contains(t, got.stdout, "web.Handler.Greet\n+   example.com/fakedb.Pool.Exec\n")
+}
+
+// TestChangedMarksUntrackedFilesWhateverGitConfigSays covers the dirty label.
+//
+// Goal: with status.showUntrackedFiles off, an untracked Go file still marks
+// the head as carrying uncommitted changes.
+func TestChangedMarksUntrackedFilesWhateverGitConfigSays(t *testing.T) {
+	c := fixture(t, "call-added")
+	c.git("config", "status.showUntrackedFiles", "no")
+	c.write("web/extra.go", "package web\n\nfunc Extra() {}\n")
+
+	got := c.changed()
+	require.Equal(t, cli.ExitClean, got.code)
+	assert.Contains(t, got.stdout, " -> "+c.short("HEAD")+" + uncommitted changes\n")
+}
+
+// TestChangedAcceptsAnUppercaseHashAsTheBase covers hash-prefix labels.
+//
+// Goal: git accepts an uppercase abbreviated hash, so the base prints as the
+// bare short hash.
+func TestChangedAcceptsAnUppercaseHashAsTheBase(t *testing.T) {
+	c := fixture(t, "call-added")
+	base := strings.ToUpper(c.short("main"))
+	got := run(t, "changed", "-C", c.dir, base)
+	require.Equal(t, cli.ExitClean, got.code)
+	assert.Contains(t, got.stdout, "tiger changed: "+c.short("main")+" -> ")
+}
+
+// TestChangedRefusesTwoPackagesWithOnePrintedName covers name collisions.
+//
+// Goal: a root package named store beside a store directory would print the
+// same name twice, so the run exits 2 instead of dropping one of them.
+func TestChangedRefusesTwoPackagesWithOnePrintedName(t *testing.T) {
+	c := newCheckout(t)
+	c.write("go.mod", "module example.com/shop\n\ngo 1.26\n")
+	c.write("store.go", "package store\n\nfunc Open() {}\n")
+	c.write("store/store.go", "package store\n\nfunc Close() {}\n")
+	c.commit("base")
+	c.git("checkout", "-q", "-b", "feature")
+	c.write("README.md", "docs\n")
+	c.commit("head")
+
+	got := c.changed()
+	assert.Equal(t, cli.ExitOperational, got.code)
+	assert.Empty(t, got.stdout)
+	assert.Contains(t, got.stderr, "two packages print as store")
 }

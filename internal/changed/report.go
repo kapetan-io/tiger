@@ -62,8 +62,8 @@ type NewPackage struct {
 	Functions []Function
 }
 
-// Calls counts the added calls in the package.
-func (p NewPackage) Calls() int {
+// calls counts the added calls in the package.
+func (p NewPackage) calls() int {
 	total := 0
 	for _, fn := range p.Functions {
 		total += len(fn.Calls)
@@ -92,19 +92,20 @@ type RemovedPackage struct {
 
 // Scope says what was compared and what was left out.
 type Scope struct {
-	Owners      int
-	Packages    int
+	Owners   int
+	Packages int
+	// Generated lists the generated files skipped at head; base-only ones are not reported.
 	Generated   []string
 	NotCompared []string
 }
 
-// Added counts the + lines of the main list.
-func (r Report) Added() int {
+// added counts the + lines of the main list.
+func (r Report) added() int {
 	return r.count(func(call Call) bool { return call.Added })
 }
 
-// Removed counts the - lines of the main list.
-func (r Report) Removed() int {
+// removed counts the - lines of the main list.
+func (r Report) removed() int {
 	return r.count(func(call Call) bool { return !call.Added })
 }
 
@@ -120,13 +121,14 @@ func (r Report) count(match func(Call) bool) int {
 	return total
 }
 
-// Empty is true when nothing differs in any category.
-func (r Report) Empty() bool {
+// empty is true when nothing differs in any category.
+func (r Report) empty() bool {
 	return len(r.Functions) == 0 && len(r.Renamed) == 0 &&
 		len(r.NewPackages) == 0 && len(r.RemovedPackages) == 0
 }
 
-// owner is an owner as one revision has it.
+// owner is a type or free function as one revision has it, with the types and
+// functions in other packages it calls.
 type owner struct {
 	pkg     string
 	callees map[string]bool
