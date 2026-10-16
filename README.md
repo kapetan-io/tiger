@@ -43,8 +43,10 @@ tiger changed main              # calls each function started or stopped making 
 `tiger changed <base>` compares the merge base of `<base>` and HEAD with the
 working tree and prints, for each function, the calls it added and removed in
 other packages (or in functions of its own package that call another package), then what the report could not see. It exits 0 for any report
-and 2 when no report can be produced. Flags go before `<base>`. ADR-0030
-records the rule.
+and 2 when no report can be produced. Flags go before `<base>`.
+`tiger changed --format json <base>` prints the same report as one JSON object
+(`tiger.changed/v1`) that also gives every call site as a file and line, tagged
+`base` or `head`, for an agent reviewer. ADR-0030 records the rule.
 
 Exit codes: 0 clean, 1 findings, 2 operational failure (a package that fails
 to load is never reported as clean). A rule either blocks or it is not a rule

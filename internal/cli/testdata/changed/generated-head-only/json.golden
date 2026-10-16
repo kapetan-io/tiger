@@ -1,0 +1,42 @@
+{
+  "schema": "tiger.changed/v1",
+  "base": {
+    "ref": "main",
+    "commit": "7c1f63eb2ba0305841640eb35a958b189b7bfb50",
+    "merge_base": true
+  },
+  "head": {
+    "commit": "b693a7786d00fb5c85bc5e3f3233b31cfdd9da49",
+    "dirty": false
+  },
+  "scope": {
+    "owners": 1,
+    "packages": 1,
+    "skipped_generated_files": [
+      "web/api_gen.go"
+    ],
+    "not_compared": []
+  },
+  "counts": {
+    "calls_added": 0,
+    "calls_removed": 0,
+    "new_packages": 0,
+    "removed_packages": 0,
+    "renamed": 0
+  },
+  "functions": [],
+  "renamed": [],
+  "new_packages": [],
+  "removed_packages": [],
+  "blind_spots": [
+    "outside-without-os",
+    "io-writer",
+    "channel-send",
+    "interface-implementation",
+    "same-owner",
+    "same-package-leaf",
+    "same-package-interface",
+    "moved-to-helper",
+    "renamed-type"
+  ]
+}

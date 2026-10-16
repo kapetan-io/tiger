@@ -61,7 +61,10 @@ type Call struct {
 	// Target is the callee's type or free function, Callee without the method.
 	Target string
 	// Symbol is Target without its package.
-	Symbol  string
+	Symbol string
+	// Method is the method called on Target, or the function's own name when
+	// Target is a free function.
+	Method  string
 	Package string
 	// Path is the import path of Package.
 	Path string
@@ -71,6 +74,18 @@ type Call struct {
 	// caller's own package. Whether it counts depends on what the callee itself
 	// calls, which the comparison decides.
 	SamePackage bool
+	// Sites lists where the function writes the call, in file and line order.
+	// Sites sit beside the call's identity, so a call whose line moved is the
+	// same call.
+	Sites []Site
+}
+
+// Site is one place a call is written: a slash path relative to the run
+// directory, and the line of the call's opening parenthesis, or of the go or
+// defer keyword.
+type Site struct {
+	File string
+	Line int
 }
 
 // Key identifies the call within its function. It qualifies the callee by

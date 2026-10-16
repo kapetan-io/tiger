@@ -1,0 +1,68 @@
+{
+  "schema": "tiger.changed/v1",
+  "base": {
+    "ref": "main",
+    "commit": "a2bf7db1cbed609865ce524fe0ad7ec3855e5172",
+    "merge_base": true
+  },
+  "head": {
+    "commit": "a8476d1cd8883a19e80da20155130e3cf1f8b24b",
+    "dirty": false
+  },
+  "scope": {
+    "owners": 1,
+    "packages": 1,
+    "skipped_generated_files": [],
+    "not_compared": [
+      "gen",
+      "gen_user"
+    ]
+  },
+  "counts": {
+    "calls_added": 1,
+    "calls_removed": 0,
+    "new_packages": 0,
+    "removed_packages": 0,
+    "renamed": 0
+  },
+  "functions": [
+    {
+      "function": "store.Users.Find",
+      "owner": "store.Users",
+      "method": "Find",
+      "calls": [
+        {
+          "change": "added",
+          "callee": "example.com/fakedb.Pool.Query",
+          "target": "example.com/fakedb.Pool",
+          "method": "Query",
+          "target_package": "example.com/fakedb",
+          "target_in_module": false,
+          "same_package": false,
+          "package_dependency": "new",
+          "sites": [
+            {
+              "file": "store/store.go",
+              "line": 10,
+              "rev": "head"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "renamed": [],
+  "new_packages": [],
+  "removed_packages": [],
+  "blind_spots": [
+    "outside-without-os",
+    "io-writer",
+    "channel-send",
+    "interface-implementation",
+    "same-owner",
+    "same-package-leaf",
+    "same-package-interface",
+    "moved-to-helper",
+    "renamed-type"
+  ]
+}

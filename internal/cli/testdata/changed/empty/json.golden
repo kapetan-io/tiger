@@ -1,0 +1,40 @@
+{
+  "schema": "tiger.changed/v1",
+  "base": {
+    "ref": "main",
+    "commit": "6e42a58299135011887a820ac4dbe49431355ff4",
+    "merge_base": true
+  },
+  "head": {
+    "commit": "99928f9637f0970edab31dbc63cfd8d67b12d4d0",
+    "dirty": false
+  },
+  "scope": {
+    "owners": 1,
+    "packages": 1,
+    "skipped_generated_files": [],
+    "not_compared": []
+  },
+  "counts": {
+    "calls_added": 0,
+    "calls_removed": 0,
+    "new_packages": 0,
+    "removed_packages": 0,
+    "renamed": 0
+  },
+  "functions": [],
+  "renamed": [],
+  "new_packages": [],
+  "removed_packages": [],
+  "blind_spots": [
+    "outside-without-os",
+    "io-writer",
+    "channel-send",
+    "interface-implementation",
+    "same-owner",
+    "same-package-leaf",
+    "same-package-interface",
+    "moved-to-helper",
+    "renamed-type"
+  ]
+}
