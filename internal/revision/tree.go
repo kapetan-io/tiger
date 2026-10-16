@@ -62,7 +62,14 @@ func (c Comparison) write(scratch string) error {
 	if _, err := repo.gitEnv(env, "read-tree", c.MergeBase); err != nil {
 		return err
 	}
-	_, err := repo.gitEnv(env, "checkout-index", "--all", "--quiet", "--prefix="+top+"/")
+	// An empty attribute source gives raw blobs: the working tree's
+	// .gitattributes, filters and line-ending settings describe head, not base.
+	empty, err := repo.git("hash-object", "-t", "tree", "/dev/null")
+	if err != nil {
+		return err
+	}
+	_, err = repo.gitEnv(env, "--attr-source="+empty, "checkout-index", "--all", "--quiet",
+		"--prefix="+top+"/")
 	return err
 }
 

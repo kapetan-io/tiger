@@ -104,8 +104,8 @@ type loader struct {
 	compared map[string]bool
 	// skipped is the set of generated files, by absolute path.
 	skipped map[string]bool
-	// names maps each printed package name to its import path, to catch two
-	// packages that would print the same.
+	// names maps each printed name of a package under the run directory to its
+	// import path, to catch two packages that would print the same.
 	names map[string]string
 	// err is the first failure of a bounded walk, which stops the load.
 	err error
@@ -148,11 +148,13 @@ func (l *loader) classify(roots []*packages.Package) {
 			return
 		}
 		name := l.packageName(pkgRef{Path: pkg.PkgPath, Name: pkg.Name})
-		if other, taken := l.names[name]; taken && other != pkg.PkgPath {
-			l.err = cmp.Or(l.err, fmt.Errorf(
-				"two packages print as %s (%s and %s)", name, other, pkg.PkgPath))
+		if underRun[pkg.PkgPath] {
+			if other, taken := l.names[name]; taken && other != pkg.PkgPath {
+				l.err = cmp.Or(l.err, fmt.Errorf(
+					"two packages print as %s (%s and %s)", name, other, pkg.PkgPath))
+			}
+			l.names[name] = pkg.PkgPath
 		}
-		l.names[name] = pkg.PkgPath
 		if pkg.IllTyped || len(pkg.Errors) > 0 {
 			l.inv.NotCompared = append(l.inv.NotCompared, name)
 			return

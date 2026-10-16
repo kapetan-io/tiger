@@ -686,3 +686,39 @@ func TestChangedRefusesTwoPackagesWithOnePrintedName(t *testing.T) {
 	assert.Empty(t, got.stdout)
 	assert.Contains(t, got.stderr, "two packages print as store")
 }
+
+// TestChangedWritesBaseBlobsWithoutHeadFilters covers git attributes.
+//
+// Goal: a filter named in an uncommitted .gitattributes, here one that rewrites
+// Exec to Query, does not touch the merge-base files, so the removed call is
+// still named Exec.
+func TestChangedWritesBaseBlobsWithoutHeadFilters(t *testing.T) {
+	c := fixture(t, "call-removed")
+	c.write(".gitattributes", "*.go filter=rewrite\n")
+	c.git("config", "filter.rewrite.smudge", "sed s/Exec/Query/")
+
+	got := c.changed()
+	assert.Empty(t, got.stderr)
+	require.Equal(t, cli.ExitClean, got.code)
+	assert.Contains(t, got.stdout, "web.Handler.Greet\n-   example.com/fakedb.Pool.Exec\n")
+}
+
+// TestChangedAllowsARunDirectoryPackageNamedLikeAModuleDirectory covers names.
+//
+// Goal: a run directory a/b holding package b that imports a root-level
+// package b prints, because only packages under the run directory are compared.
+func TestChangedAllowsARunDirectoryPackageNamedLikeAModuleDirectory(t *testing.T) {
+	c := newCheckout(t)
+	c.write("go.mod", "module example.com/shop\n\ngo 1.26\n")
+	c.write("b/b.go", "package b\n\nfunc Open() {}\n")
+	c.write("a/b/b.go", "package b\n\nfunc Run() {}\n")
+	c.commit("base")
+	c.git("checkout", "-q", "-b", "feature")
+	c.write("a/b/b.go", "package b\n\nimport \"example.com/shop/b\"\n\nfunc Run() { b.Open() }\n")
+	c.commit("head")
+
+	got := run(t, "changed", "-C", filepath.Join(c.dir, "a", "b"), "main")
+	assert.Empty(t, got.stderr)
+	require.Equal(t, cli.ExitClean, got.code)
+	assert.Contains(t, got.stdout, "+   b.Open\n")
+}
