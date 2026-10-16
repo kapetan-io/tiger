@@ -99,8 +99,7 @@ func neqZeroWrongDirection(x int) int {
 	return count
 }
 
-// cursorScanUnannotated is cursor-shaped but carries no //tiger:batched
-// directive, so the waiver never applies and the loop still fires.
+// cursorScanUnannotated is a store cursor loop with no counter in its header.
 func cursorScanUnannotated(it *iterator) int {
 	count := 0
 	for it.Valid() { // want `TS-S02: tiger can't tell how many times this loop runs`
@@ -110,24 +109,41 @@ func cursorScanUnannotated(it *iterator) int {
 	return count
 }
 
-// nonCursorBatchedStillFires is not cursor-shaped — its condition is a
-// plain identifier, not a boolean method call — so an attached batched
-// directive does not waive it; the waiver is shape-gated, not a blanket
-// suppression.
+// cursorScanBatchedStillFires is a store cursor loop with no counter in its
+// header. //tiger:batched waives TS-M10 only, so the missing limit fires.
+func cursorScanBatchedStillFires(it *iterator) int {
+	count := 0
+	//tiger:batched store cursor is guaranteed finite by the backend
+	for it.Valid() { // want `TS-S02: tiger can't tell how many times this loop runs`
+		it.Next()
+		count++
+	}
+	return count
+}
+
+// cursorScanBatchedTrailingStillFires is the same loop with the directive
+// trailing the for line.
+func cursorScanBatchedTrailingStillFires(rows *rowsCursor) int {
+	count := 0
+	for rows.Next() { //tiger:batched store cursor is guaranteed finite by the backend // want `TS-S02: tiger can't tell how many times this loop runs`
+		count++
+	}
+	return count
+}
+
+// nonCursorBatchedStillFires shows //tiger:batched does not waive a plain
+// identifier condition either.
 func nonCursorBatchedStillFires(active bool) int {
 	count := 0
-	//tiger:batched not actually a cursor, this annotation should not help
+	//tiger:batched a plain boolean condition states no limit
 	for active { // want `TS-S02: tiger can't tell how many times this loop runs`
 		count++
 	}
 	return count
 }
 
-// paginationTokenFires is the loop-carried-token pagination shape: even
-// annotated, it gets no TS-S02 waiver, because the cursor waiver only
-// recognizes a boolean method call on a plain identifier as the cursor
-// shape, and a loop-carried token condition is not that shape. This is
-// why the limitation is a corpus failure case, not a silent known-miss.
+// paginationTokenFires is the loop-carried-token pagination shape. The
+// annotation does not waive it.
 //
 //tiger:batched next-page token pagination is bounded by the backend
 func paginationTokenFires(fetch func(token string) ([]int, string, bool)) int {
@@ -155,12 +171,10 @@ func tupleMirrorFires(i, j int) int {
 }
 
 // foreverBatchedStillFires is a condition-less for{} carrying a batched
-// annotation: the waiver is gated on the cursor shape, and an event loop
-// is not a cursor, so the directive cannot become a blanket infinite-loop
-// suppression.
+// annotation, which does not waive an event loop's missing stop case.
 func foreverBatchedStillFires() int {
 	count := 0
-	//tiger:batched no shape at all; this annotation should not help
+	//tiger:batched no stop case; this annotation should not help
 	for { // want `TS-S02: this for loop has no condition and no select on ctx\.Done\(\)`
 		count++
 		if count > 10 {
