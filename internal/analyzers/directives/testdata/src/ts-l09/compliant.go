@@ -5,8 +5,6 @@ package fixture
 
 // Pin directives are well-formed.
 //
-//tiger:effects mutate(r.log, r.checkpoint), io(disk)
-//tiger:frame r.log, r.checkpoint
 //tiger:variant len(pending)
 func pinnedShapes(pending []int) int {
 	drained := 0

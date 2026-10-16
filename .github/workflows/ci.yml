@@ -159,12 +159,18 @@ jobs:
           ./bin/tiger check --show-facts ./... > first.txt
           ./bin/tiger check --show-facts ./... > second.txt
           diff first.txt second.txt
+      # The repository has no unpinned loop left to print, so the fixture is
+      # what proves the facts channel prints something to diff.
+      - name: double-run diff with the facts channel on a fixture
+        run: |
+          ./bin/tiger check -C internal/cli/testdata/fixtures/showfacts --show-facts ./... > first.txt
+          ./bin/tiger check -C internal/cli/testdata/fixtures/showfacts --show-facts ./... > second.txt
+          diff first.txt second.txt
           test -s first.txt
 
   # The golangci-lint module plugin registers every analyzer, SSA ones
-  # included; a known AST finding, a known SSA finding,
-  # and a TS-F02 finding that can only fire if the effects fact crossed
-  # the import must surface through a golangci-lint run. Computed facts
+  # included; a known AST finding and a known SSA finding
+  # must surface through a golangci-lint run. Computed facts
   # must not (golangci has no --show-facts channel), and neither may the
   # whole-program rules TS-A07 and TS-A09: the plugin runs no
   # finish step (ADR-0010). The fixture fires both under `tiger
@@ -193,9 +199,6 @@ jobs:
           grep -q "TS-S09" findings.txt
           grep -q "TS-M10" findings.txt
           grep -q "TS-S01" findings.txt
-          grep -q "TS-F02" findings.txt
-          ! grep -q "TS-F01" findings.txt
-          ! grep -q "TS-F07" findings.txt
           ! grep -q "TS-V01" findings.txt
           ! grep -q "TS-A07" findings.txt
           ! grep -q "TS-A09" findings.txt

@@ -22,16 +22,12 @@ import (
 	"github.com/kapetan-io/tiger/internal/rules"
 )
 
-// The fact categories pin consumes, and the rules whose blocking findings
+// The fact category pin consumes, and the rule whose blocking findings
 // mean an existing pin disagrees with the code.
-const (
-	catEffects = "TS-F01-facts"
-	catFrames  = "TS-F07-facts"
-	catVariant = "TS-V01-facts"
-)
+const catVariant = "TS-V01-facts"
 
 func pinRule(ruleID string) bool {
-	return ruleID == "TS-F01" || ruleID == "TS-F02" || ruleID == "TS-F07" || ruleID == "TS-V01"
+	return ruleID == "TS-V01"
 }
 
 // runPin is tiger pin: resolve each named function, collect the facts the
@@ -484,16 +480,10 @@ func refusalBlock(target *resolved, relFile string, blocking []driver.Finding) s
 	return block.String()
 }
 
-// existingPins collects the pin directives already on target: effects and
-// frame on the declaration, variant on each loop in its body.
+// existingPins collects the variant pins already on target's loops.
 func existingPins(target *resolved) []directive.Directive {
 	set := pins.Collect(target.pkg.Fset, []*ast.File{target.file})
 	collected := []directive.Directive{}
-	for _, verb := range []string{"effects", "frame"} {
-		for _, pin := range set.At(target.decl, verb) {
-			collected = append(collected, pin.Directive)
-		}
-	}
 	ast.Inspect(target.decl, func(node ast.Node) bool {
 		if loop, ok := node.(*ast.ForStmt); ok {
 			for _, pin := range set.At(loop, "variant") {
@@ -505,29 +495,12 @@ func existingPins(target *resolved) []directive.Directive {
 	return collected
 }
 
-// targetWrites turns one target's fact findings into writes: effects and
-// frame stack on the declaration in vocabulary order, each variant goes on
-// its own loop.
+// targetWrites turns one target's variant facts into writes, each on its
+// own loop.
 func targetWrites(
 	target *resolved, relFile string, factFindings []driver.Finding,
 ) ([]write, error) {
-	declDirs := []directive.Directive{}
 	writes := []write{}
-	for _, category := range []string{catEffects, catFrames} {
-		for _, finding := range factFindings {
-			if finding.Category != category {
-				continue
-			}
-			extracted, err := facts.Extract(finding.Message)
-			if err != nil {
-				return nil, err
-			}
-			declDirs = append(declDirs, extracted)
-		}
-	}
-	if len(declDirs) > 0 {
-		writes = append(writes, newWrite(target, relFile, target.decl, declDirs))
-	}
 	for _, finding := range factFindings {
 		if finding.Category != catVariant {
 			continue
@@ -687,8 +660,8 @@ func replace(path string, content []byte) error {
 	return os.Rename(name, path)
 }
 
-// report prints, per target in the requested order: the unexported
-// informational line, the written lines, or the refusal block.
+// report prints, per target in the requested order: the refusal block, then
+// the written lines.
 func report(streams Streams, targets []resolved, writes []write, refused []refusal) {
 	for i := range targets {
 		target := &targets[i]
@@ -703,24 +676,11 @@ func report(streams Streams, targets []resolved, writes []write, refused []refus
 				lines = append(lines, w.printed...)
 			}
 		}
-		if !ast.IsExported(target.decl.Name.Name) && !isRefused(target, refused) {
-			fmt.Fprintf(streams.Stdout,
-				"%s: unexported, no effects or frame pin\n", target.decl.Name.Name)
-		}
 		sort.Strings(lines)
 		for _, line := range lines {
 			fmt.Fprintln(streams.Stdout, line)
 		}
 	}
-}
-
-func isRefused(target *resolved, refused []refusal) bool {
-	for _, r := range refused {
-		if r.target == target {
-			return true
-		}
-	}
-	return false
 }
 
 // relativizer mirrors the driver's finding relativization, bound to one

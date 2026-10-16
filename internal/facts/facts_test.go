@@ -14,7 +14,7 @@ import (
 // directions.
 //
 // Goal: every formatted message yields back the exact directive it
-// embedded, for all three pinnable verbs.
+// embedded, for the variant pin.
 func TestMessageAndExtractRoundTrip(t *testing.T) {
 	for _, test := range []struct {
 		name     string
@@ -23,22 +23,6 @@ func TestMessageAndExtractRoundTrip(t *testing.T) {
 		d        directive.Directive
 		want     string
 	}{
-		{
-			name:     "Effects",
-			ruleID:   "TS-F01",
-			function: "Append",
-			d:        directive.Directive{Verb: "effects", Args: "alloc, mutate(r.log)"},
-			want: "TS-F01: Append's effects are alloc, mutate(r.log) — nothing to fix; to make " +
-				"tiger fail the build if they change, add //tiger:effects alloc, mutate(r.log)",
-		},
-		{
-			name:     "Frame",
-			ruleID:   "TS-F07",
-			function: "Append",
-			d:        directive.Directive{Verb: "frame", Args: "r.log"},
-			want: "TS-F07: Append writes r.log through its receiver or parameters — nothing to " +
-				"fix; to make tiger fail the build if that changes, add //tiger:frame r.log",
-		},
 		{
 			name:     "Variant",
 			ruleID:   "TS-V01",
@@ -74,18 +58,18 @@ func TestExtractErrors(t *testing.T) {
 	}{
 		{
 			name:    "NoDirective",
-			message: "TS-F01: Append has no effects — nothing to fix",
+			message: "TS-V01: drain ends — nothing to fix",
 			wantErr: "no directive in fact message",
 		},
 		{
 			name:    "UnknownVerb",
-			message: "TS-F01: Append has no effects — nothing to fix; add //tiger:bogus none",
+			message: "TS-V01: drain ends — nothing to fix; add //tiger:bogus none",
 			wantErr: "unknown directive verb",
 		},
 		{
 			name:    "MalformedArgs",
-			message: "TS-F01: Append's effects are notaneffect — add //tiger:effects notaneffect",
-			wantErr: "//tiger:effects",
+			message: "TS-V01: drain ends — add //tiger:variant 2 * n",
+			wantErr: "//tiger:variant",
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {

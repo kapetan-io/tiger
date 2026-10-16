@@ -32,19 +32,6 @@ func Message(f Fact) string {
 	pin := directive.Format(f.Directive)
 	tail := " — nothing to fix; to make tiger fail the build if that changes, add " + pin
 	switch f.Directive.Verb {
-	case "effects":
-		if f.Directive.Args == "none" {
-			return f.RuleID + ": " + f.Function + " has no effects" + tail
-		}
-		return f.RuleID + ": " + f.Function + "'s effects are " + f.Directive.Args +
-			" — nothing to fix; to make tiger fail the build if they change, add " + pin
-	case "frame":
-		writes := "writes " + f.Directive.Args
-		if f.Directive.Args == "none" {
-			writes = "writes nothing"
-		}
-		return f.RuleID + ": " + f.Function + " " + writes +
-			" through its receiver or parameters" + tail
 	case "variant":
 		return f.RuleID + ": this loop in " + f.Function + " ends because " +
 			f.Directive.Args + " shrinks on every pass" + tail

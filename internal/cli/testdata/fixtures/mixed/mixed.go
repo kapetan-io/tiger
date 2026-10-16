@@ -1,18 +1,25 @@
 // Package mixed exercises tiger pin's refusal and unexported policies.
 package mixed
 
-import "os"
-
-// Good reads the configured home directory.
-func Good() string {
-	return os.Getenv("TIGER_HOME")
+// Good drains pending.
+func Good(pending []int) int {
+	total := 0
+	for len(pending) > 0 {
+		total += pending[0]
+		pending = pending[1:]
+	}
+	return total
 }
 
-// Bad carries a pin that disagrees with its computed effects.
-//
-//tiger:effects none
-func Bad() string {
-	return os.Getenv("TIGER_HOME")
+// Bad carries a variant pin that its loop does not shrink.
+func Bad(pending []int, names []string) int {
+	total := 0
+	//tiger:variant len(names)
+	for len(pending) > 0 {
+		total += pending[0]
+		pending = pending[1:]
+	}
+	return total + len(names)
 }
 
 // Panics carries a blocking finding.
