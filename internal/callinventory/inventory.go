@@ -4,6 +4,8 @@
 // or about comparing two checkouts; it loads whatever directory it is given.
 package callinventory
 
+import "strings"
+
 // Inventory is one revision's view of a module.
 type Inventory struct {
 	// Functions holds every function of the compared packages, keyed by its
@@ -12,6 +14,12 @@ type Inventory struct {
 	// Packages is the printed name of every module package that loaded, including
 	// ones above the run directory; only those under it have Functions.
 	Packages map[string]bool
+	// Roots is the printed name of every loaded package under the run directory.
+	Roots map[string]bool
+	// Above maps the printed name of each loaded module package outside the run
+	// directory to its import path. Such a name can equal a root's, which only
+	// the comparison of two revisions can see.
+	Above map[string]string
 	// Generated lists the generated files that were skipped, as slash paths
 	// relative to the run directory, in byte order.
 	Generated []string
@@ -34,7 +42,7 @@ type Function struct {
 	// CallsOut is true when the function's own body calls into another package,
 	// not only into sibling owners of its own.
 	CallsOut bool
-	// Calls is keyed by Call.Callee.
+	// Calls is keyed by Call.Key.
 	Calls map[string]Call
 }
 
@@ -49,10 +57,18 @@ type Call struct {
 	// Symbol is Target without its package.
 	Symbol  string
 	Package string
+	// Path is the import path of Package.
+	Path string
 	// InModule is true when the callee's package belongs to the module.
 	InModule bool
 	// SamePackage marks a callee that is a function of a different owner in the
 	// caller's own package. Whether it counts depends on what the callee itself
 	// calls, which the comparison decides.
 	SamePackage bool
+}
+
+// Key identifies the call within its function. It qualifies the callee by
+// import path, so two packages that print the same name stay two calls.
+func (c Call) Key() string {
+	return c.Path + strings.TrimPrefix(c.Callee, c.Package)
 }

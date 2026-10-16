@@ -807,3 +807,27 @@ func TestChangedTellsApartPackagesThatPrintTheSame(t *testing.T) {
 	require.Equal(t, cli.ExitClean, got.code)
 	assert.Contains(t, got.stdout, "b.Run\n-   b.Open\n+   example.com/shop/b.Open\n")
 }
+
+// TestChangedKeepsCalleeNamesStableWhenAnotherRevisionAddsACollision covers
+// callee identity across revisions.
+//
+// Goal: adding svc/store, which makes the module-root store print by import
+// path, does not turn svc.Run's unchanged call into store.Open into a removal
+// plus an addition.
+func TestChangedKeepsCalleeNamesStableWhenAnotherRevisionAddsACollision(t *testing.T) {
+	c := newCheckout(t)
+	c.write("go.mod", "module example.com/shop\n\ngo 1.26\n")
+	c.write("store/store.go", "package store\n\nimport \"os\"\n\n"+
+		"func Open() { _ = os.Getenv(\"HOME\") }\n")
+	c.write("svc/svc.go", "package svc\n\nimport \"example.com/shop/store\"\n\n"+
+		"func Run() { store.Open() }\n")
+	c.commit("base")
+	c.git("checkout", "-q", "-b", "feature")
+	c.write("svc/store/store.go", "package store\n\nfunc Close() {}\n")
+	c.commit("head")
+
+	got := run(t, "changed", "-C", filepath.Join(c.dir, "svc"), "main")
+	assert.Empty(t, got.stderr)
+	require.Equal(t, cli.ExitClean, got.code)
+	assert.Contains(t, got.stdout, "Calls added: 0 · Calls removed: 0")
+}

@@ -34,7 +34,12 @@ func Load(dir string) (Inventory, error) {
 	if err != nil {
 		return Inventory{}, err
 	}
-	inv := Inventory{Functions: map[string]Function{}, Packages: map[string]bool{}}
+	inv := Inventory{
+		Functions: map[string]Function{},
+		Packages:  map[string]bool{},
+		Roots:     map[string]bool{},
+		Above:     map[string]string{},
+	}
 	module := mainModule(roots)
 	if module == nil {
 		if len(roots) > 0 {
@@ -55,17 +60,16 @@ func Load(dir string) (Inventory, error) {
 		prefix = ""
 	}
 	load := &loader{
-		run:       run,
-		module:    module.Path,
-		prefix:    filepath.ToSlash(prefix),
-		inv:       &inv,
-		reaches:   importReach(roots),
-		body:      newBodyReach(),
-		compared:  map[string]bool{},
-		skipped:   map[string]bool{},
-		names:     map[string]string{},
-		underRun:  map[string]bool{},
-		rootNames: map[string]bool{},
+		run:      run,
+		module:   module.Path,
+		prefix:   filepath.ToSlash(prefix),
+		inv:      &inv,
+		reaches:  importReach(roots),
+		body:     newBodyReach(),
+		compared: map[string]bool{},
+		skipped:  map[string]bool{},
+		names:    map[string]string{},
+		underRun: map[string]bool{},
 	}
 	load.classify(roots)
 	prog, _ := ssautil.AllPackages(roots, 0)
@@ -106,10 +110,8 @@ type loader struct {
 	compared map[string]bool
 	// skipped is the set of generated files, by absolute path.
 	skipped map[string]bool
-	// underRun holds every package loaded by ./..., healthy or not, and
-	// rootNames the names they print by.
-	underRun  map[string]bool
-	rootNames map[string]bool
+	// underRun holds every package loaded by ./..., healthy or not.
+	underRun map[string]bool
 	// names maps each printed name of a package under the run directory to its
 	// import path, to catch two packages that would print the same.
 	names map[string]string
@@ -144,7 +146,6 @@ func (l *loader) classify(roots []*packages.Package) {
 	var failures []loadFailure
 	for _, pkg := range roots {
 		l.underRun[pkg.PkgPath] = true
-		l.rootNames[l.plainName(pkgRef{Path: pkg.PkgPath, Name: pkg.Name})] = true
 	}
 	packages.Visit(roots, nil, func(pkg *packages.Package) {
 		for _, each := range pkg.Errors {
@@ -167,8 +168,10 @@ func (l *loader) classify(roots []*packages.Package) {
 		}
 		l.inv.Packages[name] = true
 		if !l.underRun[pkg.PkgPath] {
+			l.inv.Above[name] = pkg.PkgPath
 			return
 		}
+		l.inv.Roots[name] = true
 		l.compared[pkg.PkgPath] = true
 		for _, file := range pkg.Syntax {
 			if ast.IsGenerated(file) {
@@ -204,17 +207,6 @@ type loadFailure struct {
 // outside packages in full. The package at the run directory prints by its
 // package name.
 func (l *loader) packageName(pkg pkgRef) string {
-	name := l.plainName(pkg)
-	if l.inModule(pkg.Path) && !l.underRun[pkg.Path] && l.rootNames[name] {
-		// Printing it relative to the module root would read as a package
-		// under the run directory, so a call into it would look like a call
-		// to that package.
-		return pkg.Path
-	}
-	return name
-}
-
-func (l *loader) plainName(pkg pkgRef) string {
 	if !l.inModule(pkg.Path) {
 		return pkg.Path
 	}
@@ -327,7 +319,7 @@ func (l *loader) function(decl *ssa.Function) error {
 				if !ok {
 					continue
 				}
-				record.Calls[found.Callee] = found
+				record.Calls[found.Key()] = found
 				record.CallsOut = record.CallsOut || !found.SamePackage
 			}
 		}
@@ -405,6 +397,7 @@ func (l *loader) other(pkg *types.Package, target callTarget) Call {
 		Target:   name,
 		Symbol:   target.Member,
 		Package:  l.packageName(refOf(pkg)),
+		Path:     pkg.Path(),
 		InModule: l.inModule(pkg.Path()),
 	}
 	if target.Method != "" {

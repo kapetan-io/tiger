@@ -154,9 +154,10 @@ func Compare(sides Sides) Report {
 	skip := slices.Concat(sides.Base.NotCompared, sides.Head.NotCompared)
 	slices.Sort(skip)
 	skip = slices.Compact(skip)
+	roots := rootNames(sides)
 	c := comparison{
-		base: newSide(without(sides.Base, skip)),
-		head: newSide(without(sides.Head, skip)),
+		base: newSide(qualify(without(sides.Base, skip), roots)),
+		head: newSide(qualify(without(sides.Head, skip), roots)),
 	}
 
 	newPackages := c.head.onlyHere(c.base)
@@ -211,6 +212,8 @@ func without(inv callinventory.Inventory, skip []string) callinventory.Inventory
 	kept := callinventory.Inventory{
 		Functions: map[string]callinventory.Function{},
 		Packages:  map[string]bool{},
+		Roots:     inv.Roots,
+		Above:     inv.Above,
 		Generated: inv.Generated,
 	}
 	for _, name := range slices.Sorted(maps.Keys(inv.Functions)) {
@@ -316,14 +319,14 @@ func (c comparison) function(name string) Function {
 	if _, ok := c.head.inv.Functions[name]; !ok {
 		fn.Package, fn.Owner = before.Package, before.Owner
 	}
-	for _, callee := range slices.Sorted(maps.Keys(before.Calls)) {
-		if _, kept := after.Calls[callee]; !kept && counts(before.Calls[callee], c.base.inv) {
-			fn.Calls = append(fn.Calls, Call{Callee: callee})
+	for _, key := range slices.Sorted(maps.Keys(before.Calls)) {
+		if _, kept := after.Calls[key]; !kept && counts(before.Calls[key], c.base.inv) {
+			fn.Calls = append(fn.Calls, Call{Callee: before.Calls[key].Callee})
 		}
 	}
-	for _, callee := range slices.Sorted(maps.Keys(after.Calls)) {
-		if _, was := before.Calls[callee]; !was && counts(after.Calls[callee], c.head.inv) {
-			fn.Calls = append(fn.Calls, Call{Added: true, Callee: callee})
+	for _, key := range slices.Sorted(maps.Keys(after.Calls)) {
+		if _, was := before.Calls[key]; !was && counts(after.Calls[key], c.head.inv) {
+			fn.Calls = append(fn.Calls, Call{Added: true, Callee: after.Calls[key].Callee})
 		}
 	}
 	slices.SortFunc(fn.Calls, func(a, b Call) int {
