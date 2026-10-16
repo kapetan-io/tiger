@@ -14,5 +14,6 @@ import (
 // included, and a package whose own name ends in _test is internal when a
 // non-test file shares that name.
 func TestCorpus(t *testing.T) {
-	analysistest.Run(t, analysistest.TestData(), testpackage.Analyzer, "ts-t12", "ts-t12/clean", "ts-t12/shared")
+	analysistest.Run(t, analysistest.TestData(), testpackage.Analyzer,
+		"ts-t12", "ts-t12/clean", "ts-t12/shared")
 }
