@@ -854,3 +854,26 @@ func TestChangedKeepsAHealthyPackageWhoseNameAFailedPackageShares(t *testing.T) 
 	require.Equal(t, cli.ExitClean, got.code)
 	assert.Contains(t, got.stdout, "store.Open\n+   os.Getenv\n")
 }
+
+// TestChangedKeepsCallsWhoseImportPathAndNameRunTogether covers call identity.
+//
+// Goal: method C of type B in package x and function C in package x.B are two
+// calls, though joining the import path and the callee gives the same text.
+func TestChangedKeepsCallsWhoseImportPathAndNameRunTogether(t *testing.T) {
+	c := newCheckout(t)
+	c.write("go.mod", "module example.com/shop\n\ngo 1.26\n")
+	c.write("x/x.go", "package x\n\ntype B struct{}\n\nfunc (B) C() {}\n")
+	c.write("x.B/b.go", "package b\n\nfunc C() {}\n")
+	c.write("svc/svc.go", "package svc\n\nfunc Run() {}\n")
+	c.commit("base")
+	c.git("checkout", "-q", "-b", "feature")
+	c.write("svc/svc.go", "package svc\n\n"+
+		"import (\n\t\"example.com/shop/x\"\n\tb \"example.com/shop/x.B\"\n)\n\n"+
+		"func Run() {\n\tx.B{}.C()\n\tb.C()\n}\n")
+	c.commit("head")
+
+	got := c.changed()
+	assert.Empty(t, got.stderr)
+	require.Equal(t, cli.ExitClean, got.code)
+	assert.Contains(t, got.stdout, "Calls added: 2 ·")
+}

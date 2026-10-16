@@ -74,7 +74,8 @@ type Call struct {
 }
 
 // Key identifies the call within its function. It qualifies the callee by
-// import path, so two packages that print the same name stay two calls.
+// import path and a NUL, which no path or identifier holds, so two packages that
+// print the same name stay two calls.
 func (c Call) Key() string {
-	return c.Path + strings.TrimPrefix(c.Callee, c.Package)
+	return c.Path + "\x00" + strings.TrimPrefix(c.Callee, c.Package)
 }
