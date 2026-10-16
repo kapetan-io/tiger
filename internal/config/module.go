@@ -140,47 +140,31 @@ func isSource(name string) bool {
 
 // neverBuilt reports whether the Go file's build constraint is exactly the
 // tag ignore, the convention for a "go run" script that no build includes.
-// Other constraints are left as packages, because a file tiger can't
-// prove unbuildable must keep its entry.
+// Other constraints are left as packages, because a file tiger can't prove
+// unbuildable must keep its entry. The legacy // +build form is not read:
+// its placement rules differ from //go:build, and gofmt has added the
+// //go:build twin to such files since Go 1.17.
 func neverBuilt(file string) bool {
-	fset := token.NewFileSet()
-	parsed, err := parser.ParseFile(fset, file, nil,
+	parsed, err := parser.ParseFile(token.NewFileSet(), file, nil,
 		parser.PackageClauseOnly|parser.ParseComments)
 	if err != nil {
 		return false
 	}
-	var legacy []constraint.Expr
 	for _, group := range parsed.Comments {
 		if group.Pos() > parsed.Package {
 			break
 		}
 		for _, comment := range group.List {
-			isPlus := constraint.IsPlusBuild(comment.Text)
-			if !constraint.IsGoBuild(comment.Text) && !isPlus {
-				continue
-			}
-			// The go command ignores a // +build line unless a blank line
-			// follows its comment group.
-			adjacent := fset.Position(group.End()).Line+1 >= fset.Position(parsed.Package).Line
-			if isPlus && adjacent {
+			if !constraint.IsGoBuild(comment.Text) {
 				continue
 			}
 			expr, err := constraint.Parse(comment.Text)
 			if err != nil {
 				return false
 			}
-			if isPlus {
-				legacy = append(legacy, expr)
-				continue
-			}
-			return isIgnoreTag(expr)
+			tag, ok := expr.(*constraint.TagExpr)
+			return ok && tag.Tag == "ignore"
 		}
 	}
-	// Separate // +build lines are ANDed, so only a lone one is exactly ignore.
-	return len(legacy) == 1 && isIgnoreTag(legacy[0])
-}
-
-func isIgnoreTag(expr constraint.Expr) bool {
-	tag, ok := expr.(*constraint.TagExpr)
-	return ok && tag.Tag == "ignore"
+	return false
 }

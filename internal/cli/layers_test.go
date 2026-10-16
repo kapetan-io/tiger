@@ -1358,52 +1358,16 @@ func TestLayersIgnoredOnlyDirectoryNeedsNoEntry(t *testing.T) {
 	assert.Contains(t, got.stdout, "TS-X03: package ./tools has no entry")
 }
 
-// TestLayersLegacyPlusBuildIgnoreNeedsNoEntry covers the coverage contract
-// for generator scripts written before //go:build existed.
+// TestLayersLegacyPlusBuildIgnoreNeedsAnEntry covers the coverage contract
+// for the legacy constraint form.
 //
-// Goal: a directory whose only Go file carries // +build ignore, which the go
-// command still honors, needs no entry.
-func TestLayersLegacyPlusBuildIgnoreNeedsNoEntry(t *testing.T) {
-	got := checkModule(t, writeModuleFiles(t, map[string]string{
-		"go.mod":            "module " + layerModule + "\n\ngo 1.26\n",
-		"lib/lib.go":        "// Package lib is pure.\npackage lib\n",
-		"tools/gen.go":      "// +build ignore\n\npackage main\n\nfunc main() {}\n",
-		"tiger.layers.yaml": "\"./lib\": []\n",
-	}))
-	assert.Equal(t, cli.ExitClean, got.code)
-	assert.Empty(t, got.stdout)
-}
-
-// TestLayersPlusBuildIgnoreWithoutBlankLineNeedsAnEntry covers the coverage
-// contract for a constraint the go command does not honor.
-//
-// Goal: a // +build ignore line that no blank line separates from the package
-// clause is not a constraint, so the file builds and its directory needs an
-// entry, even in a run whose patterns don't load it.
-func TestLayersPlusBuildIgnoreWithoutBlankLineNeedsAnEntry(t *testing.T) {
-	dir := writeModuleFiles(t, map[string]string{
-		"go.mod":            "module " + layerModule + "\n\ngo 1.26\n",
-		"lib/lib.go":        "// Package lib is pure.\npackage lib\n",
-		"tools/doc.go":      "// Package tools is documented.\n// +build ignore\npackage tools\n",
-		"tiger.layers.yaml": "\"./lib\": []\n",
-	})
-	got := run(t, "check", "-C", dir, "./lib")
-	assert.Equal(t, cli.ExitFindings, got.code)
-	assert.Contains(t, got.stdout, "TS-X03: package ./tools has no entry")
-}
-
-// TestLayersLegacyIgnoreAndedWithAnotherLineNeedsAnEntry covers the coverage
-// contract for a constraint that is more than ignore.
-//
-// Goal: separate // +build lines are ANDed, so ignore followed by linux is not
-// exactly ignore and the directory keeps its entry, as the same expression
-// does in a //go:build line. A //go:build ignore line paired with its
-// // +build twin stays exempt.
-func TestLayersLegacyIgnoreAndedWithAnotherLineNeedsAnEntry(t *testing.T) {
+// Goal: a // +build ignore line alone is not read, so its directory keeps its
+// entry, while the //go:build twin that gofmt adds to it exempts the directory.
+func TestLayersLegacyPlusBuildIgnoreNeedsAnEntry(t *testing.T) {
 	dir := writeModuleFiles(t, map[string]string{
 		"go.mod":     "module " + layerModule + "\n\ngo 1.26\n",
 		"lib/lib.go": "// Package lib is pure.\npackage lib\n",
-		"tools/gen.go": "// +build ignore\n// +build linux\n\npackage main\n\n" +
+		"tools/gen.go": "// +build ignore\n\npackage main\n\n" +
 			"func main() {}\n",
 		"paired/gen.go": "//go:build ignore\n// +build ignore\n\npackage main\n\n" +
 			"func main() {}\n",
