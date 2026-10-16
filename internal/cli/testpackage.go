@@ -33,13 +33,13 @@ func testPackageCoverage(
 			reported[filepath.ToSlash(finding.Position.Filename)] = true
 		}
 	}
-	// An external test package reports its own _test path, and a directory
-	// can end in _test itself, so both spellings select the directory.
+	// A package's external test package adds its own _test path but no new
+	// directory, and a directory can end in _test itself, so the paths are
+	// taken as they are.
 	selected := map[string]bool{}
 	for _, pkgPath := range analyzed {
 		if rel, inModule := setup.module.Relative(pkgPath); inModule {
 			selected[rel] = true
-			selected[strings.TrimSuffix(rel, "_test")] = true
 		}
 	}
 	findings := []driver.Finding{}

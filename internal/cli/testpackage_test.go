@@ -39,3 +39,27 @@ func TestTestPackageReportsFilesThisRunDoesNotLoad(t *testing.T) {
 			"tiger: 4 blocking\n", got.stdout)
 	assert.Empty(t, got.stderr)
 }
+
+// TestTestPackageStaysWithinThePatterns covers TS-T12's scope contract.
+//
+// Goal: a directory named foo_test is its own package, so checking it leaves
+// the sibling directory foo alone, while checking foo still reports foo's own
+// test files.
+func TestTestPackageStaysWithinThePatterns(t *testing.T) {
+	dir := writeModuleFiles(t, map[string]string{
+		"go.mod":           "module testpackage.example/app\n\ngo 1.26\n",
+		"foo/foo.go":       "// Package foo has an internal test.\npackage foo\n",
+		"foo/in_test.go":   "//go:build integration\n\npackage foo\n",
+		"foo_test/help.go": "// Package helpers is a sibling.\npackage helpers\n",
+	})
+
+	got := run(t, "check", "-C", dir, "./foo_test")
+	assert.Equal(t, cli.ExitClean, got.code)
+	assert.Empty(t, got.stdout)
+
+	got = run(t, "check", "-C", dir, "./foo")
+	assert.Equal(t, cli.ExitFindings, got.code)
+	assert.Equal(t, "foo/in_test.go:3:9: TS-T12: this test file declares package foo, which "+
+		"gives it every unexported name — declare package foo_test and test through the "+
+		"exported API\ntiger: 1 blocking\n", got.stdout)
+}
