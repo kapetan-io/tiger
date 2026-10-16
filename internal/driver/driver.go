@@ -36,6 +36,7 @@ import (
 
 	"github.com/kapetan-io/tiger/assert"
 	"github.com/kapetan-io/tiger/internal/finish"
+	"github.com/kapetan-io/tiger/internal/layerfile"
 	"github.com/kapetan-io/tiger/internal/worklist"
 )
 
@@ -336,7 +337,8 @@ func dedupe(loaded []*packages.Package) []*packages.Package {
 // standard "// Code generated ... DO NOT EDIT." convention. The files still
 // load and type-check — hand-written code that depends on them is analyzed
 // in full — but a finding inside one names nothing a person can fix, so the
-// driver drops it there.
+// driver drops it there, except a layer-file finding (TS-X03), because a
+// generated file can import the IO the layer file keeps out.
 func generatedFiles(pkg *packages.Package) map[string]bool {
 	generated := map[string]bool{}
 	for _, file := range pkg.Syntax {
@@ -391,7 +393,7 @@ func runPass(
 		ResultOf:   resultOf,
 		Report: func(diagnostic analysis.Diagnostic) {
 			position := run.pkg.Fset.Position(diagnostic.Pos)
-			if run.generated[position.Filename] {
+			if run.generated[position.Filename] && diagnostic.Category != layerfile.RuleID {
 				return
 			}
 			findings = append(findings, Finding{

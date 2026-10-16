@@ -3,6 +3,8 @@
 // guaranteed. boundedloop only checks the Cond/Post syntax, never the body.
 package fixture
 
+import "database/sql"
+
 // drainAppendKnownMiss is syntactically bounded by len(queue) > 0, but the
 // body appends to queue on every round, so the loop can run forever.
 //
@@ -64,4 +66,20 @@ func closureWrongDirectionKnownMiss(x uint, launch func(func())) int {
 		}
 	}
 	return count
+}
+
+// filteredCountRowsKnownMiss restates the limit and counts every row read, so
+// rows the filter skips use up the page and a page comes back short.
+//
+// known-miss: the loop's only other exit drains the cursor, so the counter
+// reads as a page size; the "filtered page" pattern covers the short page.
+func filteredCountRowsKnownMiss(rows *sql.Rows, keep func() bool, limit int) int {
+	kept := 0
+	for n := 0; n < limit && rows.Next(); n++ {
+		if !keep() {
+			continue
+		}
+		kept++
+	}
+	return kept
 }

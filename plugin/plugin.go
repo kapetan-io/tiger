@@ -24,9 +24,8 @@
 // directory. A load error fails plugin construction with the same one-line
 // message tiger check prints. TS-X03's import and missing-entry findings
 // surface here for the packages golangci-lint loads; an entry that matches no
-// package, and a package with no entry that the run did not load or that
-// holds only generated files, do not, because those checks need the module's
-// directories and only tiger check runs them (ADR-0029). golangci-lint keys
+// package, and a package with no entry that the run did not load, do not, because those checks need
+// the module's directories and only tiger check runs them (ADR-0029). golangci-lint keys
 // its issue cache on the sorted analyzer names, salted with its version
 // string, the linters.settings block and go.mod, never on the plugin binary or
 // the layer file, so the plugin adds an analyzer that does nothing and whose

@@ -170,39 +170,14 @@ func closingGap(entries []int) int {
 	return count
 }
 
-// iterator is the opaque store-cursor shape boundedCond cannot see into:
-// Valid() is a plain method call, not a comparison, so only the
-// //tiger:batched cursor waiver can clear it.
+// iterator is a store cursor whose loop condition, Valid(), states no limit.
 type iterator struct{ n int }
 
 func (it *iterator) Valid() bool { return it.n < 100 }
 func (it *iterator) Next()       { it.n++ }
 
-// rowsCursor is the other cursor shape the waiver covers: the boolean
-// method call itself is the advance (the database-rows.Next() pattern).
+// rowsCursor is a cursor whose boolean Next() is itself the advance (the
+// database rows.Next() pattern).
 type rowsCursor struct{ n int }
 
 func (r *rowsCursor) Next() bool { r.n++; return r.n < 100 }
-
-// cursorScanBatched is the cursor waiver's preceding-line directive
-// placement: the directive sits in the comment group immediately above
-// the loop it governs.
-func cursorScanBatched(it *iterator) int {
-	count := 0
-	//tiger:batched store cursor is guaranteed finite by the backend
-	for it.Valid() {
-		it.Next()
-		count++
-	}
-	return count
-}
-
-// cursorScanBatchedTrailing is the cursor waiver's trailing directive
-// placement: the directive trails on the for line itself.
-func cursorScanBatchedTrailing(rows *rowsCursor) int {
-	count := 0
-	for rows.Next() { //tiger:batched store cursor is guaranteed finite by the backend
-		count++
-	}
-	return count
-}

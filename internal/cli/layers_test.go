@@ -814,8 +814,7 @@ func TestLayersDirectoryNamedLikeATestReportsOnce(t *testing.T) {
 // TestLayersGeneratedPackageNeedsAnEntry covers the coverage contract.
 //
 // Goal: a package whose every file is generated still needs an entry, reported
-// at its first file; the rule reference lists only imports in generated files
-// as a known miss.
+// at its package clause.
 func TestLayersGeneratedPackageNeedsAnEntry(t *testing.T) {
 	dir := writeModuleFiles(t, map[string]string{
 		"go.mod":     "module " + layerModule + "\n\ngo 1.26\n",
@@ -827,7 +826,7 @@ func TestLayersGeneratedPackageNeedsAnEntry(t *testing.T) {
 
 	got := checkModule(t, dir)
 	assert.Equal(t, cli.ExitFindings, got.code)
-	assert.Equal(t, "gen/gen.go:1:1: TS-X03: package ./gen has no entry in tiger.layers.yaml — "+
+	assert.Equal(t, "gen/gen.go:4:1: TS-X03: package ./gen has no entry in tiger.layers.yaml — "+
 		"add it as a key listing the module packages, modules and IO or random subtrees (os, "+
 		"net, ...) it imports, or [] for none\ntiger: 1 blocking\n", got.stdout)
 }
@@ -1351,51 +1350,85 @@ func TestLayersEmptyFileIsNoFile(t *testing.T) {
 	}
 }
 
-// TestLayersIgnoredOnlyDirectoryNeedsAnEntry covers the coverage contract
-// where it reaches past what the go command builds.
+// TestLayersIgnoredOnlyDirectoryNeedsNoEntry covers the coverage contract
+// for generator scripts that no build includes.
 //
 // Goal: a directory whose only Go file sits behind //go:build ignore is never
-// built, yet it counts as a package and needs an entry, reported at the file's
-// first line.
-func TestLayersIgnoredOnlyDirectoryNeedsAnEntry(t *testing.T) {
-	got := checkModule(t, writeModuleFiles(t, map[string]string{
+// built, so it is not a package and needs no entry, while one that also holds
+// an unconstrained file is a package again.
+func TestLayersIgnoredOnlyDirectoryNeedsNoEntry(t *testing.T) {
+	dir := writeModuleFiles(t, map[string]string{
 		"go.mod":     "module " + layerModule + "\n\ngo 1.26\n",
 		"lib/lib.go": "// Package lib is pure.\npackage lib\n",
 		"tools/gen.go": "//go:build ignore\n\n// Package main generates code.\npackage main\n\n" +
 			"func main() {}\n",
 		"tiger.layers.yaml": "\"./lib\": []\n",
-	}))
+	})
+	got := checkModule(t, dir)
+	assert.Equal(t, cli.ExitClean, got.code)
+	assert.Empty(t, got.stdout)
+
+	// Control case, so the exemption is the ignore tag and not the directory.
+	writeFiles(t, dir, map[string]string{
+		"tools/real.go": "package main\n",
+	})
+	got = checkModule(t, dir)
 	assert.Equal(t, cli.ExitFindings, got.code)
-	assert.Equal(t, "tools/gen.go:1:1: TS-X03: package ./tools has no entry in "+
-		"tiger.layers.yaml — add it as a key listing the module packages, modules and IO or "+
-		"random subtrees (os, net, ...) it imports, or [] for none\ntiger: 1 blocking\n",
-		got.stdout)
+	assert.Contains(t, got.stdout, "TS-X03: package ./tools has no entry")
 }
 
-// TestLayersImportInGeneratedFileIsNotReported covers the enforcement
+// TestLayersLegacyPlusBuildIgnoreNeedsAnEntry covers the coverage contract
+// for the legacy constraint form.
+//
+// Goal: a // +build ignore line alone is not read, so its directory keeps its
+// entry, while the //go:build twin that gofmt adds to it exempts the directory.
+func TestLayersLegacyPlusBuildIgnoreNeedsAnEntry(t *testing.T) {
+	dir := writeModuleFiles(t, map[string]string{
+		"go.mod":     "module " + layerModule + "\n\ngo 1.26\n",
+		"lib/lib.go": "// Package lib is pure.\npackage lib\n",
+		"tools/gen.go": "// +build ignore\n\npackage main\n\n" +
+			"func main() {}\n",
+		"paired/gen.go": "//go:build ignore\n// +build ignore\n\npackage main\n\n" +
+			"func main() {}\n",
+		"tiger.layers.yaml": "\"./lib\": []\n",
+	})
+	got := run(t, "check", "-C", dir, "./lib")
+	assert.Equal(t, cli.ExitFindings, got.code)
+	assert.Contains(t, got.stdout, "TS-X03: package ./tools has no entry")
+	assert.NotContains(t, got.stdout, "./paired")
+}
+
+// TestLayersEntryForIgnoredOnlyDirectoryIsStale covers the coverage contract
+// for adopters who added an entry to satisfy the old rule.
+//
+// Goal: an entry for a directory holding only //go:build ignore files matches
+// no package, so it is reported like any other stale entry.
+func TestLayersEntryForIgnoredOnlyDirectoryIsStale(t *testing.T) {
+	got := checkModule(t, writeModuleFiles(t, map[string]string{
+		"go.mod":            "module " + layerModule + "\n\ngo 1.26\n",
+		"lib/lib.go":        "// Package lib is pure.\npackage lib\n",
+		"tools/gen.go":      "//go:build ignore\n\npackage main\n\nfunc main() {}\n",
+		"tiger.layers.yaml": "\"./lib\": []\n\"./tools\": []\n",
+	}))
+	assert.Equal(t, cli.ExitFindings, got.code)
+	assert.Contains(t, got.stdout, "tiger.layers.yaml:2:1: TS-X03")
+}
+
+// TestLayersImportInGeneratedFileIsReported covers the enforcement
 // contract where it meets generated code.
 //
-// Goal: an import the entry doesn't list is not reported from a generated
-// file, because tiger drops findings in generated code, and the same import in
-// a hand-written file of that package is.
-func TestLayersImportInGeneratedFileIsNotReported(t *testing.T) {
-	dir := writeModuleFiles(t, map[string]string{
+// Goal: an import the entry doesn't list is reported from a generated file,
+// at the import, as it is from a hand-written one.
+func TestLayersImportInGeneratedFileIsReported(t *testing.T) {
+	got := checkModule(t, writeModuleFiles(t, map[string]string{
 		"go.mod":     "module " + layerModule + "\n\ngo 1.26\n",
 		"lib/lib.go": "// Package lib is pure.\npackage lib\n",
 		"lib/lib.pb.go": "// Code generated by protoc-gen-go. DO NOT EDIT.\n\npackage lib\n\n" +
 			"import _ \"os\"\n",
 		"tiger.layers.yaml": "\"./lib\": []\n",
-	})
-	got := checkModule(t, dir)
-	require.Equal(t, cli.ExitClean, got.code)
-	assert.Empty(t, got.stdout)
-
-	writeFiles(t, dir, map[string]string{
-		"lib/io.go": "package lib\n\nimport _ \"os\"\n",
-	})
-	got = checkModule(t, dir)
+	}))
 	assert.Equal(t, cli.ExitFindings, got.code)
-	assert.Equal(t, "lib/io.go:3:8: TS-X03: the \"./lib\" entry in tiger.layers.yaml doesn't "+
+	assert.Equal(t, "lib/lib.pb.go:5:8: TS-X03: the \"./lib\" entry in tiger.layers.yaml doesn't "+
 		"list os, so this package can't import os — add \"os\" to it, or pass it in through an "+
 		"interface\ntiger: 1 blocking\n", got.stdout)
 }
