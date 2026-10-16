@@ -159,6 +159,13 @@ jobs:
           ./bin/tiger check --show-facts ./... > first.txt
           ./bin/tiger check --show-facts ./... > second.txt
           diff first.txt second.txt
+      # The repository has no unpinned loop left to print, so the fixture is
+      # what proves the facts channel prints something to diff.
+      - name: double-run diff with the facts channel on a fixture
+        run: |
+          ./bin/tiger check -C internal/cli/testdata/fixtures/showfacts --show-facts ./... > first.txt
+          ./bin/tiger check -C internal/cli/testdata/fixtures/showfacts --show-facts ./... > second.txt
+          diff first.txt second.txt
           test -s first.txt
 
   # The golangci-lint module plugin registers every analyzer, SSA ones
