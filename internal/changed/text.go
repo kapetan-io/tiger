@@ -159,8 +159,6 @@ func named(names []string) string {
 	return fmt.Sprintf("%s and %d more", strings.Join(names[:maxNamed], ", "), len(names)-maxNamed)
 }
 
-// baseLabel prints the ref with its tip hash, or the tip hash alone when the ref is a
-// hash prefix, and says "merge base" with that hash when it is not the tip.
 func baseLabel(rev revision.Comparison) string {
 	base := splitBase(rev)
 	if base.note == "" {
@@ -176,6 +174,9 @@ type baseName struct {
 	note string
 }
 
+// splitBase names the base by its ref with the tip hash, or by the tip hash
+// alone when the ref is a hash prefix, and notes the merge base's hash when the
+// merge base is not the tip.
 func splitBase(rev revision.Comparison) baseName {
 	tip := revision.Short(rev.BaseTip)
 	prefix := strings.HasPrefix(rev.BaseTip, strings.ToLower(rev.BaseRef))

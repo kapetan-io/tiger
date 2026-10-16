@@ -52,7 +52,7 @@ records the rule.
 `--format markdown` prints the report as a pull request comment. Its first line is
 `<!-- tiger-changed -->`, the marker the workflow below uses to find its one comment and update it
 on every push, so a pull request never collects a stack of them. The comment stays under GitHub's
-65,536-character limit: past 60,000 characters it folds each new package's call list, then cuts the
+65,536-character limit: past 60,000 characters it drops each new package's call list, then cuts the
 main list after its last whole function and says how many calls it left out. Tiger never talks to
 GitHub; the workflow posts.
 
@@ -69,7 +69,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       # Check out the pull request's own head commit, not the default merge commit
-      # (refs/pull/N/merge). The title names this commit, and the merge base must
+      # (refs/pull/N/merge). The comment's heading names this commit, and the merge base must
       # be the fork point that "Files changed" compares against. fetch-depth 0
       # keeps the history tiger needs to find it; without it tiger exits 2.
       - uses: actions/checkout@v4
@@ -79,19 +79,22 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-      - run: go install github.com/kapetan-io/tiger/cmd/tiger@<version>
+      - run: go install github.com/kapetan-io/tiger/cmd/tiger@<version>   # a released tag, as in the plugin install above
       - name: post the report as one sticky comment
         env:
           GH_TOKEN: ${{ github.token }}
+          BASE_REF: ${{ github.base_ref }}
+        # The report goes outside the checkout: a new file in it would make tiger
+        # label the head "+ uncommitted changes".
         run: |
-          tiger changed --format markdown origin/${{ github.base_ref }} > changed.md
-          tiger changed origin/${{ github.base_ref }} >> "$GITHUB_STEP_SUMMARY"
+          tiger changed --format markdown "origin/$BASE_REF" > "$RUNNER_TEMP/changed.md"
+          tiger changed "origin/$BASE_REF" >> "$GITHUB_STEP_SUMMARY"
           id=$(gh api repos/${{ github.repository }}/issues/${{ github.event.number }}/comments --paginate \
-            --jq '[.[] | select(.body | startswith("<!-- tiger-changed -->"))][0].id // empty')
+            --jq '.[] | select(.body | startswith("<!-- tiger-changed -->")) | .id' | head -1)
           if [ -n "$id" ]; then
-            gh api -X PATCH repos/${{ github.repository }}/issues/comments/$id -F body=@changed.md
+            gh api -X PATCH repos/${{ github.repository }}/issues/comments/$id -F body=@"$RUNNER_TEMP/changed.md"
           else
-            gh api repos/${{ github.repository }}/issues/${{ github.event.number }}/comments -F body=@changed.md
+            gh api repos/${{ github.repository }}/issues/${{ github.event.number }}/comments -F body=@"$RUNNER_TEMP/changed.md"
           fi
 ```
 
@@ -265,7 +268,7 @@ loads still fire.
 
 Findings from a rule that a pattern backs end with ``— see `tiger pattern <name>` ``, under the plugin as under
 `tiger check`. The pattern text lives in the `tiger` binary, so a project that runs only the plugin still
-installs `tiger` (`go install github.com/kapetan-io/tiger/cmd/tiger@<version>`, the same version as the
+installs `tiger` (`go install github.com/kapetan-io/tiger/cmd/tiger@<version>   # a released tag, as in the plugin install above`, the same version as the
 plugin) for its agents to run `tiger pattern`. CI publishes both binaries together as the
 `tiger-and-plugin` artifact.
 

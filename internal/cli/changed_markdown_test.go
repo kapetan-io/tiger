@@ -13,6 +13,7 @@ import (
 	"github.com/kapetan-io/tiger/internal/cli"
 )
 
+// commentLimit repeats the renderer's cap so a change to it fails here.
 const commentLimit = 60000
 
 // TestChangedMarkdownGoldens covers the exact bytes of the pull request comment.
@@ -65,8 +66,7 @@ func TestChangedMarkdownPrintsIdenticalBytes(t *testing.T) {
 
 // TestChangedMarkdownBoldsOnlyWhatChanged covers the counts line.
 //
-// Goal: each non-zero count is bold, each zero count is plain, and the colored
-// diff lines equal the counts.
+// Goal: each non-zero count is bold and each zero count is plain.
 func TestChangedMarkdownBoldsOnlyWhatChanged(t *testing.T) {
 	got := fixture(t, "call-removed").changed("--format", "markdown")
 	require.Equal(t, cli.ExitClean, got.code)
@@ -84,8 +84,8 @@ func bulkSource(pkg string, count int) string {
 }
 
 const (
-	// fits fills a comment without passing the limit; spills passes it with the
-	// main list alone; both are chosen from the size of one function's lines.
+	// Each call prints about 48 characters, so fitsCalls stays under the
+	// limit and spillsCalls passes it alone, in a list or in a new package.
 	fitsCalls   = 600
 	spillsCalls = 1800
 )
@@ -117,7 +117,7 @@ func bulkCheckout(t *testing.T, bulk bulkSize) checkout {
 // TestChangedMarkdownStaysUnderTheCommentLimit covers the size cap.
 //
 // Goal: a report that fits is untouched, a report that passes 60,000
-// characters folds the new package's calls first, then cuts the main list at a
+// characters drops the new package's calls first, then cuts the main list at a
 // whole function and says how many calls were not shown, and the counts line
 // keeps the full totals.
 func TestChangedMarkdownStaysUnderTheCommentLimit(t *testing.T) {
@@ -131,7 +131,7 @@ func TestChangedMarkdownStaysUnderTheCommentLimit(t *testing.T) {
 		assert.Contains(t, got.stdout, fmt.Sprintf("**Calls added: %d**", fitsCalls))
 	})
 
-	t.Run("foldsNewPackageCallsFirst", func(t *testing.T) {
+	t.Run("dropsNewPackageCallsFirst", func(t *testing.T) {
 		t.Parallel()
 		got := bulkCheckout(t, bulkSize{existing: 100, fresh: spillsCalls}).changed("--format", "markdown")
 		require.Equal(t, cli.ExitClean, got.code)

@@ -18,8 +18,7 @@ const (
 	marker = "<!-- tiger-changed -->"
 
 	// maxComment is where the report starts dropping detail. GitHub rejects a
-	// comment over 65,536 characters, and the rest of the room is left for the
-	// text added after the cut.
+	// comment over 65,536 characters; the difference is headroom.
 	maxComment = 60000
 )
 
@@ -29,12 +28,12 @@ const (
 func (r Report) Markdown(rev revision.Comparison) string {
 	full := r.markdown(rev, view{shown: len(r.Functions)})
 	if tooLong(full) {
-		folded := view{shown: len(r.Functions), fold: true}
-		if full = r.markdown(rev, folded); tooLong(full) {
-			folded.shown = sort.Search(len(r.Functions), func(n int) bool {
-				return tooLong(r.markdown(rev, view{shown: n + 1, fold: true}))
+		trimmed := view{shown: len(r.Functions), omitCalls: true}
+		if full = r.markdown(rev, trimmed); tooLong(full) {
+			trimmed.shown = sort.Search(len(r.Functions), func(n int) bool {
+				return tooLong(r.markdown(rev, view{shown: n + 1, omitCalls: true}))
 			})
-			full = r.markdown(rev, folded)
+			full = r.markdown(rev, trimmed)
 		}
 	}
 	return full
@@ -43,10 +42,10 @@ func (r Report) Markdown(rev revision.Comparison) string {
 func tooLong(comment string) bool { return utf8.RuneCountInString(comment) > maxComment }
 
 // view says how much of the report a comment shows: how many of the main
-// list's functions, and whether the new packages' call lists are folded away.
+// list's functions, and whether the new packages' call lists are left out for a pointer to the terminal.
 type view struct {
-	shown int
-	fold  bool
+	shown     int
+	omitCalls bool
 }
 
 func (r Report) markdown(rev revision.Comparison, show view) string {
@@ -113,7 +112,7 @@ func (r Report) countsMarkdown() string {
 }
 
 // writeNewPackageMarkdown keeps the summary bullets open because they are the
-// wiring a reviewer checks, and folds the call list. Summary text uses <code>
+// wiring a reviewer checks, and collapses the call list under <details>. Summary text uses <code>
 // because GitHub does not render markdown inside <summary>.
 func writeNewPackageMarkdown(out *strings.Builder, pkg NewPackage, show view, base string) {
 	fmt.Fprintf(out, "**New package `%s`** — %d types and functions, %d calls:\n\n",
@@ -123,7 +122,7 @@ func writeNewPackageMarkdown(out *strings.Builder, pkg NewPackage, show view, ba
 	fmt.Fprintf(out, "- Uses outside packages: %s\n\n", usesText(pkg.Uses.Outside, "`"))
 	switch {
 	case pkg.calls() == 0:
-	case show.fold:
+	case show.omitCalls:
 		fmt.Fprintf(out, "Too long for a comment; run `tiger changed %s` for every call.\n\n", base)
 	default:
 		fmt.Fprintf(out, "<details>\n<summary>Every call from <code>%s</code>, by function (%d)</summary>\n\n",
