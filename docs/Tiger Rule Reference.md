@@ -2392,11 +2392,13 @@ the key's line, the entry and the fix:
 tiger check: tiger.layers.yaml: line 2: "./store": "strings" is always allowed; remove it
 ```
 
-A package is any directory holding a non-test Go file, whatever its build constraints, so a
-package built only on Windows still needs an entry when you run on Linux. Only `tiger check`
+A package is any directory holding a non-test Go file, whatever its GOOS or GOARCH constraints,
+so a package built only on Windows still needs an entry when you run on Linux. A directory whose
+only non-test Go files carry `//go:build ignore`, such as a `go run` generator, is not a package
+and needs no entry. Tiger does not read the legacy `// +build ignore` form, so a file
+with only that line still needs an entry. An entry for one is reported as matching no package. Only `tiger check`
 reports an entry that matches no package directory, and a package with no entry that the run
-did not load: one outside the patterns you passed, built only for another platform, or holding
-only generated files. Both need the module's directories, which the golangci-lint plugin
+did not load: one outside the patterns you passed, or built only for another platform. Both need the module's directories, which the golangci-lint plugin
 never sees. Under the plugin the import findings and the missing-entry finding for loaded
 packages still fire; stock golangci-lint without the tiger plugin reports none of this rule
 ([ADR-0029](adr/0029-the-layer-file-is-checked-by-tiger-not-depguard.md)).
@@ -2413,8 +2415,7 @@ synthesizes; it still reports the package when no entry covers it. The golangci-
 judge it, because the analyzer skips only a package named `main` whose path ends in `.test`.
 Packages with cgo files are not judged import by import; the missing-entry check still applies.
 The driver takes the compiled cgo variant of a hand-written file for generated code, a limit every
-analyzer shares. A directory holding only a `//go:build ignore` file still needs an entry. An
-import in a generated file is not reported, because tiger drops findings in generated code.
+analyzer shares, though a `TS-X03` finding in a generated file is kept.
 
 ## Auto rules
 
