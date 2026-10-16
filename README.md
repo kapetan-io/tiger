@@ -186,7 +186,7 @@ Two engines enforce the rules:
   The wave-1 set covers every rule computable from a single package's AST
   and types (`nogoto`, `paniccheck`, `boundedloop`, `compoundcond`,
   `nogoroutine`, `selectctx`, `chandecl`, `errignore`, `returnarity`,
-  `directives`, `skipcheck`, `tablename`, `testdoc`, `derivation`,
+  `directives`, `skipcheck`, `tablename`, `testdoc`, `testpackage`, `derivation`,
   `limitrelate`, `sametypeparams`, `participle`, `deferdistance`); the SSA
   wave adds the analyzers that check what code does rather than how it is
   written (`norecursion`, `maporder`, `poolzero`, `variant`, `contracts`); the

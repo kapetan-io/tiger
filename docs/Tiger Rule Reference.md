@@ -1842,6 +1842,62 @@ func TestSum(t *testing.T) {
 **Known miss:** A named struct type used as the case type, `[]sumCase` instead of an
 inline `[]struct{...}`, is not checked even with no name field.
 
+<!-- rule: TS-T12 -->
+### TS-T12 — tests live in the external _test package
+
+**Severity:** blocking — a finding fails the run.
+
+A test file that declares the package under test (`package foo`) can read every
+unexported function and field in it. Tests written that way pin internals instead of what
+a caller sees, so they break on every refactor and prove nothing a caller would notice.
+`package foo_test` can only use the exported API. Every `_test.go` file must declare it.
+
+There is no exception for `export_test.go`. A file that re-exports internals for tests to
+reach hands the external package the same internals. A directory with `package main`
+needs no exception either, since `main_test` can import and test it.
+
+Code that fires it, in `sum_test.go`:
+
+```go
+package sum
+
+import "testing"
+
+func TestAdd(t *testing.T) {
+	_ = t
+}
+```
+
+```
+sum_test.go:1:9: TS-T12: this test file declares package sum, which gives it every unexported name — declare package sum_test and test through the exported API
+```
+
+The compliant rewrite:
+
+```go
+package sum_test
+
+import "testing"
+
+func TestAdd(t *testing.T) {
+	_ = t
+}
+```
+
+Files under `testdata/` are not checked, because the Go tool never loads them as packages.
+
+A package whose own name ends in `_test` counts as the package under test when a non-test
+file declares the same name. Its test files need a further `_test` suffix.
+
+**Coverage:** `tiger check` also reads the package clause of every Go file in each package
+directory the run analyzed, ignoring build constraints. A test file behind `//go:build integration`
+or `windows`, or one that starts with `// Code generated ... DO NOT EDIT.`, is reported
+the same as any other, except a file marked `//go:build ignore`, which no platform builds.
+Under golangci-lint the rule sees only the files the build loads.
+
+**Known miss:** A directory whose only Go files are build-constrained test files is never
+loaded by the run, so its test files are not checked.
+
 
 ## Termination and contracts
 
