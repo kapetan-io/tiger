@@ -59,7 +59,9 @@ func runChanged(args []string, streams Streams) int {
 		if err != nil {
 			return changedFailure(streams, err)
 		}
-		streams.Stdout.Write(data)
+		if _, err := streams.Stdout.Write(data); err != nil {
+			return changedFailure(streams, err)
+		}
 		return ExitClean
 	}
 	fmt.Fprint(streams.Stdout, report.Text(rev))

@@ -287,7 +287,10 @@ func without(inv callinventory.Inventory, skip map[string]bool) callinventory.In
 // newSide gathers each owner and the types and functions in other packages it
 // calls. An init function is not an owner a reviewer would name.
 func newSide(inv callinventory.Inventory) side {
-	s := side{inv: inv, owners: map[string]owner{}, reached: map[string]map[string]bool{}, count: map[string]int{}}
+	s := side{
+		inv: inv, owners: map[string]owner{}, count: map[string]int{},
+		reached: map[string]map[string]bool{},
+	}
 	for _, name := range slices.Sorted(maps.Keys(inv.Functions)) {
 		fn := inv.Functions[name]
 		if s.reached[fn.Owner] == nil {

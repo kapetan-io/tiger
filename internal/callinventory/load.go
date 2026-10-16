@@ -345,9 +345,10 @@ func (l *loader) function(decl *ssa.Function) error {
 	return nil
 }
 
-// site is where an instruction is written, relative to the run directory.
+// site is where an instruction is written, relative to the run directory. It
+// ignores //line directives so the site names a file the reader can open.
 func (l *loader) site(instr ssa.Instruction) Site {
-	pos := l.fset.Position(instr.Pos())
+	pos := l.fset.PositionFor(instr.Pos(), false)
 	rel, err := filepath.Rel(l.run, pos.Filename)
 	if err != nil {
 		rel = pos.Filename

@@ -182,7 +182,9 @@ type removedPackageDoc struct {
 func functionDocs(functions []Function) []functionDoc {
 	docs := make([]functionDoc, 0, len(functions))
 	for _, fn := range functions {
-		doc := functionDoc{Function: fn.Name, Owner: fn.Owner, Calls: make([]callDoc, 0, len(fn.Calls))}
+		doc := functionDoc{
+			Function: fn.Name, Owner: fn.Owner, Calls: make([]callDoc, 0, len(fn.Calls)),
+		}
 		if fn.Name != fn.Owner {
 			doc.Method = new(strings.TrimPrefix(fn.Name, fn.Owner+"."))
 		}
@@ -226,7 +228,7 @@ func siteDocs(sites []callinventory.Site, rev string) []siteDoc {
 func useDocs(uses []Use) []useDoc {
 	docs := make([]useDoc, 0, len(uses))
 	for _, use := range uses {
-		docs = append(docs, useDoc{Package: use.Package, Symbols: use.Symbols})
+		docs = append(docs, useDoc(use))
 	}
 	return docs
 }

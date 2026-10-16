@@ -335,7 +335,8 @@ func TestChangedRefusesAnUnknownFormat(t *testing.T) {
 	got := fixture(t, "call-added").changed("--format", "yaml")
 	assert.Equal(t, cli.ExitOperational, got.code)
 	assert.Empty(t, got.stdout)
-	assert.Equal(t, "tiger changed: unknown format \"yaml\"; the formats are: text, json\n", got.stderr)
+	assert.Equal(t,
+		"tiger changed: unknown format \"yaml\"; the formats are: text, json\n", got.stderr)
 }
 
 func sourceLines(source string, sites ...int) []string {
@@ -449,7 +450,8 @@ func TestChangedJSONNamesSitesRelativeToTheRunDirectory(t *testing.T) {
 		require.Len(t, call.Sites, 1)
 		assert.Equal(t, "head", call.Sites[0].Rev)
 		assert.Equal(t, "app.go", call.Sites[0].File)
-		assert.Contains(t, sourceLines(c.read("app/app.go"), call.Sites[0].Line)[0], call.Method+"(")
+		line := call.Sites[0].Line
+		assert.Contains(t, sourceLines(c.read("app/app.go"), line)[0], call.Method+"(")
 	}
 
 	c = build(appHead, appBase)
@@ -461,7 +463,8 @@ func TestChangedJSONNamesSitesRelativeToTheRunDirectory(t *testing.T) {
 		require.Len(t, call.Sites, 1)
 		assert.Equal(t, "base", call.Sites[0].Rev)
 		assert.Equal(t, "app.go", call.Sites[0].File)
-		assert.Contains(t, sourceLines(c.git("show", "main:app/app.go"), call.Sites[0].Line)[0], call.Method+"(")
+		line := call.Sites[0].Line
+		assert.Contains(t, sourceLines(c.git("show", "main:app/app.go"), line)[0], call.Method+"(")
 	}
 }
 
@@ -517,10 +520,13 @@ func TestChangedJSONGivesOneSitePerLine(t *testing.T) {
 	c := newCheckout(t)
 	c.write("go.mod", shopModule)
 	c.copyFixture("fakedb", "fakedb")
-	c.write("web/web.go", "package web\n\nimport \"example.com/fakedb\"\n\nfunc Run(pool *fakedb.Pool) {\n}\n")
+	c.write("web/web.go", "package web\n\nimport \"example.com/fakedb\"\n\n"+
+		"func Run(pool *fakedb.Pool) {\n}\n")
 	c.commit("base")
 	c.git("checkout", "-q", "-b", "feature")
-	c.write("web/web.go", "package web\n\nimport \"example.com/fakedb\"\n\nfunc Run(pool *fakedb.Pool) {\n\t_, _ = pool.Query(\"a\"); _, _ = pool.Query(\"b\")\n}\n")
+	c.write("web/web.go", "package web\n\nimport \"example.com/fakedb\"\n\n"+
+		"func Run(pool *fakedb.Pool) {\n"+
+		"\t_, _ = pool.Query(\"a\"); _, _ = pool.Query(\"b\")\n}\n")
 	c.commit("head")
 
 	doc := c.report()
@@ -528,4 +534,26 @@ func TestChangedJSONGivesOneSitePerLine(t *testing.T) {
 	require.Len(t, doc.Functions[0].Calls, 1)
 	require.Len(t, doc.Functions[0].Calls[0].Sites, 1)
 	assert.Equal(t, 6, doc.Functions[0].Calls[0].Sites[0].Line)
+}
+
+// TestChangedJSONIgnoresLineDirectives covers what a site points at.
+//
+// Goal: a call under a //line directive is reported at the file and line that
+// hold it, not at the file and line the directive names.
+func TestChangedJSONIgnoresLineDirectives(t *testing.T) {
+	const base = "package web\n\nimport \"example.com/fakedb\"\n\n" +
+		"func Run(pool *fakedb.Pool) {\n}\n"
+	c := newCheckout(t)
+	c.write("go.mod", shopModule)
+	c.copyFixture("fakedb", "fakedb")
+	c.write("web/web.go", base)
+	c.commit("base")
+	c.git("checkout", "-q", "-b", "feature")
+	c.write("web/web.go", "package web\n\nimport \"example.com/fakedb\"\n\n"+
+		"func Run(pool *fakedb.Pool) {\n//line elsewhere.go:100\n\t_, _ = pool.Query(\"a\")\n}\n")
+	c.commit("head")
+
+	site := c.report().Functions[0].Calls[0].Sites[0]
+	assert.Equal(t, "web/web.go", site.File)
+	assert.Equal(t, 7, site.Line)
 }
