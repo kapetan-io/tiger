@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"slices"
 	"strings"
 )
 
@@ -125,6 +126,23 @@ func (r Repository) git(args ...string) (string, error) {
 	return r.gitEnv(nil, args...)
 }
 
+// locationVars are the variables that point git at a repository other than the
+// one in the working directory. Git sets them when it runs a hook.
+var locationVars = []string{
+	"GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_OBJECT_DIRECTORY",
+	"GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_COMMON_DIR", "GIT_PREFIX",
+	"GIT_NAMESPACE", "GIT_CEILING_DIRECTORIES", "GIT_DISCOVERY_ACROSS_FILESYSTEM",
+}
+
+// cleanEnviron is the process environment without the repository-location
+// variables, so a run inside a hook reads the -C directory.
+func cleanEnviron() []string {
+	return slices.DeleteFunc(os.Environ(), func(entry string) bool {
+		name, _, _ := strings.Cut(entry, "=")
+		return slices.Contains(locationVars, name)
+	})
+}
+
 // environ is extra environment entries for a git command.
 type environ []string
 
@@ -132,7 +150,7 @@ type environ []string
 func (r Repository) gitEnv(env environ, args ...string) (string, error) {
 	cmd := exec.Command("git", args...)
 	cmd.Dir = r.dir
-	cmd.Env = append(append(os.Environ(), "GIT_OPTIONAL_LOCKS=0"), env...)
+	cmd.Env = append(append(cleanEnviron(), "GIT_OPTIONAL_LOCKS=0"), env...)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	if err := cmd.Run(); err != nil {

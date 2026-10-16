@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 
@@ -44,11 +45,20 @@ func newCheckout(t *testing.T) checkout {
 	return c
 }
 
+// cleanGitEnviron drops the variables git sets in a hook, so the helper repos
+// are not redirected when the tests run under one.
+func cleanGitEnviron() []string {
+	return slices.DeleteFunc(os.Environ(), func(entry string) bool {
+		name, _, _ := strings.Cut(entry, "=")
+		return strings.HasPrefix(name, "GIT_") && name != "GIT_TRACE"
+	})
+}
+
 func (c checkout) git(args ...string) string {
 	c.t.Helper()
 	cmd := exec.Command("git", args...)
 	cmd.Dir = c.dir
-	cmd.Env = append(os.Environ(),
+	cmd.Env = append(cleanGitEnviron(),
 		"GIT_CONFIG_GLOBAL=/dev/null",
 		"GIT_CONFIG_NOSYSTEM=1",
 		"GIT_AUTHOR_NAME=test", "GIT_AUTHOR_EMAIL=test@example.com",
@@ -721,4 +731,79 @@ func TestChangedAllowsARunDirectoryPackageNamedLikeAModuleDirectory(t *testing.T
 	assert.Empty(t, got.stderr)
 	require.Equal(t, cli.ExitClean, got.code)
 	assert.Contains(t, got.stdout, "+   b.Open\n")
+}
+
+// TestChangedIgnoresGitLocationVariables covers a run inside a git hook.
+//
+// Goal: with GIT_DIR pointing at another repository, the report still reads
+// the -C directory.
+func TestChangedIgnoresGitLocationVariables(t *testing.T) {
+	c := fixture(t, "call-added")
+	other := newCheckout(t)
+	other.write("README.md", "other\n")
+	other.commit("other")
+	t.Setenv("GIT_DIR", filepath.Join(other.dir, ".git"))
+
+	got := c.changed()
+	assert.Empty(t, got.stderr)
+	require.Equal(t, cli.ExitClean, got.code)
+	assert.Contains(t, got.stdout, "web.Handler.Greet\n+   example.com/fakedb.Pool.Exec\n")
+}
+
+const clientBase = `package store
+
+import "example.com/fakedb"
+
+type Client struct{ pool *fakedb.Pool }
+
+func (c *Client) Client() { _ = c.pool.Exec("x") }
+
+type Service struct{ client *Client }
+
+func (s *Service) Run() {}
+`
+
+// TestChangedNamesAMethodCalledLikeItsType covers callee naming.
+//
+// Goal: a method with the same name as its type keeps its method suffix, so a
+// sibling owner that starts calling it prints the call.
+func TestChangedNamesAMethodCalledLikeItsType(t *testing.T) {
+	c := newCheckout(t)
+	c.write("go.mod", "module example.com/shop\n\ngo 1.26\n\nrequire example.com/fakedb v0.0.0\n\n"+
+		"replace example.com/fakedb => ./fakedb\n")
+	c.copyFixture("fakedb", "fakedb")
+	c.write("store/store.go", clientBase)
+	c.commit("base")
+	c.git("checkout", "-q", "-b", "feature")
+	c.write("store/store.go", strings.Replace(clientBase,
+		"func (s *Service) Run() {}", "func (s *Service) Run() { s.client.Client() }", 1))
+	c.commit("head")
+
+	got := c.changed()
+	assert.Empty(t, got.stderr)
+	require.Equal(t, cli.ExitClean, got.code)
+	assert.Contains(t, got.stdout, "store.Service.Run\n+   store.Client.Client\n")
+}
+
+// TestChangedTellsApartPackagesThatPrintTheSame covers callee identity.
+//
+// Goal: a run directory a/b whose Run swaps its own Open for the root-level
+// package b's Open prints a removal and an addition, because the imported
+// package prints by its import path.
+func TestChangedTellsApartPackagesThatPrintTheSame(t *testing.T) {
+	c := newCheckout(t)
+	c.write("go.mod", "module example.com/shop\n\ngo 1.26\n")
+	open := "func Open() { _ = os.Getenv(\"HOME\") }\n"
+	c.write("b/b.go", "package b\n\nimport \"os\"\n\n"+open)
+	c.write("a/b/b.go", "package b\n\nimport \"os\"\n\n"+open+"\nfunc Run() { Open() }\n")
+	c.commit("base")
+	c.git("checkout", "-q", "-b", "feature")
+	c.write("a/b/b.go", "package b\n\nimport (\n\t\"os\"\n\n\t\"example.com/shop/b\"\n)\n\n"+
+		open+"\nfunc Run() { b.Open() }\n")
+	c.commit("head")
+
+	got := run(t, "changed", "-C", filepath.Join(c.dir, "a", "b"), "main")
+	assert.Empty(t, got.stderr)
+	require.Equal(t, cli.ExitClean, got.code)
+	assert.Contains(t, got.stdout, "b.Run\n-   b.Open\n+   example.com/shop/b.Open\n")
 }

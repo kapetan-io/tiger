@@ -55,15 +55,17 @@ func Load(dir string) (Inventory, error) {
 		prefix = ""
 	}
 	load := &loader{
-		run:      run,
-		module:   module.Path,
-		prefix:   filepath.ToSlash(prefix),
-		inv:      &inv,
-		reaches:  importReach(roots),
-		body:     newBodyReach(),
-		compared: map[string]bool{},
-		skipped:  map[string]bool{},
-		names:    map[string]string{},
+		run:       run,
+		module:    module.Path,
+		prefix:    filepath.ToSlash(prefix),
+		inv:       &inv,
+		reaches:   importReach(roots),
+		body:      newBodyReach(),
+		compared:  map[string]bool{},
+		skipped:   map[string]bool{},
+		names:     map[string]string{},
+		underRun:  map[string]bool{},
+		rootNames: map[string]bool{},
 	}
 	load.classify(roots)
 	prog, _ := ssautil.AllPackages(roots, 0)
@@ -104,6 +106,10 @@ type loader struct {
 	compared map[string]bool
 	// skipped is the set of generated files, by absolute path.
 	skipped map[string]bool
+	// underRun holds every package loaded by ./..., healthy or not, and
+	// rootNames the names they print by.
+	underRun  map[string]bool
+	rootNames map[string]bool
 	// names maps each printed name of a package under the run directory to its
 	// import path, to catch two packages that would print the same.
 	names map[string]string
@@ -122,7 +128,7 @@ func refOf(pkg *types.Package) pkgRef {
 }
 
 // callTarget is what a call names inside a package: a type or function, and
-// the method on it. For a free function the two are the same.
+// the method on it, empty for a free function.
 type callTarget struct {
 	Member string
 	Method string
@@ -136,9 +142,9 @@ func (l *loader) inModule(path string) bool {
 // generated, and remembers the first load error.
 func (l *loader) classify(roots []*packages.Package) {
 	var failures []loadFailure
-	underRun := map[string]bool{}
 	for _, pkg := range roots {
-		underRun[pkg.PkgPath] = true
+		l.underRun[pkg.PkgPath] = true
+		l.rootNames[l.plainName(pkgRef{Path: pkg.PkgPath, Name: pkg.Name})] = true
 	}
 	packages.Visit(roots, nil, func(pkg *packages.Package) {
 		for _, each := range pkg.Errors {
@@ -148,7 +154,7 @@ func (l *loader) classify(roots []*packages.Package) {
 			return
 		}
 		name := l.packageName(pkgRef{Path: pkg.PkgPath, Name: pkg.Name})
-		if underRun[pkg.PkgPath] {
+		if l.underRun[pkg.PkgPath] {
 			if other, taken := l.names[name]; taken && other != pkg.PkgPath {
 				l.err = cmp.Or(l.err, fmt.Errorf(
 					"two packages print as %s (%s and %s)", name, other, pkg.PkgPath))
@@ -160,7 +166,7 @@ func (l *loader) classify(roots []*packages.Package) {
 			return
 		}
 		l.inv.Packages[name] = true
-		if !underRun[pkg.PkgPath] {
+		if !l.underRun[pkg.PkgPath] {
 			return
 		}
 		l.compared[pkg.PkgPath] = true
@@ -198,6 +204,17 @@ type loadFailure struct {
 // outside packages in full. The package at the run directory prints by its
 // package name.
 func (l *loader) packageName(pkg pkgRef) string {
+	name := l.plainName(pkg)
+	if l.inModule(pkg.Path) && !l.underRun[pkg.Path] && l.rootNames[name] {
+		// Printing it relative to the module root would read as a package
+		// under the run directory, so a call into it would look like a call
+		// to that package.
+		return pkg.Path
+	}
+	return name
+}
+
+func (l *loader) plainName(pkg pkgRef) string {
 	if !l.inModule(pkg.Path) {
 		return pkg.Path
 	}
@@ -364,10 +381,10 @@ func (l *loader) callee(call *ssa.CallCommon, from *types.Package, owner string)
 	if !ok || obj.Pkg() == nil {
 		return Call{}, false
 	}
-	target := callTarget{Member: obj.Name(), Method: obj.Name()}
+	target := callTarget{Member: obj.Name()}
 	if sig, ok := obj.Type().(*types.Signature); ok && sig.Recv() != nil {
 		if named := receiver(sig.Recv().Type()); named != nil {
-			target.Member = named.Obj().Name()
+			target = callTarget{Member: named.Obj().Name(), Method: obj.Name()}
 		}
 	}
 	if obj.Pkg().Path() == from.Path() {
@@ -390,7 +407,7 @@ func (l *loader) other(pkg *types.Package, target callTarget) Call {
 		Package:  l.packageName(refOf(pkg)),
 		InModule: l.inModule(pkg.Path()),
 	}
-	if target.Method != target.Member {
+	if target.Method != "" {
 		call.Callee = name + "." + target.Method
 	}
 	return call
