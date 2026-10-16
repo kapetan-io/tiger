@@ -311,6 +311,12 @@ const _ = uint(scanMax - pageMax)
 
 var ErrScanLimit = errors.New("list read scanMax rows before the page filled")
 
+type Rows interface {
+	Next() bool
+	Value() string
+	Err() error
+}
+
 func list(rows Rows, namespace string, limit int) ([]string, error) {
 	if limit <= 0 {
 		return nil, nil
@@ -327,6 +333,9 @@ func list(rows Rows, namespace string, limit int) ([]string, error) {
 		if len(names) == limit {
 			return names, nil
 		}
+	}
+	if err := rows.Err(); err != nil {
+		return names, err
 	}
 	if scanned == scanMax {
 		return names, ErrScanLimit

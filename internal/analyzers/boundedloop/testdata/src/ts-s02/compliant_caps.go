@@ -128,6 +128,9 @@ func filteredPage(rows *sql.Rows, keep func() bool, limit int) (int, error) {
 			return kept, nil
 		}
 	}
+	if err := rows.Err(); err != nil {
+		return kept, err
+	}
 	if scanned == scanMax {
 		return kept, errScanLimit
 	}
