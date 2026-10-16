@@ -24,8 +24,6 @@ var Analyzer = &analysis.Analyzer{
 const testSuffix = "_test"
 
 func run(pass *analysis.Pass) (any, error) {
-	// A package can itself be named foo_test, so the suffix alone cannot tell
-	// internal test files from external ones. A name shared with a non-test file can.
 	underTest := map[string]bool{}
 	for _, file := range pass.Files {
 		if !isTestFile(pass, file) {
@@ -33,22 +31,30 @@ func run(pass *analysis.Pass) (any, error) {
 		}
 	}
 	for _, file := range pass.Files {
-		if !isTestFile(pass, file) {
-			continue
+		if isTestFile(pass, file) && Internal(file.Name.Name, underTest) {
+			pass.Report(analysis.Diagnostic{
+				Pos:      file.Name.Pos(),
+				Category: "TS-T12",
+				Message:  Message(file.Name.Name),
+			})
 		}
-		name := file.Name.Name
-		if strings.HasSuffix(name, testSuffix) && !underTest[name] {
-			continue
-		}
-		pass.Report(analysis.Diagnostic{
-			Pos:      file.Name.Pos(),
-			Category: "TS-T12",
-			Message: "TS-T12: this test file declares package " + name + ", which gives it " +
-				"every unexported name — declare package " + name +
-				testSuffix + " and test through the exported API",
-		})
 	}
 	return nil, nil
+}
+
+// Internal reports whether a test file declaring name is in the package under
+// test. A package can itself be named foo_test, so the suffix alone cannot
+// tell internal test files from external ones. A name that a non-test file of
+// the directory also declares (underTest) can.
+func Internal(name string, underTest map[string]bool) bool {
+	return !strings.HasSuffix(name, testSuffix) || underTest[name]
+}
+
+// Message is the finding for a test file declaring package name.
+func Message(name string) string {
+	return "TS-T12: this test file declares package " + name + ", which gives it " +
+		"every unexported name — declare package " + name + testSuffix +
+		" and test through the exported API"
 }
 
 func isTestFile(pass *analysis.Pass, file *ast.File) bool {

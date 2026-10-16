@@ -132,3 +132,40 @@ func isSource(name string) bool {
 	return strings.HasSuffix(name, ".go") && !strings.HasSuffix(name, "_test.go") &&
 		!strings.HasPrefix(name, ".") && !strings.HasPrefix(name, "_")
 }
+
+// GoFiles walks the module rooted at dir the way ReadLayout does and returns
+// the Go files of each directory, test files included and build constraints
+// ignored, keyed by the directory relative to the module root and listed as
+// slash-separated paths relative to it.
+func GoFiles(dir string) (map[string][]string, error) {
+	root, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		return nil, fmt.Errorf("listing Go files: %w", err)
+	}
+	var layout Layout
+	files := map[string][]string{}
+	err = filepath.WalkDir(root, func(walked string, entry fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if entry.IsDir() && walked != root {
+			return layout.enter(walked, entry)
+		}
+		name := entry.Name()
+		if entry.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasPrefix(name, ".") ||
+			strings.HasPrefix(name, "_") {
+			return nil
+		}
+		rel, err := filepath.Rel(root, walked)
+		if err != nil {
+			return err
+		}
+		rel = filepath.ToSlash(rel)
+		files[path.Dir(rel)] = append(files[path.Dir(rel)], rel)
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("listing Go files: %w", err)
+	}
+	return files, nil
+}

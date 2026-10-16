@@ -1808,7 +1808,13 @@ Files under `testdata/` are not checked, because the Go tool never loads them as
 A package whose own name ends in `_test` counts as the package under test when a non-test
 file declares the same name. Its test files need a further `_test` suffix.
 
-**Known miss:** none known.
+**Coverage:** `tiger check` also reads the package clause of every Go file in each package
+directory the run analyzed, ignoring build constraints. A test file behind `//go:build integration`
+or `windows`, or one that starts with `// Code generated ... DO NOT EDIT.`, is reported
+the same as any other. Under golangci-lint the rule sees only the files the build loads.
+
+**Known miss:** A directory whose only Go files are build-constrained test files is never
+loaded by the run, so its test files are not checked.
 
 
 ## Effects and frames

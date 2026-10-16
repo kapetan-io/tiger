@@ -1535,7 +1535,9 @@ Why. A test file in `package foo` reaches every unexported name, so it pins inte
 sees and breaks on every refactor. `package foo_test` can only use the exported API. `export_test.go`
 and any other file that re-exports internals gets no exception, and neither does `package main`, since
 `main_test` can import and test it. The rule is on by default with no setting to turn it off.
-Enforce. `testpackage` (custom). Every `_test.go` file must declare a `_test` package. Files under
+Enforce. `testpackage` (custom). Every `_test.go` file must declare a `_test` package. `tiger check` also
+reads the package clause of build-constrained and generated test files in the packages it analyzed, which
+the loader skips. Files under
 `testdata/` are not checked, because the Go tool never loads them as packages.
 
 ---

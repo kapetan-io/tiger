@@ -67,6 +67,12 @@ func runCheck(args []string, streams Streams) int {
 		return ExitOperational
 	}
 	blocking := append(sorted.blocking, layerCoverage(setup, sorted.blocking)...)
+	unloaded, err := testPackageCoverage(*chdir, setup, report.Packages, sorted.blocking)
+	if err != nil {
+		fmt.Fprintf(streams.Stderr, "tiger check: %v\n", err)
+		return ExitOperational
+	}
+	blocking = append(blocking, unloaded...)
 	sort.SliceStable(blocking, func(i, j int) bool { return blocking[i].Before(blocking[j]) })
 	printed := 0
 	for _, finding := range blocking {
