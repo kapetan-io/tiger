@@ -149,27 +149,38 @@ func neverBuilt(file string) bool {
 	if err != nil {
 		return false
 	}
+	var legacy []constraint.Expr
 	for _, group := range parsed.Comments {
 		if group.Pos() > parsed.Package {
 			break
 		}
 		for _, comment := range group.List {
-			if !constraint.IsGoBuild(comment.Text) && !constraint.IsPlusBuild(comment.Text) {
+			isPlus := constraint.IsPlusBuild(comment.Text)
+			if !constraint.IsGoBuild(comment.Text) && !isPlus {
 				continue
 			}
 			// The go command ignores a // +build line unless a blank line
 			// follows its comment group.
 			adjacent := fset.Position(group.End()).Line+1 >= fset.Position(parsed.Package).Line
-			if constraint.IsPlusBuild(comment.Text) && adjacent {
+			if isPlus && adjacent {
 				continue
 			}
 			expr, err := constraint.Parse(comment.Text)
 			if err != nil {
 				return false
 			}
-			tag, ok := expr.(*constraint.TagExpr)
-			return ok && tag.Tag == "ignore"
+			if isPlus {
+				legacy = append(legacy, expr)
+				continue
+			}
+			return isIgnoreTag(expr)
 		}
 	}
-	return false
+	// Separate // +build lines are ANDed, so only a lone one is exactly ignore.
+	return len(legacy) == 1 && isIgnoreTag(legacy[0])
+}
+
+func isIgnoreTag(expr constraint.Expr) bool {
+	tag, ok := expr.(*constraint.TagExpr)
+	return ok && tag.Tag == "ignore"
 }

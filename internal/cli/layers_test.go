@@ -1392,6 +1392,29 @@ func TestLayersPlusBuildIgnoreWithoutBlankLineNeedsAnEntry(t *testing.T) {
 	assert.Contains(t, got.stdout, "TS-X03: package ./tools has no entry")
 }
 
+// TestLayersLegacyIgnoreAndedWithAnotherLineNeedsAnEntry covers the coverage
+// contract for a constraint that is more than ignore.
+//
+// Goal: separate // +build lines are ANDed, so ignore followed by linux is not
+// exactly ignore and the directory keeps its entry, as the same expression
+// does in a //go:build line. A //go:build ignore line paired with its
+// // +build twin stays exempt.
+func TestLayersLegacyIgnoreAndedWithAnotherLineNeedsAnEntry(t *testing.T) {
+	dir := writeModuleFiles(t, map[string]string{
+		"go.mod":     "module " + layerModule + "\n\ngo 1.26\n",
+		"lib/lib.go": "// Package lib is pure.\npackage lib\n",
+		"tools/gen.go": "// +build ignore\n// +build linux\n\npackage main\n\n" +
+			"func main() {}\n",
+		"paired/gen.go": "//go:build ignore\n// +build ignore\n\npackage main\n\n" +
+			"func main() {}\n",
+		"tiger.layers.yaml": "\"./lib\": []\n",
+	})
+	got := run(t, "check", "-C", dir, "./lib")
+	assert.Equal(t, cli.ExitFindings, got.code)
+	assert.Contains(t, got.stdout, "TS-X03: package ./tools has no entry")
+	assert.NotContains(t, got.stdout, "./paired")
+}
+
 // TestLayersEntryForIgnoredOnlyDirectoryIsStale covers the coverage contract
 // for adopters who added an entry to satisfy the old rule.
 //
