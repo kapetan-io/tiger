@@ -151,9 +151,13 @@ type comparison struct {
 // Compare diffs two inventories. A package that did not load at either
 // revision is left out of both, so it never reads as new or removed.
 func Compare(sides Sides) Report {
-	skip := slices.Concat(sides.Base.NotCompared, sides.Head.NotCompared)
-	slices.Sort(skip)
-	skip = slices.Compact(skip)
+	notCompared := slices.Concat(sides.Base.NotCompared, sides.Head.NotCompared)
+	slices.Sort(notCompared)
+	notCompared = slices.Compact(notCompared)
+	skip := map[string]bool{}
+	for _, path := range slices.Concat(sides.Base.Unloaded, sides.Head.Unloaded) {
+		skip[path] = true
+	}
 	roots := rootNames(sides)
 	c := comparison{
 		base: newSide(qualify(without(sides.Base, skip), roots)),
@@ -202,28 +206,36 @@ func Compare(sides Sides) Report {
 		Owners:      len(c.head.owners),
 		Packages:    len(c.head.count),
 		Generated:   c.head.inv.Generated,
-		NotCompared: skip,
+		NotCompared: notCompared,
 	}
 	return report
 }
 
-// without drops the functions and packages of the named packages.
-func without(inv callinventory.Inventory, skip []string) callinventory.Inventory {
+// without drops the functions and packages that did not load at either
+// revision, identified by import path because printed names can repeat.
+func without(inv callinventory.Inventory, skip map[string]bool) callinventory.Inventory {
 	kept := callinventory.Inventory{
 		Functions: map[string]callinventory.Function{},
 		Packages:  map[string]bool{},
-		Roots:     inv.Roots,
-		Above:     inv.Above,
+		Roots:     map[string]string{},
+		Above:     map[string]string{},
 		Generated: inv.Generated,
 	}
 	for _, name := range slices.Sorted(maps.Keys(inv.Functions)) {
-		if fn := inv.Functions[name]; !slices.Contains(skip, fn.Package) {
+		if fn := inv.Functions[name]; !skip[fn.Path] {
 			kept.Functions[name] = fn
 		}
 	}
-	for _, pkg := range slices.Sorted(maps.Keys(inv.Packages)) {
-		if !slices.Contains(skip, pkg) {
-			kept.Packages[pkg] = true
+	for _, name := range slices.Sorted(maps.Keys(inv.Roots)) {
+		if !skip[inv.Roots[name]] {
+			kept.Roots[name] = inv.Roots[name]
+			kept.Packages[name] = true
+		}
+	}
+	for _, name := range slices.Sorted(maps.Keys(inv.Above)) {
+		if !skip[inv.Above[name]] {
+			kept.Above[name] = inv.Above[name]
+			kept.Packages[name] = true
 		}
 	}
 	return kept

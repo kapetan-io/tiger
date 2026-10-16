@@ -37,7 +37,7 @@ func Load(dir string) (Inventory, error) {
 	inv := Inventory{
 		Functions: map[string]Function{},
 		Packages:  map[string]bool{},
-		Roots:     map[string]bool{},
+		Roots:     map[string]string{},
 		Above:     map[string]string{},
 	}
 	module := mainModule(roots)
@@ -83,6 +83,7 @@ func Load(dir string) (Inventory, error) {
 	}
 	slices.Sort(inv.Generated)
 	slices.Sort(inv.NotCompared)
+	slices.Sort(inv.Unloaded)
 	return inv, nil
 }
 
@@ -164,6 +165,7 @@ func (l *loader) classify(roots []*packages.Package) {
 		}
 		if pkg.IllTyped || len(pkg.Errors) > 0 {
 			l.inv.NotCompared = append(l.inv.NotCompared, name)
+			l.inv.Unloaded = append(l.inv.Unloaded, pkg.PkgPath)
 			return
 		}
 		l.inv.Packages[name] = true
@@ -171,7 +173,7 @@ func (l *loader) classify(roots []*packages.Package) {
 			l.inv.Above[name] = pkg.PkgPath
 			return
 		}
-		l.inv.Roots[name] = true
+		l.inv.Roots[name] = pkg.PkgPath
 		l.compared[pkg.PkgPath] = true
 		for _, file := range pkg.Syntax {
 			if ast.IsGenerated(file) {
@@ -301,6 +303,7 @@ func (l *loader) function(decl *ssa.Function) error {
 	if !ok {
 		record = Function{
 			Package:     l.packageName(refOf(from)),
+			Path:        from.Path(),
 			Owner:       site.Owner,
 			Initializer: decl.Signature.Recv() == nil && site.Method == "init",
 			Calls:       map[string]Call{},

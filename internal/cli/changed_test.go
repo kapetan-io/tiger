@@ -831,3 +831,26 @@ func TestChangedKeepsCalleeNamesStableWhenAnotherRevisionAddsACollision(t *testi
 	require.Equal(t, cli.ExitClean, got.code)
 	assert.Contains(t, got.stdout, "Calls added: 0 · Calls removed: 0")
 }
+
+// TestChangedKeepsAHealthyPackageWhoseNameAFailedPackageShares covers partial
+// loads.
+//
+// Goal: a module-root store that does not compile does not hide the changed
+// calls of the healthy svc/store, which prints by the same name.
+func TestChangedKeepsAHealthyPackageWhoseNameAFailedPackageShares(t *testing.T) {
+	c := newCheckout(t)
+	c.write("go.mod", "module example.com/shop\n\ngo 1.26\n")
+	c.write("store/store.go", "package store\n\nfunc Broken( {\n")
+	c.write("svc/user/user.go", "package user\n\nimport _ \"example.com/shop/store\"\n")
+	c.write("svc/store/store.go", "package store\n\nfunc Open() {}\n")
+	c.commit("base")
+	c.git("checkout", "-q", "-b", "feature")
+	c.write("svc/store/store.go", "package store\n\nimport \"os\"\n\n"+
+		"func Open() { _ = os.Getenv(\"HOME\") }\n")
+	c.commit("head")
+
+	got := run(t, "changed", "-C", filepath.Join(c.dir, "svc"), "main")
+	assert.Empty(t, got.stderr)
+	require.Equal(t, cli.ExitClean, got.code)
+	assert.Contains(t, got.stdout, "store.Open\n+   os.Getenv\n")
+}

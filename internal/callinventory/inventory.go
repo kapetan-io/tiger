@@ -14,8 +14,9 @@ type Inventory struct {
 	// Packages is the printed name of every module package that loaded, including
 	// ones above the run directory; only those under it have Functions.
 	Packages map[string]bool
-	// Roots is the printed name of every loaded package under the run directory.
-	Roots map[string]bool
+	// Roots maps the printed name of every loaded package under the run
+	// directory to its import path.
+	Roots map[string]string
 	// Above maps the printed name of each loaded module package outside the run
 	// directory to its import path. Such a name can equal a root's, which only
 	// the comparison of two revisions can see.
@@ -25,6 +26,9 @@ type Inventory struct {
 	Generated []string
 	// NotCompared names the module packages that did not load, in byte order.
 	NotCompared []string
+	// Unloaded holds the import paths of those packages. Two packages can print
+	// the same name, so only the path says which one failed.
+	Unloaded []string
 	// LoadError is the package error that sorts first by package path then message,
 	// empty when every package loaded.
 	LoadError string
@@ -34,6 +38,8 @@ type Inventory struct {
 // function. Calls inside closures belong to the enclosing function.
 type Function struct {
 	Package string
+	// Path is the import path of Package.
+	Path string
 	// Owner is the type holding a method, or the free function itself.
 	Owner string
 	// Initializer marks init functions and package variable initializers. They

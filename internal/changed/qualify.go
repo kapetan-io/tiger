@@ -12,8 +12,10 @@ import (
 // either revision.
 func rootNames(sides Sides) map[string]bool {
 	names := map[string]bool{}
-	maps.Copy(names, sides.Base.Roots)
-	maps.Copy(names, sides.Head.Roots)
+	for _, name := range slices.Concat(
+		slices.Sorted(maps.Keys(sides.Base.Roots)), slices.Sorted(maps.Keys(sides.Head.Roots))) {
+		names[name] = true
+	}
 	return names
 }
 
@@ -39,7 +41,7 @@ func qualify(inv callinventory.Inventory, roots map[string]bool) callinventory.I
 			out.Packages[path] = true
 		}
 		// The plain name stays when a package under the run directory owns it.
-		if !ok || inv.Roots[name] {
+		if _, root := inv.Roots[name]; !ok || root {
 			out.Packages[name] = true
 		}
 	}
