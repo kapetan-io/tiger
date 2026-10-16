@@ -2311,7 +2311,8 @@ tiger check: tiger.layers.yaml: line 2: "./store": "strings" is always allowed; 
 A package is any directory holding a non-test Go file, whatever its GOOS or GOARCH constraints,
 so a package built only on Windows still needs an entry when you run on Linux. A directory whose
 only non-test Go files carry `//go:build ignore`, such as a `go run` generator, is not a package
-and needs no entry. An entry for one is reported as matching no package. Only `tiger check`
+and needs no entry. The legacy `// +build ignore` form counts too, but only with a blank line
+after its comment, because the go command ignores it otherwise. An entry for one is reported as matching no package. Only `tiger check`
 reports an entry that matches no package directory, and a package with no entry that the run
 did not load: one outside the patterns you passed, or built only for another platform. Both need the module's directories, which the golangci-lint plugin
 never sees. Under the plugin the import findings and the missing-entry finding for loaded
