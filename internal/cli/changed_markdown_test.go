@@ -186,3 +186,16 @@ func TestChangedMarkdownQuotesABaseRefWithBackticks(t *testing.T) {
 	require.Equal(t, cli.ExitClean, got.code)
 	assert.Contains(t, got.stdout, "#### tiger changed: `` release`candidate `` (")
 }
+
+// TestChangedMarkdownSuggestsACommandAShellCanRun covers the pointer to the terminal.
+//
+// Goal: when the comment is cut, the suggested command quotes a base ref that
+// a shell would read as syntax.
+func TestChangedMarkdownSuggestsACommandAShellCanRun(t *testing.T) {
+	c := bulkCheckout(t, bulkSize{existing: 100, fresh: spillsCalls})
+	c.git("branch", "it's`odd", "main")
+
+	got := run(t, "changed", "-C", c.dir, "--format", "markdown", "it's`odd")
+	require.Equal(t, cli.ExitClean, got.code)
+	assert.Contains(t, got.stdout, "run `` tiger changed 'it'\\''s`odd' `` for every call.\n")
+}

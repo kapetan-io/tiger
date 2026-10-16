@@ -81,7 +81,7 @@ func (r Report) markdown(rev revision.Comparison, show view) string {
 			}
 			fmt.Fprintf(&out, "%d more calls in %d functions not shown; "+
 				"run %s for the rest.\n\n",
-				calls, len(hidden), codeSpan("tiger changed "+rev.BaseRef))
+				calls, len(hidden), codeSpan("tiger changed "+shellWord(rev.BaseRef)))
 		}
 	}
 	for _, rename := range r.Renamed {
@@ -127,7 +127,7 @@ func writeNewPackageMarkdown(out *strings.Builder, pkg NewPackage, show view, ba
 	case pkg.calls() == 0:
 	case show.omitCalls:
 		fmt.Fprintf(out, "Too long for a comment; run %s for every call.\n\n",
-			codeSpan("tiger changed "+base))
+			codeSpan("tiger changed "+shellWord(base)))
 	default:
 		fmt.Fprintf(out, "<details>\n<summary>Every call from <code>%s</code>, "+
 			"by function (%d)</summary>\n\n",
@@ -155,4 +155,14 @@ func codeSpan(text string) string {
 		return fence + " " + text + " " + fence
 	}
 	return fence + text + fence
+}
+
+// shellWord quotes a ref for a shell, because the report suggests a command to
+// copy and git accepts refs a shell would read as syntax.
+func shellWord(word string) string {
+	const plain = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._/@^~+-:=,"
+	if word != "" && strings.Trim(word, plain) == "" {
+		return word
+	}
+	return "'" + strings.ReplaceAll(word, "'", `'\''`) + "'"
 }
