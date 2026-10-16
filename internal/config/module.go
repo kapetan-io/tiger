@@ -3,6 +3,9 @@ package config
 import (
 	"errors"
 	"fmt"
+	"go/build/constraint"
+	"go/parser"
+	"go/token"
 	"io/fs"
 	"os"
 	"path"
@@ -64,9 +67,11 @@ type Layout struct {
 }
 
 // ReadLayout walks the module rooted at dir. A directory is a package when
-// it holds a non-test Go file, whatever its build constraints say, so the
-// answer is the same on every platform. Hidden and underscore directories,
-// testdata, vendor, and nested modules are skipped, as in go list ./... .
+// it holds a non-test Go file, whatever its GOOS or GOARCH constraints say,
+// so the answer is the same on every platform. A file marked
+// //go:build ignore is the exception, because no platform builds it. Hidden
+// and underscore directories, testdata, vendor, and nested modules are
+// skipped, as in go list ./... .
 func ReadLayout(dir string) (Layout, error) {
 	// WalkDir does not follow a symlinked root, so a -C through a symlink
 	// would otherwise find no packages at all.
@@ -84,7 +89,7 @@ func ReadLayout(dir string) (Layout, error) {
 			return layout.enter(walked, entry)
 		}
 		pkgDir := filepath.Dir(walked)
-		if !isSource(entry.Name()) || seen[pkgDir] {
+		if !isSource(entry.Name()) || seen[pkgDir] || neverBuilt(walked) {
 			return nil
 		}
 		seen[pkgDir] = true
@@ -131,4 +136,33 @@ func (l *Layout) enter(walked string, entry fs.DirEntry) error {
 func isSource(name string) bool {
 	return strings.HasSuffix(name, ".go") && !strings.HasSuffix(name, "_test.go") &&
 		!strings.HasPrefix(name, ".") && !strings.HasPrefix(name, "_")
+}
+
+// neverBuilt reports whether the Go file's build constraint is exactly the
+// tag ignore, the convention for a "go run" script that no build includes.
+// Other constraints are left as packages, because a file tiger can't
+// prove unbuildable must keep its entry.
+func neverBuilt(file string) bool {
+	parsed, err := parser.ParseFile(token.NewFileSet(), file, nil,
+		parser.PackageClauseOnly|parser.ParseComments)
+	if err != nil {
+		return false
+	}
+	for _, group := range parsed.Comments {
+		if group.Pos() > parsed.Package {
+			break
+		}
+		for _, comment := range group.List {
+			if !constraint.IsGoBuild(comment.Text) && !constraint.IsPlusBuild(comment.Text) {
+				continue
+			}
+			expr, err := constraint.Parse(comment.Text)
+			if err != nil {
+				return false
+			}
+			tag, ok := expr.(*constraint.TagExpr)
+			return ok && tag.Tag == "ignore"
+		}
+	}
+	return false
 }

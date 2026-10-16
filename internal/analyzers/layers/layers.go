@@ -41,17 +41,8 @@ func run(pass *analysis.Pass) (any, error) {
 		return nil, nil
 	}
 	if !importer.Listed() {
-		// The driver drops findings in generated files, so the package
-		// clause of a hand-written file carries this one when there is one.
-		clause := files[0].Package
-		for _, file := range files {
-			if !ast.IsGenerated(file) {
-				clause = file.Package
-				break
-			}
-		}
 		pass.Report(analysis.Diagnostic{
-			Pos:      clause,
+			Pos:      files[0].Package,
 			Category: layerfile.RuleID,
 			Message:  layerfile.MissingEntryMessage(importer.Dir()),
 		})

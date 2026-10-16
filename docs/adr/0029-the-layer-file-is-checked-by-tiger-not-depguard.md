@@ -61,7 +61,7 @@ file, and a package here that imports one names its module path.
 The drivers load `tiger.layers.yaml` from the run directory and install it, and the analyzer only
 queries it (ADR-0002). `tiger check` also reports, from the module's directories, an entry that
 matches no package directory and a package with no entry that the analyzer did not report: one
-outside the patterns passed, built only for another platform, or holding only generated files.
+outside the patterns passed, or built only for another platform.
 This is not an ADR-0010 finish step: a finish step sees only the packages the run loaded, and these
 checks need the directories it skipped. `tiger check` runs them after analysis, so only the CLI
 reports them.
@@ -102,9 +102,10 @@ ENG-328's wording about a TS-D01 category.
   entry covers it. The golangci-lint plugin does judge it, because the analyzer skips only a package
   named `main` whose path ends in `.test`. Packages with cgo files are not judged import by import;
   the missing-entry check still applies. The driver takes the compiled cgo variant of a hand-written
-  file for generated code and drops its findings, a limit of the driver that every analyzer shares,
-  not of TS-X03. A directory holding only a `//go:build ignore` file still needs an entry. A layer
-  file with no keys is the same as no file. An import in a generated file is not reported, because
-  the driver drops findings in generated files. Each limit in how tiger decides, every one here but
+  file for generated code, a limit every analyzer shares, though a TS-X03 finding in a generated file
+  is kept, because a generated file can import the IO the layer file keeps out. A directory whose
+  only Go files carry `//go:build ignore` is not a package and needs no entry; an entry for one is
+  reported as matching no package. A layer file with no keys is the same as no file. Each limit in
+  how tiger decides, every one here but
   the list of subtrees and cgo, has a test that pins it, in `internal/cli/layers_test.go` or, for
   the plugin's `.test` case, `plugin/plugin_test.go`.

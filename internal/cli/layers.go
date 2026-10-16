@@ -12,8 +12,7 @@ import (
 // with no entry that the layers analyzer did not report. This is not a
 // finish step, because a finish step sees only the packages the run loaded,
 // and these checks also need the directories it skipped: those outside the
-// patterns passed, built only for another platform, or holding only
-// generated files, whose findings the driver drops.
+// patterns passed, or built only for another platform.
 func layerCoverage(setup setup, blocking []driver.Finding) []driver.Finding {
 	if setup.layers.Empty() {
 		return nil

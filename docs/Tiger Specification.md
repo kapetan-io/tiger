@@ -1171,8 +1171,10 @@ part of this module: its packages need no entry, and an import of one names its 
 import the package's entry does not allow, at the import, and a package with no entry at its package
 clause. `tiger check` also reports, from the module's directories, an entry that matches no package
 directory and a package with no entry that the analyzer did not report (one outside the patterns
-passed, built only for another platform, or holding only generated files); a directory is a package
-when it holds a non-test Go file, whatever its build constraints. Those checks need the module's
+passed, or built only for another platform); a directory is a package when it holds a non-test Go
+file, whatever its GOOS or GOARCH constraints; a file marked `//go:build ignore` does not count,
+because no platform builds it. A finding in a generated file is kept for this rule, because a
+generated file can import the IO the layer file keeps out. Those checks need the module's
 directories, so the golangci-lint plugin does not run them, and stock golangci-lint without the
 plugin reports nothing for this rule. Matching is exact, and the rule is tiger's own, because
 depguard's prefix match against the nearest allow entry cannot express it (ADR-0029).
