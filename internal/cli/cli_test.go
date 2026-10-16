@@ -38,31 +38,20 @@ func TestCheckCleanTreeIsSilent(t *testing.T) {
 	assert.Empty(t, got.stderr)
 }
 
-// factsGolden is the showfacts fixture's complete --show-facts output:
-// computed effect sets, frames, and a synthesized variant, every fact in
-// freeze-ready pin syntax.
-const factsGolden = "facts.go:14:1: TS-F01: Append's effects are alloc, mutate(r.log) — " +
-	"nothing to fix; to make tiger fail the build if they change, add " +
-	"//tiger:effects alloc, mutate(r.log)\n" +
-	"facts.go:14:1: TS-F07: Append writes r.log through its receiver or parameters — " +
-	"nothing to fix; to make tiger fail the build if that changes, add //tiger:frame r.log\n" +
-	"facts.go:19:1: TS-F01: Drain has no effects — nothing to fix; to make tiger fail the " +
-	"build if that changes, add //tiger:effects none\n" +
-	"facts.go:19:1: TS-F07: Drain writes nothing through its receiver or parameters — " +
-	"nothing to fix; to make tiger fail the build if that changes, add //tiger:frame none\n" +
-	"facts.go:21:2: TS-V01: this loop in Drain ends because len(pending) shrinks on every pass — " +
-	"nothing to fix; to make tiger fail the build if that changes, add " +
-	"//tiger:variant len(pending)\n" +
-	"facts.go:29:1: TS-F01: Home's effects are io(env) — nothing to fix; to make tiger " +
-	"fail the build if they change, add //tiger:effects io(env)\n" +
-	"facts.go:29:1: TS-F07: Home writes nothing through its receiver or parameters — " +
-	"nothing to fix; to make tiger fail the build if that changes, add //tiger:frame none\n"
+// factsGolden is the showfacts fixture's complete --show-facts output: the
+// synthesized variants, every fact in freeze-ready pin syntax.
+const factsGolden = "facts.go:11:2: TS-V01: this loop in Consume ends because len(pending) " +
+	"shrinks on every pass — nothing to fix; to make tiger fail the build if that changes, " +
+	"add //tiger:variant len(pending)\n" +
+	"facts.go:21:2: TS-V01: this loop in Drain ends because len(pending) shrinks on every " +
+	"pass — nothing to fix; to make tiger fail the build if that changes, add " +
+	"//tiger:variant len(pending)\n"
 
 // TestCheckShowFactsPrintsPinSyntax covers the reported severity level's
 // activation and invariant 1 at the CLI surface.
 //
-// Goal: --show-facts prints every computed fact — effect sets, frames,
-// synthesized variants — as position-prefixed lines whose pin text is
+// Goal: --show-facts prints every computed fact — synthesized
+// variants — as position-prefixed lines whose pin text is
 // byte-exact directive.Format output, the run still exits 0, and no
 // summary line appears because reported findings are never counted.
 func TestCheckShowFactsPrintsPinSyntax(t *testing.T) {
@@ -115,20 +104,18 @@ func TestCheckShowFactsIsDeterministic(t *testing.T) {
 	assert.Equal(t, first, second)
 }
 
-// TestCheckFactsPropagateAcrossPackages covers TS-F02's acceptance
-// criterion: sparse pins, dense enforcement, across a package boundary.
+// TestCheckRetiredPinsAreBlocking covers the removal of effect and frame
+// pins.
 //
-// Goal: a pinned function whose effect violation is introduced in a
-// different package of the module produces the blocking finding at the
-// pin, naming the introducing call, and the run exits 1.
-func TestCheckFactsPropagateAcrossPackages(t *testing.T) {
-	got := run(t, "check", "-C", "testdata/fixtures/facts", "./...")
+// Goal: a file that still carries //tiger:effects or //tiger:frame gets a
+// blocking TS-L09 finding naming the directive, and the run exits 1.
+func TestCheckRetiredPinsAreBlocking(t *testing.T) {
+	got := run(t, "check", "-C", "testdata/fixtures/retired", "./...")
 	assert.Equal(t, cli.ExitFindings, got.code)
 	assert.Empty(t, got.stderr)
-	assert.Equal(t, "core/core.go:10:1: TS-F02: this function makes a network call "+
-		"(fixture.example/facts/helper.Ping at core.go:12:20) but its //tiger:effects "+
-		"comment doesn't list io(net) — add io(net) to the comment, or remove the call\n"+
-		"tiger: 1 blocking\n", got.stdout)
+	assert.Contains(t, got.stdout, "retired.go:7:1: TS-L09: //tiger:effects is not a directive")
+	assert.Contains(t, got.stdout, "retired.go:12:1: TS-L09: //tiger:frame is not a directive")
+	assert.Contains(t, got.stdout, "tiger: 2 blocking")
 }
 
 // TestCheckBlockingFindingsExitOne covers the findings contract.

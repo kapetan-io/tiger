@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/kapetan-io/tiger/assert"
 )
@@ -277,4 +278,83 @@ func FormatPredicate(parsed Predicate) string {
 		return parsed.Invariant
 	}
 	return formatAtom(parsed.Left) + " " + parsed.Op + " " + formatAtom(parsed.Right)
+}
+
+// splitCommas splits text on commas outside parentheses, trimming each
+// element. Empty elements are preserved so callers can name them.
+func splitCommas(text string) []string {
+	elements := []string{}
+	depth, start := 0, 0
+	for i, r := range text {
+		switch r {
+		case '(':
+			depth++
+		case ')':
+			depth--
+		case ',':
+			if depth == 0 {
+				elements = append(elements, strings.TrimSpace(text[start:i]))
+				start = i + 1
+			}
+		}
+	}
+	return append(elements, strings.TrimSpace(text[start:]))
+}
+
+// call is one term split into its name and, when parenthesized, its
+// comma-split inner arguments; a bare term carries nil inner.
+type call struct {
+	name  string
+	inner []string
+}
+
+// splitCall splits one term into its call form.
+func splitCall(term string) (call, error) {
+	open := strings.IndexByte(term, '(')
+	if open < 0 {
+		if strings.ContainsRune(term, ')') {
+			return call{}, fmt.Errorf("has an unmatched %q in %q — balance the parentheses",
+				")", term)
+		}
+		return call{name: term}, nil
+	}
+	if !strings.HasSuffix(term, ")") {
+		return call{}, fmt.Errorf("has an unclosed %q in %q — close it", "(", term)
+	}
+	split := call{name: strings.TrimSpace(term[:open])}
+	body := term[open+1 : len(term)-1]
+	if strings.TrimSpace(body) == "" {
+		split.inner = []string{}
+		return split, nil
+	}
+	split.inner = splitCommas(body)
+	return split, nil
+}
+
+// validPath reports whether text is a parameter-rooted path: one or more
+// dot-separated Go identifiers.
+func validPath(text string) bool {
+	for segment := range strings.SplitSeq(text, ".") {
+		if !validIdentifier(segment) {
+			return false
+		}
+	}
+	return true
+}
+
+// validIdentifier reports whether text is a Go identifier.
+func validIdentifier(text string) bool {
+	if text == "" {
+		return false
+	}
+	for i, r := range text {
+		letter := unicode.IsLetter(r) || r == '_'
+		if i == 0 && !letter {
+			return false
+		}
+		if !letter && !unicode.IsDigit(r) {
+			return false
+		}
+	}
+	return true
 }

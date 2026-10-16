@@ -77,15 +77,15 @@ func TestCheckWholeProgramOutputIsDeterministic(t *testing.T) {
 // TestCheckPluginSmokeFixtureFiresWholeProgramRules covers acceptance
 // criterion 7's CLI half.
 //
-// Goal: tiger check on the two-package plugin-smoke fixture exits 1 and
+// Goal: tiger check on the plugin-smoke fixture exits 1 and
 // reports TS-A07 and TS-A09 — so the plugin run's silence on those codes in
-// CI is meaningful, not vacuous — alongside the TS-F02 finding the plugin
-// does report.
+// CI is meaningful, not vacuous — alongside the findings the plugin does
+// report.
 func TestCheckPluginSmokeFixtureFiresWholeProgramRules(t *testing.T) {
 	got := run(t, "check", "-C", "../../testdata/plugin-smoke", "./...")
 	assert.Equal(t, cli.ExitFindings, got.code)
 	assert.Empty(t, got.stderr)
-	for _, code := range []string{"TS-A07", "TS-A09", "TS-F02"} {
+	for _, code := range []string{"TS-A07", "TS-A09", "TS-S09"} {
 		assert.Contains(t, got.stdout, code+":")
 	}
 }

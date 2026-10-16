@@ -1,8 +1,8 @@
 // Package pins locates well-formed pin directives and binds each to the
 // declaration or statement it pins.
 //
-// This is shared infrastructure for the pin-bearing analyzers (effects,
-// frames, variant, contracts): each needs the same attachment rule — a pin
+// This is shared infrastructure for the pin-bearing analyzers (variant,
+// contracts): each needs the same attachment rule — a pin
 // binds to the node starting on the line after its comment group — so a pin
 // can never bind to one node for one analyzer and another for the next.
 // Malformed pins are skipped here; the directives analyzer owns their

@@ -25,7 +25,7 @@ func runCheck(args []string, streams Streams) int {
 	showFacts := flags.Bool(
 		"show-facts",
 		false,
-		"print computed facts (effect sets, frames, synthesized variants) in pin syntax",
+		"print computed facts (synthesized variants) in pin syntax",
 	)
 	analyzers := rules.Analyzers()
 	for _, registered := range analyzers {

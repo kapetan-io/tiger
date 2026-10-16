@@ -24,7 +24,7 @@ var bannedWords = []string{
 
 var (
 	ruleCodePattern  = regexp.MustCompile(`TS-[A-Z]+[0-9]+`)
-	directiveVerbs   = regexp.MustCompile(`\b(effects|frame|variant|requires|ensures|batched)\b`)
+	directiveVerbs   = regexp.MustCompile(`\b(variant|requires|ensures|batched)\b`)
 	maxBodyRunes     = 240
 	directivePrefix  = "//tiger:"
 	bannedWordChecks = compileBanned()

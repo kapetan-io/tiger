@@ -16,14 +16,14 @@ const pinned = `package fixture
 
 // Flush persists the buffered entries.
 //
-//tiger:effects mutate(r.log), io(disk)
-//tiger:frame r.log
-func Flush(r *int) {}
+//tiger:requires r != nil
+//tiger:ensures result == 0
+func Flush(r *int) int { return 0 }
 
 //tiger:batched provider offers no bulk endpoint
 func Notify() {}
 
-//tiger:effects io(dsk)
+//tiger:variant 2 * n
 func Malformed() {}
 
 func Drain(pending []int) int {
@@ -77,14 +77,14 @@ func TestCollectBindsPinsToDeclarations(t *testing.T) {
 	})
 	require.NotNil(t, flush)
 
-	effects := loaded.collected.At(flush, "effects")
-	require.Len(t, effects, 1)
-	assert.Equal(t, "mutate(r.log), io(disk)", effects[0].Directive.Args)
-	assert.True(t, effects[0].Pos.IsValid())
+	requires := loaded.collected.At(flush, "requires")
+	require.Len(t, requires, 1)
+	assert.Equal(t, "r != nil", requires[0].Directive.Args)
+	assert.True(t, requires[0].Pos.IsValid())
 
-	frames := loaded.collected.At(flush, "frame")
-	require.Len(t, frames, 1)
-	assert.Equal(t, "r.log", frames[0].Directive.Args)
+	ensures := loaded.collected.At(flush, "ensures")
+	require.Len(t, ensures, 1)
+	assert.Equal(t, "result == 0", ensures[0].Directive.Args)
 
 	assert.Empty(t, loaded.collected.At(flush, "variant"))
 }
@@ -132,5 +132,5 @@ func TestCollectSkipsNonPinsAndMalformed(t *testing.T) {
 		return ok && decl.Name.Name == "Malformed"
 	})
 	require.NotNil(t, malformed)
-	assert.Empty(t, loaded.collected.At(malformed, "effects"))
+	assert.Empty(t, loaded.collected.At(malformed, "variant"))
 }
