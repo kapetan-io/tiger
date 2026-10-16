@@ -38,6 +38,7 @@ tiger golangci                  # audit .golangci.yml against the auto-rule base
 tiger golangci --init           # generate the baseline config for a new project
 tiger golangci --print          # write the baseline to stdout for hand merging
 tiger changed main              # calls each function started or stopped making since main
+tiger changed --format markdown main   # the same report as a pull request comment
 ```
 
 `tiger changed <base>` compares the merge base of `<base>` and HEAD with the
@@ -47,6 +48,67 @@ and 2 when no report can be produced. Flags go before `<base>`.
 `tiger changed --format json <base>` prints the same report as one JSON object
 (`tiger.changed/v1`) that also gives every call site as a file and line, tagged
 `base` or `head`, for an agent reviewer. ADR-0030 records the rule.
+
+### Posting the report on a pull request
+
+`--format markdown` prints the report as a pull request comment. Its first line is
+`<!-- tiger-changed -->`, the marker the workflow below uses to find its one comment and update it
+on every push, so a pull request never collects a stack of them. The comment stays under GitHub's
+65,536-character limit: past 60,000 characters it drops each new package's call list, then cuts the
+main list after its last whole function and says how many calls it left out. Tiger never talks to
+GitHub; the workflow posts.
+
+```yaml
+name: tiger-changed
+on: pull_request
+
+permissions:
+  contents: read
+  pull-requests: write
+
+# One run per pull request at a time. Without this, two quick pushes can both find
+# no comment and post two, or an older run can finish last and overwrite the newer report.
+concurrency:
+  group: tiger-changed-${{ github.event.number }}
+  cancel-in-progress: true
+
+jobs:
+  changed:
+    runs-on: ubuntu-latest
+    steps:
+      # Check out the pull request's own head commit, not the default merge commit
+      # (refs/pull/N/merge). The comment's heading names this commit, and the merge base must
+      # be the fork point that "Files changed" compares against. fetch-depth 0
+      # keeps the history tiger needs to find it; without it tiger exits 2.
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go install github.com/kapetan-io/tiger/cmd/tiger@<version>   # a released tag, as in "Running under golangci-lint" below
+      - name: post the report as one sticky comment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BASE_REF: ${{ github.base_ref }}
+        # The report goes outside the checkout: a new file in it would make tiger
+        # label the head "+ uncommitted changes".
+        run: |
+          tiger changed --format markdown "origin/$BASE_REF" > "$RUNNER_TEMP/changed.md"
+          tiger changed "origin/$BASE_REF" >> "$GITHUB_STEP_SUMMARY"
+          id=$(gh api repos/${{ github.repository }}/issues/${{ github.event.number }}/comments --paginate \
+            --jq '.[] | select(.body | startswith("<!-- tiger-changed -->")) | .id' | head -1)
+          if [ -n "$id" ]; then
+            gh api -X PATCH repos/${{ github.repository }}/issues/comments/$id -F body=@"$RUNNER_TEMP/changed.md"
+          else
+            gh api repos/${{ github.repository }}/issues/${{ github.event.number }}/comments -F body=@"$RUNNER_TEMP/changed.md"
+          fi
+```
+
+Every run posts, an empty report included, because a comment that says what tiger compared and what
+it cannot see is the evidence that it ran on this head. If tiger exits 2 the step fails before
+anything is posted. Pull requests from forks get a read-only token, so this job cannot comment on them.
 
 Exit codes: 0 clean, 1 findings, 2 operational failure (a package that fails
 to load is never reported as clean). A rule either blocks or it is not a rule
@@ -214,7 +276,7 @@ loads still fire.
 
 Findings from a rule that a pattern backs end with ``— see `tiger pattern <name>` ``, under the plugin as under
 `tiger check`. The pattern text lives in the `tiger` binary, so a project that runs only the plugin still
-installs `tiger` (`go install github.com/kapetan-io/tiger/cmd/tiger@<version>`, the same version as the
+installs `tiger` (`go install github.com/kapetan-io/tiger/cmd/tiger@<version>   # a released tag, as in "Running under golangci-lint" below`, the same version as the
 plugin) for its agents to run `tiger pattern`. CI publishes both binaries together as the
 `tiger-and-plugin` artifact.
 

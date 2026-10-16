@@ -335,8 +335,8 @@ func TestChangedRefusesAnUnknownFormat(t *testing.T) {
 	got := fixture(t, "call-added").changed("--format", "yaml")
 	assert.Equal(t, cli.ExitOperational, got.code)
 	assert.Empty(t, got.stdout)
-	assert.Equal(t,
-		"tiger changed: unknown format \"yaml\"; the formats are: text, json\n", got.stderr)
+	assert.Equal(t, "tiger changed: unknown format \"yaml\"; "+
+		"the formats are: text, markdown, json\n", got.stderr)
 }
 
 func sourceLines(source string, sites ...int) []string {
