@@ -1530,6 +1530,14 @@ for the paths the suite covers, and it costs one CI job rather than one analyzer
 nondeterminism you did not know about or a test logging a timestamp.
 Enforce. CI (runtime). Not built.
 
+**`TS-T12` Tests live in the external `_test` package.**
+Why. A test file in `package foo` reaches every unexported name, so it pins internals a caller never
+sees and breaks on every refactor. `package foo_test` can only use the exported API. `export_test.go`
+and any other file that re-exports internals gets no exception, and neither does `package main`, since
+`main_test` can import and test it. The rule is on by default with no setting to turn it off.
+Enforce. `testpackage` (custom). Every `_test.go` file must declare a `_test` package. Files under
+`testdata/` are not checked, because the Go tool never loads them as packages.
+
 ---
 
 # Part IV: Traceability
@@ -1687,6 +1695,7 @@ that cannot fill the third column does not go in.
 | TS-T09 | Every parser has a rejection corpus, and every file in... | B5 | Sub |
 | TS-T10 | Table-driven tests have named cases | B3 | Sub |
 | TS-T11 | The suite runs twice and the output is diffed | B4 | Sub |
+| TS-T12 | Tests live in the external _test package | B3 | Sub |
 
 ## Distribution
 
@@ -1817,6 +1826,7 @@ changes what it checks), or **not built**.
 | `corpuscheck` | TS-T09 | Directory presence plus a test that iterates it | not built |
 | `tablename` | TS-T10 | AST, table test literals require a name field | built |
 | `testdoc` | TS-T06 | AST, Test functions need a doc comment | built |
+| `testpackage` | TS-T12 | AST, every `_test.go` file declares a `_test` package | built |
 | `skipcheck` | TS-D07 | AST, every `t.Skip` is counted against the budget | built |
 
 The `effects` and `frames` analyzers exist today and are removed by ADR-0026. The `restrictions`,

@@ -1,6 +1,6 @@
 // Package skipped carries one deferred test, which surfaces as a standing
 // advisory on every run.
-package skipped
+package skipped_test
 
 import "testing"
 

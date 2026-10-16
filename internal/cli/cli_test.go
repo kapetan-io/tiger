@@ -128,7 +128,10 @@ func TestCheckFactsPropagateAcrossPackages(t *testing.T) {
 	assert.Equal(t, "core/core.go:10:1: TS-F02: this function makes a network call "+
 		"(fixture.example/facts/helper.Ping at core.go:12:20) but its //tiger:effects "+
 		"comment doesn't list io(net) — add io(net) to the comment, or remove the call\n"+
-		"tiger: 1 blocking\n", got.stdout)
+		"helper/helper_test.go:5:9: TS-T12: this test file declares package helper, which "+
+		"gives it every unexported name — declare package helper_test and test through the "+
+		"exported API\n"+
+		"tiger: 2 blocking\n", got.stdout)
 }
 
 // TestCheckBlockingFindingsExitOne covers the findings contract.

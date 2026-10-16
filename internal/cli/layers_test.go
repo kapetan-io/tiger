@@ -396,8 +396,10 @@ func TestLayersTestFilesAreNotLayered(t *testing.T) {
 	})
 
 	got := checkModule(t, dir)
-	assert.Equal(t, cli.ExitClean, got.code)
-	assert.Empty(t, got.stdout)
+	assert.Equal(t, cli.ExitFindings, got.code)
+	assert.Equal(t, "service/service_test.go:1:9: TS-T12: this test file declares package "+
+		"service, which gives it every unexported name — declare package service_test and "+
+		"test through the exported API\ntiger: 1 blocking\n", got.stdout)
 	assert.Empty(t, got.stderr)
 }
 
@@ -529,7 +531,7 @@ func TestLayersHiddenAndNestedDirectoriesAreNotPackages(t *testing.T) {
 		"other/go.mod":        "module other.example/m\n\ngo 1.26\n",
 		"other/o.go":          "package o\n",
 		"tiger.layers.yaml":   "\"./lib\": []\n",
-		"onlytests/o_test.go": "package onlytests\n",
+		"onlytests/o_test.go": "package onlytests_test\n",
 	})
 	got := checkModule(t, dir)
 	assert.Equal(t, cli.ExitClean, got.code)
@@ -772,10 +774,16 @@ func TestLayersPackageWithTestsReportsOnce(t *testing.T) {
 	assert.Equal(t, "service/db.go:3:8: TS-X03: the \"./service\" entry in tiger.layers.yaml "+
 		"doesn't list database, so this package can't import database/sql — add \"database\" "+
 		"to it, or pass it in through an interface\n"+
+		"service/service_test.go:1:9: TS-T12: this test file declares package service, which "+
+		"gives it every unexported name — declare package service_test and test through the "+
+		"exported API\n"+
 		"worker/worker.go:2:1: TS-X03: package ./worker has no entry in tiger.layers.yaml — "+
 		"add it as a key listing the module packages, modules and IO or random subtrees (os, "+
 		"net, ...) it imports, or [] for none\n"+
-		"tiger: 2 blocking\n", got.stdout)
+		"worker/worker_test.go:1:9: TS-T12: this test file declares package worker, which "+
+		"gives it every unexported name — declare package worker_test and test through the "+
+		"exported API\n"+
+		"tiger: 4 blocking\n", got.stdout)
 }
 
 // TestLayersDirectoryNamedLikeATestReportsOnce covers the coverage contract.
@@ -797,8 +805,10 @@ func TestLayersDirectoryNamedLikeATestReportsOnce(t *testing.T) {
 	assert.Equal(t, cli.ExitFindings, got.code)
 	assert.Equal(t, "e2e_test/helpers.go:2:1: TS-X03: package ./e2e_test has no entry in "+
 		"tiger.layers.yaml — add it as a key listing the module packages, modules and IO or "+
-		"random subtrees (os, net, ...) it imports, or [] for none\ntiger: 1 blocking\n",
-		got.stdout)
+		"random subtrees (os, net, ...) it imports, or [] for none\n"+
+		"e2e_test/helpers_test.go:1:9: TS-T12: this test file declares package e2e, which "+
+		"gives it every unexported name — declare package e2e_test and test through the "+
+		"exported API\ntiger: 2 blocking\n", got.stdout)
 }
 
 // TestLayersGeneratedPackageNeedsAnEntry covers the coverage contract.
@@ -836,7 +846,7 @@ func TestLayersSkippedDirectoriesLeaveTheirEntriesStale(t *testing.T) {
 		".hidden/h.go":        "package h\n",
 		"other/go.mod":        "module other.example/m\n\ngo 1.26\n",
 		"other/o.go":          "package o\n",
-		"onlytests/o_test.go": "package onlytests\n",
+		"onlytests/o_test.go": "package onlytests_test\n",
 		"tiger.layers.yaml": "\"./lib\": []\n\"./lib/testdata\": []\n\"./_scratch\": []\n" +
 			"\"./.hidden\": []\n\"./other\": []\n\"./onlytests\": []\n",
 	})
@@ -1117,12 +1127,17 @@ func TestLayersNamesThatNeverMatchAreRejected(t *testing.T) {
 // this run loads nothing but its tests, still needs an entry and is reported
 // once at its first source file, whether its test is internal or external.
 func TestLayersPackageLoadedOnlyThroughItsTestsNeedsAnEntry(t *testing.T) {
+	const internalNotice = "win/w_test.go:1:9: TS-T12: this test file declares package win, " +
+		"which gives it every unexported name — declare package win_test and test through " +
+		"the exported API\n"
 	for _, test := range []struct {
-		name string
-		test string
+		name   string
+		test   string
+		notice string
 	}{
 		{
-			name: "InternalTest",
+			name:   "InternalTest",
+			notice: internalNotice,
 			test: "package win\n\nimport \"testing\"\n\n" +
 				"// TestNothing runs here though the package does not.\n" +
 				"func TestNothing(t *testing.T) {}\n",
@@ -1145,10 +1160,14 @@ func TestLayersPackageLoadedOnlyThroughItsTestsNeedsAnEntry(t *testing.T) {
 
 			got := checkModule(t, dir)
 			assert.Equal(t, cli.ExitFindings, got.code)
-			assert.Equal(t, "win/w_windows.go:1:1: TS-X03: package ./win has no entry in "+
-				"tiger.layers.yaml — add it as a key listing the module packages, modules and IO "+
-				"or random subtrees (os, net, ...) it imports, or [] for none\n"+
-				"tiger: 1 blocking\n", got.stdout)
+			blocking := "tiger: 1 blocking\n"
+			if test.notice != "" {
+				blocking = "tiger: 2 blocking\n"
+			}
+			assert.Equal(t, test.notice+"win/w_windows.go:1:1: TS-X03: package ./win has no "+
+				"entry in tiger.layers.yaml — add it as a key listing the module packages, "+
+				"modules and IO or random subtrees (os, net, ...) it imports, or [] for none\n"+
+				blocking, got.stdout)
 		})
 	}
 }

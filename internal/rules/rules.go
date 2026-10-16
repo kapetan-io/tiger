@@ -47,6 +47,7 @@ import (
 	"github.com/kapetan-io/tiger/internal/analyzers/skipcheck"
 	"github.com/kapetan-io/tiger/internal/analyzers/tablename"
 	"github.com/kapetan-io/tiger/internal/analyzers/testdoc"
+	"github.com/kapetan-io/tiger/internal/analyzers/testpackage"
 	"github.com/kapetan-io/tiger/internal/analyzers/variant"
 	"github.com/kapetan-io/tiger/internal/finish"
 )
@@ -244,6 +245,11 @@ var customRules = []CustomRule{
 		Category: "TS-T06", RuleID: "TS-T06", Analyzer: testdoc.Analyzer,
 		Severity: SeverityBlocking,
 		Title:    "test functions have a doc comment",
+	},
+	{
+		Category: "TS-T12", RuleID: "TS-T12", Analyzer: testpackage.Analyzer,
+		Severity: SeverityBlocking,
+		Title:    "tests live in the external _test package",
 	},
 	{
 		Category: "TS-S22", RuleID: "TS-S22", Analyzer: derivation.Analyzer,
