@@ -65,23 +65,36 @@ func (r Report) Text(rev revision.Comparison) string {
 }
 
 func (r Report) countsLine() string {
-	parts := []string{
-		fmt.Sprintf("Calls added: %d", r.added()),
-		fmt.Sprintf("Calls removed: %d", r.removed()),
+	parts := r.countParts()
+	labels := make([]string, len(parts))
+	for i, part := range parts {
+		labels[i] = part.label()
 	}
-	for _, extra := range []struct {
-		label string
-		count int
-	}{
+	return strings.Join(labels, " · ")
+}
+
+// countPart is one "Label: N" of the counts line.
+type countPart struct {
+	name  string
+	count int
+}
+
+func (c countPart) label() string { return fmt.Sprintf("%s: %d", c.name, c.count) }
+
+// countParts lists the counts line in order: the two call counts always, then
+// each of the other categories only when it is not zero.
+func (r Report) countParts() []countPart {
+	parts := []countPart{{"Calls added", r.added()}, {"Calls removed", r.removed()}}
+	for _, extra := range []countPart{
 		{"New packages", len(r.NewPackages)},
 		{"Removed packages", len(r.RemovedPackages)},
 		{"Renamed", len(r.Renamed)},
 	} {
 		if extra.count > 0 {
-			parts = append(parts, fmt.Sprintf("%s: %d", extra.label, extra.count))
+			parts = append(parts, extra)
 		}
 	}
-	return strings.Join(parts, " · ")
+	return parts
 }
 
 func writeList(out *strings.Builder, functions []Function, indent string) {
@@ -100,9 +113,9 @@ func writeList(out *strings.Builder, functions []Function, indent string) {
 func writeNewPackage(out *strings.Builder, pkg NewPackage) {
 	fmt.Fprintf(out, "New package %s: %d types and functions, %d calls\n",
 		pkg.Name, pkg.Owners, pkg.calls())
-	fmt.Fprintf(out, "  Uses existing packages: %s\n", usesText(pkg.Uses.Prior))
-	fmt.Fprintf(out, "  Uses new packages: %s\n", usesText(pkg.Uses.New))
-	fmt.Fprintf(out, "  Uses outside packages: %s\n", usesText(pkg.Uses.Outside))
+	fmt.Fprintf(out, "  Uses existing packages: %s\n", usesText(pkg.Uses.Prior, ""))
+	fmt.Fprintf(out, "  Uses new packages: %s\n", usesText(pkg.Uses.New, ""))
+	fmt.Fprintf(out, "  Uses outside packages: %s\n", usesText(pkg.Uses.Outside, ""))
 	if pkg.calls() > 0 {
 		out.WriteString("  Every call, by function:\n")
 		writeList(out, pkg.Functions, "    ")
@@ -110,13 +123,13 @@ func writeNewPackage(out *strings.Builder, pkg NewPackage) {
 	out.WriteString("\n")
 }
 
-func usesText(uses []Use) string {
+func usesText(uses []Use, quote string) string {
 	if len(uses) == 0 {
 		return "none"
 	}
 	parts := make([]string, len(uses))
 	for i, use := range uses {
-		parts[i] = fmt.Sprintf("%s (%s)", use.Package, strings.Join(use.Symbols, ", "))
+		parts[i] = fmt.Sprintf("%s%s%s (%s)", quote, use.Package, quote, strings.Join(use.Symbols, ", "))
 	}
 	return strings.Join(parts, "; ")
 }
@@ -149,18 +162,33 @@ func named(names []string) string {
 // baseLabel prints the ref with its tip hash, or the tip hash alone when the ref is a
 // hash prefix, and says "merge base" with that hash when it is not the tip.
 func baseLabel(rev revision.Comparison) string {
+	base := splitBase(rev)
+	if base.note == "" {
+		return base.name
+	}
+	return fmt.Sprintf("%s (%s)", base.name, base.note)
+}
+
+// baseName is the base label split into the name a reader recognises and the
+// parenthesised note after it, empty when the name says everything.
+type baseName struct {
+	name string
+	note string
+}
+
+func splitBase(rev revision.Comparison) baseName {
 	tip := revision.Short(rev.BaseTip)
 	prefix := strings.HasPrefix(rev.BaseTip, strings.ToLower(rev.BaseRef))
 	byName := len(rev.BaseRef) < minPrefix || !prefix
 	switch {
 	case rev.MergeBase != rev.BaseTip && byName:
-		return fmt.Sprintf("%s (merge base %s)", rev.BaseRef, revision.Short(rev.MergeBase))
+		return baseName{rev.BaseRef, "merge base " + revision.Short(rev.MergeBase)}
 	case rev.MergeBase != rev.BaseTip:
-		return fmt.Sprintf("%s (merge base %s)", tip, revision.Short(rev.MergeBase))
+		return baseName{tip, "merge base " + revision.Short(rev.MergeBase)}
 	case byName:
-		return fmt.Sprintf("%s (%s)", rev.BaseRef, tip)
+		return baseName{rev.BaseRef, tip}
 	}
-	return tip
+	return baseName{name: tip}
 }
 
 // headLabel names the head side by commit, never by branch, because CI checks

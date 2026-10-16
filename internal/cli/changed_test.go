@@ -141,11 +141,14 @@ func (c checkout) changed(args ...string) outcome {
 	return run(c.t, append([]string{"changed", "-C", c.dir}, append(args, "main")...)...)
 }
 
-// golden compares the report with testdata/changed/<name>/text.golden, or
+// goldenFile is the name of a golden file inside a case's directory.
+type goldenFile string
+
+// golden compares the report with testdata/changed/<name>/<file>, or
 // rewrites the file when the test binary runs with -update.
-func golden(t *testing.T, name string, got outcome) {
+func golden(t *testing.T, name string, file goldenFile, got outcome) {
 	t.Helper()
-	path := filepath.Join("testdata", "changed", name, "text.golden")
+	path := filepath.Join("testdata", "changed", name, string(file))
 	if *update {
 		require.NoError(t, os.WriteFile(path, []byte(got.stdout), 0o644))
 	}
@@ -154,50 +157,51 @@ func golden(t *testing.T, name string, got outcome) {
 	assert.Equal(t, string(want), got.stdout)
 }
 
+// goldenCases are the fixtures whose report bytes are pinned in every format.
+var goldenCases = []string{
+	"call-added",
+	"call-removed",
+	"sibling-owner",
+	"unchanged-caller",
+	"line-shift",
+	"empty",
+	"new-package",
+	"removed-package",
+	"rename",
+	"rename-changed-calls",
+	"module-helper",
+	"closure",
+	"interface-call",
+	"reach-not-propagated",
+	"method-refactor",
+	"helper-refactor",
+	"writer-silent",
+	"channel-send",
+	"channel-receive",
+	"recursive-callee",
+	"mixed-filter-function",
+	"mixed-filter-method",
+	"outside-pure-helpers",
+	"context-shown",
+	"generated-head-only",
+	"partial-load",
+	"sibling-owner-removed",
+	"owner-replaced",
+	"generated-base-only",
+}
+
 // TestChangedGoldens covers the report's exact bytes for each shape of change.
 //
 // Goal: the text report of every case equals its golden file, exits 0, and
 // writes nothing to stderr.
 func TestChangedGoldens(t *testing.T) {
-	for _, test := range []struct {
-		name string
-	}{
-		{name: "call-added"},
-		{name: "call-removed"},
-		{name: "sibling-owner"},
-		{name: "unchanged-caller"},
-		{name: "line-shift"},
-		{name: "empty"},
-		{name: "new-package"},
-		{name: "removed-package"},
-		{name: "rename"},
-		{name: "rename-changed-calls"},
-		{name: "module-helper"},
-		{name: "closure"},
-		{name: "interface-call"},
-		{name: "reach-not-propagated"},
-		{name: "method-refactor"},
-		{name: "helper-refactor"},
-		{name: "writer-silent"},
-		{name: "channel-send"},
-		{name: "channel-receive"},
-		{name: "recursive-callee"},
-		{name: "mixed-filter-function"},
-		{name: "mixed-filter-method"},
-		{name: "outside-pure-helpers"},
-		{name: "context-shown"},
-		{name: "generated-head-only"},
-		{name: "partial-load"},
-		{name: "sibling-owner-removed"},
-		{name: "owner-replaced"},
-		{name: "generated-base-only"},
-	} {
-		t.Run(test.name, func(t *testing.T) {
+	for _, name := range goldenCases {
+		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			got := fixture(t, test.name).changed()
+			got := fixture(t, name).changed()
 			assert.Equal(t, cli.ExitClean, got.code)
 			assert.Empty(t, got.stderr)
-			golden(t, test.name, got)
+			golden(t, name, "text.golden", got)
 		})
 	}
 }
@@ -312,8 +316,8 @@ func TestChangedRefusesWhatItCannotCompare(t *testing.T) {
 		},
 		{
 			name:    "unknownFormat",
-			args:    []string{"changed", "-C", c.dir, "--format", "markdown", "main"},
-			wantErr: `unknown format "markdown"`,
+			args:    []string{"changed", "-C", c.dir, "--format", "json", "main"},
+			wantErr: `unknown format "json"`,
 		},
 		{
 			name:    "unknownFlag",

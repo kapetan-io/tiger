@@ -38,6 +38,7 @@ tiger golangci                  # audit .golangci.yml against the auto-rule base
 tiger golangci --init           # generate the baseline config for a new project
 tiger golangci --print          # write the baseline to stdout for hand merging
 tiger changed main              # calls each function started or stopped making since main
+tiger changed --format markdown main   # the same report as a pull request comment
 ```
 
 `tiger changed <base>` compares the merge base of `<base>` and HEAD with the
@@ -45,6 +46,58 @@ working tree and prints, for each function, the calls it added and removed in
 other packages (or in functions of its own package that call another package), then what the report could not see. It exits 0 for any report
 and 2 when no report can be produced. Flags go before `<base>`. ADR-0030
 records the rule.
+
+### Posting the report on a pull request
+
+`--format markdown` prints the report as a pull request comment. Its first line is
+`<!-- tiger-changed -->`, the marker the workflow below uses to find its one comment and update it
+on every push, so a pull request never collects a stack of them. The comment stays under GitHub's
+65,536-character limit: past 60,000 characters it folds each new package's call list, then cuts the
+main list after its last whole function and says how many calls it left out. Tiger never talks to
+GitHub; the workflow posts.
+
+```yaml
+name: tiger-changed
+on: pull_request
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  changed:
+    runs-on: ubuntu-latest
+    steps:
+      # Check out the pull request's own head commit, not the default merge commit
+      # (refs/pull/N/merge). The title names this commit, and the merge base must
+      # be the fork point that "Files changed" compares against. fetch-depth 0
+      # keeps the history tiger needs to find it; without it tiger exits 2.
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go install github.com/kapetan-io/tiger/cmd/tiger@<version>
+      - name: post the report as one sticky comment
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tiger changed --format markdown origin/${{ github.base_ref }} > changed.md
+          tiger changed origin/${{ github.base_ref }} >> "$GITHUB_STEP_SUMMARY"
+          id=$(gh api repos/${{ github.repository }}/issues/${{ github.event.number }}/comments --paginate \
+            --jq '[.[] | select(.body | startswith("<!-- tiger-changed -->"))][0].id // empty')
+          if [ -n "$id" ]; then
+            gh api -X PATCH repos/${{ github.repository }}/issues/comments/$id -F body=@changed.md
+          else
+            gh api repos/${{ github.repository }}/issues/${{ github.event.number }}/comments -F body=@changed.md
+          fi
+```
+
+Every run posts, an empty report included, because a comment that says what tiger compared and what
+it cannot see is the evidence that it ran on this head. If tiger exits 2 the step fails before
+anything is posted. Pull requests from forks get a read-only token, so this job cannot comment on them.
 
 Exit codes: 0 clean, 1 findings, 2 operational failure (a package that fails
 to load is never reported as clean). A rule either blocks or it is not a rule

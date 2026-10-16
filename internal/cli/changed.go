@@ -24,7 +24,7 @@ func runChanged(args []string, streams Streams) int {
 	format := flags.String("format", "text", "report format")
 	if err := flags.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
-			err = errors.New("usage: tiger changed [-C dir] <base>")
+			err = errors.New("usage: tiger changed [-C dir] [--format text|markdown] <base>")
 		}
 		return changedFailure(streams, err)
 	}
@@ -38,9 +38,9 @@ func runChanged(args []string, streams Streams) int {
 				"as in: tiger changed [-C dir] <base>",
 			flags.Arg(1)))
 	}
-	if *format != "text" {
+	if *format != "text" && *format != "markdown" {
 		return changedFailure(streams, fmt.Errorf(
-			"unknown format %q; the formats are: text", *format))
+			"unknown format %q; the formats are: text, markdown", *format))
 	}
 	repo, err := revision.Open(*chdir)
 	if err != nil {
@@ -53,6 +53,10 @@ func runChanged(args []string, streams Streams) int {
 	report, err := compareRevisions(*chdir, rev)
 	if err != nil {
 		return changedFailure(streams, err)
+	}
+	if *format == "markdown" {
+		fmt.Fprint(streams.Stdout, report.Markdown(rev))
+		return ExitClean
 	}
 	fmt.Fprint(streams.Stdout, report.Text(rev))
 	return ExitClean
