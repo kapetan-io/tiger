@@ -106,7 +106,7 @@ func Sides(s Shape) int {
 // derivation comment is wrong exit 0 with no output.
 func TestCheckRetiredCommentRulesStaySilent(t *testing.T) {
 	dir := writeModule(t,
-		sourceFile{"limits/limits.go", `// Package limits holds a limit with a stale derivation comment.
+		sourceFile{"limits/limits.go", `// Package limits holds a limit with a stale derivation.
 package limits
 
 const writeBufferSize = 32768
