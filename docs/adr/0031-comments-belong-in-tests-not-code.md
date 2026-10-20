@@ -35,8 +35,11 @@ have no other home, such as "config is process-global; leave nothing installed".
 
 ## Decision
 
-A plain comment never changes what tiger reports. Only a change to the code, or one of tiger's own
-`//tiger:` directives, makes a finding go away.
+A plain comment never changes what tiger's own analyzers report. Only a change to the code, or one
+of tiger's own `//tiger:` directives, makes one of their findings go away. The auto rules that
+golangci-lint runs still read comments today. TS-L06 (`godot`) and TS-L07 (revive's `exported` and
+`package-comments`) are the two that can change with a comment. The `golangci-template` piece of
+ENG-408 removes TS-L07 from the template and the auto table.
 
 **Production code carries no prose.** Below the `package` clause of a production Go file, only a
 closed set of directives survives: `//go:`, `//tiger:`, `//nolint`, `//line `, `//export ` and
