@@ -6,6 +6,9 @@ Date: 2026-10-12
 
 Accepted
 
+Superseded in part by [ADR-0031](0031-comments-belong-in-tests-not-code.md): a comment no longer clears TS-E02.
+The cleanup exemption stands.
+
 ## Context
 
 TS-E02 fires on `_ = f()` and `x, _ := f()` when the discarded value is an error, unless a comment

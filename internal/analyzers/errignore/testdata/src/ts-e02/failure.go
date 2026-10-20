@@ -1,13 +1,9 @@
-// The TS-E02 failure modes: an error-typed result discarded through _ with
-// no comment justifying the discard. Each case's blank discard sits on the
-// statement's opening line, and the call continues onto a later line, so
-// the `want` annotation itself is not mistaken for a trailing
-// justification on the statement's closing line.
+// The TS-E02 failure modes: an error-typed result discarded through _,
+// with or without a comment beside it.
 package fixture
 
 import "os"
 
-// closeQuiet discards the close error without saying why it is safe.
 func closeQuiet(f *os.File) {
 	_ = f. // want `TS-E02: this error is discarded with _, so a failure here goes unnoticed`
 		Close()
@@ -40,4 +36,21 @@ func sumOne() int {
 
 func lookupErr(id int) error {
 	return nil
+}
+
+// closeTrailing has a trailing comment, which does not clear the finding.
+func closeTrailing(f *os.File) {
+	_ = f.Close() // want `TS-E02: this error is discarded with _, so a failure here goes unnoticed`
+}
+
+// closeAbove has a comment on the line above, which does not clear it either.
+func closeAbove(f *os.File) {
+	// best effort cleanup; nothing actionable if this fails
+	_ = f.Close() // want `TS-E02: this error is discarded with _, so a failure here goes unnoticed`
+}
+
+// lookupTrailing discards the error half of a paired result under a comment.
+func lookupTrailing() int {
+	v, _ := lookupOne(1) // want `TS-E02: this error is discarded with _, so a failure here goes unnoticed`
+	return v
 }

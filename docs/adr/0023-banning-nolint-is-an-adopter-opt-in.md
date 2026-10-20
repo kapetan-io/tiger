@@ -6,6 +6,9 @@ Date: 2026-10-12
 
 Accepted
 
+Superseded in part by [ADR-0031](0031-comments-belong-in-tests-not-code.md): TS-E02 no longer accepts a
+bare `//nolint`, or any comment. The `nolint.forbid` opt-in stands.
+
 ## Context
 
 Three sources disagreed about `//nolint`
