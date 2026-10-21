@@ -569,13 +569,17 @@ func readCorpusFile(t *testing.T, path string) string {
 }
 
 // TestRegistryOmitsRetiredRules verifies the rules removed with their
-// analyzers (ADR-0016, ADR-0024) are not in the registry.
+// analyzers (ADR-0016, ADR-0024, ADR-0031) are not in the registry.
 func TestRegistryOmitsRetiredRules(t *testing.T) {
 	ids := rules.RuleIDs()
-	for _, retired := range []string{"TS-X01", "TS-P01", "TS-P02", "TS-P03", "TS-K03"} {
+	for _, retired := range []string{
+		"TS-X01", "TS-P01", "TS-P02", "TS-P03", "TS-K03", "TS-T06", "TS-S22",
+	} {
 		assert.NotContains(t, ids, retired)
 	}
 	for _, analyzer := range rules.Analyzers() {
-		assert.NotContains(t, []string{"restrictions", "closedworld", "singleimpl"}, analyzer.Name)
+		assert.NotContains(t, []string{
+			"restrictions", "closedworld", "singleimpl", "testdoc", "derivation",
+		}, analyzer.Name)
 	}
 }

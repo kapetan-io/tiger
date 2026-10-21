@@ -1,5 +1,5 @@
-// Discards inside a defer statement or a testing Cleanup literal need no
-// comment (ADR-0017).
+// Discards inside a defer statement or a testing Cleanup literal are exempt
+// (ADR-0017).
 package fixture
 
 import (

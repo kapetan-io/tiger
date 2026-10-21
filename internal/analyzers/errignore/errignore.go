@@ -1,17 +1,14 @@
-// Package errignore enforces TS-E02: discarding a result with _ requires a
-// justification comment.
+// Package errignore enforces TS-E02: an error discarded with _ is a finding.
 //
-// The check is a shape check, not a truth check: it verifies a comment is
-// present, either trailing the statement or ending on the line directly
-// above it, and never judges what the comment says. A vacuous comment
-// satisfies the rule; only a human review catches a false claim.
+// No comment clears it, because tiger cannot tell a reason from `// x`
+// (ADR-0031). Only a change to the code does.
 //
 // Discards inside the function literal a defer statement calls, or a
 // function literal passed to a testing Cleanup method, are exempt
 // (ADR-0017). Arguments evaluated at the defer or Cleanup call run
-// immediately and are still checked. Closing something on the
-// way out has no better answer than dropping the error, so a comment there
-// carries no information. Cleanup that is not deferred still needs one.
+// immediately and are still checked. Closing something on the way out has
+// no better answer than dropping the error. Cleanup that is not deferred
+// is still a finding.
 package errignore
 
 import (
@@ -21,11 +18,10 @@ import (
 	"golang.org/x/tools/go/analysis"
 )
 
-// Analyzer enforces TS-E02: discarding a result with _ requires a
-// justification comment.
+// Analyzer enforces TS-E02: an error discarded with _ is a finding.
 var Analyzer = &analysis.Analyzer{
 	Name: "errignore",
-	Doc:  "TS-E02: discarding a result with _ requires a justification comment",
+	Doc:  "TS-E02: discarding an error with _ is a finding, whatever comment sits next to it",
 	Run:  run,
 }
 
@@ -49,7 +45,7 @@ func run(pass *analysis.Pass) (any, error) {
 			case *ast.FuncLit:
 				return !exempt[stmt]
 			case *ast.AssignStmt:
-				inspectAssign(pass, file, stmt)
+				inspectAssign(pass, stmt)
 			}
 			return true
 		})
@@ -69,9 +65,8 @@ func isTestingCleanup(pass *analysis.Pass, call *ast.CallExpr) bool {
 }
 
 // inspectAssign reports every blank left-hand side of assign whose matching
-// right-hand-side result is error-typed and carries no justification
-// comment.
-func inspectAssign(pass *analysis.Pass, file *ast.File, assign *ast.AssignStmt) {
+// right-hand-side result is error-typed.
+func inspectAssign(pass *analysis.Pass, assign *ast.AssignStmt) {
 	results := resultTypes(pass, assign)
 	if len(results) != len(assign.Lhs) {
 		return
@@ -84,15 +79,12 @@ func inspectAssign(pass *analysis.Pass, file *ast.File, assign *ast.AssignStmt) 
 		if !isError(results[i]) {
 			continue
 		}
-		if hasJustification(pass, file, assign) {
-			continue
-		}
 		pass.Report(analysis.Diagnostic{
 			Pos:      assign.Lhs[i].Pos(),
 			Category: "TS-E02",
 			Message: "TS-E02: this error is discarded with _, so a failure here goes unnoticed " +
-				"— handle the error, or say in a comment on this line or the line above why " +
-				"ignoring it is safe",
+				"— tiger expected the error handled, and a comment does not change that — " +
+				"return it, check it, or log it where the caller can see it",
 		})
 	}
 }
@@ -126,20 +118,4 @@ func isError(t types.Type) bool {
 		return false
 	}
 	return t == types.Universe.Lookup("error").Type()
-}
-
-// hasJustification reports whether assign carries a comment either
-// trailing it on the same line or ending on the line directly above it.
-func hasJustification(pass *analysis.Pass, file *ast.File, assign *ast.AssignStmt) bool {
-	statementLine := pass.Fset.Position(assign.Pos()).Line
-	endLine := pass.Fset.Position(assign.End()).Line
-	for _, group := range file.Comments {
-		if group.Pos() > assign.End() && pass.Fset.Position(group.Pos()).Line == endLine {
-			return true
-		}
-		if pass.Fset.Position(group.End()).Line == statementLine-1 {
-			return true
-		}
-	}
-	return false
 }

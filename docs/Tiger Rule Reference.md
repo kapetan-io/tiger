@@ -808,42 +808,6 @@ const batchMax = 8189
 const _ = uint((writeBufferSize - headerSizeBytes) - batchMax*entrySize)
 ```
 
-<!-- rule: TS-S22 -->
-### TS-S22 — a limit constant's stated derivation evaluates to its value
-
-**Severity:** blocking — a finding fails the run.
-
-A limit's derivation is the back-of-envelope math that produced it, written as a real
-expression instead of prose. Tiger evaluates that expression and checks it still equals
-the constant. If someone changes an input number, this catches a limit that drifted out
-of date.
-
-Code that fires it:
-
-```go
-const writeBufferSize = 32768
-const headerSizeBytes = 12
-const entrySize = 4
-
-// batchMax = (writeBufferSize - headerSizeBytes) / entrySize.
-const batchMax = 8188
-```
-
-```
-limits.go:6:7: TS-S22: batchMax is 8188 but the derivation in its comment, (writeBufferSize - headerSizeBytes) / entrySize, works out to 8189 — the two drifted apart; recompute the constant or correct the comment
-```
-
-The compliant rewrite:
-
-```go
-const writeBufferSize = 32768
-const headerSizeBytes = 12
-const entrySize = 4
-
-// batchMax = (writeBufferSize - headerSizeBytes) / entrySize.
-const batchMax = 8189
-```
-
 ## Concurrency
 
 <!-- rule: TS-C02 -->
@@ -1083,30 +1047,17 @@ declaration, never given its own named type, is not counted, so it can sit anywh
 ## Errors
 
 <!-- rule: TS-E02 -->
-### TS-E02 — discarding a result with _ requires a justification comment
+### TS-E02 — an error discarded with _ is a finding, whatever comment sits next to it
 
 **Severity:** blocking — a finding fails the run.
 
-Throwing away an error with an underscore is sometimes the right call. Not every failure
-needs handling, and banning the discard outright just pushes people toward a silencing
-`//nolint` comment instead. Requiring a comment keeps the reasoning visible, so a
-reviewer can judge whether discarding was actually safe. This rule caught a latent bug
-in the trials. A hash function discarded a validation error, set to return corrupted
-zero-value IDs the day a second hash format shipped.
+An error thrown away with an underscore is a failure nobody sees. A comment beside it
+cannot make the discard safe, and tiger cannot tell a reason from `// x`, so no comment
+clears the finding. This rule caught a latent bug in the trials. A hash function discarded
+a validation error, set to return corrupted zero-value IDs the day a second hash format
+shipped.
 
 Code that fires it:
-
-```go
-func closeQuiet(f *os.File) {
-	_ = f.Close()
-}
-```
-
-```
-cleanup.go:6:2: TS-E02: this error is discarded with _, so a failure here goes unnoticed — handle the error, or say in a comment on this line or the line above why ignoring it is safe
-```
-
-The compliant rewrite:
 
 ```go
 func closeQuiet(f *os.File) {
@@ -1114,13 +1065,22 @@ func closeQuiet(f *os.File) {
 }
 ```
 
+```
+cleanup.go:6:2: TS-E02: this error is discarded with _, so a failure here goes unnoticed — tiger expected the error handled, and a comment does not change that — return it, check it, or log it where the caller can see it
+```
+
+The compliant rewrite:
+
+```go
+func closeQuiet(f *os.File) error {
+	return f.Close()
+}
+```
+
 **Cleanup is exempt:** a discarded error inside a `defer` statement's call, or inside a
 function literal passed to `t.Cleanup`, is not a finding. Closing something on the way out
-has no better answer than dropping the error, so a comment there would add nothing.
-Cleanup that is not deferred, like `_ = resp.Body.Close()`, still fires.
-
-**Known miss:** The check verifies a comment exists next to the discard, not that it is
-true. `_ = f.Close() // ok` satisfies it; the truth of the reason is review's job.
+has no better answer than dropping the error. Cleanup that is not deferred, like
+`_ = resp.Body.Close()`, still fires.
 
 <!-- rule: TS-E06 -->
 ### TS-E06 — minimize return arity
@@ -1751,40 +1711,6 @@ a helper. A labeled `continue` that targets the map loop, a `break` inside a nes
 a type parameter constrained to a map. TS-T11, which runs the tests twice and compares the output,
 can catch these on the paths the tests exercise, though two runs sometimes visit entries in the same
 order.
-
-<!-- rule: TS-T06 -->
-### TS-T06 — test functions have a doc comment
-
-**Severity:** blocking — a finding fails the run.
-
-A test with no doc comment forces a reader to reconstruct its purpose from the setup
-code alone. That is the wrong moment for detective work, since the reader is usually
-already debugging a failure. A one-line comment above the test lets a reader decide to
-skip it or dive in immediately.
-
-Code that fires it:
-
-```go
-func TestNoDocComment(t *testing.T) {
-	_ = t
-}
-```
-
-```
-handler_test.go:5:1: TS-T06: TestNoDocComment has no doc comment — add one above it saying what the test proves, so a reader can decide to skip it or dig in without reverse-engineering the setup
-```
-
-The compliant rewrite:
-
-```go
-// TestHandlesEmptyBody proves the handler returns 400 when the request body is empty.
-func TestHandlesEmptyBody(t *testing.T) {
-	_ = t
-}
-```
-
-**Known miss:** Benchmark and fuzz functions are not checked yet. Only functions shaped
-like `func TestXxx(t *testing.T)` are.
 
 <!-- rule: TS-T10 -->
 ### TS-T10 — table-driven tests have named cases

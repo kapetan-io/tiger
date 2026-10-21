@@ -23,7 +23,6 @@ import (
 	"github.com/kapetan-io/tiger/internal/analyzers/contracts"
 	"github.com/kapetan-io/tiger/internal/analyzers/declorder"
 	"github.com/kapetan-io/tiger/internal/analyzers/deferdistance"
-	"github.com/kapetan-io/tiger/internal/analyzers/derivation"
 	"github.com/kapetan-io/tiger/internal/analyzers/directives"
 	"github.com/kapetan-io/tiger/internal/analyzers/errignore"
 	"github.com/kapetan-io/tiger/internal/analyzers/invariantnegative"
@@ -44,7 +43,6 @@ import (
 	"github.com/kapetan-io/tiger/internal/analyzers/selectctx"
 	"github.com/kapetan-io/tiger/internal/analyzers/skipcheck"
 	"github.com/kapetan-io/tiger/internal/analyzers/tablename"
-	"github.com/kapetan-io/tiger/internal/analyzers/testdoc"
 	"github.com/kapetan-io/tiger/internal/analyzers/testpackage"
 	"github.com/kapetan-io/tiger/internal/analyzers/variant"
 	"github.com/kapetan-io/tiger/internal/finish"
@@ -205,7 +203,7 @@ var customRules = []CustomRule{
 	{
 		Category: "TS-E02", RuleID: "TS-E02", Analyzer: errignore.Analyzer,
 		Severity: SeverityBlocking,
-		Title:    "discarding a result with _ requires a justification comment",
+		Title:    "an error discarded with _ is a finding, whatever comment sits next to it",
 	},
 	{
 		Category: "TS-E06", RuleID: "TS-E06", Analyzer: returnarity.Analyzer,
@@ -240,19 +238,9 @@ var customRules = []CustomRule{
 		Title:    "table-driven tests have named cases",
 	},
 	{
-		Category: "TS-T06", RuleID: "TS-T06", Analyzer: testdoc.Analyzer,
-		Severity: SeverityBlocking,
-		Title:    "test functions have a doc comment",
-	},
-	{
 		Category: "TS-T12", RuleID: "TS-T12", Analyzer: testpackage.Analyzer,
 		Severity: SeverityBlocking,
 		Title:    "tests live in the external _test package",
-	},
-	{
-		Category: "TS-S22", RuleID: "TS-S22", Analyzer: derivation.Analyzer,
-		Severity: SeverityBlocking,
-		Title:    "a limit constant's stated derivation evaluates to its value",
 	},
 	{
 		Category: "TS-S21", RuleID: "TS-S21", Analyzer: limitrelate.Analyzer,

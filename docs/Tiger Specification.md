@@ -79,9 +79,9 @@ One thing cannot be designed away, and pretending otherwise is how verification 
 > lint moves a judgment out of the code and into a declaration, and someone still has to be right
 > about the declaration.
 
-`TS-S22` does not verify that `BatchMax` is correct. It verifies that `BatchMax` equals the expression
-written next to it. The judgment moved from a number in a file to a formula in a comment. That is a
-spectacular trade and it is not a proof.
+`TS-S21` does not verify that `BatchMax` is correct. It verifies that `BatchMax` relates to the
+constants it must fit inside. The judgment moved from a number in a file to a relation in a
+declaration. That is a spectacular trade and it is not a proof.
 
 It is a good trade for three measurable reasons. The declaration layer is small, typically two to five
 percent of lines. It is stable, changing an order of magnitude less often than the code it governs.
@@ -102,7 +102,7 @@ needs. Should this struct be calling the disk at all, now that `tiger changed` s
 512-byte sectors true of the hardware. Can the `Storage` interface express a torn write.
 
 **The declarations are a layer, not a region.** They cut across every file. There is no part of the
-tree that is "the reviewed part", because invariants, limit derivations, contracts, and variants sit
+tree that is "the reviewed part", because invariants, limit relations, contracts, and variants sit
 next to the code they govern, wherever that code is.
 
 The policy that falls out:
@@ -325,7 +325,6 @@ hatches** (loosen one rule at one site, always with a reason, counted by `TS-D06
 | Declaration | Form | Kind | Rule |
 | --- | --- | --- | --- |
 | Invariant | `inv.HeaderChecksum`, declared in one package | intent | TS-A07 |
-| Limit derivation | `// BatchMax = (WriteBufferSize - HeaderSizeBytes) / EntrySize` | intent | TS-S22 |
 | Precondition | `//tiger:requires len(target) == HeaderSizeBytes` | pin | TS-V03 |
 | Postcondition | `//tiger:ensures result.Checksum == checksum(result.Payload)` | pin | TS-V03 |
 | Loop variant | `//tiger:variant len(pending)` | pin | TS-V01 |
@@ -616,21 +615,19 @@ limit nobody reasoned about.
 Enforce. `limitrelate` (custom). Every `Max`/`Min` constant must appear in at least one `const _ =
 uint(...)` expression in its package.
 
-**`TS-S22` Every limit constant carries a derivation, and the analyzer evaluates it.**
-Why. This is the back-of-the-envelope sketch, moved into the source and then checked. State where the
-number came from as an expression, not prose, and the tool confirms the arithmetic still holds after
-someone changes an input.
+**`TS-S22` Write a limit as an expression of its named inputs.**
+Why. A limit written as `8189` hides where it came from, so nobody can tell it went stale when an
+input changed. Written as `(WriteBufferSize - HeaderSizeBytes) / EntrySize`, it updates itself.
 
 ```go
-// WriteBufferSize = SectorSize * SectorsPerWrite.
-const WriteBufferSize = 32768
+const WriteBufferSize = SectorSize * SectorsPerWrite
 
-// BatchMax = (WriteBufferSize - HeaderSizeBytes) / EntrySize.
-const BatchMax = 8189
+const BatchMax = (WriteBufferSize - HeaderSizeBytes) / EntrySize
 ```
 
-Enforce. `derivation` (custom). Highest value per line of any analyzer here, because it is the only one
-that catches a *stale* number rather than a missing one.
+Enforce. `review`. *(Amended 2026-10-20: the `derivation` analyzer and the derivation comment are
+retired, ADR-0031. `TS-S22` fired no findings in the ENG-191 trials, and it read free prose, which
+this specification no longer lets change a verdict. The maxim stays.)*
 
 **`TS-S23` An event loop's only exit is its stop case.**
 Why. A `return` or a break-out elsewhere in a `TS-S03` loop ends the loop without the shutdown
@@ -795,13 +792,13 @@ explicitly signalled. Go hands you every error as a value, which makes this the 
 is on your side for. Best-evidenced rule in the document.
 Enforce. `errcheck` with `check-blank: true` (auto).
 
-**`TS-E02` Discarding a result with `_` requires a justification comment.**
-Why. `_ = f.Close()` is sometimes right, often enough that banning it outright gets you `//nolint`
-instead, which is worse. Make the reason visible.
+**`TS-E02` An error discarded with `_` is a finding, whatever comment sits next to it.**
+Why. A discarded error is a failure nobody sees, and tiger cannot tell a reason from `// x`, so a
+comment cannot be what clears the rule. Handle the error.
 Enforce. `errignore` (custom). A discard inside a `defer` statement's call, or inside a function
 literal passed to `t.Cleanup`, is not a finding; every other discard is, including non-deferred
-cleanup such as `_ = resp.Body.Close()`. The comment's text is not checked, so review still reads
-it. *(Amended 2026-10-12: cleanup exemption, ADR-0017.)*
+cleanup such as `_ = resp.Body.Close()`. *(Amended 2026-10-12: cleanup exemption, ADR-0017.
+Amended 2026-10-20: the comment exemption is removed, ADR-0031.)*
 
 **`TS-E03` Wrap once with `%w`, compare with `errors.Is` and `errors.As`.**
 Why. String comparison breaks the first time someone reformats a message. Double wrapping produces
@@ -1342,7 +1339,8 @@ Enforce. `revive` exported rule (auto).
 Why. Code says what. A comment repeating the what is noise; one giving the reason gives the reader the
 criteria to evaluate your decision and to change it correctly later. The most important rule here and
 the least mechanizable.
-Enforce. `review`, plus `TS-L12` and `TS-L13` for the checkable halves.
+Enforce. `review`. *(Amended 2026-10-20: no longer applies, ADR-0031. Comments in production code are
+banned rather than judged, and `TS-L12` is dropped. ENG-411 removes this rule and `TS-L13`.)*
 
 **`TS-L09` Every escape-hatch directive carries a reason.**
 Why. An escape without a reason is a rule silently deleted. Applies to `//nolint`,
@@ -1382,16 +1380,11 @@ Enforce. `deferdistance` (custom). Blocking on the loop case, advisory on distan
 Why. Mechanical, so let the machine do it.
 Enforce. `gci` (auto).
 
-**`TS-L12` A doc comment may not restate its identifier.**
-Why. You cannot require a comment to say why; you can reject the one that only says what, which is the
-exact output a comment-presence linter produces. `// Count returns the count.` is worse than nothing,
-because it satisfies the tooling and teaches the team the tooling is stupid.
-Enforce. `restatement` (custom). Advisory; expect to tune.
-
 **`TS-L13` Commit bodies contain a `Why:` section.**
 Why. A pull request description is not in the repository and is invisible in `git blame`, so the
 reason must be in the commit or it is gone.
-Enforce. CI check on message shape (runtime).
+Enforce. CI check on message shape (runtime). *(Amended 2026-10-20: no longer applies, ADR-0031.
+ENG-411 removes it.)*
 
 ## Dependencies and tooling
 
@@ -1495,10 +1488,6 @@ Why. A failing simulation you cannot replay is a rumour. Every simulation run lo
 to replay it exactly.
 Enforce. CI (runtime).
 
-**`TS-T06` Test functions have a doc comment.**
-Why. A reader should be able to skip a test or dive into it without reverse-engineering the setup.
-Enforce. `testdoc` (custom). Every `Test` function needs a doc comment.
-
 **`TS-T07` Error-path branch coverage is measured separately with its own floor.**
 Why. The evidence behind `TS-E01` says catastrophic failures come from mishandling errors the software
 already signalled, which makes error paths the code most worth covering and least likely to be
@@ -1578,7 +1567,7 @@ that cannot fill the third column does not go in.
 | TS-S19 | Integer conversions are checked or provably safe | B2 | Sub |
 | TS-S20 | Type assertions are always checked | B2 | Sub |
 | TS-S21 | Every limit constant participates in a compile-time rel... | B1, B7 | Sub |
-| TS-S22 | Every limit constant carries a derivation, and the anal... | B1, B7, B6 | Sub |
+| TS-S22 | Write a limit as an expression of its named inputs | B1, B7, B6 | Sub |
 | TS-S23 | An event loop's only exit is its stop case | B1, B2 | Sub |
 | TS-A01 | Average at least two assertions per function | B5, B2 | Sub |
 | TS-A02 | Assert every precondition on entry and every postcondit... | B2, B5 | Sub |
@@ -1593,7 +1582,7 @@ that cannot fill the third column does not go in.
 | TS-Q02 | Parse, do not validate. Exported functions take domain... | B2, B7, B3 | Sub |
 | TS-Q03 | Units are types, not name suffixes | B2 | Sub |
 | TS-E01 | Every error is handled. No exceptions | B2 | Sub |
-| TS-E02 | Discarding a result with _ requires a justification com... | B2, B7 | Sub |
+| TS-E02 | An error discarded with _ is a finding, whatever comm... | B2, B7 | Sub |
 | TS-E03 | Wrap once with %w, compare with errors.Is and errors.As | B2, B7 | Sub |
 | TS-E04 | Sentinel errors are ErrFoo, error types are FooError, m... | B0, B7 | Mixed |
 | TS-E05 | Never return both a nil value and a nil error | B3, B7 | Sub |
@@ -1673,12 +1662,11 @@ that cannot fill the third column does not go in.
 | TS-L05 | Struct order is fields, nested types, constructor, methods | B0 | Coord |
 | TS-L06 | Comments are sentences | B0 | Coord |
 | TS-L07 | Every exported identifier has a doc comment starting wi... | B3, B0 | Mixed |
-| TS-L08 | Always say why | B7, B3 | Sub |
+| TS-L08 | Always say why (no longer applies, ADR-0031) | B7, B3 | Sub |
 | TS-L09 | Every escape-hatch directive carries a reason | B7, B2 | Sub |
 | TS-L10 | Blank lines group acquisition with its defer, and no de... | B2, B3 | Sub |
 | TS-L11 | Imports grouped standard, external, internal | B0 | Coord |
-| TS-L12 | A doc comment may not restate its identifier | B3 | Sub |
-| TS-L13 | Commit bodies contain a Why: section | B7 | Sub |
+| TS-L13 | Commit bodies contain a Why: section (no longer applies, ADR-0031) | B7 | Sub |
 | TS-D01 | The pure standard library, and nothing else, unless the lay... | B8, B6 | Sub |
 | TS-D02 | Dependencies are vendored and pinned, including the too... | B4, B8 | Sub |
 | TS-D03 | Scripts are Go programs, not shell | B4, B0 | Mixed |
@@ -1691,7 +1679,7 @@ that cannot fill the third column does not go in.
 | TS-T03 | Every parser, decoder, and state machine has a fuzz target | B5 | Sub |
 | TS-T04 | No time.Sleep in tests. Use testing/synctest | B4 | Sub |
 | TS-T05 | -race on every CI run. Seeds are logged and reproducible | B4, B5 | Sub |
-| TS-T06 | Test functions have a doc comment | B3 | Sub |
+| TS-T06 | Retired, tests may carry comments but need none (ADR-0031) | — | Retired |
 | TS-T07 | Error-path branch coverage is measured separately with... | B5, B2 | Sub |
 | TS-T08 | Mutation score floor | B5 | Sub |
 | TS-T09 | Every parser has a rejection corpus, and every file in... | B5 | Sub |
@@ -1786,7 +1774,6 @@ changes what it checks), or **not built**.
 | `surfaces` | TS-I01, I03, I05, I07 | Not planned. TS-I01's direct half is `TS-T01`'s bans, the rest is review with `tiger changed`; I03, I05, I07 are review | not built |
 | `canonical` | TS-K01, K02, K04, K05 | AST, with auto-fix | not built |
 | `surfacediff` | TS-R02 | Serialize the exported surface, diff against a checked-in file | not built |
-| `derivation` | TS-S22 | Parse a trailing `Name = expr` comment, evaluate against package constants, compare | built |
 | `invariantrefs` | TS-A07 | Group `assert.Invariant` calls by constant, count referencing functions | built |
 | `invariantsymmetry` | TS-A08 | Pair functions by naming convention, compare invariant sets | not built (ENG-182) |
 | `invariantnegative` | TS-A09 | Require `assert.Violates` per declared invariant | built |
@@ -1814,20 +1801,18 @@ changes what it checks), or **not built**.
 | `passthrough` | TS-X02 | AST, body is a single forwarding call | not built |
 | `layers` | TS-X03, D01 | AST, each non-test import judged exactly against the package's `tiger.layers.yaml` entry; stale entries and packages the run did not load are checked by `tiger check` over the whole module | built (ADR-0029) |
 | `adapters` | TS-I06 | Deleted with TS-I06 | deleted |
-| `errignore` | TS-E02 | AST plus `types`, `_ =` on error requires a comment, except inside `defer` or `t.Cleanup` | built |
+| `errignore` | TS-E02 | AST plus `types`, `_ =` on error is a finding, except inside `defer` or `t.Cleanup`; no comment clears it | built |
 | `returnarity` | TS-E06 | `types`, result count and composition | built |
 | `paniccheck` | TS-S18 | AST, panic outside the assert package | built |
 | `nogoto` | TS-S09 | AST, `BranchStmt` with Goto or a label | built |
 | `nofloat` | TS-N11 | `types`, float types in the packages a `tiger.yaml` entry lists | not built |
 | `declorder` | TS-L05 | AST, declaration and method order (TS-L04 not shipped, see TS-L04) | built |
 | `deferdistance` | TS-L10 | AST plus token positions | built |
-| `restatement` | TS-L12 | Token overlap between comment and identifier. Tune it | not built |
 | `directives` | TS-L09 | AST, every escape-hatch directive and `//tiger:openenum` carries a reason; with `nolint.forbid` on, every `//nolint` is a finding | built (ADR-0023, ENG-179) |
 | `maporder` | TS-T02 | `buildssa`, allowlist of order-safe loop bodies; collect-then-sort with plain sorts or full-coverage comparators; the `maps` escape closed | built (ADR-0021) |
 | `fuzzcoverage` | TS-T03 | `packages`, parsers must have a Fuzz function | not built |
 | `corpuscheck` | TS-T09 | Directory presence plus a test that iterates it | not built |
 | `tablename` | TS-T10 | AST, table test literals require a name field | built |
-| `testdoc` | TS-T06 | AST, Test functions need a doc comment | built |
 | `testpackage` | TS-T12 | AST, every `_test.go` file declares a `_test` package | built |
 | `skipcheck` | TS-D07 | AST, every `t.Skip` is counted against the budget | built |
 
@@ -1934,7 +1919,7 @@ are all the same kind of thing.
 | What | Why no machine will do it | Where it lives |
 | --- | --- | --- |
 | Is this the right invariant | The analyzer proves the code satisfies `inv.SequenceMonotonic`. Whether monotonic sequence numbers are what the protocol needs is a claim about the protocol | The `inv` package |
-| Are the derivation's inputs true | `TS-S22` checks that `BatchMax` follows from `SectorSize`. Whether the disk has 512-byte sectors is a fact about the world | The constants file |
+| Are the limit's inputs true | `TS-S22` asks that `BatchMax` be written from `SectorSize`. Whether the disk has 512-byte sectors is a fact about the world | The constants file |
 | Is the contract right | `TS-V03` proves callers establish the precondition. Whether the header should be that size is design | Contract annotations |
 | Is the fault model complete | `TS-I05` checks every declared fault is expressible and tested. Whether real disks fail in ways you did not declare cannot be answered from inside the model | Surface interfaces |
 | Should this struct make this call | `tiger changed` shows the struct started calling the database. Whether it should is design | Review of the `tiger changed` report |
