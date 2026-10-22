@@ -9,21 +9,125 @@ env:
   GOLANGCI_LINT_VERSION: v2.11.4
 
 jobs:
+  # Decides which jobs have anything to read. A skipped job (job-level `if`)
+  # reports as passing to branch protection, which a workflow-level `paths`
+  # filter does not. If this job fails, every job runs.
+  #
+  # A job missing a file it reads is skipped and reports green, so a stale
+  # list below fails silently. When a job starts reading a new kind of file,
+  # add it to that job's `decide` line; when unsure, widen. A new job needs an
+  # output here, a `decide` line, and the `needs` and `if` pair copied from
+  # the jobs below with the output name changed.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      test: ${{ steps.which.outputs.test }}
+      patterns: ${{ steps.which.outputs.patterns }}
+      lint: ${{ steps.which.outputs.lint }}
+      dogfood: ${{ steps.which.outputs.dogfood }}
+      determinism: ${{ steps.which.outputs.determinism }}
+      plugin-smoke: ${{ steps.which.outputs.plugin-smoke }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: which
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          # Single-quoted so the regex backslashes reach grep unchanged. Each
+          # piece is one anchored alternative, joined with | below. Go source
+          # and module files, the embedded patterns/ tree and this workflow
+          # feed every job.
+          every='\.go$|^go\.(mod|sum)$|^patterns/|^\.github/workflows/ci\.yml$'
+          fixtures='(^|/)testdata/'
+          golangci='^\.golangci\.yml$|^\.custom-gcl\.yml$'
+          tiger='^tiger\.'
+          dogfood='^\.github/(report\.awk|testdata/)'
+          # HEAD is the merge of the PR into its base, so this is the PR's own
+          # change; --no-renames lists the old path of a moved file too, and
+          # quotepath=false keeps non-ASCII names from arriving quoted.
+          if [ "$EVENT" = pull_request ]; then
+            git -c core.quotepath=false diff --no-renames --name-only "$BASE" HEAD > changed.txt
+            cat changed.txt
+          fi
+          decide() {
+            if [ "$EVENT" != pull_request ] || grep -Eq "$2" changed.txt; then
+              echo "$1=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "$1=false" >> "$GITHUB_OUTPUT"
+            fi
+          }
+          # test also reads docs/ (internal/rules/docs_test.go) and config/
+          # (internal/cli/nolint_test.go); lint skips testdata because Go does.
+          decide test "$every|^docs/|^config/|$fixtures|$golangci|$tiger"
+          decide patterns "$every|$tiger"
+          decide lint "$every|$golangci"
+          decide dogfood "$every|$tiger|$dogfood"
+          decide determinism "$every|$tiger|$fixtures"
+          decide plugin-smoke "$every|$tiger|$fixtures|$golangci"
+
   test:
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.test == 'true') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      # Go's test cache keys on the modification time of the files a test
+      # stats, and a fresh checkout stamps every file with the clone time, so
+      # internal/cli and internal/rules would never hit. Each file and
+      # directory takes the time of the newest commit that touched it, which
+      # stays the same until the file changes. .git takes the newest time too,
+      # because tests that walk the repository root hash its listing.
+      - name: restore file times from git history
+        run: |
+          git -c core.quotepath=false log --no-renames --name-only --pretty=format:'@%ct' |
+            awk '/^@/ { t = substr($0, 2); next }
+                 NF && !($0 in seen) {
+                   seen[$0] = 1; print t, $0
+                   if (!top) top = t
+                   d = $0
+                   while (sub(/\/[^\/]*$/, "", d)) if (!(d in dir) || t > dir[d]) dir[d] = t
+                 }
+                 END { for (d in dir) print dir[d], d; print top, "."; print top, ".git" }' |
+            while read -r stamp path; do
+              if [ -e "$path" ]; then touch -d "@$stamp" -- "$path"; fi
+            done
+      # setup-go's own cache is off because it would hand main earlier test
+      # results. Main starts empty so it runs every test, then saves; a pull
+      # request restores the newest entry (main's, or its own earlier push)
+      # and reruns only the packages whose inputs changed.
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+          cache: false
+      - uses: actions/cache/restore@v4
+        if: github.event_name == 'pull_request'
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: go-test-${{ github.sha }}
+          restore-keys: go-test-
       - run: go vet ./...
       - run: go test ./...
+      - uses: actions/cache/save@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: go-test-${{ github.sha }}
 
   # ADR-0025: a pattern is only worth shipping while it stays true. Every
   # pattern passes tiger check with zero findings and its tests under -race.
   # The patterns' own go test run is separate from the repository-wide one so
   # a failing pattern names itself.
   patterns:
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.patterns == 'true') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -44,13 +148,21 @@ jobs:
 
   # Stage 0 of the adoption ladder, applied to tiger itself.
   lint:
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.lint == 'true') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-      - run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@${{ env.GOLANGCI_LINT_VERSION }}
+      - id: golangci
+        uses: actions/cache@v4
+        with:
+          path: ~/go/bin/golangci-lint
+          key: golangci-lint-${{ runner.os }}-${{ env.GOLANGCI_LINT_VERSION }}-${{ hashFiles('go.mod') }}
+      - if: steps.golangci.outputs.cache-hit != 'true'
+        run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@${{ env.GOLANGCI_LINT_VERSION }}
       - run: golangci-lint run ./...
 
   # The tiger repository dogfoods itself: the custom rules run over the tree
@@ -58,6 +170,8 @@ jobs:
   # a workflow artifact, and each pull request gets the report as a sticky
   # comment.
   dogfood:
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.dogfood == 'true') }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -119,6 +233,8 @@ jobs:
   # across runs — the check runs twice and any diff fails the build (the
   # spec's TS-T11 applied to tiger itself).
   determinism:
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.determinism == 'true') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -179,13 +295,21 @@ jobs:
   # entry scoped to ./scoped silences TS-N14 there and leaves the same
   # identifier firing in ./outside.
   plugin-smoke:
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.plugin-smoke == 'true') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-      - run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@${{ env.GOLANGCI_LINT_VERSION }}
+      - id: golangci
+        uses: actions/cache@v4
+        with:
+          path: ~/go/bin/golangci-lint
+          key: golangci-lint-${{ runner.os }}-${{ env.GOLANGCI_LINT_VERSION }}-${{ hashFiles('go.mod') }}
+      - if: steps.golangci.outputs.cache-hit != 'true'
+        run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@${{ env.GOLANGCI_LINT_VERSION }}
       - run: golangci-lint custom
       - name: known finding surfaces through the plugin
         working-directory: testdata/plugin-smoke
