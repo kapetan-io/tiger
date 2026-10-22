@@ -268,3 +268,4 @@ in the budget file's diff, lowered by `tiger budget --write`.
 - "declaration" was used loosely during design for both pins and intent declarations — resolved:
   **pin** (a claim tiger proves) and **intent declaration** (stated fact, enforced) are distinct
   lifecycles under the umbrella term **directive**.
+
