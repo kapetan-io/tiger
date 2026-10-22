@@ -80,7 +80,8 @@ jobs:
       # stats, and a fresh checkout stamps every file with the clone time, so
       # internal/cli and internal/rules would never hit. Each file and
       # directory takes the time of the newest commit that touched it, which
-      # stays the same until the file changes.
+      # stays the same until the file changes. .git takes the newest time too,
+      # because tests that walk the repository root hash its listing.
       - name: restore file times from git history
         run: |
           git -c core.quotepath=false log --no-renames --name-only --pretty=format:'@%ct' |
@@ -91,7 +92,7 @@ jobs:
                    d = $0
                    while (sub(/\/[^\/]*$/, "", d)) if (!(d in dir) || t > dir[d]) dir[d] = t
                  }
-                 END { for (d in dir) print dir[d], d; print top, "." }' |
+                 END { for (d in dir) print dir[d], d; print top, "."; print top, ".git" }' |
             while read -r stamp path; do
               if [ -e "$path" ]; then touch -d "@$stamp" -- "$path"; fi
             done
