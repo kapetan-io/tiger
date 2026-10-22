@@ -9,21 +9,86 @@ env:
   GOLANGCI_LINT_VERSION: v2.11.4
 
 jobs:
+  # Decides which jobs have anything to read. A skipped job (job-level `if`)
+  # reports as passing to branch protection, which a workflow-level `paths`
+  # filter does not. If this job fails, every job runs.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      test: ${{ steps.which.outputs.test }}
+      patterns: ${{ steps.which.outputs.patterns }}
+      lint: ${{ steps.which.outputs.lint }}
+      dogfood: ${{ steps.which.outputs.dogfood }}
+      determinism: ${{ steps.which.outputs.determinism }}
+      plugin-smoke: ${{ steps.which.outputs.plugin-smoke }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: which
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          # Each pattern lists what the job reads. Go source and module files,
+          # the embedded patterns/ tree and this workflow feed every job.
+          every='\.go$|^go\.(mod|sum)$|^patterns/|^\.github/workflows/ci\.yml$'
+          fixtures='(^|/)testdata/'
+          golangci='^\.golangci\.yml$|^\.custom-gcl\.yml$'
+          tiger='^tiger\.'
+          if [ "$EVENT" = pull_request ]; then
+            git diff --name-only "$BASE" HEAD > changed.txt
+          else
+            echo . > changed.txt
+          fi
+          cat changed.txt
+          decide() {
+            if [ "$EVENT" != pull_request ] || grep -Eq "$2" changed.txt; then
+              echo "$1=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "$1=false" >> "$GITHUB_OUTPUT"
+            fi
+          }
+          # The test job reads docs/, config/ and the budget file as well.
+          decide test "$every|^docs/|^config/|$fixtures|$golangci|$tiger"
+          decide patterns "$every|$tiger"
+          decide lint "$every|$golangci"
+          decide dogfood "$every|$tiger|^\.github/(report\.awk|testdata/)"
+          decide determinism "$every|$tiger|$fixtures"
+          decide plugin-smoke "$every|$tiger|$fixtures|$golangci"
+
   test:
+    needs: changes
+    if: always() && (needs.changes.result != 'success' || needs.changes.outputs.test == 'true')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+      # Main starts from an empty cache so it runs every test, then saves
+      # the results; a pull request restores the newest entry (main's, or its
+      # own earlier push) and reruns only the packages whose inputs changed.
+      - uses: actions/cache/restore@v4
+        if: github.event_name == 'pull_request'
+        with:
+          path: ~/.cache/go-build
+          key: go-test-${{ github.sha }}
+          restore-keys: go-test-
       - run: go vet ./...
       - run: go test ./...
+      - uses: actions/cache/save@v4
+        with:
+          path: ~/.cache/go-build
+          key: go-test-${{ github.sha }}
 
   # ADR-0025: a pattern is only worth shipping while it stays true. Every
   # pattern passes tiger check with zero findings and its tests under -race.
   # The patterns' own go test run is separate from the repository-wide one so
   # a failing pattern names itself.
   patterns:
+    needs: changes
+    if: always() && (needs.changes.result != 'success' || needs.changes.outputs.patterns == 'true')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -44,13 +109,21 @@ jobs:
 
   # Stage 0 of the adoption ladder, applied to tiger itself.
   lint:
+    needs: changes
+    if: always() && (needs.changes.result != 'success' || needs.changes.outputs.lint == 'true')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-      - run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@${{ env.GOLANGCI_LINT_VERSION }}
+      - id: golangci
+        uses: actions/cache@v4
+        with:
+          path: ~/go/bin/golangci-lint
+          key: golangci-lint-${{ runner.os }}-${{ env.GOLANGCI_LINT_VERSION }}
+      - if: steps.golangci.outputs.cache-hit != 'true'
+        run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@${{ env.GOLANGCI_LINT_VERSION }}
       - run: golangci-lint run ./...
 
   # The tiger repository dogfoods itself: the custom rules run over the tree
@@ -58,6 +131,8 @@ jobs:
   # a workflow artifact, and each pull request gets the report as a sticky
   # comment.
   dogfood:
+    needs: changes
+    if: always() && (needs.changes.result != 'success' || needs.changes.outputs.dogfood == 'true')
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -119,6 +194,8 @@ jobs:
   # across runs — the check runs twice and any diff fails the build (the
   # spec's TS-T11 applied to tiger itself).
   determinism:
+    needs: changes
+    if: always() && (needs.changes.result != 'success' || needs.changes.outputs.determinism == 'true')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -179,13 +256,21 @@ jobs:
   # entry scoped to ./scoped silences TS-N14 there and leaves the same
   # identifier firing in ./outside.
   plugin-smoke:
+    needs: changes
+    if: always() && (needs.changes.result != 'success' || needs.changes.outputs.plugin-smoke == 'true')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-      - run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@${{ env.GOLANGCI_LINT_VERSION }}
+      - id: golangci
+        uses: actions/cache@v4
+        with:
+          path: ~/go/bin/golangci-lint
+          key: golangci-lint-${{ runner.os }}-${{ env.GOLANGCI_LINT_VERSION }}
+      - if: steps.golangci.outputs.cache-hit != 'true'
+        run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@${{ env.GOLANGCI_LINT_VERSION }}
       - run: golangci-lint custom
       - name: known finding surfaces through the plugin
         working-directory: testdata/plugin-smoke
