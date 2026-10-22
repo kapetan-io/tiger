@@ -74,6 +74,27 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      # Go's test cache keys on the modification time of the files a test
+      # stats, and a fresh checkout stamps every file with the clone time, so
+      # internal/cli and internal/rules would never hit. Each file and
+      # directory takes the time of the newest commit that touched it, which
+      # stays the same until the file changes.
+      - name: restore file times from git history
+        run: |
+          git -c core.quotepath=false log --no-renames --name-only --pretty=format:'@%ct' |
+            awk '/^@/ { t = substr($0, 2); next }
+                 NF && !($0 in seen) {
+                   seen[$0] = 1; print t, $0
+                   if (!top) top = t
+                   d = $0
+                   while (sub(/\/[^\/]*$/, "", d)) if (!(d in dir) || t > dir[d]) dir[d] = t
+                 }
+                 END { for (d in dir) print dir[d], d; print top, "." }' |
+            while read -r stamp path; do
+              if [ -e "$path" ]; then touch -d "@$stamp" -- "$path"; fi
+            done
       # setup-go's own cache is off because it would hand main earlier test
       # results. Main starts empty so it runs every test, then saves; a pull
       # request restores the newest entry (main's, or its own earlier push)
