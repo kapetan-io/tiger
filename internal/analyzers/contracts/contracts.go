@@ -32,7 +32,7 @@ import (
 
 	"github.com/kapetan-io/tiger/assert"
 	"github.com/kapetan-io/tiger/internal/directive"
-	"github.com/kapetan-io/tiger/internal/pins"
+	"github.com/kapetan-io/tiger/internal/placement"
 )
 
 const (
@@ -53,11 +53,11 @@ var Analyzer = &analysis.Analyzer{
 // with the FuncDecl needed to name its parameters at a call site.
 type pinnedFunc struct {
 	decl     *ast.FuncDecl
-	requires []pins.Pin
+	requires []placement.Pin
 }
 
 func run(pass *analysis.Pass) (any, error) {
-	collected := pins.Collect(pass.Fset, pass.Files)
+	collected := placement.Collect(pass.Fset, pass.Files)
 	funcs := map[types.Object]pinnedFunc{}
 	for _, file := range pass.Files {
 		for _, decl := range file.Decls {
@@ -125,7 +125,7 @@ func checkRequires(pass *analysis.Pass, funcs map[types.Object]pinnedFunc, call 
 // checkEnsures evaluates every ensures pin on fn against each of its
 // return statements. It skips past a nested function literal so a
 // closure's own return is never attributed to fn.
-func checkEnsures(pass *analysis.Pass, collected pins.Set, fn *ast.FuncDecl) {
+func checkEnsures(pass *analysis.Pass, collected placement.Set, fn *ast.FuncDecl) {
 	ensures := collected.At(fn, "ensures")
 	if len(ensures) == 0 {
 		return
@@ -154,7 +154,7 @@ func checkEnsures(pass *analysis.Pass, collected pins.Set, fn *ast.FuncDecl) {
 // checkReturn evaluates every ensures pin against one return statement. A
 // naked return (no Results, valid only with named results) is silent — the
 // analyzer would need flow analysis to know the named results' values.
-func checkReturn(pass *analysis.Pass, ensures []pins.Pin, results []string, ret *ast.ReturnStmt) {
+func checkReturn(pass *analysis.Pass, ensures []placement.Pin, results []string, ret *ast.ReturnStmt) {
 	if len(ret.Results) == 0 {
 		return
 	}
@@ -176,11 +176,11 @@ func checkReturn(pass *analysis.Pass, ensures []pins.Pin, results []string, ret 
 	}
 }
 
-// mustPredicate re-parses a pin's argument text. The pins.Set collector only
+// mustPredicate re-parses a pin's argument text. The placement.Set collector only
 // collects well-formed pins, so the parse cannot fail here.
-func mustPredicate(pin pins.Pin) directive.Predicate {
+func mustPredicate(pin placement.Pin) directive.Predicate {
 	pred, err := directive.ParsePredicate(pin.Directive.Args)
-	assert.Ok(err == nil, "pins.Set guarantees well-formed predicate args")
+	assert.Ok(err == nil, "placement.Set guarantees well-formed predicate args")
 	return pred
 }
 

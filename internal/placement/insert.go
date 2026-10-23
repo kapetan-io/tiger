@@ -1,4 +1,4 @@
-package pins
+package placement
 
 import (
 	"go/ast"

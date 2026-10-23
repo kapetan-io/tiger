@@ -1,4 +1,4 @@
-package pins_test
+package placement_test
 
 import (
 	"go/ast"
@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/kapetan-io/tiger/internal/pins"
+	"github.com/kapetan-io/tiger/internal/placement"
 )
 
 const pinned = `package fixture
@@ -39,7 +39,7 @@ func Drain(pending []int) int {
 
 // fixture is the parsed pin fixture: its collected pins and its file.
 type fixture struct {
-	collected pins.Set
+	collected placement.Set
 	file      *ast.File
 }
 
@@ -49,7 +49,7 @@ func parse(t *testing.T) fixture {
 	fset := token.NewFileSet()
 	file, err := parser.ParseFile(fset, "fixture.go", pinned, parser.ParseComments)
 	require.NoError(t, err)
-	return fixture{collected: pins.Collect(fset, []*ast.File{file}), file: file}
+	return fixture{collected: placement.Collect(fset, []*ast.File{file}), file: file}
 }
 
 // find returns the first declaration or statement satisfying match.

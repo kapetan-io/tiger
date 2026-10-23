@@ -21,7 +21,7 @@ import (
 	"github.com/kapetan-io/tiger/internal/directive"
 	"github.com/kapetan-io/tiger/internal/driver"
 	"github.com/kapetan-io/tiger/internal/facts"
-	"github.com/kapetan-io/tiger/internal/pins"
+	"github.com/kapetan-io/tiger/internal/placement"
 	"github.com/kapetan-io/tiger/internal/rules"
 )
 
@@ -353,7 +353,7 @@ type write struct {
 	absFile  string
 	relFile  string
 	origLine int
-	insert   pins.Insertion
+	insert   placement.Insertion
 	dirs     []directive.Directive
 	printed  []string
 }
@@ -493,7 +493,7 @@ func refusalBlock(target *resolved, relFile string, blocking []driver.Finding) s
 
 // existingPins collects the variant pins already on target's loops.
 func existingPins(target *resolved) []directive.Directive {
-	set := pins.Collect(target.pkg.Fset, []*ast.File{target.file})
+	set := placement.Collect(target.pkg.Fset, []*ast.File{target.file})
 	collected := []directive.Directive{}
 	ast.Inspect(target.decl, func(node ast.Node) bool {
 		if loop, ok := node.(*ast.ForStmt); ok {
@@ -578,7 +578,7 @@ func sourceFiles(writes []write) (map[string][]byte, error) {
 func numberLines(writes []write, sources map[string][]byte) {
 	for i := range writes {
 		w := &writes[i]
-		w.insert = pins.Insert(pins.Target{
+		w.insert = placement.Insert(placement.Target{
 			Fset: w.target.pkg.Fset, File: w.target.file, Src: sources[w.absFile],
 			Node: w.nodeAtOrigin(), Directives: w.dirs,
 		})
