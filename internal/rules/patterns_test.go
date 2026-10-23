@@ -1,6 +1,8 @@
 package rules_test
 
 import (
+	"bytes"
+	"maps"
 	"slices"
 	"strings"
 	"testing"
@@ -8,10 +10,28 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/kapetan-io/tiger/internal/command"
 	"github.com/kapetan-io/tiger/internal/pattern"
 	"github.com/kapetan-io/tiger/internal/rules"
 	"github.com/kapetan-io/tiger/patterns"
 )
+
+// outcome is one invocation's observable result.
+type outcome struct {
+	code   int
+	stdout string
+	stderr string
+}
+
+// run invokes tiger pattern once. The leading word keeps each call site
+// reading as the command line it stands for.
+func run(t *testing.T, args ...string) outcome {
+	t.Helper()
+	require.Equal(t, "pattern", args[0])
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	code := pattern.Run(args[1:], command.Streams{Stdout: stdout, Stderr: stderr})
+	return outcome{code: code, stdout: stdout.String(), stderr: stderr.String()}
+}
 
 // registeredCodes is every rule code in the registry, custom and auto.
 func registeredCodes() map[string]bool {
@@ -120,6 +140,38 @@ func TestPointerEndsWithTheCommandsToRun(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			assert.Equal(t, test.want, rules.Pointer(test.category))
+		})
+	}
+}
+
+// TestPatternRuleAnswersMatchTheRegistry asks the binary for the patterns
+// behind every rule the registry points at a pattern.
+//
+// Goal: for each rule code, tiger pattern --rule lists exactly the patterns
+// the registry names for that code, so a finding's pointer never leads to an
+// empty or different answer.
+func TestPatternRuleAnswersMatchTheRegistry(t *testing.T) {
+	want := map[string]map[string]bool{}
+	for _, rule := range rules.CustomRules() {
+		for _, name := range rule.Patterns {
+			if want[rule.RuleID] == nil {
+				want[rule.RuleID] = map[string]bool{}
+			}
+			want[rule.RuleID][name] = true
+		}
+	}
+	require.NotEmpty(t, want)
+	for _, code := range slices.Sorted(maps.Keys(want)) {
+		names := want[code]
+		t.Run(code, func(t *testing.T) {
+			got := run(t, "pattern", "--rule", code)
+			require.Equal(t, command.ExitClean, got.code)
+			listed := map[string]bool{}
+			for _, line := range strings.Split(strings.TrimSpace(got.stdout), "\n") {
+				name, _, _ := strings.Cut(line, "\t")
+				listed[name] = true
+			}
+			assert.Equal(t, names, listed)
 		})
 	}
 }

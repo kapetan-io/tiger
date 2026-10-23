@@ -1,8 +1,8 @@
-// Package pattern reads the pattern collection: for each directory, the
-// PATTERN.md card (the rules it backs, the gap, the bug behind it, the
-// reviewer checklist) and the Go files that show the right shape and prove
-// both shapes. The tiger binary prints these and the registry meta-tests
-// check them against the rules.
+// Package pattern holds the pattern collection and the tiger pattern command
+// that prints it. A pattern is a directory with a PATTERN.md card (the rules
+// it backs, the gap, the bug behind it, the reviewer checklist) and the Go
+// files that show the right shape and prove both shapes. The registry
+// meta-tests check the cards against the rules.
 package pattern
 
 import (

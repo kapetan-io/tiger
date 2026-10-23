@@ -14,6 +14,7 @@ import (
 
 	"github.com/kapetan-io/tiger/internal/changed"
 	"github.com/kapetan-io/tiger/internal/command"
+	"github.com/kapetan-io/tiger/internal/pattern"
 )
 
 // Transitional aliases for the tests that still enter through cli.Run; they
@@ -37,12 +38,7 @@ const usage = `usage:
   tiger golangci [-C dir] [--init | --print]
       audit the project golangci-lint config against the auto-rule baseline,
       generate it with --init, or write it to stdout with --print
-  tiger pattern [name] [--checklist] [--rule code]
-      print a pattern: the correct shape for what a rule cannot check, with
-      its code, tests and reviewer checklist; with no name list every
-      pattern, --rule lists the patterns behind a rule code; exit 0 printed,
-      2 unknown pattern or rule
-` + changed.Usage + `  tiger pin [-C dir] [--dry-run] <Name> [<Name>...] [packages]
+` + pattern.Usage + changed.Usage + `  tiger pin [-C dir] [--dry-run] <Name> [<Name>...] [packages]
       freeze each named function's computed facts into //tiger: pins
       written at their targets; exit 0 written or already satisfied,
       1 refusals, 2 could not proceed
@@ -63,7 +59,7 @@ func Run(args []string, streams Streams) int {
 	case "golangci":
 		return runGolangci(args[1:], streams)
 	case "pattern":
-		return runPattern(args[1:], streams)
+		return pattern.Run(args[1:], streams)
 	case "changed":
 		return changed.Run(args[1:], streams)
 	case "pin":
