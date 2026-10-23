@@ -1,4 +1,4 @@
-internal/cli:
+internal/pin:
   TS-L09: 1
 patterns/shutdown-loop:
   TS-S23: 1

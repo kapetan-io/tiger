@@ -1,4 +1,6 @@
-package cli
+// Package pin is tiger pin: freezing a named function's computed facts into
+// //tiger: pins written at their targets.
+package pin
 
 import (
 	"errors"
@@ -15,6 +17,7 @@ import (
 
 	"golang.org/x/tools/go/packages"
 
+	"github.com/kapetan-io/tiger/internal/command"
 	"github.com/kapetan-io/tiger/internal/directive"
 	"github.com/kapetan-io/tiger/internal/driver"
 	"github.com/kapetan-io/tiger/internal/facts"
@@ -30,24 +33,32 @@ func pinRule(ruleID string) bool {
 	return ruleID == "TS-V01"
 }
 
-// runPin is tiger pin: resolve each named function, collect the facts the
+// Usage is tiger pin's entry in the command listing.
+const Usage = `  tiger pin [-C dir] [--dry-run] <Name> [<Name>...] [packages]
+      freeze each named function's computed facts into //tiger: pins
+      written at their targets; exit 0 written or already satisfied,
+      1 refusals, 2 could not proceed
+`
+
+// Run is tiger pin: resolve each named function, collect the facts the
 // same analyzer run reports for it, and freeze them into //tiger:
 // directives written at their targets. Insert-only by construction — the
 // writer this command calls has no other operation.
-func runPin(args []string, streams Streams) int {
+func Run(args []string, streams command.Streams) int {
 	flags := flag.NewFlagSet("tiger pin", flag.ContinueOnError)
 	flags.SetOutput(streams.Stderr)
+	flags.Usage = func() { command.PrintUsage(flags, Usage) }
 	chdir := flags.String("C", ".", "run as if tiger was started in this directory")
 	dryRun := flags.Bool(
 		"dry-run", false, "print every directive that would be written and where, write nothing",
 	)
 	if err := flags.Parse(args); err != nil {
-		return ExitOperational
+		return command.ExitOperational
 	}
 	given := splitArgs(flags.Args())
 	if len(given.names) == 0 {
-		fmt.Fprint(streams.Stderr, usage)
-		return ExitOperational
+		flags.Usage()
+		return command.ExitOperational
 	}
 	patterns := given.patterns
 	if len(patterns) == 0 {
@@ -57,46 +68,46 @@ func runPin(args []string, streams Streams) int {
 	loaded, err := loadForPin(*chdir, patterns)
 	if err != nil {
 		fmt.Fprintf(streams.Stderr, "tiger pin: %v\n", err)
-		return ExitOperational
+		return command.ExitOperational
 	}
 	targets, err := resolve(given.names, declaredFuncs(loaded))
 	if err != nil {
 		fmt.Fprintf(streams.Stderr, "tiger pin: %v\n", err)
-		return ExitOperational
+		return command.ExitOperational
 	}
 
 	findings, err := driver.Check(*chdir, patterns, rules.Analyzers(), nil)
 	if err != nil {
 		fmt.Fprintf(streams.Stderr, "tiger pin: %v\n", err)
-		return ExitOperational
+		return command.ExitOperational
 	}
 	root, err := filepath.Abs(*chdir)
 	if err != nil {
 		fmt.Fprintf(streams.Stderr, "tiger pin: %v\n", err)
-		return ExitOperational
+		return command.ExitOperational
 	}
 
 	work, err := plan(root, targets, findings)
 	if err != nil {
 		fmt.Fprintf(streams.Stderr, "tiger pin: %v\n", err)
-		return ExitOperational
+		return command.ExitOperational
 	}
 	sources, err := sourceFiles(work.writes)
 	if err != nil {
 		fmt.Fprintf(streams.Stderr, "tiger pin: %v\n", err)
-		return ExitOperational
+		return command.ExitOperational
 	}
 	numberLines(work.writes, sources)
 	if !*dryRun {
 		if err := apply(work.writes, sources, streams); err != nil {
-			return ExitOperational
+			return command.ExitOperational
 		}
 	}
 	report(streams, targets, work.writes, work.refused)
 	if len(work.refused) > 0 {
-		return ExitFindings
+		return command.ExitFindings
 	}
-	return ExitClean
+	return command.ExitClean
 }
 
 // invocation is pin's positional arguments, split into function names and
@@ -607,7 +618,7 @@ func (w *write) nodeAtOrigin() ast.Node {
 // apply splices every insertion into its file, descending by offset so no
 // insertion invalidates another's, and replaces each file atomically. A
 // failure names the files already written (behavioral constraint 7).
-func apply(writes []write, sources map[string][]byte, streams Streams) error {
+func apply(writes []write, sources map[string][]byte, streams command.Streams) error {
 	byFile := map[string][]write{}
 	for _, w := range writes {
 		byFile[w.absFile] = append(byFile[w.absFile], w)
@@ -662,7 +673,7 @@ func replace(path string, content []byte) error {
 
 // report prints, per target in the requested order: the refusal block, then
 // the written lines.
-func report(streams Streams, targets []resolved, writes []write, refused []refusal) {
+func report(streams command.Streams, targets []resolved, writes []write, refused []refusal) {
 	for i := range targets {
 		target := &targets[i]
 		for _, r := range refused {

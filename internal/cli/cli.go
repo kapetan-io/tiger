@@ -11,31 +11,19 @@ import (
 	"github.com/kapetan-io/tiger/internal/command"
 	"github.com/kapetan-io/tiger/internal/golangci"
 	"github.com/kapetan-io/tiger/internal/pattern"
-)
-
-// Transitional aliases for code and tests that still enter through cli.Run.
-type Streams = command.Streams
-
-const (
-	ExitClean       = command.ExitClean
-	ExitFindings    = command.ExitFindings
-	ExitOperational = command.ExitOperational
+	"github.com/kapetan-io/tiger/internal/pin"
 )
 
 const usage = `usage:
 ` + check.Usage + check.BudgetUsage + golangci.Usage + pattern.Usage +
-	changed.Usage + `  tiger pin [-C dir] [--dry-run] <Name> [<Name>...] [packages]
-      freeze each named function's computed facts into //tiger: pins
-      written at their targets; exit 0 written or already satisfied,
-      1 refusals, 2 could not proceed
-run "tiger <command> -h" for its flags
+	changed.Usage + pin.Usage + `run "tiger <command> -h" for its flags
 `
 
 // Run executes one tiger invocation and returns its exit code.
-func Run(args []string, streams Streams) int {
+func Run(args []string, streams command.Streams) int {
 	if len(args) == 0 {
 		fmt.Fprint(streams.Stderr, usage)
-		return ExitOperational
+		return command.ExitOperational
 	}
 	switch args[0] {
 	case "check":
@@ -49,13 +37,13 @@ func Run(args []string, streams Streams) int {
 	case "changed":
 		return changed.Run(args[1:], streams)
 	case "pin":
-		return runPin(args[1:], streams)
+		return pin.Run(args[1:], streams)
 	case "help", "-h", "--help":
 		fmt.Fprint(streams.Stdout, usage)
-		return ExitClean
+		return command.ExitClean
 	default:
 		fmt.Fprintf(streams.Stderr, "tiger: unknown command %q\n", args[0])
 		fmt.Fprint(streams.Stderr, usage)
-		return ExitOperational
+		return command.ExitOperational
 	}
 }

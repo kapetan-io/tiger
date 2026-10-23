@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/kapetan-io/tiger/internal/cli"
+	"github.com/kapetan-io/tiger/internal/command"
 )
 
 // outcome is one CLI invocation's observable result.
@@ -22,7 +23,7 @@ func run(t *testing.T, args ...string) outcome {
 	t.Helper()
 	stdout := &bytes.Buffer{}
 	stderr := &bytes.Buffer{}
-	code := cli.Run(args, cli.Streams{Stdout: stdout, Stderr: stderr})
+	code := cli.Run(args, command.Streams{Stdout: stdout, Stderr: stderr})
 	return outcome{code: code, stdout: stdout.String(), stderr: stderr.String()}
 }
 
@@ -32,16 +33,16 @@ func run(t *testing.T, args ...string) outcome {
 // help exits clean.
 func TestUnknownCommandExitsTwo(t *testing.T) {
 	unknown := run(t, "frobnicate")
-	assert.Equal(t, cli.ExitOperational, unknown.code)
+	assert.Equal(t, command.ExitOperational, unknown.code)
 	assert.Contains(t, unknown.stderr, "unknown command")
 	require.Contains(t, unknown.stderr, "usage:")
 
 	helped := run(t, "help")
-	assert.Equal(t, cli.ExitClean, helped.code)
+	assert.Equal(t, command.ExitClean, helped.code)
 	assert.Contains(t, helped.stdout, "tiger check")
 
 	bare := run(t)
-	assert.Equal(t, cli.ExitOperational, bare.code)
+	assert.Equal(t, command.ExitOperational, bare.code)
 	assert.Contains(t, bare.stderr, "usage:")
 }
 
@@ -55,8 +56,16 @@ func TestChangedIsListedAndDispatched(t *testing.T) {
 	assert.Contains(t, bare.stderr, "tiger changed [-C dir] [--format text|markdown|json] <base>")
 
 	got := run(t, "changed")
-	assert.Equal(t, cli.ExitOperational, got.code)
+	assert.Equal(t, command.ExitOperational, got.code)
 	assert.Empty(t, got.stdout)
 	assert.Equal(t, "tiger changed: expected a base revision, "+
 		"as in: tiger changed [-C dir] <base>\n", got.stderr)
+}
+
+// TestPatternHelpNamesTheCommand reads the usage text.
+//
+// Goal: tiger help documents tiger pattern with its two flags.
+func TestPatternHelpNamesTheCommand(t *testing.T) {
+	got := run(t, "help")
+	assert.Contains(t, got.stdout, "tiger pattern [name] [--checklist] [--rule code]")
 }
