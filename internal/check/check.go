@@ -18,6 +18,7 @@ import (
 	"github.com/kapetan-io/tiger/internal/command"
 	"github.com/kapetan-io/tiger/internal/config"
 	"github.com/kapetan-io/tiger/internal/driver"
+	"github.com/kapetan-io/tiger/internal/module"
 	"github.com/kapetan-io/tiger/internal/rules"
 )
 
@@ -133,7 +134,7 @@ type partitioned struct {
 // facts table first, then the rules table — and splits the findings by
 // kind, ending each rule finding with its pattern pointer. An unregistered
 // category is an error: the run cannot apply a severity it does not know.
-func partition(module config.Module, findings []driver.Finding) (partitioned, error) {
+func partition(path module.Path, findings []driver.Finding) (partitioned, error) {
 	sorted := partitioned{counts: newBudgetCounts()}
 	for _, finding := range findings {
 		if _, isFact := rules.ByFact(finding.Category); isFact {
@@ -150,7 +151,7 @@ func partition(module config.Module, findings []driver.Finding) (partitioned, er
 		case rules.SeverityBlocking:
 			sorted.blocking = append(sorted.blocking, finding)
 		case rules.SeverityAdvisory:
-			sorted.counts.add(packageKey(module, finding.Package), entry, finding)
+			sorted.counts.add(packageKey(path, finding.Package), entry, finding)
 		default:
 			assert.Unreachable("severity outside the registry's closed set")
 		}

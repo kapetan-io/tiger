@@ -1,4 +1,7 @@
-package config
+// Package module owns the facts about the Go module a run sits in: its path
+// from go.mod, module-relative package paths, the directory layout and the
+// Go files, from one walk of its tree. It does not read tiger.yaml.
+package module
 
 import (
 	"errors"
@@ -16,13 +19,13 @@ import (
 	"golang.org/x/mod/modfile"
 )
 
-// Module is a module path, as read from go.mod.
-type Module string
+// Path is a module path, as read from go.mod.
+type Path string
 
 // Relative rewrites pkgPath relative to the module: the module root is
 // ".", a package below it loses the module prefix, and a package outside
 // the module returns ok false.
-func (m Module) Relative(pkgPath string) (string, bool) {
+func (m Path) Relative(pkgPath string) (string, bool) {
 	if pkgPath == string(m) {
 		return ".", true
 	}
@@ -32,19 +35,19 @@ func (m Module) Relative(pkgPath string) (string, bool) {
 	return "", false
 }
 
-// ModulePath reads the module path from dir's go.mod. The go.mod parser
+// ReadPath reads the module path from dir's go.mod. The go.mod parser
 // reads the line, so a trailing comment or a quoted path is not taken for
 // part of the path.
-func ModulePath(dir string) (Module, error) {
+func ReadPath(dir string) (Path, error) {
 	raw, err := os.ReadFile(filepath.Join(dir, "go.mod"))
 	if err != nil {
 		return "", fmt.Errorf("reading module path: %w", err)
 	}
-	module := modfile.ModulePath(raw)
-	if module == "" {
+	found := modfile.ModulePath(raw)
+	if found == "" {
 		return "", errors.New("go.mod has no module line")
 	}
-	return Module(module), nil
+	return Path(found), nil
 }
 
 // Package is one package directory of a module.
@@ -63,7 +66,7 @@ type Layout struct {
 	Packages []Package
 	// Nested are the paths of the modules nested below the root: directories
 	// with a go.mod of their own, whose packages belong to that module.
-	Nested []Module
+	Nested []Path
 }
 
 // ReadLayout walks the module rooted at dir. A directory is a package when
@@ -79,7 +82,7 @@ func ReadLayout(dir string) (Layout, error) {
 	if err != nil {
 		return Layout{}, fmt.Errorf("listing packages: %w", err)
 	}
-	layout := Layout{Packages: []Package{}, Nested: []Module{}}
+	layout := Layout{Packages: []Package{}, Nested: []Path{}}
 	seen := map[string]bool{}
 	err = filepath.WalkDir(root, func(walked string, entry fs.DirEntry, err error) error {
 		if err != nil {
@@ -125,7 +128,7 @@ func (l *Layout) enter(walked string, entry fs.DirEntry) error {
 		return nil
 	}
 	// A go.mod with no module line names no import path to keep out.
-	if nested, err := ModulePath(walked); err == nil {
+	if nested, err := ReadPath(walked); err == nil {
 		l.Nested = append(l.Nested, nested)
 	}
 	return filepath.SkipDir

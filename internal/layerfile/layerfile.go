@@ -26,11 +26,11 @@ import (
 	"strconv"
 	"strings"
 
-	"golang.org/x/mod/module"
+	gomodule "golang.org/x/mod/module"
 	"gopkg.in/yaml.v3"
 
 	"github.com/kapetan-io/tiger/assert"
-	"github.com/kapetan-io/tiger/internal/config"
+	"github.com/kapetan-io/tiger/internal/module"
 )
 
 // FileName is the layer file's fixed name in the module root.
@@ -64,8 +64,8 @@ type entry struct {
 // File is a loaded, validated layer file bound to the module it was read
 // from. The zero value is an empty file.
 type File struct {
-	module   config.Module
-	layout   config.Layout
+	module   module.Path
+	layout   module.Layout
 	entries  []entry
 	standard *standardLibrary
 	digest   string
@@ -98,11 +98,11 @@ func Load(dir string) (*File, error) {
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", FileName, err)
 	}
-	modulePath, err := config.ModulePath(dir)
+	modulePath, err := module.ReadPath(dir)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", FileName, err)
 	}
-	layout, err := config.ReadLayout(dir)
+	layout, err := module.ReadLayout(dir)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", FileName, err)
 	}
@@ -224,7 +224,7 @@ func shapeError(line int) error {
 // Coverage is how the layer file and a module's packages disagree.
 type Coverage struct {
 	// Unlisted are packages with no entry.
-	Unlisted []config.Package
+	Unlisted []module.Package
 	// Stale are entries that match no package.
 	Stale []Stale
 }
@@ -248,7 +248,7 @@ func (f *File) Coverage() Coverage {
 		}
 	}
 	for _, each := range f.entries {
-		if !slices.ContainsFunc(packages, func(pkg config.Package) bool {
+		if !slices.ContainsFunc(packages, func(pkg module.Package) bool {
 			return each.covers(pkg.Dir)
 		}) {
 			found.Stale = append(found.Stale, Stale{Key: each.key, Line: each.line})
@@ -257,7 +257,7 @@ func (f *File) Coverage() Coverage {
 	return found
 }
 
-// relative rewrites pkgPath relative to the module, as config.Module.Relative
+// relative rewrites pkgPath relative to the module, as module.Path.Relative
 // does, except that a package of a nested module is outside: it belongs to
 // that module and its own layer file.
 func (f *File) relative(pkgPath string) (string, bool) {
@@ -273,8 +273,8 @@ func (f *File) relative(pkgPath string) (string, bool) {
 // module whose path lies inside this module's path can take one of its
 // packages; one whose path is a prefix of this module's, like example.com/m
 // nested in example.com/m/v2, never does.
-func (f *File) nestedOwner(p importPath) config.Module {
-	owner := config.Module("")
+func (f *File) nestedOwner(p importPath) module.Path {
+	owner := module.Path("")
 	for _, nested := range f.layout.Nested {
 		inside := strings.HasPrefix(string(nested), string(f.module)+"/")
 		if inside && p.within(string(nested)) && len(nested) > len(owner) {
@@ -485,7 +485,7 @@ func (f *File) validateEntry(key string, names []string) error {
 
 // nestedModule returns the nested module an in-module name, "./dir", sits in,
 // or "".
-func (f *File) nestedModule(name string) config.Module {
+func (f *File) nestedModule(name string) module.Path {
 	dir, found := strings.CutPrefix(name, modulePrefix)
 	if !found {
 		return ""
@@ -533,7 +533,7 @@ func (f *File) validateName(name string) error {
 	if name == "C" {
 		return fmt.Errorf("%q is always allowed; remove it", name)
 	}
-	if err := module.CheckImportPath(name); err != nil {
+	if err := gomodule.CheckImportPath(name); err != nil {
 		return fmt.Errorf("%q isn't an import path; write a module path like \"example.com/lib\"",
 			name)
 	}

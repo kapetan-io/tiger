@@ -9,9 +9,6 @@
 // they are analyzing and never read files themselves (ADR-0002). With
 // nothing installed, Values returns nothing, so analysistest corpora run
 // exactly as they did before the file existed.
-//
-// The package also reads the module the file sits in: its path from go.mod,
-// and its package directories and nested modules from one walk of its tree.
 package config
 
 import (
@@ -25,6 +22,8 @@ import (
 
 	"golang.org/x/tools/go/analysis"
 	"gopkg.in/yaml.v3"
+
+	"github.com/kapetan-io/tiger/internal/module"
 )
 
 // FileName is the config file's fixed name in the run directory.
@@ -52,7 +51,7 @@ type Key struct {
 // File is a loaded, validated tiger.yaml bound to the module it was read
 // from.
 type File struct {
-	module  Module
+	module  module.Path
 	entries map[Key][]Entry
 	nolint  bool
 }
@@ -108,7 +107,7 @@ func Load(dir string, analyzers []*analysis.Analyzer) (*File, error) {
 	if err != nil {
 		return nil, &Error{Problem: err.Error()}
 	}
-	module, err := ModulePath(dir)
+	path, err := module.ReadPath(dir)
 	if err != nil {
 		return nil, &Error{Problem: err.Error()}
 	}
@@ -120,7 +119,7 @@ func Load(dir string, analyzers []*analysis.Analyzer) (*File, error) {
 		return nil, &Error{Key: "version", Problem: fmt.Sprintf(
 			"version %d is not supported — write version: %d", parsed.Version, version)}
 	}
-	loaded := &File{module: Module(module), entries: map[Key][]Entry{}}
+	loaded := &File{module: path, entries: map[Key][]Entry{}}
 	forbid, err := parseNolint(&parsed.Nolint)
 	if err != nil {
 		return nil, err

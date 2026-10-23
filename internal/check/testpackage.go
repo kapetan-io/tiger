@@ -9,8 +9,8 @@ import (
 	"strings"
 
 	"github.com/kapetan-io/tiger/internal/analyzers/testpackage"
-	"github.com/kapetan-io/tiger/internal/config"
 	"github.com/kapetan-io/tiger/internal/driver"
+	"github.com/kapetan-io/tiger/internal/module"
 )
 
 // testPackageCoverage returns the TS-T12 findings for test files the run did
@@ -23,7 +23,7 @@ import (
 func testPackageCoverage(
 	root string, setup setup, analyzed []string, blocking []driver.Finding,
 ) ([]driver.Finding, error) {
-	files, err := config.GoFiles(root)
+	files, err := module.GoFiles(root)
 	if err != nil {
 		return nil, err
 	}

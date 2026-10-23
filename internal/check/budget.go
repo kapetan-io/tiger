@@ -13,6 +13,7 @@ import (
 	"github.com/kapetan-io/tiger/internal/config"
 	"github.com/kapetan-io/tiger/internal/driver"
 	"github.com/kapetan-io/tiger/internal/layerfile"
+	"github.com/kapetan-io/tiger/internal/module"
 	"github.com/kapetan-io/tiger/internal/rules"
 )
 
@@ -86,7 +87,7 @@ func Budget(args []string, streams command.Streams) int {
 // directory before analysis: the module path, the installed config and
 // layer file, and the budget file.
 type setup struct {
-	module  config.Module
+	module  module.Path
 	layers  *layerfile.File
 	budgets *budget.File
 }
@@ -111,20 +112,20 @@ func prepare(dir string) (setup, error) {
 	}
 	// The module path is optional here: without go.mod the driver fails the
 	// run on its own, and with no config or budget file nothing needs it.
-	module, err := config.ModulePath(dir)
+	path, err := module.ReadPath(dir)
 	if err != nil {
-		module = ""
+		path = ""
 	}
-	return setup{module: module, layers: layered, budgets: budgets}, nil
+	return setup{module: path, layers: layered, budgets: budgets}, nil
 }
 
 // packageKey is the budget file's key for a package: its import path
 // relative to the module, with an external test package folded into the
 // package it tests, so a skipped test counts against the package it
 // belongs to.
-func packageKey(module config.Module, pkgPath string) string {
+func packageKey(path module.Path, pkgPath string) string {
 	pkgPath = strings.TrimSuffix(pkgPath, "_test")
-	if rel, inModule := module.Relative(pkgPath); inModule {
+	if rel, inModule := path.Relative(pkgPath); inModule {
 		return rel
 	}
 	return pkgPath
