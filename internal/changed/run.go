@@ -12,7 +12,7 @@ import (
 	"github.com/kapetan-io/tiger/internal/revision"
 )
 
-// synopsis is the one line a bad invocation of tiger changed repeats.
+// synopsis is the line tiger changed -h prints and its Usage entry opens with.
 const synopsis = "tiger changed [-C dir] [--format text|markdown|json] <base>"
 
 // Usage is tiger changed's entry in the command listing.
