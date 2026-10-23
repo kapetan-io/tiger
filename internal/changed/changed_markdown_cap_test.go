@@ -1,4 +1,4 @@
-package cli_test
+package changed_test
 
 import (
 	"fmt"
@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/kapetan-io/tiger/internal/cli"
+	"github.com/kapetan-io/tiger/internal/command"
 )
 
 // TestChangedMarkdownCutsTheMainListAfterDroppingNewPackageCalls covers both
@@ -19,7 +19,7 @@ import (
 // cut as well, and the package keeps its heading and summary bullets.
 func TestChangedMarkdownCutsTheMainListAfterDroppingNewPackageCalls(t *testing.T) {
 	got := bulkCheckout(t, bulkSize{existing: 3600, fresh: 50}).changed("--format", "markdown")
-	require.Equal(t, cli.ExitClean, got.code)
+	require.Equal(t, command.ExitClean, got.code)
 	assert.LessOrEqual(t, utf8.RuneCountInString(got.stdout), commentLimit)
 	assert.Contains(t, got.stdout,
 		"Too long for a comment; run `tiger changed main` for every call.\n")
@@ -49,7 +49,7 @@ func TestChangedMarkdownCountsCharactersNotBytes(t *testing.T) {
 	c.commit("head")
 
 	got := c.changed("--format", "markdown")
-	require.Equal(t, cli.ExitClean, got.code)
+	require.Equal(t, command.ExitClean, got.code)
 	assert.Greater(t, len(got.stdout), commentLimit)
 	assert.LessOrEqual(t, utf8.RuneCountInString(got.stdout), commentLimit)
 	assert.NotContains(t, got.stdout, "not shown")
@@ -67,7 +67,7 @@ func TestChangedMarkdownNamesTheMergeBase(t *testing.T) {
 	c.git("checkout", "-q", "feature")
 
 	got := c.changed("--format", "markdown")
-	require.Equal(t, cli.ExitClean, got.code)
+	require.Equal(t, command.ExitClean, got.code)
 	assert.Contains(t, got.stdout,
 		"#### tiger changed: `main` (merge base "+mergeBase+") → `"+c.short("HEAD")+"`\n")
 }

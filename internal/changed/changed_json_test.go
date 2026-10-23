@@ -1,4 +1,4 @@
-package cli_test
+package changed_test
 
 import (
 	"encoding/json"
@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/kapetan-io/tiger/internal/cli"
+	"github.com/kapetan-io/tiger/internal/command"
 )
 
 // report is the part of the tiger.changed/v1 document the tests read.
@@ -97,7 +97,7 @@ type report struct {
 func (c checkout) report(args ...string) report {
 	c.t.Helper()
 	got := c.changed(append([]string{"--format", "json"}, args...)...)
-	require.Equal(c.t, cli.ExitClean, got.code)
+	require.Equal(c.t, command.ExitClean, got.code)
 	require.Empty(c.t, got.stderr)
 	var doc report
 	require.NoError(c.t, json.Unmarshal([]byte(got.stdout), &doc))
@@ -129,7 +129,7 @@ func TestChangedJSONGoldens(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			got := fixture(t, name).changed("--format", "json")
-			assert.Equal(t, cli.ExitClean, got.code)
+			assert.Equal(t, command.ExitClean, got.code)
 			assert.Empty(t, got.stderr)
 			jsonGolden(t, name, got)
 		})
@@ -231,7 +231,7 @@ func TestChangedJSONKeepsACallWhoseLineMoved(t *testing.T) {
 func TestChangedJSONPrintsIdenticalBytes(t *testing.T) {
 	c := fixture(t, "new-package")
 	first := c.changed("--format", "json")
-	require.Equal(t, cli.ExitClean, first.code)
+	require.Equal(t, command.ExitClean, first.code)
 	assert.Equal(t, first.stdout, c.changed("--format", "json").stdout)
 
 	defer runtime.GOMAXPROCS(runtime.GOMAXPROCS(1))
@@ -275,7 +275,7 @@ func TestChangedJSONDescribesPackages(t *testing.T) {
 // rather than null when every package loaded.
 func TestChangedJSONNamesPackagesThatDidNotLoad(t *testing.T) {
 	partial := fixture(t, "partial-load").changed("--format", "json")
-	require.Equal(t, cli.ExitClean, partial.code)
+	require.Equal(t, command.ExitClean, partial.code)
 	var doc report
 	require.NoError(t, json.Unmarshal([]byte(partial.stdout), &doc))
 	assert.NotEmpty(t, doc.Scope.NotCompared)
@@ -333,7 +333,7 @@ func TestChangedJSONTellsWhatACallDidToDependencies(t *testing.T) {
 // nothing on stdout.
 func TestChangedRefusesAnUnknownFormat(t *testing.T) {
 	got := fixture(t, "call-added").changed("--format", "yaml")
-	assert.Equal(t, cli.ExitOperational, got.code)
+	assert.Equal(t, command.ExitOperational, got.code)
 	assert.Empty(t, got.stdout)
 	assert.Equal(t, "tiger changed: unknown format \"yaml\"; "+
 		"the formats are: text, markdown, json\n", got.stderr)
@@ -435,7 +435,7 @@ func TestChangedJSONNamesSitesRelativeToTheRunDirectory(t *testing.T) {
 	}
 	load := func(c checkout) report {
 		got := run(t, "changed", "-C", filepath.Join(c.dir, "app"), "--format", "json", "main")
-		require.Equal(t, cli.ExitClean, got.code)
+		require.Equal(t, command.ExitClean, got.code)
 		require.Empty(t, got.stderr)
 		var doc report
 		require.NoError(t, json.Unmarshal([]byte(got.stdout), &doc))

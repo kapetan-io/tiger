@@ -11,14 +11,19 @@ package cli
 
 import (
 	"fmt"
-	"io"
+
+	"github.com/kapetan-io/tiger/internal/changed"
+	"github.com/kapetan-io/tiger/internal/command"
 )
 
-// Exit codes, per the blueprint: clean, findings, operational failure.
+// Transitional aliases for the tests that still enter through cli.Run; they
+// go when the last of those tests moves with its command.
+type Streams = command.Streams
+
 const (
-	ExitClean       = 0
-	ExitFindings    = 1
-	ExitOperational = 2
+	ExitClean       = command.ExitClean
+	ExitFindings    = command.ExitFindings
+	ExitOperational = command.ExitOperational
 )
 
 const usage = `usage:
@@ -37,22 +42,12 @@ const usage = `usage:
       its code, tests and reviewer checklist; with no name list every
       pattern, --rule lists the patterns behind a rule code; exit 0 printed,
       2 unknown pattern or rule
-  tiger changed [-C dir] <base>
-      print, for each function, the calls it started or stopped making since
-      the merge base of <base> and HEAD; flags go before <base>; exit 0 for
-      any report, 2 when no report can be produced
-  tiger pin [-C dir] [--dry-run] <Name> [<Name>...] [packages]
+` + changed.Usage + `  tiger pin [-C dir] [--dry-run] <Name> [<Name>...] [packages]
       freeze each named function's computed facts into //tiger: pins
       written at their targets; exit 0 written or already satisfied,
       1 refusals, 2 could not proceed
+run "tiger <command> -h" for its flags
 `
-
-// Streams carries a command's output writers — an options struct, per the
-// tiger's own TS-N07.
-type Streams struct {
-	Stdout io.Writer
-	Stderr io.Writer
-}
 
 // Run executes one tiger invocation and returns its exit code.
 func Run(args []string, streams Streams) int {
@@ -70,7 +65,7 @@ func Run(args []string, streams Streams) int {
 	case "pattern":
 		return runPattern(args[1:], streams)
 	case "changed":
-		return runChanged(args[1:], streams)
+		return changed.Run(args[1:], streams)
 	case "pin":
 		return runPin(args[1:], streams)
 	case "help", "-h", "--help":
