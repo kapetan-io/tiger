@@ -154,7 +154,7 @@ adoption fails on every package carrying an escape or a skipped test until
 `tiger budget --write` records the counts once.
 
 ```yaml
-internal/cli:
+internal/pin:
   TS-L09: 1
 internal/store:
   TS-D07: 3

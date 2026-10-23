@@ -1,6 +1,7 @@
-package cli_test
+package pin_test
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"testing"
@@ -8,8 +9,36 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/kapetan-io/tiger/internal/cli"
+	"github.com/kapetan-io/tiger/internal/check"
+	"github.com/kapetan-io/tiger/internal/command"
+	"github.com/kapetan-io/tiger/internal/pin"
 )
+
+// outcome is one CLI invocation's observable result.
+type outcome struct {
+	code   int
+	stdout string
+	stderr string
+}
+
+// run invokes the pin or check command once. The leading word names the
+// command, and any other word is a mistake in the test.
+func run(t *testing.T, args ...string) outcome {
+	t.Helper()
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	streams := command.Streams{Stdout: stdout, Stderr: stderr}
+	var code int
+	switch args[0] {
+	case "pin":
+		code = pin.Run(args[1:], streams)
+	case "check":
+		code = check.Run(args[1:], streams)
+	default:
+		t.Fatalf("the pin package does not own %q", args[0])
+	}
+	return outcome{code: code, stdout: stdout.String(), stderr: stderr.String()}
+}
 
 // copyFixture copies one fixture module into a fresh temp dir, because pin
 // mutates the tree it runs over — the committed fixtures stay read-only.
@@ -69,7 +98,7 @@ func Drain(pending []int) int {
 func TestPinWritesFactsForNamedTarget(t *testing.T) {
 	dir := copyFixture(t, "showfacts")
 	got := run(t, "pin", "-C", dir, "Consume", "./...")
-	assert.Equal(t, cli.ExitClean, got.code)
+	assert.Equal(t, command.ExitClean, got.code)
 	assert.Empty(t, got.stderr)
 	assert.Equal(t, "facts.go:11: //tiger:variant len(pending)\n", got.stdout)
 	assert.Equal(t, pinnedConsumeGolden, readFile(t, filepath.Join(dir, "facts.go")))
@@ -82,12 +111,12 @@ func TestPinWritesFactsForNamedTarget(t *testing.T) {
 func TestPinQualifiedMethodName(t *testing.T) {
 	dir := copyFixture(t, "showfacts")
 	got := run(t, "pin", "-C", dir, "(*Recorder).Consume", "./...")
-	assert.Equal(t, cli.ExitClean, got.code)
+	assert.Equal(t, command.ExitClean, got.code)
 	assert.Equal(t, pinnedConsumeGolden, readFile(t, filepath.Join(dir, "facts.go")))
 
 	again := copyFixture(t, "showfacts")
 	viaValue := run(t, "pin", "-C", again, "Recorder.Consume", "./...")
-	assert.Equal(t, cli.ExitClean, viaValue.code)
+	assert.Equal(t, command.ExitClean, viaValue.code)
 	assert.Equal(t, pinnedConsumeGolden, readFile(t, filepath.Join(again, "facts.go")))
 }
 
@@ -98,11 +127,11 @@ func TestPinQualifiedMethodName(t *testing.T) {
 func TestPinSecondRunWritesNothing(t *testing.T) {
 	dir := copyFixture(t, "showfacts")
 	first := run(t, "pin", "-C", dir, "Consume", "./...")
-	require.Equal(t, cli.ExitClean, first.code)
+	require.Equal(t, command.ExitClean, first.code)
 	pinned := readFile(t, filepath.Join(dir, "facts.go"))
 
 	second := run(t, "pin", "-C", dir, "Consume", "./...")
-	assert.Equal(t, cli.ExitClean, second.code)
+	assert.Equal(t, command.ExitClean, second.code)
 	assert.Empty(t, second.stdout)
 	assert.Empty(t, second.stderr)
 	assert.Equal(t, pinned, readFile(t, filepath.Join(dir, "facts.go")))
@@ -115,11 +144,11 @@ func TestPinSecondRunWritesNothing(t *testing.T) {
 func TestPinnedTreeChecksClean(t *testing.T) {
 	dir := copyFixture(t, "showfacts")
 	got := run(t, "pin", "-C", dir, "Consume", "Drain", "./...")
-	require.Equal(t, cli.ExitClean, got.code)
+	require.Equal(t, command.ExitClean, got.code)
 	require.Empty(t, got.stderr)
 
 	checked := run(t, "check", "-C", dir, "--show-facts", "./...")
-	assert.Equal(t, cli.ExitClean, checked.code)
+	assert.Equal(t, command.ExitClean, checked.code)
 	assert.Empty(t, checked.stdout)
 	assert.Empty(t, checked.stderr)
 }
@@ -131,7 +160,7 @@ func TestPinnedTreeChecksClean(t *testing.T) {
 func TestPinUnexportedTargetWritesVariant(t *testing.T) {
 	dir := copyFixture(t, "mixed")
 	got := run(t, "pin", "-C", dir, "count", "./...")
-	assert.Equal(t, cli.ExitClean, got.code)
+	assert.Equal(t, command.ExitClean, got.code)
 	assert.Empty(t, got.stderr)
 	assert.Equal(t, "mixed.go:33: //tiger:variant len(pending)\n", got.stdout)
 
@@ -149,7 +178,7 @@ func TestPinDisagreeingPinRefusedWithPartialProgress(t *testing.T) {
 	dir := copyFixture(t, "mixed")
 	before := readFile(t, filepath.Join(dir, "mixed.go"))
 	got := run(t, "pin", "-C", dir, "Good", "Bad", "./...")
-	assert.Equal(t, cli.ExitFindings, got.code)
+	assert.Equal(t, command.ExitFindings, got.code)
 	assert.Contains(t, got.stdout, "refused Bad")
 	assert.Contains(t, got.stdout, "pinned: //tiger:variant len(names)")
 	assert.Contains(t, got.stdout, "change the code, or edit the pin by hand")
@@ -168,7 +197,7 @@ func TestPinTargetWithBlockingFindingRefused(t *testing.T) {
 	dir := copyFixture(t, "mixed")
 	before := readFile(t, filepath.Join(dir, "mixed.go"))
 	got := run(t, "pin", "-C", dir, "Panics", "./...")
-	assert.Equal(t, cli.ExitFindings, got.code)
+	assert.Equal(t, command.ExitFindings, got.code)
 	assert.Contains(t, got.stdout, "refused Panics")
 	assert.Contains(t, got.stdout, "TS-S18")
 	assert.Equal(t, before, readFile(t, filepath.Join(dir, "mixed.go")))
@@ -183,7 +212,7 @@ func TestPinAmbiguousNameWritesNothing(t *testing.T) {
 	dir := copyFixture(t, "ambiguous")
 	alphaBefore := readFile(t, filepath.Join(dir, "alpha/alpha.go"))
 	got := run(t, "pin", "-C", dir, "Flush", "./...")
-	assert.Equal(t, cli.ExitOperational, got.code)
+	assert.Equal(t, command.ExitOperational, got.code)
 	assert.Empty(t, got.stdout)
 	assert.Contains(t, got.stderr, "fixture.example/ambiguous/alpha.Flush")
 	assert.Contains(t, got.stderr, "fixture.example/ambiguous/beta.Flush")
@@ -197,7 +226,7 @@ func TestPinAmbiguousNameWritesNothing(t *testing.T) {
 func TestPinUnknownNameExitsTwo(t *testing.T) {
 	dir := copyFixture(t, "showfacts")
 	got := run(t, "pin", "-C", dir, "Consumee", "./...")
-	assert.Equal(t, cli.ExitOperational, got.code)
+	assert.Equal(t, command.ExitOperational, got.code)
 	assert.Contains(t, got.stderr, "Consumee")
 	assert.Contains(t, got.stderr, "Consume")
 }
@@ -207,8 +236,10 @@ func TestPinUnknownNameExitsTwo(t *testing.T) {
 // Goal: pin with no names prints usage and exits 2.
 func TestPinNoNamesPrintsUsage(t *testing.T) {
 	got := run(t, "pin")
-	assert.Equal(t, cli.ExitOperational, got.code)
+	assert.Equal(t, command.ExitOperational, got.code)
 	assert.Contains(t, got.stderr, "usage:")
+	assert.Contains(t, got.stderr, "-dry-run")
+	assert.NotContains(t, got.stderr, "tiger check")
 }
 
 // TestPinDryRunLeavesTreeByteIdentical covers the --dry-run contract.
@@ -219,7 +250,7 @@ func TestPinDryRunLeavesTreeByteIdentical(t *testing.T) {
 	dir := copyFixture(t, "showfacts")
 	before := readFile(t, filepath.Join(dir, "facts.go"))
 	got := run(t, "pin", "-C", dir, "--dry-run", "Consume", "./...")
-	assert.Equal(t, cli.ExitClean, got.code)
+	assert.Equal(t, command.ExitClean, got.code)
 	assert.Equal(t, "facts.go:11: //tiger:variant len(pending)\n", got.stdout)
 	assert.Equal(t, before, readFile(t, filepath.Join(dir, "facts.go")))
 }
@@ -232,7 +263,7 @@ func TestPinGeneratedFileTargetRefused(t *testing.T) {
 	dir := copyFixture(t, "genpin")
 	before := readFile(t, filepath.Join(dir, "machine.go"))
 	got := run(t, "pin", "-C", dir, "Made", "./...")
-	assert.Equal(t, cli.ExitFindings, got.code)
+	assert.Equal(t, command.ExitFindings, got.code)
 	assert.Contains(t, got.stdout, "refused Made")
 	assert.Contains(t, got.stdout, "generated file")
 	assert.Equal(t, before, readFile(t, filepath.Join(dir, "machine.go")))
