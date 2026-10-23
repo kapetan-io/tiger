@@ -1,4 +1,4 @@
-package pins_test
+package placement_test
 
 import (
 	"go/ast"
@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/kapetan-io/tiger/internal/directive"
-	"github.com/kapetan-io/tiger/internal/pins"
+	"github.com/kapetan-io/tiger/internal/placement"
 )
 
 const unpinned = `package fixture
@@ -51,20 +51,20 @@ func parseSource(t *testing.T, src string) parsed {
 }
 
 // apply splices one insertion into src.
-func apply(src string, insertion pins.Insertion) string {
+func apply(src string, insertion placement.Insertion) string {
 	return src[:insertion.Offset] + insertion.Text + src[insertion.Offset:]
 }
 
 // tripped is one round trip's result: the re-parsed file and the pins
 // collected from it.
 type tripped struct {
-	collected pins.Set
+	collected placement.Set
 	file      *ast.File
 }
 
 // roundTrip applies insertion to src, asserts the result still parses and
 // is gofmt-clean, and re-collects.
-func roundTrip(t *testing.T, src string, insertion pins.Insertion) tripped {
+func roundTrip(t *testing.T, src string, insertion placement.Insertion) tripped {
 	t.Helper()
 	written := apply(src, insertion)
 	formatted, err := format.Source([]byte(written))
@@ -72,7 +72,7 @@ func roundTrip(t *testing.T, src string, insertion pins.Insertion) tripped {
 	assert.Equal(t, written, string(formatted))
 	reparsed := parseSource(t, written)
 	return tripped{
-		collected: pins.Collect(reparsed.fset, []*ast.File{reparsed.file}),
+		collected: placement.Collect(reparsed.fset, []*ast.File{reparsed.file}),
 		file:      reparsed.file,
 	}
 }
@@ -89,7 +89,7 @@ func TestInsertWithNoDocComment(t *testing.T) {
 	})
 	require.NotNil(t, bare)
 
-	insertion := pins.Insert(pins.Target{
+	insertion := placement.Insert(placement.Target{
 		Fset: loaded.fset, File: loaded.file, Src: []byte(unpinned), Node: bare,
 		Directives: []directive.Directive{
 			{Verb: "requires", Args: "r != nil"},
@@ -121,7 +121,7 @@ func TestInsertAfterProseDocComment(t *testing.T) {
 	})
 	require.NotNil(t, flush)
 
-	insertion := pins.Insert(pins.Target{
+	insertion := placement.Insert(placement.Target{
 		Fset: loaded.fset, File: loaded.file, Src: []byte(unpinned), Node: flush,
 		Directives: []directive.Directive{{Verb: "requires", Args: "r != nil"}},
 	})
@@ -149,7 +149,7 @@ func TestInsertAfterDirectiveDocComment(t *testing.T) {
 	})
 	require.NotNil(t, batched)
 
-	insertion := pins.Insert(pins.Target{
+	insertion := placement.Insert(placement.Target{
 		Fset: loaded.fset, File: loaded.file, Src: []byte(unpinned), Node: batched,
 		Directives: []directive.Directive{{Verb: "requires", Args: "r != nil"}},
 	})
@@ -180,7 +180,7 @@ func TestInsertAboveNestedLoop(t *testing.T) {
 	})
 	require.NotNil(t, loop)
 
-	insertion := pins.Insert(pins.Target{
+	insertion := placement.Insert(placement.Target{
 		Fset: loaded.fset, File: loaded.file, Src: []byte(unpinned), Node: loop,
 		Directives: []directive.Directive{{Verb: "variant", Args: "len(pending)"}},
 	})
@@ -215,7 +215,7 @@ func TestInsertTextIsFormatOutput(t *testing.T) {
 	})
 	require.NotNil(t, bare)
 
-	insertion := pins.Insert(pins.Target{
+	insertion := placement.Insert(placement.Target{
 		Fset: loaded.fset, File: loaded.file, Src: []byte(unpinned), Node: bare,
 		Directives: []directive.Directive{{Verb: "requires", Args: "len(items) > 0"}},
 	})

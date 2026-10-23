@@ -73,7 +73,7 @@ import (
 	"github.com/kapetan-io/tiger/internal/analyzers/internal/mutation"
 	"github.com/kapetan-io/tiger/internal/directive"
 	"github.com/kapetan-io/tiger/internal/facts"
-	"github.com/kapetan-io/tiger/internal/pins"
+	"github.com/kapetan-io/tiger/internal/placement"
 )
 
 const (
@@ -104,14 +104,14 @@ var Analyzer = &analysis.Analyzer{
 type checker struct {
 	pass     *analysis.Pass
 	scope    mutation.Scope
-	set      pins.Set
+	set      placement.Set
 	verified Verified
 	function string
 	params   map[*types.Var]bool
 }
 
 func run(pass *analysis.Pass) (any, error) {
-	set := pins.Collect(pass.Fset, pass.Files)
+	set := placement.Collect(pass.Fset, pass.Files)
 	verified := Verified{}
 	for _, scope := range mutation.Declarations(pass) {
 		inspectDecl(&checker{
@@ -201,10 +201,10 @@ func (c *checker) checkOutOfScopePin(loop ast.Node) {
 
 // checkPinned verifies a pinned variant against the loop it binds to,
 // reporting a blocking finding only when verification fails.
-func (c *checker) checkPinned(loop *ast.ForStmt, pin pins.Pin) {
+func (c *checker) checkPinned(loop *ast.ForStmt, pin placement.Pin) {
 	parsed, err := directive.ParseVariant(pin.Directive.Args)
 	if err != nil {
-		assert.Unreachable("pins.Collect only yields well-formed variant pins")
+		assert.Unreachable("placement.Collect only yields well-formed variant pins")
 		return
 	}
 	result := c.verifyPinned(loop, parsed)

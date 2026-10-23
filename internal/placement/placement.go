@@ -1,4 +1,4 @@
-// Package pins locates well-formed pin directives and binds each to the
+// Package placement locates well-formed pin directives and binds each to the
 // declaration or statement it pins.
 //
 // This is shared infrastructure for the pin-bearing analyzers (variant,
@@ -7,7 +7,7 @@
 // can never bind to one node for one analyzer and another for the next.
 // Malformed pins are skipped here; the directives analyzer owns their
 // TS-L09 findings.
-package pins
+package placement
 
 import (
 	"go/ast"
