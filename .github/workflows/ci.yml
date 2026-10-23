@@ -60,7 +60,7 @@ jobs:
             fi
           }
           # test also reads docs/ (internal/rules/docs_test.go) and config/
-          # (internal/check/nolint_test.go); lint skips testdata because Go does.
+          # (internal/cli/nolint_test.go); lint skips testdata because Go does.
           decide test "$every|^docs/|^config/|$fixtures|$golangci|$tiger"
           decide patterns "$every|$tiger"
           decide lint "$every|$golangci"
@@ -78,8 +78,8 @@ jobs:
           fetch-depth: 0
       # Go's test cache keys on the modification time of the files a test
       # stats, and a fresh checkout stamps every file with the clone time, so
-      # internal/check, internal/rules and cmd/tiger would never hit. Each file and
-      # directory takes the time of the newest commit that touched it, which
+      # internal/check, internal/rules and cmd/tiger would never hit. Each file
+      # and directory takes the time of the newest commit that touched it, which
       # stays the same until the file changes. .git takes the newest time too,
       # because tests that walk the repository root hash its listing.
       - name: restore file times from git history
