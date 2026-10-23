@@ -11,8 +11,7 @@ Accepted
 Some linters let an adopter record today's findings in a file and fail only on new ones. Tiger has
 no such file for blocking rules. A first run prints 396 rule findings on querator and 323 on
 git-server, so an existing codebase cannot adopt tiger a piece at a time. It has to fix everything
-or turn analyzers off
-(`docs/features/ENG-191-due-diligence-validate-tigers-approach/decision.md`, call 9).
+or turn analyzers off.
 
 ADR-0011 refused the same mechanism for advisory findings, because a file that raises a limit is
 the cheapest path to green an agent can find. The argument holds for blocking findings too: a

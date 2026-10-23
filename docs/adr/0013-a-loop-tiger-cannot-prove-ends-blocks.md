@@ -14,9 +14,8 @@ and has a floor, found by tiger or written by a developer as `//tiger:variant <e
 by the same rules. A loop with a counter in its header is outside TS-V01's scope, so a counter cap
 is the way out when tiger cannot find a proof.
 
-ENG-191 call 2 measured both rules on querator and git-server and found two problems that pull in
-opposite directions
-(`docs/features/ENG-191-due-diligence-validate-tigers-approach/decision.md`, call 2).
+Measuring both rules on querator and git-server found two problems that pull in
+opposite directions.
 
 TS-V01 blocked 62 loops that end. On git-server, 21 of its 25 findings are loops TS-S02 already
 accepts, and every one terminates: slice-consuming parsers, `size >>= 7` varint encoders, Myers
@@ -25,7 +24,7 @@ these, and it rejects the correct `//tiger:variant` a developer writes for them 
 also disagree: TS-V01 verifies `high - low` on a two-pointer loop, and TS-S02 still blocks it.
 
 Both rules also accept loops that run forever. A bound in a loop's header is a claim, and
-`experiments/gaps` holds 20 loops where the claim passes and the loop never ends or quietly cuts
+20 loops were found where the claim passes and the loop never ends or quietly cuts
 its work short. TS-S02 trusts any counter whose name appears in the condition, including one inside
 `||`, one the body resets, and a `uint8` counted to `<= 255`. TS-V01 matches variables by name and
 looks only inside the loop body, so a shadowing copy or growth through a pointer defeats it. The
@@ -33,8 +32,8 @@ worklist TS-S01 tells developers to write in place of recursion grows its own li
 forever on a cycle, and tiger reports nothing. A cap of any size passes, including `math.MaxInt`,
 and a cap that is hit stops without telling anyone, so a truncated result is returned as complete.
 
-An earlier draft of call 2 answered the false findings by making TS-V01 informational. The
-experiments ruled that out: with only TS-S02 blocking, the loops in `experiments/gaps` that append
+Making TS-V01 informational would answer the false findings but fails: with
+only TS-S02 blocking, the loops that append
 into the slice they measure, or skip the shrink with `continue`, pass and run forever.
 
 ## Decision
@@ -68,13 +67,12 @@ in one release, with the soundness fixes in place before TS-S02 trusts a proof:
    iterator is a TS-S02 finding, like a channel.
 
 Tiger's own 14 worklist loops and TS-S01's documented worklist move to the capped form that returns
-an error on a cycle. Every loop in `experiments/gaps`, `experiments/variants` and
-`experiments/annotations` becomes an analyzer test case.
+an error on a cycle. Every one of the 20 loops that pass while never ending becomes an analyzer test case.
 
 ## Consequences
 
-- The sideband writer, the varint encoders and the two-pointer loops pass. The loops in
-  `experiments/gaps` that run forever are blocked until they are rewritten.
+- The sideband writer, the varint encoders and the two-pointer loops pass. The loops
+  that run forever are blocked until they are rewritten.
 - A safety cap is a visible failure, not a silent truncation. On the trial code this fires twice,
   both in git-server's Myers diff: one needs an assert, and one clears by moving the search into its
   own function.
@@ -82,7 +80,7 @@ an error on a cycle. Every loop in `experiments/gaps`, `experiments/variants` an
   that allocated 352 MB for a 12-byte push (ENG-193), list endpoints accepting any page size up to
   2³¹−1 (ENG-194), and a create-queue loop with no partition limit (ENG-195).
 - TS-S02 trusts TS-V01's proofs, so a hole in TS-V01 now clears both rules at once. That is why the
-  soundness fixes ship first and every hole in `experiments/gaps` stays a test case.
+  soundness fixes ship first and every hole stays a test case.
 - Three misses are recorded, each with a test: a limit passed through a function value or interface
   method is not traced; a constant below the threshold, such as `1 << 40`, passes as a limit; and a
   standard-library stream over an endless in-program source counts as an outside stream. Ranging

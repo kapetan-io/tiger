@@ -22,8 +22,7 @@ only the code. The explainer's example: if the architecture allows database acce
 `Store` interface and an agent adds a database call somewhere else, the reviewer should see it.
 That goal stays.
 
-ENG-191 call 16 found that pins cannot meet it
-(`docs/features/ENG-191-due-diligence-validate-tigers-approach/decision.md`, call 16).
+Pins cannot meet it.
 
 - Tiger drops calls through interfaces and calls into third-party libraries. A probe showed tiger
   computing `func Save(s Storage, e string) error { return s.Write(e) }` as having no effects and
@@ -38,7 +37,7 @@ ENG-191 call 16 found that pins cannot meet it
   test double, so only concrete code has one true answer.
 - A pin is a comment the agent edits in the same commit as the code.
 
-A deliberation prototyped three designs on querator and git-server. Reach pins caught 23 real
+A deliberation weighed three designs on querator and git-server. Reach pins caught 23 real
 behavior changes over 10 querator commits with no table, but pins high in the call stack ran to
 about 1,300 characters and the agent still edits them. Effects through the signature caught 4 of
 6 IO changes but needed a package-level declaration ADR-0024 removes. Removing pins left the goal
@@ -70,7 +69,7 @@ ENG-203 settles the output format.
 ## Consequences
 
 - A reviewer sees which struct started calling something new, and there is no annotation an agent
-  can edit to hide it. The prototype in `experiments/changed` (537 lines, 29 tests) printed 5
+  can edit to hide it. The `tiger changed` report printed 5
   lines over 10 querator commits, 2 of them real: commit aeb014c, where the daemon starts
   constructing the Postgres stores. On git-server's head commit, the mixed filter and skipping
   generated files bring 173 lines down to 36 hand-written ones.
@@ -82,5 +81,5 @@ ENG-203 settles the output format.
   removed and one added; a renamed type reads as all its edges removed and re-added.
 - The `effects` analyzer was the planned enforcement for TS-F03, F04, F05, F08, A05 and C06, none
   of them built, and for the helper-depth halves of TS-C08 and T01. forbidigo enforces the direct
-  half today. The specification reconciliation (ENG-191 follow-up 7) gives each rule review as its
+  half today. The specification gives each rule review as its
   enforcement or removes it.

@@ -17,9 +17,8 @@ that every caller waiting on the loop's reply also selects on `done`. Querator's
 shutdown loop, and querator shows what improvised shutdown loops look like.
 
 `examples/ledger` is already a worked pattern of this kind, and the specification's "How review
-divides" section already assigns some questions to reviewers. ENG-191 call 15 makes that a
-deliberate part of tiger
-(`docs/features/ENG-191-due-diligence-validate-tigers-approach/decision.md`, call 15).
+divides" section already assigns some questions to reviewers. This ADR makes that a
+deliberate part of tiger.
 
 A deliberation weighed three ways to deliver a pattern: packages in the repository only, packages
 plus the `tiger` binary, and packages plus a generated agent skill. Adopters don't have tiger's
@@ -47,7 +46,7 @@ Every pattern meets all five requirements:
 5. It gives reviewers a short checklist of yes-or-no questions for the parts tiger can't check.
 
 Patterns live under `patterns/<name>/` in tiger's root module. `examples/` is renamed `patterns/`,
-with `examples/ledger` and eight seed patterns from the ENG-191 experiments as the first entries.
+with `examples/ledger` and eight seed patterns as the first entries.
 The `tiger` binary embeds them: `tiger pattern <name>` prints a pattern's card, code and tests,
 `tiger pattern --rule <code>` lists the patterns behind a rule, and `--checklist` prints only the
 reviewer questions. Each rule's registry entry names its patterns, and the driver appends
@@ -66,8 +65,8 @@ The entry condition and the five requirements are recorded in the repository's `
   findings that name a pattern, run `tiger pattern <name>`.
 - Adopters on the golangci plugin alone need the `tiger` binary to read a pattern.
 - The entry condition keeps the collection from becoming a general Go style guide.
-- Each seed must be cleaned up to meet the requirements before it is added; `experiments/call7`
-  gets 28 findings today, most from its test helper and file layout.
+- Each seed must be cleaned up to meet the requirements before it is added; an uncleaned
+  seed gets findings, mostly from its test helper and file layout.
 - A reusable runtime package that encodes these shapes, such as a `lifecycle` package for the
   shutdown loop, was set aside. Following the pattern is the goal.
 - No reviewer skill is built now. If one is needed, it is generated from the same embedded files.

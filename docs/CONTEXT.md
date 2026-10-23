@@ -90,7 +90,7 @@ method, `<pkg>.<function>` for a free function.
 In a `tiger changed` report, what a function calls: a function, type or interface in another package
 (outside the module only if it passes the mixed filter), or a function of a different owner in the
 same package whose own body calls another package.
-_Avoid_: edge, target (the prototype's terms)
+_Avoid_: edge, target
 
 **Call added** / **Call removed**:
 One (function, callee) pair present at head and not at the merge base, or the reverse, printed as one
@@ -228,6 +228,36 @@ _Avoid_: quota, cap
 **Slack**:
 A budget above its package's current count. Silent in check output; visible only as the number
 in the budget file's diff, lowered by `tiger budget --write`.
+
+**Command**:
+One tiger subcommand's contract with the shell: the arguments after its name, two output streams
+(`command.Streams`, stdout and stderr), and an exit code (0 clean, 1 findings, 2 operational
+failure). Every domain package that owns a subcommand exports one function with this shape;
+`cli.Run` only looks the name up.
+
+**Usage**:
+One command's entry in the command listing: its synopsis line (`tiger <name> [flags] <arguments>`)
+and the description under it, which says what the command does and what its exit codes mean. The
+package that owns the command owns its usage, and `tiger <name> -h` prints it above the flag
+defaults.
+
+**Command listing**:
+What bare `tiger`, `tiger help` and an unknown command print: `usage:` followed by every command's
+usage in a fixed order. `internal/cli` owns the order; each command's package owns its entry.
+
+**CI workflow**:
+Tiger's own continuous integration (CI) workflow, `.github/workflows/ci.yml`: the jobs that run on
+every PR and the rules that skip jobs a change cannot affect. `internal/ci` holds only tests of it.
+
+**Module (Go)**:
+The Go module a run sits in: its module path, module-relative package paths, directory layout and
+Go files. Read once per run; not the config file.
+
+**Check run**:
+Everything `tiger check` does from arguments to exit code: run setup, the driver call, the severity
+partition, the TS-X03 and TS-T12 coverage findings, the ratchet, and output. `tiger budget` is the
+same run printing only the ratchet.
+_Avoid_: calling a rule a check (see Rule)
 
 ## Relationships
 

@@ -16,8 +16,7 @@ back dirty. `UseThenZero` zeroes after the last write.
 
 ## Bug
 
-A pooled value that held the last user's data when it went back, reproduced in tiger's own
-experiments (ENG-191 call 7), leaked that data to the next user. `TestZeroThenUseLeaksLastUser` shows
+A pooled value that held the last user's data when it went back leaked that data to the next user. `TestZeroThenUseLeaksLastUser` shows
 the user and data still in the buffer put back, where `TestUseThenZeroLeavesNothingBehind` shows
 nothing left. `sync.Pool` does not promise to return the same object, so both functions return the
 buffer they put back and the tests inspect that.

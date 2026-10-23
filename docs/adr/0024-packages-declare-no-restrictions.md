@@ -23,9 +23,8 @@ directive to weaken a declaration. TS-K03 flagged interface calls in a closed-di
 TS-F01 required an effect pin on every exported function of one. A package that declared nothing
 got no finding.
 
-ENG-191 call 11 started as a question about whether the explainer should restore the directive,
-and ended by asking whether any axis earns its place
-(`docs/features/ENG-191-due-diligence-validate-tigers-approach/decision.md`, call 11).
+The question started as whether the explainer should restore the directive,
+and ended as whether any axis earns its place.
 
 - `no-reflect` repeats TS-S12, which already bans `reflect` everywhere through golangci-lint.
 - `imports(...)` repeats TS-D01's default and the TS-X03 layer file.
@@ -59,5 +58,4 @@ layer file.
   `config/golangci.yml`.
 - Effect pins lose their closed-dispatch requirement here. ADR-0026 removes effect and frame pins
   entirely.
-- The specification reconciliation (ENG-191 follow-up 7) removes the directive and the four rules
-  from the specification.
+- The specification drops the directive and the four rules.

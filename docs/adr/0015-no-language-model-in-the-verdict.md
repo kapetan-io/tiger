@@ -8,9 +8,8 @@ Accepted
 
 ## Context
 
-ENG-191 asked whether some of tiger's goals need review by a language model
-(`docs/features/ENG-191-due-diligence-validate-tigers-approach/decision.md`, section 1 and
-call 1). The only place a model could plug into `tiger check` is the free-text reason a developer
+Some of tiger's goals might need review by a language model.
+The only place a model could plug into `tiger check` is the free-text reason a developer
 writes on a waiver, such as:
 
 ```go
@@ -25,7 +24,7 @@ applies and counts against the package budget on every run. It prints only when 
 goes over its budget. The same input
 gives the same result on every run.
 
-That leaves false reasons unchecked. `experiments/annotations` puts the same `//tiger:batched`
+That leaves false reasons unchecked. Put the same `//tiger:batched`
 reason on a cursor that returns 50 rows and on one that never runs out, and tiger reports the same
 thing for both. A model reading the reason is the obvious proposal for closing that gap.
 

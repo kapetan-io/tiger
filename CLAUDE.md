@@ -3,7 +3,7 @@
 ## Adding a pattern (best practice)
 
 Tiger has two parts: blocking rules for what it can check exactly, and a collection of patterns for
-the parts of a correct shape no rule can check (ENG-191, call 15). Before adding a pattern, or a
+the parts of a correct shape no rule can check. Before adding a pattern, or a
 rule whose message should point to one, follow the entry condition and all five requirements below.
 
 **Entry condition.** A pattern exists only where a tiger rule stops short and a real bug lived in
@@ -13,7 +13,7 @@ good Go, with no rule it backs up and no bug behind it, does not qualify.
 **What makes a pattern more than a wiki that goes stale.** Every pattern meets all five:
 
 1. **Each pattern is runnable code, not prose.** A small Go package showing the right shape, next to
-   the broken shape it replaces. Tests demonstrate both, the way `experiments/call7` shows
+   the broken shape it replaces. Tests demonstrate both, the way `patterns/shutdown-loop` shows
    `StopDoneLoop` cleaning up every time and `EarlyExitLoop` skipping cleanup. Tests are the proof.
    The broken shape shows only the gap: it passes `tiger check`, and its test shows the bug.
 2. **CI keeps the patterns honest.** Every pattern must pass `tiger check` with zero findings and run
@@ -41,6 +41,3 @@ pattern in step; a meta-test fails if either names something that does not exist
 
 Patterns are not reusable runtime packages. A package that encodes a shape is not added in place of
 a pattern; following the pattern is the goal.
-
-The reasoning and the seed patterns are in
-`docs/features/ENG-191-due-diligence-validate-tigers-approach/decision.md`, call 15.

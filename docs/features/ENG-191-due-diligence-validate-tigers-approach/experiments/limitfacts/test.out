@@ -1,5 +1,0 @@
-?   	limitfacts/cmd/limitfacts	[no test files]
-=== RUN   TestLimitFacts
---- PASS: TestLimitFacts (8.83s)
-PASS
-ok  	limitfacts/limitfacts	9.314s

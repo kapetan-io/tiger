@@ -11,8 +11,7 @@ Accepted
 TS-C09 fires on a loop that starts one goroutine per item, because in production that lets outside
 traffic set the concurrency level. Its fix is a bounded queue drained by one worker.
 
-ENG-191 call 6 found the rule firing only in tests
-(`docs/features/ENG-191-due-diligence-validate-tigers-approach/decision.md`, call 6). Every one of
+On querator and git-server the rule fires only in tests. Every one of
 querator's 12 findings is the fan-out-then-wait idiom a concurrency test uses on purpose:
 
 ```go
@@ -46,4 +45,4 @@ TS-C09 skips `_test.go` files. Production fan-out still fires.
   unchanged.
 - A test can start as many goroutines as it wants. A leak in one is left to TS-C03's goleak harness
   (ADR-0020), not to this rule.
-- The exempted shape gets its own analyzer test case (ENG-191 follow-up 4).
+- The exempted shape gets its own analyzer test case.

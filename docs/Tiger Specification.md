@@ -455,7 +455,7 @@ pageMax)`; it is a safety cap, so the loop returns an error when it reaches `sca
 whole-partition scan either declares a maximum partition size, capped with an assert, or pages and
 checks `ctx` on every pass.
 
-Known misses, each with a test in the ENG-191 experiments: a limit passed through a function value
+Known misses, each with a test: a limit passed through a function value
 or an interface method is not traced; a constant below the threshold, such as `1 << 40`, passes as
 a limit; and a standard-library stream over an endless source inside the program counts as an
 outside stream. Ranging over a slice while appending to it ends, so it is a correctness bug for
@@ -1840,11 +1840,10 @@ or agent, not a rule, so it never fails a run.
 - A new method on a type the struct already calls is not reported. Generated files are skipped, and
   `context.Context` is shown.
 
-Known blind spots, each pinned by a test in the prototype: a write through `io.Writer` is silent,
+Known blind spots, each pinned by a test: a write through `io.Writer` is silent,
 because the `io` package never reaches the operating system; moving a call into a separate free
 function reads as one edge removed and one added; and a renamed type reads as all its edges removed
-and re-added. Not built: the prototype is `experiments/changed` under ENG-191, and ENG-203 settles
-the output format.
+and re-added. `tiger changed` ships this report as text, markdown or json (ENG-203).
 
 ## Patterns
 
@@ -2105,7 +2104,7 @@ one as another rule plus a review judgment, one as another rule's existence prec
 second ID — and their IDs are retired rather than reused, so that a reference to either in an old
 commit still resolves.
 
-ENG-191 retired eighteen more, each recorded in an ADR, and none of the IDs is reused:
+Eighteen more were retired, each recorded in an ADR, and none of the IDs is reused:
 
 | IDs | Why | ADR |
 | --- | --- | --- |

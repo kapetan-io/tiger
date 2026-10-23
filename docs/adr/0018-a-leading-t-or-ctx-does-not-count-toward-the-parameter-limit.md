@@ -12,8 +12,7 @@ TS-N07 has two halves. It fires when two adjacent parameters share a type, becau
 arguments and a caller can swap them. It also fires when a function takes more than four
 parameters.
 
-ENG-191 call 5 looked at where the four-parameter half fires on querator and git-server
-(`docs/features/ENG-191-due-diligence-validate-tigers-approach/decision.md`, call 5). Most of its
+On querator and git-server, most of the four-parameter half's
 findings are test helpers like this one:
 
 ```go
@@ -45,4 +44,4 @@ adjacent-`string` findings on git-server.
   an eight-parameter diff helper in git-server.
 - A `t` or `ctx` anywhere but the leading positions still counts, so the exemption can't be used to
   hide a long parameter list.
-- The exempted shape gets its own analyzer test case (ENG-191 follow-up 4).
+- The exempted shape gets its own analyzer test case.
