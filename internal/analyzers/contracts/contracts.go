@@ -154,7 +154,9 @@ func checkEnsures(pass *analysis.Pass, collected placement.Set, fn *ast.FuncDecl
 // checkReturn evaluates every ensures pin against one return statement. A
 // naked return (no Results, valid only with named results) is silent — the
 // analyzer would need flow analysis to know the named results' values.
-func checkReturn(pass *analysis.Pass, ensures []placement.Pin, results []string, ret *ast.ReturnStmt) {
+func checkReturn(
+	pass *analysis.Pass, ensures []placement.Pin, results []string, ret *ast.ReturnStmt,
+) {
 	if len(ret.Results) == 0 {
 		return
 	}
