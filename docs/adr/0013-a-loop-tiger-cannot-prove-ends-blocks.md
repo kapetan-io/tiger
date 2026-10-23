@@ -23,9 +23,10 @@ diff walks. Tiger's proof search knows only fixed steps such as `i--` and `s[1:]
 these, and it rejects the correct `//tiger:variant` a developer writes for them too. The two rules
 also disagree: TS-V01 verifies `high - low` on a two-pointer loop, and TS-S02 still blocks it.
 
-Both rules also accept loops that run forever. A bound in a loop's header is a claim, and
-A due-diligence run on querator and git-server found 20 loops where the claim passes and the loop never ends or quietly cuts
-its work short. TS-S02 trusts any counter whose name appears in the condition, including one inside
+Both rules also accept loops that run forever. A bound in a loop's header is a claim, and a due-
+diligence run on querator and git-server found 20 loops where the claim passes and the loop never
+ends or quietly cuts its work short. TS-S02 trusts any counter whose name appears in the condition,
+including one inside
 `||`, one the body resets, and a `uint8` counted to `<= 255`. TS-V01 matches variables by name and
 looks only inside the loop body, so a shadowing copy or growth through a pointer defeats it. The
 worklist TS-S01 tells developers to write in place of recursion grows its own limit and runs

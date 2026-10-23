@@ -13,7 +13,7 @@ Today's tiger still reports findings from the rules this page leaves out. Severa
 note where they describe something not built.
 
 Every transcript on the page is real output, either from a run of today's `tiger check`
-or, where a section says so, from a prototype run on querator. A finding's wording in a transcript can
+or, where a section says so, from the run that section names. A finding's wording in a transcript can
 differ from the wording the finished tool will print.
 
 The rule reference lists every rule tiger enforces today, and the specification marks
