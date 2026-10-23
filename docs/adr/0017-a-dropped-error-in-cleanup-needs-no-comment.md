@@ -14,8 +14,7 @@ The cleanup exemption stands.
 TS-E02 fires on `_ = f()` and `x, _ := f()` when the discarded value is an error, unless a comment
 on that line or the line above explains why.
 
-ENG-191 call 4 counted its findings on querator and git-server
-(`docs/features/ENG-191-due-diligence-validate-tigers-approach/decision.md`, call 4). Cleanup is
+Of the rule's findings on querator and git-server, cleanup accounts for
 36 of querator's 86 and 11 of git-server's 42:
 
 ```go

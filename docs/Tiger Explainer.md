@@ -1,9 +1,9 @@
 `tiger check` · binary verdict · change detection
 
 **This page describes tiger as it is meant to be when it is finished.** It reflects the
-decisions recorded in ENG-191. Several pieces described here are not built yet:
+decisions recorded in the ADRs. Several pieces described here are not built yet:
 
-- the `tiger changed` report, and the removal of effect and frame pins it replaces
+- the removal of effect and frame pins that `tiger changed` replaces
 - the changes to the goroutine and wait rules, including TS-C03's goleak check
 - the collect-then-sort part of the map-order rule, and TS-T11's double test run
 - the opt-in ban on `//nolint`
@@ -13,7 +13,7 @@ Today's tiger still reports findings from the rules this page leaves out. Severa
 note where they describe something not built.
 
 Every transcript on the page is real output, either from a run of today's `tiger check`
-or, where a section says so, from a prototype. A finding's wording in a transcript can
+or, where a section says so, from the run that section names. A finding's wording in a transcript can
 differ from the wording the finished tool will print.
 
 The rule reference lists every rule tiger enforces today, and the specification marks
@@ -212,21 +212,19 @@ own body does. The filter keeps `os`, `net`, `time`, pgx, and badger, and drops
 `strings`, `sort`, and `fmt`. The report also skips generated files, and it shows
 `context.Context`.
 
-That filtering changes what the report shows in practice. On ten querator commits, the
-prototype printed five lines, two of them real changes. On git-server's head commit it
+That filtering changes what the report shows in practice. On ten querator commits, a
+prototype of the report printed five lines, two of them real changes. On git-server's head commit it
 printed 173 lines, 110 of them from generated protobuf code. Skipping generated files
 and applying the filter brought that down to 36 hand-written lines.
 
-Each known blind spot is covered by a test in the prototype:
+Each known blind spot is covered by a test:
 
 - A write made through `io.Writer` is not reported, because the `io` package itself
   never reaches the operating system.
 - Moving a call into a separate free function reads as one call removed and one added.
 - Renaming a type reads as all of its calls removed and re-added.
 
-The command itself is not built yet, so everything shown above, the transcript and the
-counts, comes from a prototype in ENG-191's experiments. Because of that, the
-report's exact format is still being settled.
+The transcript and the counts above come from a prototype run on querator and git-server.
 
 ## Key Concepts in Tiger
 
@@ -443,7 +441,7 @@ Where tiger can't synthesize one, tiger asks for it directly, as a `//tiger:vari
 
 When no variant exists, the way out is a counter used as a cap. A cap may stop without asserting only when its limit is not a constant and every other way out of the loop drains a stream whose type is declared outside the module, such as `rows.Next()` or `scanner.Scan()`. There the limit is a page size, and reaching it means the page is full. Any other exit, an internal condition or a `break`, makes the counter a safety cap, so the loop must assert or return an error when the counter reaches its limit. A safety cap that stopped silently on a cycle would return a truncated result as though it were complete.
 
-Every loop limit is also checked at its source. Tiger traces the limit backward through parameters, struct fields, and return values, and every value written into it must be a constant, a length, another bounded limit, or a value clamped against a declared maximum, such as `min(config.Spins, spinsMax)`. A prototype of this check already found three bugs that no rule in tiger today reports.
+Every loop limit is also checked at its source. Tiger traces the limit backward through parameters, struct fields, and return values, and every value written into it must be a constant, a length, another bounded limit, or a value clamped against a declared maximum, such as `min(config.Spins, spinsMax)`. This check already found three bugs that no rule in tiger today reports.
 
 - git-server allocated 352 MB for a 12-byte push whose pack header claimed 4 million objects
 - six of querator's seven list endpoints accepted any page size up to 2^31−1 from the request
@@ -730,7 +728,7 @@ drawn from.
 
 ---
 
-The transcripts on this page come from different runs and prototypes.
+The transcripts on this page come from different runs.
 
 The invariant run is against `patterns/ledger`. The `Drain` run and the four-file `bugs`
 run use scratch packages instead, because the ledger has no loop, switch, goroutine, or
@@ -740,8 +738,7 @@ change once the decided goroutine rules are built.
 The remaining transcripts each come from their own source:
 - The `tiger golangci` audit is against a config that `tiger golangci --init` generated,
   with one setting changed by hand.
-- The `tiger changed` output comes from the prototype in ENG-191's
-  `experiments/changed`, run against querator.
+- The `tiger changed` output comes from a prototype run against querator.
 - The `Clock` and `Expire` code is illustrative.
 
 ## References

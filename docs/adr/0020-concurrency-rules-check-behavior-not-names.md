@@ -19,9 +19,7 @@ Four blocking rules trust a name where they should check what the code does:
 - TS-M05 requires a value put back in a `sync.Pool` to be reset first. It accepts any method named
   `Reset`, including an empty one.
 
-ENG-191 call 7 tested these rules
-(`docs/features/ENG-191-due-diligence-validate-tigers-approach/decision.md`, call 7, with the shapes
-and tests in `experiments/call7`). A fixture passes `tiger check` with a `Done()` that never fires,
+A fixture written to test these rules passes `tiger check` with a `Done()` that never fires,
 a `shutdown` channel nothing closes, and an empty `Reset`. Renaming them gets 5 blocking findings.
 TS-C02 only looks at `go` statements, so `wg.Go(f)` or `errgroup.Go(f)` with no `Wait` anywhere
 passes. That is querator's trial bug rewritten in a form tiger accepts: `daemon.go` calls `wg.Add`
@@ -86,6 +84,6 @@ above.
   goleak harness and the shutdown edge tests are the runtime backstop, and goleak alone misses a
   goroutine that exits just after `Shutdown`, so the static checks stay.
 - Whether every waiter also selects on `done` is beyond any of these rules. The shutdown-loop
-  pattern (ENG-191 call 15) covers it.
-- This revives ENG-177 as revised in ENG-191 follow-up 2. Each shape in `experiments/call7` becomes
+  pattern covers it.
+- This revives ENG-177. Each fixture above becomes
   an analyzer test case, and both codebases are rerun.

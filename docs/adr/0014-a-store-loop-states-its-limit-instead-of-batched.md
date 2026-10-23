@@ -15,22 +15,20 @@ ADR-0004 let `//tiger:batched <reason>` waive TS-S02's bound on a cursor-shaped 
 `for rows.Next()`. Its premise was that the store is finite, and that any cap in the code would be
 "either a magic number or a restatement of however big the store is".
 
-ENG-191 audited the 30 cursor-shaped loops in querator that TS-S02 and TS-V01 both flag
-(`docs/features/ENG-191-due-diligence-validate-tigers-approach/decision.md`, section 5 and
-call 13). Seventeen already declare a real limit, the page or request size, either in the SQL
+An audit of the 30 cursor-shaped loops in querator that TS-S02 and TS-V01 both flag found that
+seventeen already declare a real limit, the page or request size, either in the SQL
 (`LIMIT $2`, `SetLimit(opts.Limit)`) or in a check deep in the body. Restating that limit in the
 loop header is not a magic number. Five more are whole-partition scans with no limit, and all five
 name their context `_`, so nothing can cancel them. The specification's B1 already rejects "the
 store is finite" as a bound, since a store with no declared limit is bounded by whatever runs out
 first.
 
-Tiger never reads a `//tiger:batched` reason. `experiments/annotations` puts the same reason on a
-cursor that returns 50 rows and on one that never runs out. Tiger reports the same thing for both,
-and the second never returns. A `//tiger:variant` is the opposite case: tiger proves it, and every
-false variant in the experiment is blocked. ADR-0004 also left TS-V01 firing on loops TS-S02
+Tiger never reads a `//tiger:batched` reason. A cursor that returns 50 rows and one that never runs out get the same verdict
+when they carry the same reason. The second never returns. A `//tiger:variant` is the opposite case: tiger proves it, and every
+false variant is blocked. ADR-0004 also left TS-V01 firing on loops TS-S02
 waived, the clash tracked as ENG-183.
 
-`experiments/cursorbound` shows that a limit restated in the header holds whatever the store does:
+A limit restated in the header holds whatever the store does:
 
 ```go
 for count := 0; count < opts.Limit && rows.Next(); count++ {
@@ -40,7 +38,7 @@ With a database that ignores `LIMIT` and sends rows forever, the loop stops afte
 rows. Tiger accepts the loop with no annotation, because the counter is the proof.
 
 A loop that filters rows before keeping them needs more than one limit. Six of querator's nine
-Badger list loops skip rows by namespace. `experiments/cursorbound/filtered.go` runs three shapes
+Badger list loops skip rows by namespace. Three shapes were tried
 against a table whose matching rows come last. Counting every row read against the page limit
 passes tiger and returns an empty page while matches exist. Counting only kept rows reads a million
 rows to return one, and tiger blocks it. Two limits fill the page and stop a sparse scan with an
@@ -77,4 +75,4 @@ pass so the scan can be cancelled.
   correctness bug for tests and review, not a loop that never ends.
 - Tiger cannot see the short page in the shape that counts every row read: its only other exit
   drains the cursor, so the counter reads as a page size. The "filtered page" pattern
-  (`cursorbound/ListFilteredTwoLimits`, ENG-191 call 15) covers that gap.
+  (`patterns/filtered-page`) covers that gap.

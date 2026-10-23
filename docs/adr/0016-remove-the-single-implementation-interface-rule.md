@@ -12,8 +12,7 @@ TS-X01 fires on any interface with exactly one implementation outside `_test.go`
 theory that such an interface is abstraction added just in case. Its message tells the developer
 to delete the interface and use the concrete type.
 
-ENG-191 call 3 reran it on querator and git-server
-(`docs/features/ENG-191-due-diligence-validate-tigers-approach/decision.md`, call 3). It fired 24
+Run on querator and git-server, the rule fired 24
 times, and all 24 were deliberate seams: narrowing a capability, a test boundary, or a package
 boundary. None was the speculative abstraction the rule targets.
 
@@ -54,5 +53,5 @@ enforcement. Whether an interface is the right seam is a design judgment.
 - The reason is general: a shape rule cannot tell a speculative interface from one that narrows
   capability, and a remedy that deletes the interface damages the second kind. A future rule that
   judges interfaces by their implementation count meets the same objection.
-- The first pass of ENG-191 proposed an advisory trial instead. The git-server rerun answered the
+- An advisory trial was the alternative. The git-server rerun answered the
   question the trial would have asked, so no trial runs.

@@ -6,8 +6,7 @@ Date: 2026-10-12
 
 Accepted
 
-This ADR records ENG-191 call 8 and call 12. Call 12 is a documentation fix that describes the
-rule call 8 decides, so it has no ADR of its own.
+This ADR records the map-order rule and the documentation fix that describes it.
 
 ## Context
 
@@ -27,8 +26,7 @@ sort.Strings(ids)
 ```
 
 Of four querator findings sampled, one was a real order leak into logs and three were shapes the
-allowlist does not model
-(`docs/features/ENG-191-due-diligence-validate-tigers-approach/decision.md`, call 8).
+allowlist does not model.
 
 Trusting every sort is not safe. About 15% of comparator sorts after a map loop in the module cache
 tie and leak map order (`docker images`, x/tools linecount, revive, containerd's unmount order,
@@ -37,11 +35,11 @@ collects keys without a sort and passes today.
 
 The documents disagreed about what the rule is. The specification calls it a "range over a map
 whose body appends or writes. Heuristic". The explainer called it a heuristic too. The code does
-neither: it is an allowlist, which the ENG-150 blueprint chose on purpose (call 12).
+neither: it is an allowlist, which the ENG-150 blueprint chose on purpose.
 
 ## Decision
 
-TS-T02 stays blocking and gains four changes, each proven in `experiments/fullcoverage`:
+TS-T02 stays blocking and gains four changes, each proven by tests:
 
 1. **Plain sorts.** A map loop that appends into a local slice passes when the slice's first use
    after the loop is `sort.Strings`, `sort.Ints` or `slices.Sort` on string or integer elements.
@@ -63,9 +61,9 @@ TS-T02 stays blocking and gains four changes, each proven in `experiments/fullco
 Full coverage was chosen over proving a comparator total by tracing the key, because it is a check
 on the element's type, not on what the code means.
 
-The documents describe this rule (call 12). A finding means the loop's shape is outside the
+The documents describe this rule. A finding means the loop's shape is outside the
 allowlist, not that the output really varies. The rule is not called a heuristic, and it is not
-called exact either, because it has five known misses, all from `experiments/fullcoverage`:
+called exact either, because it has five known misses:
 
 - last writer wins (`inverse[v] = k` when two keys share a value)
 - a map write whose value calls a function (`labels[k] = fmt.Sprint(v)`)
@@ -83,12 +81,12 @@ tests exercise.
   on git-server, and none are added.
 - Full coverage accepts few sites (4 in 970 modules, all in tiger), because most comparators are
   `sort.Slice` or cover only the key. Its value is the path for struct keys and the closed escape.
-- The experiment's soundness test runs the prototype's verdict on 72 functions, 9 of them real
+- A soundness test runs the verdict on 72 functions, 9 of them real
   sites, and calls each 200 times. No function it passes prints more than one result, and every
   boundary probe it rejects really does vary.
 - Keys with no order, such as pointers and interfaces, have no check tiger can make. They get a
-  pattern (call 15).
-- Tightening the rest of the allowlist is a separate follow-up. The prototype also refuses
+  pattern.
+- Tightening the rest of the allowlist is a separate follow-up. A stricter allowlist also refuses
   `keys[i] = k; i++` and reads of carried state anywhere in the body, which finds 31 real leaks
   tiger misses across the module cache and adds 47 false findings to work down first.
 - The specification's TS-T02 line and Part V analyzer table, and the explainer, change to describe

@@ -15,8 +15,8 @@ described under Decision.
 
 ## Context
 
-Hand-written comments in production Go code drift from the code, and nothing catches it. In the
-ENG-191 trials one of tiger's ten real bugs (TS-C05) was three client channel waits with no
+Hand-written comments in production Go code drift from the code, and nothing catches it. In trials on
+querator and git-server one of tiger's ten real bugs (TS-C05) was three client channel waits with no
 cancellation, under a doc comment that said they could be cancelled.
 
 Tiger also lets free prose change a verdict in three places.

@@ -11,14 +11,13 @@ bare `//nolint`, or any comment. The `nolint.forbid` opt-in stands.
 
 ## Context
 
-Three sources disagreed about `//nolint`
-(`docs/features/ENG-191-due-diligence-validate-tigers-approach/decision.md`, call 10). The
+Three sources disagreed about `//nolint`. The
 specification allows `//nolint` with a reason, enforced by golangci-lint's `nolintlint` under
 TS-L09. The explainer said tiger "flags any `//nolint` as a finding". The code does neither.
 
 Under `tiger check`, `//nolint` is not read at all, so it silences nothing by itself. It does
 satisfy a rule that only asks for a comment: `_ = os.Remove(path) //nolint` clears TS-E02, which
-`// x` also does (call 4). Under the golangci-lint plugin, `//nolint:tiger` silences any tiger rule
+`// x` also does. Under the golangci-lint plugin, `//nolint:tiger` silences any tiger rule
 on that line with no advisory and no count (ENG-178, item 2). `experiments/nolint` shows two more
 routes under the plugin: a file-wide `//nolint:tiger` in the package doc comment drops even a
 finding at the `package` line, and an `exclusions` rule in `.golangci.yml` drops findings without
