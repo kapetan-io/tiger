@@ -1,11 +1,11 @@
-package cli_test
+package check_test
 
 import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/kapetan-io/tiger/internal/cli"
+	"github.com/kapetan-io/tiger/internal/command"
 )
 
 // TestTestPackageReportsFilesThisRunDoesNotLoad covers TS-T12's coverage
@@ -32,7 +32,7 @@ func TestTestPackageReportsFilesThisRunDoesNotLoad(t *testing.T) {
 	const advice = "which gives it every unexported name — declare package a_test and test " +
 		"through the exported API\n"
 	got := checkModule(t, dir)
-	assert.Equal(t, cli.ExitFindings, got.code)
+	assert.Equal(t, command.ExitFindings, got.code)
 	assert.Equal(t,
 		"a/gen_test.go:3:9: TS-T12: this test file declares package a, "+advice+
 			"a/int_test.go:3:9: TS-T12: this test file declares package a, "+advice+
@@ -56,11 +56,11 @@ func TestTestPackageStaysWithinThePatterns(t *testing.T) {
 	})
 
 	got := run(t, "check", "-C", dir, "./foo_test")
-	assert.Equal(t, cli.ExitClean, got.code)
+	assert.Equal(t, command.ExitClean, got.code)
 	assert.Empty(t, got.stdout)
 
 	got = run(t, "check", "-C", dir, "./foo")
-	assert.Equal(t, cli.ExitFindings, got.code)
+	assert.Equal(t, command.ExitFindings, got.code)
 	assert.Equal(t, "foo/in_test.go:3:9: TS-T12: this test file declares package foo, which "+
 		"gives it every unexported name — declare package foo_test and test through the "+
 		"exported API\ntiger: 1 blocking\n", got.stdout)

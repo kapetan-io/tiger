@@ -1,11 +1,11 @@
-package cli_test
+package check_test
 
 import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/kapetan-io/tiger/internal/cli"
+	"github.com/kapetan-io/tiger/internal/command"
 )
 
 // TestCheckLedgerExampleIsClean covers acceptance criterion 1's baseline.
@@ -15,7 +15,7 @@ import (
 // rules register.
 func TestCheckLedgerExampleIsClean(t *testing.T) {
 	got := run(t, "check", "-C", "../../patterns/ledger", "./...")
-	assert.Equal(t, cli.ExitClean, got.code)
+	assert.Equal(t, command.ExitClean, got.code)
 	assert.Empty(t, got.stdout)
 	assert.Empty(t, got.stderr)
 }
@@ -28,7 +28,7 @@ func TestCheckLedgerExampleIsClean(t *testing.T) {
 // any call site.
 func TestCheckUnassertedInvariantFailsA07(t *testing.T) {
 	got := run(t, "check", "-C", "testdata/fixtures/invariants", "./unasserted/...")
-	assert.Equal(t, cli.ExitFindings, got.code)
+	assert.Equal(t, command.ExitFindings, got.code)
 	assert.Empty(t, got.stderr)
 	assert.Equal(t, "unasserted/inv/inv.go:9:2: TS-A07: invariant inv.HeaderSize is declared "+
 		"but no function outside _test.go files asserts it — add "+
@@ -43,7 +43,7 @@ func TestCheckUnassertedInvariantFailsA07(t *testing.T) {
 // Goal: a ledger that asserts inv.HeaderSize only in DecodeHeader exits 0.
 func TestCheckSingleProductionAssertionSatisfiesA07(t *testing.T) {
 	got := run(t, "check", "-C", "testdata/fixtures/invariants", "./singlesite/...")
-	assert.Equal(t, cli.ExitClean, got.code)
+	assert.Equal(t, command.ExitClean, got.code)
 	assert.Empty(t, got.stdout)
 	assert.Empty(t, got.stderr)
 }
@@ -54,7 +54,7 @@ func TestCheckSingleProductionAssertionSatisfiesA07(t *testing.T) {
 // exits 1 with one TS-A09 finding at the const.
 func TestCheckUnviolatedInvariantFailsA09(t *testing.T) {
 	got := run(t, "check", "-C", "testdata/fixtures/invariants", "./unviolated/...")
-	assert.Equal(t, cli.ExitFindings, got.code)
+	assert.Equal(t, command.ExitFindings, got.code)
 	assert.Empty(t, got.stderr)
 	assert.Equal(t, "unviolated/inv/inv.go:8:2: TS-A09: no test violates invariant "+
 		"inv.HeaderChecksum — add a _test.go function that calls "+
@@ -70,7 +70,7 @@ func TestCheckUnviolatedInvariantFailsA09(t *testing.T) {
 func TestCheckWholeProgramOutputIsDeterministic(t *testing.T) {
 	first := run(t, "check", "-C", "../../testdata/plugin-smoke", "./...")
 	second := run(t, "check", "-C", "../../testdata/plugin-smoke", "./...")
-	assert.Equal(t, cli.ExitFindings, first.code)
+	assert.Equal(t, command.ExitFindings, first.code)
 	assert.Equal(t, first, second)
 }
 
@@ -83,7 +83,7 @@ func TestCheckWholeProgramOutputIsDeterministic(t *testing.T) {
 // report.
 func TestCheckPluginSmokeFixtureFiresWholeProgramRules(t *testing.T) {
 	got := run(t, "check", "-C", "../../testdata/plugin-smoke", "./...")
-	assert.Equal(t, cli.ExitFindings, got.code)
+	assert.Equal(t, command.ExitFindings, got.code)
 	assert.Empty(t, got.stderr)
 	for _, code := range []string{"TS-A07", "TS-A09", "TS-S09"} {
 		assert.Contains(t, got.stdout, code+":")

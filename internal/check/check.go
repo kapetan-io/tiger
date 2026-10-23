@@ -1,4 +1,12 @@
-package cli
+// Package check is the check run, everything tiger check does from arguments
+// to exit code, and tiger budget, the same run printing only the ratchet.
+//
+// All run-level policy lives here: the registry's severity is applied to
+// findings, blocking findings fail the run, advisory findings are counted
+// against tiger.budget.yaml and fail the run on overrun, and operational
+// failures exit with a code distinct from findings so a partial run is
+// never mistaken for a clean one.
+package check
 
 import (
 	"flag"
@@ -7,20 +15,28 @@ import (
 	"strings"
 
 	"github.com/kapetan-io/tiger/assert"
+	"github.com/kapetan-io/tiger/internal/command"
 	"github.com/kapetan-io/tiger/internal/config"
 	"github.com/kapetan-io/tiger/internal/driver"
 	"github.com/kapetan-io/tiger/internal/rules"
 )
 
-// runCheck is tiger check: install the directory's config, load the named
+// Usage is tiger check's entry in the command listing.
+const Usage = `  tiger check [-C dir] [--show-facts] [analyzer flags] [packages]
+      run the registered analyzers and compare counted findings to
+      tiger.budget.yaml; exit 0 clean, 1 findings, 2 operational failure
+`
+
+// Run is tiger check: install the directory's config, load the named
 // packages, run every registered analyzer and finish step, add TS-X03's
 // whole-module findings (stale entries and unlisted packages the run did not
 // load), print blocking findings ordered by position, compare counted
 // findings to tiger.budget.yaml, and apply the registry's severity to the
 // exit code.
-func runCheck(args []string, streams Streams) int {
+func Run(args []string, streams command.Streams) int {
 	flags := flag.NewFlagSet("tiger check", flag.ContinueOnError)
 	flags.SetOutput(streams.Stderr)
+	flags.Usage = func() { command.PrintUsage(flags, Usage) }
 	chdir := flags.String("C", ".", "run as if tiger was started in this directory")
 	showFacts := flags.Bool(
 		"show-facts",
@@ -35,7 +51,7 @@ func runCheck(args []string, streams Streams) int {
 		})
 	}
 	if err := flags.Parse(args); err != nil {
-		return ExitOperational
+		return command.ExitOperational
 	}
 	patterns := flags.Args()
 	if len(patterns) == 0 {
@@ -45,32 +61,32 @@ func runCheck(args []string, streams Streams) int {
 	setup, err := prepare(*chdir)
 	if err != nil {
 		fmt.Fprintf(streams.Stderr, "tiger check: %v\n", err)
-		return ExitOperational
+		return command.ExitOperational
 	}
 	if config.Installed() {
 		if set := explicitAnalyzerFlag(flags); set != "" {
 			fmt.Fprintf(streams.Stderr, "tiger check: -%s is set on the command line but "+
 				"%s is the reviewed source — move the value into %s\n",
 				set, config.FileName, config.FileName)
-			return ExitOperational
+			return command.ExitOperational
 		}
 	}
 
 	report, err := driver.Run(*chdir, patterns, analyzers, rules.Finishers())
 	if err != nil {
 		fmt.Fprintf(streams.Stderr, "tiger check: %v\n", err)
-		return ExitOperational
+		return command.ExitOperational
 	}
 	sorted, err := partition(setup.module, report.Findings)
 	if err != nil {
 		fmt.Fprintf(streams.Stderr, "tiger check: %v\n", err)
-		return ExitOperational
+		return command.ExitOperational
 	}
 	blocking := append(sorted.blocking, layerCoverage(setup, sorted.blocking)...)
 	unloaded, err := testPackageCoverage(*chdir, setup, report.Packages, sorted.blocking)
 	if err != nil {
 		fmt.Fprintf(streams.Stderr, "tiger check: %v\n", err)
-		return ExitOperational
+		return command.ExitOperational
 	}
 	blocking = append(blocking, unloaded...)
 	sort.SliceStable(blocking, func(i, j int) bool { return blocking[i].Before(blocking[j]) })
@@ -87,9 +103,9 @@ func runCheck(args []string, streams Streams) int {
 	printed += printRatchet(streams, setup.budgets, sorted)
 	if printed > 0 {
 		fmt.Fprintf(streams.Stdout, "tiger: %d blocking\n", printed)
-		return ExitFindings
+		return command.ExitFindings
 	}
-	return ExitClean
+	return command.ExitClean
 }
 
 // explicitAnalyzerFlag returns the name of the first analyzer flag

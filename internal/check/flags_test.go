@@ -1,4 +1,4 @@
-package cli_test
+package check_test
 
 import (
 	"testing"
@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/kapetan-io/tiger/internal/cli"
+	"github.com/kapetan-io/tiger/internal/command"
 )
 
 // TestCheckDrivesAnalyzerFlags covers the configuration contract: analyzer
@@ -20,17 +20,17 @@ func TestCheckDrivesAnalyzerFlags(t *testing.T) {
 	// same public surface once the test is done.
 	t.Cleanup(func() {
 		reset := run(t, "check", "-C", "testdata/fixtures/flagged", "-participle.allow=", "./...")
-		require.Equal(t, cli.ExitFindings, reset.code)
+		require.Equal(t, command.ExitFindings, reset.code)
 	})
 
 	fired := run(t, "check", "-C", "testdata/fixtures/flagged", "./...")
-	assert.Equal(t, cli.ExitFindings, fired.code)
+	assert.Equal(t, command.ExitFindings, fired.code)
 	assert.Contains(t, fired.stdout, "TS-N14")
 	assert.Contains(t, fired.stdout, "Preparing")
 
 	allowed := run(t, "check", "-C", "testdata/fixtures/flagged",
 		"-participle.allow=preparing", "./...")
-	assert.Equal(t, cli.ExitClean, allowed.code)
+	assert.Equal(t, command.ExitClean, allowed.code)
 	assert.Empty(t, allowed.stdout)
 }
 
@@ -47,15 +47,15 @@ func TestCheckDrivesIoinloopPackagesFlag(t *testing.T) {
 	t.Cleanup(func() {
 		reset := run(t, "check", "-C", "testdata/fixtures/ioflagged",
 			"-ioinloop.packages=", "./...")
-		require.Equal(t, cli.ExitClean, reset.code)
+		require.Equal(t, command.ExitClean, reset.code)
 	})
 
 	clean := run(t, "check", "-C", "testdata/fixtures/ioflagged", "./...")
-	assert.Equal(t, cli.ExitClean, clean.code)
+	assert.Equal(t, command.ExitClean, clean.code)
 	assert.Empty(t, clean.stdout)
 
 	fired := run(t, "check", "-C", "testdata/fixtures/ioflagged",
 		"-ioinloop.packages=fixture.example/ioflagged/storage", "./...")
-	assert.Equal(t, cli.ExitFindings, fired.code)
+	assert.Equal(t, command.ExitFindings, fired.code)
 	assert.Contains(t, fired.stdout, "TS-M10")
 }

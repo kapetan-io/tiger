@@ -1,4 +1,4 @@
-package cli_test
+package check_test
 
 import (
 	"os"
@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/kapetan-io/tiger/internal/cli"
+	"github.com/kapetan-io/tiger/internal/command"
 )
 
 // configTree copies the scoped config fixture and replaces its tiger.yaml
@@ -28,7 +28,7 @@ func configTree(t *testing.T, entries string) string {
 // in internal/api.
 func TestConfigScopedEntryAppliesToItsPackages(t *testing.T) {
 	got := run(t, "check", "-C", filepath.Join("testdata", "fixtures", "config", "scoped"), "./...")
-	assert.Equal(t, cli.ExitFindings, got.code)
+	assert.Equal(t, command.ExitFindings, got.code)
 	assert.Empty(t, got.stderr)
 	assert.Contains(t, got.stdout, "internal/api/api.go:6:6: TS-N14: \"KeySigning\"")
 	assert.NotContains(t, got.stdout, "internal/auth")
@@ -42,7 +42,7 @@ func TestConfigUnscopedEntryAppliesToTheModule(t *testing.T) {
 	dir := configTree(t, "version: 1\nparticiple:\n  allow:\n    - value: signing\n"+
 		"      reason: KeySigning is a credential record\n")
 	got := run(t, "check", "-C", dir, "./...")
-	assert.Equal(t, cli.ExitClean, got.code)
+	assert.Equal(t, command.ExitClean, got.code)
 	assert.Empty(t, got.stdout)
 	assert.Empty(t, got.stderr)
 }
@@ -105,7 +105,7 @@ func TestConfigRejectsInvalidEntries(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			got := run(t, "check", "-C", configTree(t, test.entries), "./...")
-			assert.Equal(t, cli.ExitOperational, got.code)
+			assert.Equal(t, command.ExitOperational, got.code)
 			assert.Empty(t, got.stdout)
 			assert.Contains(t, got.stderr, "tiger.yaml")
 			assert.Equal(t, 1, len(splitLines(got.stderr)))
@@ -124,7 +124,7 @@ func TestConfigRejectsInvalidEntries(t *testing.T) {
 func TestConfigRejectsFlagOverride(t *testing.T) {
 	got := run(t, "check", "-C", filepath.Join("testdata", "fixtures", "config", "scoped"),
 		"-participle.allow=x", "./...")
-	assert.Equal(t, cli.ExitOperational, got.code)
+	assert.Equal(t, command.ExitOperational, got.code)
 	assert.Empty(t, got.stdout)
 	assert.Equal(t, "tiger check: -participle.allow is set on the command line but "+
 		"tiger.yaml is the reviewed source — move the value into tiger.yaml\n", got.stderr)
@@ -140,7 +140,7 @@ func TestConfigDrivesIoinloopPackages(t *testing.T) {
 		"version: 1\nioinloop:\n  packages:\n    - value: fixture.example/ioflagged/storage\n"+
 			"      reason: every Save is a network round trip\n"), 0o644))
 	got := run(t, "check", "-C", dir, "./...")
-	assert.Equal(t, cli.ExitFindings, got.code)
+	assert.Equal(t, command.ExitFindings, got.code)
 	assert.Empty(t, got.stderr)
 	assert.Contains(t, got.stdout, "TS-M10")
 }
@@ -150,7 +150,7 @@ func TestConfigDrivesIoinloopPackages(t *testing.T) {
 // Goal: -nogoroutine.supervisors is an unknown flag, exit 2.
 func TestNogoroutineSupervisorsFlagIsGone(t *testing.T) {
 	got := run(t, "check", "-C", "testdata/fixtures/clean", "-nogoroutine.supervisors=x", "./...")
-	assert.Equal(t, cli.ExitOperational, got.code)
+	assert.Equal(t, command.ExitOperational, got.code)
 	assert.Contains(t, got.stderr, "flag provided but not defined: -nogoroutine.supervisors")
 }
 

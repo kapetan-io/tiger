@@ -7,7 +7,7 @@
 // nearest allow entry cannot express it (ADR-0029). _test.go files are not
 // layered, because surface tests cross layers. Entries that match no package,
 // and packages with no entry that the run did not load, are checked by tiger
-// check (internal/cli), which sees the module's directories.
+// check (internal/check), which sees the module's directories.
 package layers
 
 import (

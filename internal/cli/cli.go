@@ -1,24 +1,18 @@
-// Package cli is the tiger command: subcommand dispatch, run-level policy,
-// and exit codes. main() is a thin wrapper over Run so the whole surface is
-// testable (surface-testing).
-//
-// All run-level policy lives here: the registry's severity is applied to
-// findings, blocking findings fail the run, advisory findings are counted
-// against tiger.budget.yaml and fail the run on overrun, and operational
-// failures exit with a code distinct from findings so a partial run is
-// never mistaken for a clean one.
+// Package cli is the tiger command's name lookup and command listing. main()
+// is a thin wrapper over Run so the whole surface is testable
+// (surface-testing).
 package cli
 
 import (
 	"fmt"
 
 	"github.com/kapetan-io/tiger/internal/changed"
+	"github.com/kapetan-io/tiger/internal/check"
 	"github.com/kapetan-io/tiger/internal/command"
 	"github.com/kapetan-io/tiger/internal/pattern"
 )
 
-// Transitional aliases for the tests that still enter through cli.Run; they
-// go when the last of those tests moves with its command.
+// Transitional aliases for code and tests that still enter through cli.Run.
 type Streams = command.Streams
 
 const (
@@ -28,14 +22,7 @@ const (
 )
 
 const usage = `usage:
-  tiger check [-C dir] [--show-facts] [analyzer flags] [packages]
-      run the registered analyzers and compare counted findings to
-      tiger.budget.yaml; exit 0 clean, 1 findings, 2 operational failure
-  tiger budget [-C dir] [--write] [packages]
-      report packages over their tiger.budget.yaml rows; --write lowers
-      rows to the current counts (never raises); exit 0 within budget,
-      1 overrun, 2 operational failure
-  tiger golangci [-C dir] [--init | --print]
+` + check.Usage + check.BudgetUsage + `  tiger golangci [-C dir] [--init | --print]
       audit the project golangci-lint config against the auto-rule baseline,
       generate it with --init, or write it to stdout with --print
 ` + pattern.Usage + changed.Usage + `  tiger pin [-C dir] [--dry-run] <Name> [<Name>...] [packages]
@@ -53,9 +40,9 @@ func Run(args []string, streams Streams) int {
 	}
 	switch args[0] {
 	case "check":
-		return runCheck(args[1:], streams)
+		return check.Run(args[1:], streams)
 	case "budget":
-		return runBudget(args[1:], streams)
+		return check.Budget(args[1:], streams)
 	case "golangci":
 		return runGolangci(args[1:], streams)
 	case "pattern":

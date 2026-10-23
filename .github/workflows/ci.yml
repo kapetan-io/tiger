@@ -78,8 +78,8 @@ jobs:
           fetch-depth: 0
       # Go's test cache keys on the modification time of the files a test
       # stats, and a fresh checkout stamps every file with the clone time, so
-      # internal/cli and internal/rules would never hit. Each file and
-      # directory takes the time of the newest commit that touched it, which
+      # internal/check, internal/rules and cmd/tiger would never hit. Each file
+      # and directory takes the time of the newest commit that touched it, which
       # stays the same until the file changes. .git takes the newest time too,
       # because tests that walk the repository root hash its listing.
       - name: restore file times from git history
@@ -245,9 +245,9 @@ jobs:
         run: |
           go build -o bin/tiger ./cmd/tiger
           set +e
-          ./bin/tiger check -C internal/cli/testdata/fixtures/findings ./... > first.txt
+          ./bin/tiger check -C internal/check/testdata/fixtures/findings ./... > first.txt
           first=$?
-          ./bin/tiger check -C internal/cli/testdata/fixtures/findings ./... > second.txt
+          ./bin/tiger check -C internal/check/testdata/fixtures/findings ./... > second.txt
           second=$?
           set -e
           test "$first" -eq 1
@@ -279,8 +279,8 @@ jobs:
       # what proves the facts channel prints something to diff.
       - name: double-run diff with the facts channel on a fixture
         run: |
-          ./bin/tiger check -C internal/cli/testdata/fixtures/showfacts --show-facts ./... > first.txt
-          ./bin/tiger check -C internal/cli/testdata/fixtures/showfacts --show-facts ./... > second.txt
+          ./bin/tiger check -C internal/check/testdata/fixtures/showfacts --show-facts ./... > first.txt
+          ./bin/tiger check -C internal/check/testdata/fixtures/showfacts --show-facts ./... > second.txt
           diff first.txt second.txt
           test -s first.txt
 

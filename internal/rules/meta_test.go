@@ -20,7 +20,8 @@ import (
 	"golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/analysis/analysistest"
 
-	"github.com/kapetan-io/tiger/internal/cli"
+	"github.com/kapetan-io/tiger/internal/check"
+	"github.com/kapetan-io/tiger/internal/command"
 	"github.com/kapetan-io/tiger/internal/driver/drivertest"
 	"github.com/kapetan-io/tiger/internal/finish"
 	"github.com/kapetan-io/tiger/internal/layerfile"
@@ -477,7 +478,7 @@ func TestEveryCorpusMessageFollowsTheStyleGuide(t *testing.T) {
 func TestRatchetMessagesFollowTheStyleGuide(t *testing.T) {
 	entry, known := rules.ByCategory("TS-D06")
 	require.True(t, known)
-	fixture := filepath.Join("..", "cli", "testdata", "fixtures", "budget", "tree")
+	fixture := filepath.Join("..", "check", "testdata", "fixtures", "budget", "tree")
 	overrun := checkOutput(t, fixture)
 	missing := t.TempDir()
 	require.NoError(t, os.CopyFS(missing, os.DirFS(fixture)))
@@ -548,15 +549,15 @@ func TestLayerMessagesFollowTheStyleGuide(t *testing.T) {
 	assert.Len(t, rendered, 7)
 }
 
-// checkOutput runs tiger check over dir through the CLI surface and returns
+// checkOutput runs tiger check over dir through the check run and returns
 // its stdout; the run is expected to exit 1.
 func checkOutput(t *testing.T, dir string) string {
 	t.Helper()
 	stdout := &bytes.Buffer{}
-	code := cli.Run([]string{"check", "-C", dir, "./..."}, cli.Streams{
+	code := check.Run([]string{"-C", dir, "./..."}, command.Streams{
 		Stdout: stdout, Stderr: &bytes.Buffer{},
 	})
-	require.Equal(t, cli.ExitFindings, code)
+	require.Equal(t, command.ExitFindings, code)
 	return stdout.String()
 }
 
