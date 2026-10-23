@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/kapetan-io/tiger/internal/rules"
+	"github.com/kapetan-io/tiger/internal/rules/auto"
 )
 
 const (
@@ -67,7 +68,7 @@ func TestReferenceCoversEveryCustomRule(t *testing.T) {
 // enforcing linter appear in the rule reference's auto-rule table.
 func TestReferenceCoversEveryAutoRule(t *testing.T) {
 	reference := docContent(t, referenceDoc)
-	for _, rule := range rules.AutoRules() {
+	for _, rule := range auto.AutoRules() {
 		assert.Contains(t, reference, rule.RuleID)
 		assert.Contains(t, reference, rule.Linter)
 	}

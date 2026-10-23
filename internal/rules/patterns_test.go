@@ -13,6 +13,7 @@ import (
 	"github.com/kapetan-io/tiger/internal/command"
 	"github.com/kapetan-io/tiger/internal/pattern"
 	"github.com/kapetan-io/tiger/internal/rules"
+	"github.com/kapetan-io/tiger/internal/rules/auto"
 	"github.com/kapetan-io/tiger/patterns"
 )
 
@@ -39,7 +40,7 @@ func registeredCodes() map[string]bool {
 	for _, rule := range rules.CustomRules() {
 		codes[rule.RuleID] = true
 	}
-	for _, rule := range rules.AutoRules() {
+	for _, rule := range auto.AutoRules() {
 		codes[rule.RuleID] = true
 	}
 	return codes

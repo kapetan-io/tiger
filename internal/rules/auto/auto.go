@@ -1,9 +1,9 @@
-// Auto rules: the half of the rule set enforced by off-the-shelf
-// golangci-lint linters. Tiger never reimplements one — it audits the
-// delegation. The tiger golangci verification and the --init generator are
-// both derived from this table, so the generated baseline passes
-// verification by construction.
-package rules
+// Package auto holds the auto rules: the half of the rule set enforced by
+// off-the-shelf golangci-lint linters. Tiger never reimplements one — it
+// audits the delegation. internal/golangci's verification and its --init
+// generator are both derived from this table, so the generated baseline
+// passes verification by construction.
+package auto
 
 import (
 	"maps"

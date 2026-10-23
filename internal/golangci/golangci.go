@@ -1,8 +1,8 @@
-// Package golangci audits the other half of the rule set: the auto rules
-// delegated to golangci-lint. Verify checks a project's configuration
-// against the registry's auto-rule baseline; Generate and Init derive that
-// baseline config from the registry, so a rule cannot be registered without
-// being both generated and audited.
+// Package golangci is tiger golangci. It audits the other half of the rule
+// set: the auto rules delegated to golangci-lint. Verify checks a project's
+// configuration against the auto-rule baseline; Generate and Init derive that
+// baseline config from internal/rules/auto, so a rule cannot be registered
+// without being both generated and audited. Run is the command over them.
 package golangci
 
 import (
@@ -18,7 +18,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/kapetan-io/tiger/assert"
-	"github.com/kapetan-io/tiger/internal/rules"
+	"github.com/kapetan-io/tiger/internal/rules/auto"
 	"github.com/kapetan-io/tiger/internal/worklist"
 )
 
@@ -48,7 +48,7 @@ type baseline struct {
 }
 
 // Verify reads the golangci-lint configuration in dir and checks it against
-// the registry's auto-rule baseline: every required linter enabled, every
+// the auto-rule baseline: every required linter enabled, every
 // baseline setting present with its expected value. Extra linters and
 // settings pass. The returned findings are sorted; an unreadable config or
 // a missing module path is an error, not a verdict.
@@ -62,7 +62,7 @@ func Verify(dir string) ([]Finding, error) {
 		return nil, err
 	}
 	findings := []Finding{}
-	for _, rule := range rules.AutoRules() {
+	for _, rule := range auto.AutoRules() {
 		findings = append(findings, verifyRule(document, rule, module)...)
 	}
 	sort.Slice(findings, func(i, j int) bool {
@@ -79,7 +79,7 @@ func Verify(dir string) ([]Finding, error) {
 
 // verifyRule checks one auto rule: its linter is enabled and each baseline
 // setting holds.
-func verifyRule(document map[string]any, rule rules.AutoRule, module string) []Finding {
+func verifyRule(document map[string]any, rule auto.AutoRule, module string) []Finding {
 	if !enabled(document, rule) {
 		return []Finding{{
 			RuleID: rule.RuleID,
@@ -99,7 +99,7 @@ func verifyRule(document map[string]any, rule rules.AutoRule, module string) []F
 	findings := []Finding{}
 	for _, setting := range rule.Settings {
 		joined := strings.Join(setting.Path, ".")
-		want := rules.SubstituteModule(setting.Want, module)
+		want := auto.SubstituteModule(setting.Want, module)
 		got, found := lookup(document, setting.Path)
 		if !found {
 			findings = append(findings, Finding{
@@ -135,7 +135,7 @@ func verifyRule(document map[string]any, rule rules.AutoRule, module string) []F
 // enabled reports whether the rule's linter is on: named in its section's
 // enable list, or a member of golangci-lint's standard default group when
 // the config keeps default: standard.
-func enabled(document map[string]any, rule rules.AutoRule) bool {
+func enabled(document map[string]any, rule auto.AutoRule) bool {
 	names, found := lookup(document, []string{rule.Section, "enable"})
 	if found {
 		if listed, ok := names.([]any); ok {
@@ -146,10 +146,10 @@ func enabled(document map[string]any, rule rules.AutoRule) bool {
 			}
 		}
 	}
-	if rule.Section != rules.SectionLinters || !rules.StandardLinter(rule.Linter) {
+	if rule.Section != auto.SectionLinters || !auto.StandardLinter(rule.Linter) {
 		return false
 	}
-	group, found := lookup(document, []string{rules.SectionLinters, "default"})
+	group, found := lookup(document, []string{auto.SectionLinters, "default"})
 	return found && group == "standard"
 }
 
