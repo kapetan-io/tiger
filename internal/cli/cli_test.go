@@ -61,3 +61,11 @@ func TestChangedIsListedAndDispatched(t *testing.T) {
 	assert.Equal(t, "tiger changed: expected a base revision, "+
 		"as in: tiger changed [-C dir] <base>\n", got.stderr)
 }
+
+// TestPatternHelpNamesTheCommand reads the usage text.
+//
+// Goal: tiger help documents tiger pattern with its two flags.
+func TestPatternHelpNamesTheCommand(t *testing.T) {
+	got := run(t, "help")
+	assert.Contains(t, got.stdout, "tiger pattern [name] [--checklist] [--rule code]")
+}
