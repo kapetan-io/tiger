@@ -134,7 +134,7 @@ type partitioned struct {
 // facts table first, then the rules table — and splits the findings by
 // kind, ending each rule finding with its pattern pointer. An unregistered
 // category is an error: the run cannot apply a severity it does not know.
-func partition(path module.Path, findings []driver.Finding) (partitioned, error) {
+func partition(modulePath module.Path, findings []driver.Finding) (partitioned, error) {
 	sorted := partitioned{counts: newBudgetCounts()}
 	for _, finding := range findings {
 		if _, isFact := rules.ByFact(finding.Category); isFact {
@@ -151,7 +151,7 @@ func partition(path module.Path, findings []driver.Finding) (partitioned, error)
 		case rules.SeverityBlocking:
 			sorted.blocking = append(sorted.blocking, finding)
 		case rules.SeverityAdvisory:
-			sorted.counts.add(packageKey(path, finding.Package), entry, finding)
+			sorted.counts.add(packageKey(modulePath, finding.Package), entry, finding)
 		default:
 			assert.Unreachable("severity outside the registry's closed set")
 		}

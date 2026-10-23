@@ -112,20 +112,20 @@ func prepare(dir string) (setup, error) {
 	}
 	// The module path is optional here: without go.mod the driver fails the
 	// run on its own, and with no config or budget file nothing needs it.
-	path, err := module.ReadPath(dir)
+	modulePath, err := module.ReadPath(dir)
 	if err != nil {
-		path = ""
+		modulePath = ""
 	}
-	return setup{module: path, layers: layered, budgets: budgets}, nil
+	return setup{module: modulePath, layers: layered, budgets: budgets}, nil
 }
 
 // packageKey is the budget file's key for a package: its import path
 // relative to the module, with an external test package folded into the
 // package it tests, so a skipped test counts against the package it
 // belongs to.
-func packageKey(path module.Path, pkgPath string) string {
+func packageKey(modulePath module.Path, pkgPath string) string {
 	pkgPath = strings.TrimSuffix(pkgPath, "_test")
-	if rel, inModule := path.Relative(pkgPath); inModule {
+	if rel, inModule := modulePath.Relative(pkgPath); inModule {
 		return rel
 	}
 	return pkgPath

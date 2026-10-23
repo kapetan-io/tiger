@@ -107,7 +107,7 @@ func Load(dir string, analyzers []*analysis.Analyzer) (*File, error) {
 	if err != nil {
 		return nil, &Error{Problem: err.Error()}
 	}
-	path, err := module.ReadPath(dir)
+	modulePath, err := module.ReadPath(dir)
 	if err != nil {
 		return nil, &Error{Problem: err.Error()}
 	}
@@ -119,7 +119,7 @@ func Load(dir string, analyzers []*analysis.Analyzer) (*File, error) {
 		return nil, &Error{Key: "version", Problem: fmt.Sprintf(
 			"version %d is not supported — write version: %d", parsed.Version, version)}
 	}
-	loaded := &File{module: path, entries: map[Key][]Entry{}}
+	loaded := &File{module: modulePath, entries: map[Key][]Entry{}}
 	forbid, err := parseNolint(&parsed.Nolint)
 	if err != nil {
 		return nil, err
