@@ -1,6 +1,6 @@
 // Package cli is the tiger command's name lookup and command listing. Each
 // subcommand's function lives in the package that owns its concept, except
-// golangci, pattern and pin, which move out in later pieces; main() is a thin
+// golangci and pin, which move out in later pieces; main() is a thin
 // wrapper over Run so the whole surface is testable (surface-testing).
 package cli
 
@@ -13,8 +13,8 @@ import (
 	"github.com/kapetan-io/tiger/internal/pattern"
 )
 
-// Transitional aliases for the golangci, pattern and pin code and the tests
-// that still enter through cli.Run; they go when the last of those moves.
+// Transitional aliases for the golangci and pin code and the tests that still
+// enter through cli.Run; they go when the last of those moves.
 type Streams = command.Streams
 
 const (
