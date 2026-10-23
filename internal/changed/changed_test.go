@@ -907,5 +907,6 @@ func TestChangedHelpPrintsTheSynopsisOnOneLine(t *testing.T) {
 	got := run(t, "changed", "-h")
 	assert.Equal(t, command.ExitOperational, got.code)
 	assert.Empty(t, got.stdout)
-	assert.Equal(t, "tiger changed: usage: tiger changed [-C dir] [--format text|markdown|json] <base>\n", got.stderr)
+	assert.Equal(t, "tiger changed: usage: tiger changed [-C dir] "+
+		"[--format text|markdown|json] <base>\n", got.stderr)
 }

@@ -246,5 +246,6 @@ func TestChangedIsListedAndDispatched(t *testing.T) {
 	got := run(t, "changed")
 	assert.Equal(t, cli.ExitOperational, got.code)
 	assert.Empty(t, got.stdout)
-	assert.Equal(t, "tiger changed: expected a base revision, as in: tiger changed [-C dir] <base>\n", got.stderr)
+	assert.Equal(t, "tiger changed: expected a base revision, "+
+		"as in: tiger changed [-C dir] <base>\n", got.stderr)
 }

@@ -19,5 +19,6 @@ func TestPrintUsageWritesTheEntryThenTheFlagDefaults(t *testing.T) {
 	command.PrintUsage(flags, "  tiger demo [-C dir]\n      does a thing\n")
 
 	assert.Equal(t, "usage:\n  tiger demo [-C dir]\n      does a thing\n"+
-		"  -C string\n    \trun as if tiger was started in this directory (default \".\")\n", out.String())
+		"  -C string\n    \trun as if tiger was started in this directory "+
+		"(default \".\")\n", out.String())
 }
