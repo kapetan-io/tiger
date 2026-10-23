@@ -1,4 +1,4 @@
-package cli_test
+package changed_test
 
 import (
 	"fmt"
@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/kapetan-io/tiger/internal/cli"
+	"github.com/kapetan-io/tiger/internal/command"
 )
 
 // commentLimit repeats the renderer's cap so a change to it fails here.
@@ -25,7 +25,7 @@ func TestChangedMarkdownGoldens(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			got := fixture(t, name).changed("--format", "markdown")
-			assert.Equal(t, cli.ExitClean, got.code)
+			assert.Equal(t, command.ExitClean, got.code)
 			assert.Empty(t, got.stderr)
 			golden(t, name, "markdown.golden", got)
 		})
@@ -39,7 +39,7 @@ func TestChangedMarkdownGoldens(t *testing.T) {
 func TestChangedMarkdownStartsWithTheMarker(t *testing.T) {
 	c := fixture(t, "call-added")
 	got := c.changed("--format", "markdown")
-	require.Equal(t, cli.ExitClean, got.code)
+	require.Equal(t, command.ExitClean, got.code)
 	lines := strings.Split(got.stdout, "\n")
 	assert.Equal(t, "<!-- tiger-changed -->", lines[0])
 	assert.Equal(t, fmt.Sprintf("#### tiger changed: `main` (%s) → `%s`",
@@ -57,7 +57,7 @@ func TestChangedMarkdownStartsWithTheMarker(t *testing.T) {
 func TestChangedMarkdownPrintsIdenticalBytes(t *testing.T) {
 	c := fixture(t, "new-package")
 	first := c.changed("--format", "markdown")
-	require.Equal(t, cli.ExitClean, first.code)
+	require.Equal(t, command.ExitClean, first.code)
 	assert.Equal(t, first.stdout, c.changed("--format", "markdown").stdout)
 
 	defer runtime.GOMAXPROCS(runtime.GOMAXPROCS(1))
@@ -69,7 +69,7 @@ func TestChangedMarkdownPrintsIdenticalBytes(t *testing.T) {
 // Goal: each non-zero count is bold and each zero count is plain.
 func TestChangedMarkdownBoldsOnlyWhatChanged(t *testing.T) {
 	got := fixture(t, "call-removed").changed("--format", "markdown")
-	require.Equal(t, cli.ExitClean, got.code)
+	require.Equal(t, command.ExitClean, got.code)
 	assert.Contains(t, got.stdout, "\nCalls added: 0 · **Calls removed: 1**\n")
 }
 
@@ -125,7 +125,7 @@ func TestChangedMarkdownStaysUnderTheCommentLimit(t *testing.T) {
 	t.Run("fits", func(t *testing.T) {
 		t.Parallel()
 		got := bulkCheckout(t, bulkSize{existing: fitsCalls}).changed("--format", "markdown")
-		require.Equal(t, cli.ExitClean, got.code)
+		require.Equal(t, command.ExitClean, got.code)
 		assert.LessOrEqual(t, utf8.RuneCountInString(got.stdout), commentLimit)
 		assert.NotContains(t, got.stdout, "not shown")
 		assert.Contains(t, got.stdout, "+   example.com/fakedb.Pool.Exec\n```\n")
@@ -136,7 +136,7 @@ func TestChangedMarkdownStaysUnderTheCommentLimit(t *testing.T) {
 		t.Parallel()
 		got := bulkCheckout(t, bulkSize{existing: 100, fresh: spillsCalls}).
 			changed("--format", "markdown")
-		require.Equal(t, cli.ExitClean, got.code)
+		require.Equal(t, command.ExitClean, got.code)
 		assert.LessOrEqual(t, utf8.RuneCountInString(got.stdout), commentLimit)
 		assert.Contains(t, got.stdout,
 			"Too long for a comment; run `tiger changed main` for every call.\n")
@@ -152,7 +152,7 @@ func TestChangedMarkdownStaysUnderTheCommentLimit(t *testing.T) {
 		t.Parallel()
 		const total = spillsCalls * 2
 		got := bulkCheckout(t, bulkSize{existing: total}).changed("--format", "markdown")
-		require.Equal(t, cli.ExitClean, got.code)
+		require.Equal(t, command.ExitClean, got.code)
 		out := got.stdout
 		assert.LessOrEqual(t, utf8.RuneCountInString(out), commentLimit)
 		assert.Contains(t, out, fmt.Sprintf("**Calls added: %d**", total))
@@ -183,7 +183,7 @@ func TestChangedMarkdownQuotesABaseRefWithBackticks(t *testing.T) {
 	c.git("branch", "release`candidate", "main")
 
 	got := run(t, "changed", "-C", c.dir, "--format", "markdown", "release`candidate")
-	require.Equal(t, cli.ExitClean, got.code)
+	require.Equal(t, command.ExitClean, got.code)
 	assert.Contains(t, got.stdout, "#### tiger changed: `` release`candidate `` (")
 }
 
@@ -196,6 +196,6 @@ func TestChangedMarkdownSuggestsACommandAShellCanRun(t *testing.T) {
 	c.git("branch", "it's`odd", "main")
 
 	got := run(t, "changed", "-C", c.dir, "--format", "markdown", "it's`odd")
-	require.Equal(t, cli.ExitClean, got.code)
+	require.Equal(t, command.ExitClean, got.code)
 	assert.Contains(t, got.stdout, "run `` tiger changed 'it'\\''s`odd' `` for every call.\n")
 }

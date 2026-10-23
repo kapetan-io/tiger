@@ -7,8 +7,9 @@ import (
 	"os"
 
 	"github.com/kapetan-io/tiger/internal/cli"
+	"github.com/kapetan-io/tiger/internal/command"
 )
 
 func main() {
-	os.Exit(cli.Run(os.Args[1:], cli.Streams{Stdout: os.Stdout, Stderr: os.Stderr}))
+	os.Exit(cli.Run(os.Args[1:], command.Streams{Stdout: os.Stdout, Stderr: os.Stderr}))
 }

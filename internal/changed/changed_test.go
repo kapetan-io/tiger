@@ -1,6 +1,7 @@
-package cli_test
+package changed_test
 
 import (
+	"bytes"
 	"flag"
 	"fmt"
 	"os"
@@ -14,8 +15,26 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/kapetan-io/tiger/internal/cli"
+	"github.com/kapetan-io/tiger/internal/changed"
+	"github.com/kapetan-io/tiger/internal/command"
 )
+
+// outcome is one invocation's observable result.
+type outcome struct {
+	code   int
+	stdout string
+	stderr string
+}
+
+// run invokes tiger changed once. The leading word keeps each call site
+// reading as the command line it stands for.
+func run(t *testing.T, args ...string) outcome {
+	t.Helper()
+	require.Equal(t, "changed", args[0])
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	code := changed.Run(args[1:], command.Streams{Stdout: stdout, Stderr: stderr})
+	return outcome{code: code, stdout: stdout.String(), stderr: stderr.String()}
+}
 
 var update = flag.Bool("update", false, "rewrite the tiger changed golden files")
 
@@ -199,7 +218,7 @@ func TestChangedGoldens(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			got := fixture(t, name).changed()
-			assert.Equal(t, cli.ExitClean, got.code)
+			assert.Equal(t, command.ExitClean, got.code)
 			assert.Empty(t, got.stderr)
 			golden(t, name, "text.golden", got)
 		})
@@ -226,7 +245,7 @@ func TestChangedIgnoresCommitsLandedOnTheBaseAfterTheSplit(t *testing.T) {
 	c.git("checkout", "-q", "feature")
 
 	got := c.changed()
-	require.Equal(t, cli.ExitClean, got.code)
+	require.Equal(t, command.ExitClean, got.code)
 	assert.NotContains(t, got.stdout, "store.Queue")
 	assert.Contains(t, got.stdout, "web.Handler.Greet\n+   example.com/fakedb.Pool.Exec\n")
 	assert.Contains(t, got.stdout, "tiger changed: main (merge base "+c.short("main~1")+") -> ")
@@ -240,7 +259,7 @@ func TestChangedIgnoresCommitsLandedOnTheBaseAfterTheSplit(t *testing.T) {
 func TestChangedNamesHeadByCommit(t *testing.T) {
 	c := fixture(t, "call-added")
 	onBranch := c.changed()
-	require.Equal(t, cli.ExitClean, onBranch.code)
+	require.Equal(t, command.ExitClean, onBranch.code)
 	head := c.short("HEAD")
 	assert.Contains(t, onBranch.stdout, " -> "+head+"\n")
 
@@ -251,7 +270,7 @@ func TestChangedNamesHeadByCommit(t *testing.T) {
 		`return "hello " + name`, "_, _ = h.pool.Query(name)\n\treturn \"hello \" + name", 1)
 	c.write("web/web.go", edited)
 	dirty := c.changed()
-	require.Equal(t, cli.ExitClean, dirty.code)
+	require.Equal(t, command.ExitClean, dirty.code)
 	assert.Contains(t, dirty.stdout, " -> "+head+" + uncommitted changes\n")
 	assert.Contains(t, dirty.stdout, "+   example.com/fakedb.Pool.Query\n")
 	assert.Contains(t, dirty.stdout, "Calls added: 2 ·")
@@ -264,7 +283,7 @@ func TestChangedNamesHeadByCommit(t *testing.T) {
 func TestChangedPrintsIdenticalBytes(t *testing.T) {
 	c := fixture(t, "new-package")
 	first := c.changed()
-	require.Equal(t, cli.ExitClean, first.code)
+	require.Equal(t, command.ExitClean, first.code)
 	assert.Equal(t, first.stdout, c.changed().stdout)
 
 	defer runtime.GOMAXPROCS(runtime.GOMAXPROCS(1))
@@ -337,7 +356,7 @@ func TestChangedRefusesWhatItCannotCompare(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			got := run(t, test.args...)
-			assert.Equal(t, cli.ExitOperational, got.code)
+			assert.Equal(t, command.ExitOperational, got.code)
 			assert.Empty(t, got.stdout)
 			assert.Equal(t, 1, strings.Count(got.stderr, "\n"))
 			assert.Contains(t, got.stderr, test.wantErr)
@@ -368,7 +387,7 @@ func TestChangedLeavesTheRepositoryAlone(t *testing.T) {
 
 	before := c.gitState()
 	got := c.changed()
-	require.Equal(t, cli.ExitClean, got.code)
+	require.Equal(t, command.ExitClean, got.code)
 	assert.Equal(t, before, c.gitState())
 }
 
@@ -396,7 +415,7 @@ func TestChangedRunDirectoryMissingAtBase(t *testing.T) {
 	c.commit("add service")
 
 	got := run(t, "changed", "-C", filepath.Join(c.dir, "svc"), "main")
-	require.Equal(t, cli.ExitClean, got.code)
+	require.Equal(t, command.ExitClean, got.code)
 	assert.Empty(t, got.stderr)
 	assert.Contains(t, got.stdout, "Calls added: 0 · Calls removed: 0 · New packages: 1\n")
 	assert.Contains(t, got.stdout, "New package web: 1 types and functions, 1 calls\n")
@@ -452,7 +471,7 @@ func TestChangedNamesPackagesRelativeToTheRunDirectory(t *testing.T) {
 	c.commit("head")
 
 	got := run(t, "changed", "-C", filepath.Join(c.dir, "app"), "main")
-	require.Equal(t, cli.ExitClean, got.code)
+	require.Equal(t, command.ExitClean, got.code)
 	assert.Empty(t, got.stderr)
 	assert.Contains(t, got.stdout,
 		"\napp.Server.Start\n+   internal/store.Save\n+   libs/ids.New\n\n")
@@ -469,7 +488,7 @@ func TestChangedReportsAnEmptyDiffWithItsFooter(t *testing.T) {
 	c.commit("docs")
 
 	got := c.changed()
-	require.Equal(t, cli.ExitClean, got.code)
+	require.Equal(t, command.ExitClean, got.code)
 	lines := strings.Split(strings.TrimSuffix(got.stdout, "\n"), "\n")
 	assert.Equal(t, "Calls added: 0 · Calls removed: 0", lines[3])
 	assert.Equal(t, "No function started or stopped calling another package, "+
@@ -507,7 +526,7 @@ func TestChangedCountsEqualTheVisibleLines(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			got := fixture(t, test.name).changed()
-			require.Equal(t, cli.ExitClean, got.code)
+			require.Equal(t, command.ExitClean, got.code)
 			var added, removed int
 			for _, line := range strings.Split(got.stdout, "\n") {
 				switch {
@@ -535,7 +554,7 @@ func TestChangedNamesTheBaseRevision(t *testing.T) {
 	head := c.short("HEAD")
 	title := func(base string) string {
 		got := run(t, "changed", "-C", c.dir, base)
-		require.Equal(t, cli.ExitClean, got.code)
+		require.Equal(t, command.ExitClean, got.code)
 		first, _, _ := strings.Cut(got.stdout, "\n")
 		return first
 	}
@@ -576,7 +595,7 @@ func TestChangedCountsAnUntrackedFileAsUncommitted(t *testing.T) {
 	c.write("web/extra.go", extraSource)
 
 	got := c.changed()
-	require.Equal(t, cli.ExitClean, got.code)
+	require.Equal(t, command.ExitClean, got.code)
 	assert.Contains(t, got.stdout, " -> "+c.short("HEAD")+" + uncommitted changes\n")
 	assert.Contains(t, got.stdout, "web.Extra\n+   example.com/fakedb.Ping\n")
 	assert.Contains(t, got.stdout, "Calls added: 2 · Calls removed: 0\n")
@@ -590,7 +609,7 @@ func TestChangedPrintsIdenticalBytesForSeveralChanges(t *testing.T) {
 	for _, name := range []string{"sibling-owner", "closure", "rename-changed-calls"} {
 		c := fixture(t, name)
 		first := c.changed()
-		require.Equal(t, cli.ExitClean, first.code)
+		require.Equal(t, command.ExitClean, first.code)
 		for range 4 {
 			assert.Equal(t, first.stdout, c.changed().stdout)
 		}
@@ -631,7 +650,7 @@ func TestChangedStopsOnARecursiveOutsideFunction(t *testing.T) {
 	c.commit("head")
 
 	got := c.changed()
-	require.Equal(t, cli.ExitClean, got.code)
+	require.Equal(t, command.ExitClean, got.code)
 	assert.Contains(t, got.stdout, "Calls added: 1 · Calls removed: 0\n")
 	assert.Contains(t, got.stdout, "web.Handler.Greet\n+   example.com/fakedb.Ping\n\n")
 	assert.NotContains(t, got.stdout, "Spin")
@@ -650,7 +669,7 @@ func TestChangedReadsTheBaseTreeWithoutExportAttributes(t *testing.T) {
 	c.git("merge", "-q", "--no-edit", "main")
 
 	got := c.changed()
-	require.Equal(t, cli.ExitClean, got.code)
+	require.Equal(t, command.ExitClean, got.code)
 	assert.NotContains(t, got.stdout, "New package")
 	assert.Contains(t, got.stdout, "web.Handler.Greet\n+   example.com/fakedb.Pool.Exec\n")
 }
@@ -665,7 +684,7 @@ func TestChangedMarksUntrackedFilesWhateverGitConfigSays(t *testing.T) {
 	c.write("web/extra.go", "package web\n\nfunc Extra() {}\n")
 
 	got := c.changed()
-	require.Equal(t, cli.ExitClean, got.code)
+	require.Equal(t, command.ExitClean, got.code)
 	assert.Contains(t, got.stdout, " -> "+c.short("HEAD")+" + uncommitted changes\n")
 }
 
@@ -677,7 +696,7 @@ func TestChangedAcceptsAnUppercaseHashAsTheBase(t *testing.T) {
 	c := fixture(t, "call-added")
 	base := strings.ToUpper(c.short("main"))
 	got := run(t, "changed", "-C", c.dir, base)
-	require.Equal(t, cli.ExitClean, got.code)
+	require.Equal(t, command.ExitClean, got.code)
 	assert.Contains(t, got.stdout, "tiger changed: "+c.short("main")+" -> ")
 }
 
@@ -696,7 +715,7 @@ func TestChangedRefusesTwoPackagesWithOnePrintedName(t *testing.T) {
 	c.commit("head")
 
 	got := c.changed()
-	assert.Equal(t, cli.ExitOperational, got.code)
+	assert.Equal(t, command.ExitOperational, got.code)
 	assert.Empty(t, got.stdout)
 	assert.Contains(t, got.stderr, "two packages print as store")
 }
@@ -713,7 +732,7 @@ func TestChangedWritesBaseBlobsWithoutHeadFilters(t *testing.T) {
 
 	got := c.changed()
 	assert.Empty(t, got.stderr)
-	require.Equal(t, cli.ExitClean, got.code)
+	require.Equal(t, command.ExitClean, got.code)
 	assert.Contains(t, got.stdout, "web.Handler.Greet\n-   example.com/fakedb.Pool.Exec\n")
 }
 
@@ -733,7 +752,7 @@ func TestChangedAllowsARunDirectoryPackageNamedLikeAModuleDirectory(t *testing.T
 
 	got := run(t, "changed", "-C", filepath.Join(c.dir, "a", "b"), "main")
 	assert.Empty(t, got.stderr)
-	require.Equal(t, cli.ExitClean, got.code)
+	require.Equal(t, command.ExitClean, got.code)
 	assert.Contains(t, got.stdout, "+   example.com/shop/b.Open\n")
 }
 
@@ -750,7 +769,7 @@ func TestChangedIgnoresGitLocationVariables(t *testing.T) {
 
 	got := c.changed()
 	assert.Empty(t, got.stderr)
-	require.Equal(t, cli.ExitClean, got.code)
+	require.Equal(t, command.ExitClean, got.code)
 	assert.Contains(t, got.stdout, "web.Handler.Greet\n+   example.com/fakedb.Pool.Exec\n")
 }
 
@@ -785,7 +804,7 @@ func TestChangedNamesAMethodCalledLikeItsType(t *testing.T) {
 
 	got := c.changed()
 	assert.Empty(t, got.stderr)
-	require.Equal(t, cli.ExitClean, got.code)
+	require.Equal(t, command.ExitClean, got.code)
 	assert.Contains(t, got.stdout, "store.Service.Run\n+   store.Client.Client\n")
 }
 
@@ -808,7 +827,7 @@ func TestChangedTellsApartPackagesThatPrintTheSame(t *testing.T) {
 
 	got := run(t, "changed", "-C", filepath.Join(c.dir, "a", "b"), "main")
 	assert.Empty(t, got.stderr)
-	require.Equal(t, cli.ExitClean, got.code)
+	require.Equal(t, command.ExitClean, got.code)
 	assert.Contains(t, got.stdout, "b.Run\n-   b.Open\n+   example.com/shop/b.Open\n")
 }
 
@@ -832,7 +851,7 @@ func TestChangedKeepsCalleeNamesStableWhenAnotherRevisionAddsACollision(t *testi
 
 	got := run(t, "changed", "-C", filepath.Join(c.dir, "svc"), "main")
 	assert.Empty(t, got.stderr)
-	require.Equal(t, cli.ExitClean, got.code)
+	require.Equal(t, command.ExitClean, got.code)
 	assert.Contains(t, got.stdout, "Calls added: 0 · Calls removed: 0")
 }
 
@@ -855,7 +874,7 @@ func TestChangedKeepsAHealthyPackageWhoseNameAFailedPackageShares(t *testing.T) 
 
 	got := run(t, "changed", "-C", filepath.Join(c.dir, "svc"), "main")
 	assert.Empty(t, got.stderr)
-	require.Equal(t, cli.ExitClean, got.code)
+	require.Equal(t, command.ExitClean, got.code)
 	assert.Contains(t, got.stdout, "store.Open\n+   os.Getenv\n")
 }
 
@@ -878,6 +897,15 @@ func TestChangedKeepsCallsWhoseImportPathAndNameRunTogether(t *testing.T) {
 
 	got := c.changed()
 	assert.Empty(t, got.stderr)
-	require.Equal(t, cli.ExitClean, got.code)
+	require.Equal(t, command.ExitClean, got.code)
 	assert.Contains(t, got.stdout, "Calls added: 2 ·")
+}
+
+// TestChangedHelpPrintsTheSynopsisOnOneLine covers -h, which prints no flag
+// block because a failed run owes the reader one line.
+func TestChangedHelpPrintsTheSynopsisOnOneLine(t *testing.T) {
+	got := run(t, "changed", "-h")
+	assert.Equal(t, command.ExitOperational, got.code)
+	assert.Empty(t, got.stdout)
+	assert.Equal(t, "tiger changed: usage: tiger changed [-C dir] [--format text|markdown|json] <base>\n", got.stderr)
 }

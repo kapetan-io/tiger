@@ -233,3 +233,18 @@ func TestUnknownCommandExitsTwo(t *testing.T) {
 	assert.Equal(t, cli.ExitOperational, bare.code)
 	assert.Contains(t, bare.stderr, "usage:")
 }
+
+// TestChangedIsListedAndDispatched covers the name lookup for a command whose
+// code lives in its own package.
+//
+// Goal: the command listing carries tiger changed's entry, and the name
+// reaches that command.
+func TestChangedIsListedAndDispatched(t *testing.T) {
+	bare := run(t)
+	assert.Contains(t, bare.stderr, "tiger changed [-C dir] [--format text|markdown|json] <base>")
+
+	got := run(t, "changed")
+	assert.Equal(t, cli.ExitOperational, got.code)
+	assert.Empty(t, got.stdout)
+	assert.Equal(t, "tiger changed: expected a base revision, as in: tiger changed [-C dir] <base>\n", got.stderr)
+}

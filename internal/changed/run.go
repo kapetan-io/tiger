@@ -1,4 +1,4 @@
-package cli
+package changed
 
 import (
 	"errors"
@@ -8,23 +8,33 @@ import (
 	"strings"
 
 	"github.com/kapetan-io/tiger/internal/callinventory"
-	"github.com/kapetan-io/tiger/internal/changed"
+	"github.com/kapetan-io/tiger/internal/command"
 	"github.com/kapetan-io/tiger/internal/revision"
 )
 
-// runChanged is tiger changed: compare the calls each function makes at the
+// synopsis is the one line a bad invocation of tiger changed repeats.
+const synopsis = "tiger changed [-C dir] [--format text|markdown|json] <base>"
+
+// Usage is tiger changed's entry in the command listing.
+const Usage = "  " + synopsis + `
+      print, for each function, the calls it started or stopped making since
+      the merge base of <base> and HEAD; flags go before <base>; exit 0 for
+      any report, 2 when no report can be produced
+`
+
+// Run is tiger changed: compare the calls each function makes at the
 // merge base of a base ref and HEAD against the calls it makes in the working
 // tree, and print the report. A report exits 0 whatever it holds. When none
 // can be produced it prints one line to stderr and exits 2, with nothing on
 // stdout, so a failed run is never mistaken for an empty report.
-func runChanged(args []string, streams Streams) int {
+func Run(args []string, streams command.Streams) int {
 	flags := flag.NewFlagSet("tiger changed", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	chdir := flags.String("C", ".", "run as if tiger was started in this directory")
 	format := flags.String("format", "text", "report format: text, markdown or json")
 	if err := flags.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
-			err = errors.New("usage: tiger changed [-C dir] [--format text|markdown|json] <base>")
+			err = errors.New("usage: " + synopsis)
 		}
 		return changedFailure(streams, err)
 	}
@@ -56,7 +66,7 @@ func runChanged(args []string, streams Streams) int {
 	}
 	if *format == "markdown" {
 		fmt.Fprint(streams.Stdout, report.Markdown(rev))
-		return ExitClean
+		return command.ExitClean
 	}
 	if *format == "json" {
 		data, err := report.JSON(rev)
@@ -66,35 +76,35 @@ func runChanged(args []string, streams Streams) int {
 		if _, err := streams.Stdout.Write(data); err != nil {
 			return changedFailure(streams, err)
 		}
-		return ExitClean
+		return command.ExitClean
 	}
 	fmt.Fprint(streams.Stdout, report.Text(rev))
-	return ExitClean
+	return command.ExitClean
 }
 
 // compareRevisions loads the head tree and the base tree and compares them.
-func compareRevisions(dir string, rev revision.Comparison) (report changed.Report, err error) {
+func compareRevisions(dir string, rev revision.Comparison) (report Report, err error) {
 	headLabel := "head (" + revision.Short(rev.Head) + ")"
 	head, err := callinventory.Load(dir)
 	if err != nil {
-		return changed.Report{}, fmt.Errorf("cannot load the Go packages at %s: %w", headLabel, err)
+		return Report{}, fmt.Errorf("cannot load the Go packages at %s: %w", headLabel, err)
 	}
 	if len(head.Packages) == 0 {
-		return changed.Report{}, noPackages(head, headLabel)
+		return Report{}, noPackages(head, headLabel)
 	}
 	tree, err := rev.Extract()
 	if err != nil {
-		return changed.Report{}, err
+		return Report{}, err
 	}
 	defer func() { err = errors.Join(err, tree.Close()) }()
 	var base callinventory.Inventory
 	if tree.Present {
 		if base, err = callinventory.Load(tree.Dir); err != nil {
-			return changed.Report{}, fmt.Errorf("cannot load the Go packages at base (%s): %w",
+			return Report{}, fmt.Errorf("cannot load the Go packages at base (%s): %w",
 				revision.Short(rev.MergeBase), err)
 		}
 	}
-	return changed.Compare(changed.Sides{Base: base, Head: head}), nil
+	return Compare(Sides{Base: base, Head: head}), nil
 }
 
 func noPackages(inv callinventory.Inventory, label string) error {
@@ -105,8 +115,8 @@ func noPackages(inv callinventory.Inventory, label string) error {
 }
 
 // changedFailure prints the one line a failed run owes the reader.
-func changedFailure(streams Streams, err error) int {
+func changedFailure(streams command.Streams, err error) int {
 	line := strings.Join(strings.Fields(err.Error()), " ")
 	fmt.Fprintf(streams.Stderr, "tiger changed: %s\n", line)
-	return ExitOperational
+	return command.ExitOperational
 }

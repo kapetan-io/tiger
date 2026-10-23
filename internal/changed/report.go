@@ -1,6 +1,6 @@
-// Package changed compares the calls each function makes at two revisions and
-// reports the calls added and removed. It gets two inventories and compares
-// them; it never learns how they were produced.
+// Package changed is tiger changed: it compares the calls each function makes
+// at two revisions and reports the calls added and removed. Run loads the two
+// inventories; Compare gets them and never learns how they were produced.
 package changed
 
 import (

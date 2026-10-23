@@ -1,9 +1,10 @@
-package cli_test
+package ci_test
 
 import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -11,6 +12,63 @@ import (
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
 )
+
+// checkout is a real git repository in a temporary directory. Authors and
+// dates are pinned so commit hashes are the same on every machine.
+type checkout struct {
+	t   *testing.T
+	dir string
+}
+
+func newCheckout(t *testing.T) checkout {
+	t.Helper()
+	dir, err := filepath.EvalSymlinks(t.TempDir())
+	require.NoError(t, err)
+	c := checkout{t: t, dir: dir}
+	c.git("init", "-q", "-b", "main")
+	return c
+}
+
+// cleanGitEnviron drops the variables git sets in a hook, so the helper repos
+// are not redirected when the tests run under one.
+func cleanGitEnviron() []string {
+	return slices.DeleteFunc(os.Environ(), func(entry string) bool {
+		name, _, _ := strings.Cut(entry, "=")
+		return strings.HasPrefix(name, "GIT_") && name != "GIT_TRACE"
+	})
+}
+
+func (c checkout) git(args ...string) string {
+	c.t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = c.dir
+	cmd.Env = append(cleanGitEnviron(),
+		"GIT_CONFIG_GLOBAL=/dev/null",
+		"GIT_CONFIG_NOSYSTEM=1",
+		"GIT_AUTHOR_NAME=test", "GIT_AUTHOR_EMAIL=test@example.com",
+		"GIT_COMMITTER_NAME=test", "GIT_COMMITTER_EMAIL=test@example.com",
+		"GIT_AUTHOR_DATE=2026-01-01T00:00:00Z", "GIT_COMMITTER_DATE=2026-01-01T00:00:00Z",
+	)
+	out, err := cmd.CombinedOutput()
+	require.NoError(c.t, err, string(out))
+	return strings.TrimSpace(string(out))
+}
+
+// repoPath is a slash path inside the checkout.
+type repoPath string
+
+func (c checkout) write(name repoPath, content string) {
+	c.t.Helper()
+	path := filepath.Join(c.dir, filepath.FromSlash(string(name)))
+	require.NoError(c.t, os.MkdirAll(filepath.Dir(path), 0o755))
+	require.NoError(c.t, os.WriteFile(path, []byte(content), 0o644))
+}
+
+func (c checkout) commit(message string) {
+	c.t.Helper()
+	c.git("add", "-A")
+	c.git("commit", "-q", "-m", message)
+}
 
 var ciJobs = []string{"test", "patterns", "lint", "dogfood", "determinism", "plugin-smoke"}
 
