@@ -626,7 +626,7 @@ const BatchMax = (WriteBufferSize - HeaderSizeBytes) / EntrySize
 ```
 
 Enforce. `review`. *(Amended 2026-10-20: the `derivation` analyzer and the derivation comment are
-retired, ADR-0031. `TS-S22` fired no findings in the ENG-191 trials, and it read free prose, which
+retired, ADR-0031. `TS-S22` fired no findings in trials on querator and git-server, and it read free prose, which
 this specification no longer lets change a verdict. The maxim stays.)*
 
 **`TS-S23` An event loop's only exit is its stop case.**

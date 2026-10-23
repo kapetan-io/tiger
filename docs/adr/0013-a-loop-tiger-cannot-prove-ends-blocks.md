@@ -24,7 +24,7 @@ these, and it rejects the correct `//tiger:variant` a developer writes for them 
 also disagree: TS-V01 verifies `high - low` on a two-pointer loop, and TS-S02 still blocks it.
 
 Both rules also accept loops that run forever. A bound in a loop's header is a claim, and
-20 loops were found where the claim passes and the loop never ends or quietly cuts
+A due-diligence run on querator and git-server found 20 loops where the claim passes and the loop never ends or quietly cuts
 its work short. TS-S02 trusts any counter whose name appears in the condition, including one inside
 `||`, one the body resets, and a `uint8` counted to `<= 255`. TS-V01 matches variables by name and
 looks only inside the loop body, so a shadowing copy or growth through a pointer defeats it. The
@@ -67,7 +67,7 @@ in one release, with the soundness fixes in place before TS-S02 trusts a proof:
    iterator is a TS-S02 finding, like a channel.
 
 Tiger's own 14 worklist loops and TS-S01's documented worklist move to the capped form that returns
-an error on a cycle. Every one of the 20 loops that pass while never ending becomes an analyzer test case.
+an error on a cycle. Every one of the 20 loops that pass while never ending, the variant expressions tried against TS-V01, and the loops carrying `//tiger:variant` or `//tiger:batched` annotations become analyzer test cases.
 
 ## Consequences
 

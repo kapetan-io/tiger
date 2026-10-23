@@ -66,7 +66,7 @@ The entry condition and the five requirements are recorded in the repository's `
 - Adopters on the golangci plugin alone need the `tiger` binary to read a pattern.
 - The entry condition keeps the collection from becoming a general Go style guide.
 - Each seed must be cleaned up to meet the requirements before it is added; an uncleaned
-  seed gets findings, mostly from its test helper and file layout.
+  seed gets about 28 findings, mostly from its test helper and file layout.
 - A reusable runtime package that encodes these shapes, such as a `lifecycle` package for the
   shutdown loop, was set aside. Following the pattern is the goal.
 - No reviewer skill is built now. If one is needed, it is generated from the same embedded files.

@@ -43,9 +43,9 @@ result.
 | Fixture | `tiger check` | plugin |
 |---|---|---|
 | `dropped`: `_ = os.Remove(path)` | TS-E02, exit 1 | not run |
-| `droppednolint`: the same with a bare `//nolint` | passes, the comment counts as TS-E02's reason | not run |
+| `droppednolint`: the same with a bare `//nolint` | passed when this was run; superseded by ADR-0031, a comment no longer clears TS-E02, so `TestBareNolintSatisfiesDroppedError` now fails and the committed `test.out` predates that | not run |
 | `line`: `//nolint:tiger` on a TS-S09 line | TS-S09, exit 1 | passes |
-| `filewide`: `//nolint:tiger` in the package doc comment | TS-P02 at the `package` line and TS-S09 | passes, both dropped |
+| `filewide`: `//nolint:tiger` in the package doc comment | TS-P02 at the `package` line and TS-S09 when this was run; no longer reproduces, `TestFileNolintSilencesWholeFile` now sees TS-L09 and TS-S09 | passes, both dropped |
 | `excluded`: an `exclusions` rule in `.golangci.yml`, no comment | TS-S09, exit 1 | passes |
 
 So an opt-in "no `//nolint`" check can be enforced under `tiger check` only.

@@ -24,9 +24,9 @@ applies and counts against the package budget on every run. It prints only when 
 goes over its budget. The same input
 gives the same result on every run.
 
-That leaves false reasons unchecked. Put the same `//tiger:batched`
-reason on a cursor that returns 50 rows and on one that never runs out, and tiger reports the same
-thing for both. A model reading the reason is the obvious proposal for closing that gap.
+That leaves false reasons unchecked. Tiger reports the same
+thing for a cursor that returns 50 rows and one that never runs out when both carry the same
+`//tiger:batched` reason. A model reading the reason is the obvious proposal for closing that gap.
 
 A model inside the pass/fail verdict makes the verdict nondeterministic. The same commit could pass
 on one run and fail on the next. An agent could also rephrase a reason until the model agrees. A

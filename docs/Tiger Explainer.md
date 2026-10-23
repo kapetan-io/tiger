@@ -3,7 +3,7 @@
 **This page describes tiger as it is meant to be when it is finished.** It reflects the
 decisions recorded in the ADRs. Several pieces described here are not built yet:
 
-- the `tiger changed` report, and the removal of effect and frame pins it replaces
+- the removal of effect and frame pins that `tiger changed` replaces
 - the changes to the goroutine and wait rules, including TS-C03's goleak check
 - the collect-then-sort part of the map-order rule, and TS-T11's double test run
 - the opt-in ban on `//nolint`
@@ -13,7 +13,7 @@ Today's tiger still reports findings from the rules this page leaves out. Severa
 note where they describe something not built.
 
 Every transcript on the page is real output, either from a run of today's `tiger check`
-or, where a section says so, from another run. A finding's wording in a transcript can
+or, where a section says so, from a prototype run on querator. A finding's wording in a transcript can
 differ from the wording the finished tool will print.
 
 The rule reference lists every rule tiger enforces today, and the specification marks
@@ -212,8 +212,8 @@ own body does. The filter keeps `os`, `net`, `time`, pgx, and badger, and drops
 `strings`, `sort`, and `fmt`. The report also skips generated files, and it shows
 `context.Context`.
 
-That filtering changes what the report shows in practice. On ten querator commits, the
-report printed five lines, two of them real changes. On git-server's head commit it
+That filtering changes what the report shows in practice. On ten querator commits, a
+prototype of the report printed five lines, two of them real changes. On git-server's head commit it
 printed 173 lines, 110 of them from generated protobuf code. Skipping generated files
 and applying the filter brought that down to 36 hand-written lines.
 
@@ -224,7 +224,7 @@ Each known blind spot is covered by a test:
 - Moving a call into a separate free function reads as one call removed and one added.
 - Renaming a type reads as all of its calls removed and re-added.
 
-The transcript and the counts above come from runs on querator and git-server.
+The transcript and the counts above come from a prototype run on querator and git-server.
 
 ## Key Concepts in Tiger
 
@@ -738,7 +738,7 @@ change once the decided goroutine rules are built.
 The remaining transcripts each come from their own source:
 - The `tiger golangci` audit is against a config that `tiger golangci --init` generated,
   with one setting changed by hand.
-- The `tiger changed` output comes from a run against querator.
+- The `tiger changed` output comes from a prototype run against querator.
 - The `Clock` and `Expire` code is illustrative.
 
 ## References

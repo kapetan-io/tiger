@@ -69,7 +69,7 @@ ENG-203 settles the output format.
 ## Consequences
 
 - A reviewer sees which struct started calling something new, and there is no annotation an agent
-  can edit to hide it. The `tiger changed` report printed 5
+  can edit to hide it. A prototype of the `tiger changed` report printed 5
   lines over 10 querator commits, 2 of them real: commit aeb014c, where the daemon starts
   constructing the Postgres stores. On git-server's head commit, the mixed filter and skipping
   generated files bring 173 lines down to 36 hand-written ones.

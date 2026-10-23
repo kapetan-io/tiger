@@ -23,8 +23,8 @@ name their context `_`, so nothing can cancel them. The specification's B1 alrea
 store is finite" as a bound, since a store with no declared limit is bounded by whatever runs out
 first.
 
-Tiger never reads a `//tiger:batched` reason. The same reason on a
-cursor that returns 50 rows and on one that never runs out gets the same verdict. The second never returns. A `//tiger:variant` is the opposite case: tiger proves it, and every
+Tiger never reads a `//tiger:batched` reason. A cursor that returns 50 rows and one that never runs out get the same verdict
+when they carry the same reason. The second never returns. A `//tiger:variant` is the opposite case: tiger proves it, and every
 false variant is blocked. ADR-0004 also left TS-V01 firing on loops TS-S02
 waived, the clash tracked as ENG-183.
 
@@ -75,4 +75,4 @@ pass so the scan can be cancelled.
   correctness bug for tests and review, not a loop that never ends.
 - Tiger cannot see the short page in the shape that counts every row read: its only other exit
   drains the cursor, so the counter reads as a page size. The "filtered page" pattern
-  covers that gap.
+  (`patterns/filtered-page`) covers that gap.

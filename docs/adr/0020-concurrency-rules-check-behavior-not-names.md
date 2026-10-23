@@ -85,5 +85,5 @@ above.
   goroutine that exits just after `Shutdown`, so the static checks stay.
 - Whether every waiter also selects on `done` is beyond any of these rules. The shutdown-loop
   pattern covers it.
-- This revives ENG-177 as revised. Each fixture above becomes
+- This revives ENG-177. Each fixture above becomes
   an analyzer test case, and both codebases are rerun.
