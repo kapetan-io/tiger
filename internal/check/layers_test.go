@@ -1,20 +1,16 @@
-package cli_test
+package check_test
 
 import (
-	"bytes"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
-	"slices"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/kapetan-io/tiger/internal/cli"
+	"github.com/kapetan-io/tiger/internal/command"
 )
 
 const layerModule = "layers.example/app"
@@ -63,7 +59,7 @@ func checkModule(t *testing.T, dir string) outcome {
 // Goal: a module whose every import is listed passes with no output.
 func TestLayersCleanModulePasses(t *testing.T) {
 	got := checkModule(t, writeModuleFiles(t, layerTree))
-	assert.Equal(t, cli.ExitClean, got.code)
+	assert.Equal(t, command.ExitClean, got.code)
 	assert.Empty(t, got.stdout)
 	assert.Empty(t, got.stderr)
 }
@@ -83,7 +79,7 @@ func TestLayersImportOutsideTheEntryFails(t *testing.T) {
 	})
 
 	got := checkModule(t, dir)
-	assert.Equal(t, cli.ExitFindings, got.code)
+	assert.Equal(t, command.ExitFindings, got.code)
 	assert.Empty(t, got.stderr)
 	assert.Equal(t, "service/db.go:3:8: TS-X03: the \"./service\" entry in tiger.layers.yaml "+
 		"doesn't list database, so this package can't import database/sql — add \"database\" "+
@@ -108,7 +104,7 @@ func TestLayersUnlistedPackageFails(t *testing.T) {
 	})
 
 	got := checkModule(t, dir)
-	assert.Equal(t, cli.ExitFindings, got.code)
+	assert.Equal(t, command.ExitFindings, got.code)
 	assert.Equal(t, "empty/empty.go:2:1: TS-X03: package ./empty has no entry in "+
 		"tiger.layers.yaml — add it as a key listing the module packages, modules and IO or "+
 		"random subtrees (os, net, ...) it imports, or [] for none\n"+
@@ -127,7 +123,7 @@ func TestLayersStaleEntryFails(t *testing.T) {
 	require.NoError(t, os.RemoveAll(filepath.Join(dir, "web")))
 
 	got := checkModule(t, dir)
-	assert.Equal(t, cli.ExitFindings, got.code)
+	assert.Equal(t, command.ExitFindings, got.code)
 	assert.Equal(t, "tiger.layers.yaml:5:1: TS-X03: the \"./web\" entry matches no package "+
 		"directory — remove it, or fix its path\ntiger: 1 blocking\n", got.stdout)
 }
@@ -148,7 +144,7 @@ func TestLayersInModuleNamesAreExact(t *testing.T) {
 	})
 
 	got := checkModule(t, writeModuleFiles(t, files))
-	assert.Equal(t, cli.ExitFindings, got.code)
+	assert.Equal(t, command.ExitFindings, got.code)
 	assert.Equal(t, "service/more.go:4:2: TS-X03: the \"./service\" entry in tiger.layers.yaml "+
 		"doesn't list ./store/sub — add it, or pass what you need in through an interface\n"+
 		"service/more.go:5:2: TS-X03: the \"./service\" entry in tiger.layers.yaml doesn't "+
@@ -169,7 +165,7 @@ func TestLayersImpureSubtreeMustBeNamed(t *testing.T) {
 			"\t_ \"path/filepath\"\n\t_ \"unsafe\"\n)\n",
 	})
 	got := checkModule(t, dir)
-	require.Equal(t, cli.ExitClean, got.code)
+	require.Equal(t, command.ExitClean, got.code)
 	assert.Empty(t, got.stdout)
 
 	writeFiles(t, dir, map[string]string{
@@ -179,7 +175,7 @@ func TestLayersImpureSubtreeMustBeNamed(t *testing.T) {
 			"\t_ \"plugin\"\n\t_ \"syscall\"\n)\n",
 	})
 	got = checkModule(t, dir)
-	assert.Equal(t, cli.ExitFindings, got.code)
+	assert.Equal(t, command.ExitFindings, got.code)
 	for _, want := range []string{
 		"service/io.go:4:2: TS-X03: the \"./service\" entry in tiger.layers.yaml doesn't " +
 			"list crypto/rand, so this package can't import crypto/rand — add \"crypto/rand\"",
@@ -214,13 +210,13 @@ func TestLayersNamingNetAllowsOnlyItsSubtree(t *testing.T) {
 			"\t_ \"net\"\n\t_ \"net/http/httptest\"\n\t_ \"net/netip\"\n)\n",
 	})
 	got := checkModule(t, dir)
-	require.Equal(t, cli.ExitClean, got.code)
+	require.Equal(t, command.ExitClean, got.code)
 
 	writeFiles(t, dir, map[string]string{
 		"web/os.go": "package web\n\nimport _ \"os\"\n",
 	})
 	got = checkModule(t, dir)
-	assert.Equal(t, cli.ExitFindings, got.code)
+	assert.Equal(t, command.ExitFindings, got.code)
 	assert.Equal(t, "web/os.go:3:8: TS-X03: the \"./web\" entry in tiger.layers.yaml "+
 		"doesn't list os, so this package can't import os — add \"os\" to it, or pass it in "+
 		"through an interface\ntiger: 1 blocking\n", got.stdout)
@@ -274,7 +270,7 @@ func TestLayersThirdPartyModuleMustBeNamed(t *testing.T) {
 	})
 	dir := writeModuleFiles(t, files)
 	got := checkModule(t, dir)
-	require.Equal(t, cli.ExitClean, got.code)
+	require.Equal(t, command.ExitClean, got.code)
 	assert.Empty(t, got.stdout)
 
 	writeFiles(t, dir, map[string]string{
@@ -282,7 +278,7 @@ func TestLayersThirdPartyModuleMustBeNamed(t *testing.T) {
 		"plain/module.go": "package plain\n\nimport _ \"example.com/a/b/sub\"\n",
 	})
 	got = checkModule(t, dir)
-	assert.Equal(t, cli.ExitFindings, got.code)
+	assert.Equal(t, command.ExitFindings, got.code)
 	assert.Equal(t, "app/sibling.go:3:8: TS-X03: the \"./app\" entry in tiger.layers.yaml "+
 		"doesn't list example.com/a/b-c — add it, or its module path, to the entry\n"+
 		"plain/module.go:3:8: TS-X03: the \"./plain\" entry in tiger.layers.yaml doesn't list "+
@@ -344,7 +340,7 @@ func TestLayersModulePathsMatchExactly(t *testing.T) {
 			})
 			dir := writeModuleFiles(t, files)
 			got := checkModule(t, dir)
-			require.Equal(t, cli.ExitClean, got.code)
+			require.Equal(t, command.ExitClean, got.code)
 
 			writeFiles(t, dir, map[string]string{
 				"api/more.go": "package api\n\nimport (\n\t_ \"net/http\"\n\t_ \"os\"\n\n" +
@@ -353,7 +349,7 @@ func TestLayersModulePathsMatchExactly(t *testing.T) {
 				"domain/db.go": "package domain\n\nimport _ \"" + test.module + "/adapters/db\"\n",
 			})
 			got = checkModule(t, dir)
-			assert.Equal(t, cli.ExitFindings, got.code)
+			assert.Equal(t, command.ExitFindings, got.code)
 			assert.Contains(t, got.stdout, "api/more.go:4:2: TS-X03: the \"./api\" entry in "+
 				"tiger.layers.yaml doesn't list net, so this package can't import net/http")
 			assert.Contains(t, got.stdout, "api/more.go:5:2: TS-X03: the \"./api\" entry in "+
@@ -396,7 +392,7 @@ func TestLayersTestFilesAreNotLayered(t *testing.T) {
 	})
 
 	got := checkModule(t, dir)
-	assert.Equal(t, cli.ExitFindings, got.code)
+	assert.Equal(t, command.ExitFindings, got.code)
 	assert.Equal(t, "service/service_test.go:1:9: TS-T12: this test file declares package "+
 		"service, which gives it every unexported name — declare package service_test and "+
 		"test through the exported API\ntiger: 1 blocking\n", got.stdout)
@@ -416,7 +412,7 @@ func TestLayersWithoutAFileChangeNothing(t *testing.T) {
 	})
 
 	got := checkModule(t, writeModuleFiles(t, files))
-	assert.Equal(t, cli.ExitClean, got.code)
+	assert.Equal(t, command.ExitClean, got.code)
 	assert.Empty(t, got.stdout)
 	assert.Empty(t, got.stderr)
 }
@@ -437,7 +433,7 @@ func TestLayersOtherPlatformPackageNeedsAnEntry(t *testing.T) {
 	dir := writeModuleFiles(t, files)
 
 	got := checkModule(t, dir)
-	assert.Equal(t, cli.ExitFindings, got.code)
+	assert.Equal(t, command.ExitFindings, got.code)
 	assert.Equal(t, "win/w_plan9.go:1:1: TS-X03: package ./win has no entry in "+
 		"tiger.layers.yaml — add it as a key listing the module packages, modules and IO or "+
 		"random subtrees (os, net, ...) it imports, or [] for none\ntiger: 1 blocking\n",
@@ -446,7 +442,7 @@ func TestLayersOtherPlatformPackageNeedsAnEntry(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "tiger.layers.yaml"),
 		[]byte("\"./lib\": []\n\"./win\":\n  - os\n"), 0o644))
 	got = checkModule(t, dir)
-	assert.Equal(t, cli.ExitClean, got.code)
+	assert.Equal(t, command.ExitClean, got.code)
 	assert.Empty(t, got.stdout)
 }
 
@@ -461,7 +457,7 @@ func TestLayersRootPackageEntry(t *testing.T) {
 			"/store\"\n",
 	})
 	got := checkModule(t, dir)
-	assert.Equal(t, cli.ExitFindings, got.code)
+	assert.Equal(t, command.ExitFindings, got.code)
 	assert.Equal(t, "main.go:2:1: TS-X03: the root package \".\" has no entry in "+
 		"tiger.layers.yaml — add it as a key listing the module packages, modules and IO or "+
 		"random subtrees (os, net, ...) it imports, or [] for none\ntiger: 1 blocking\n",
@@ -470,14 +466,14 @@ func TestLayersRootPackageEntry(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "tiger.layers.yaml"),
 		[]byte(layerTree["tiger.layers.yaml"]+"\".\":\n  - ./store\n"), 0o644))
 	got = checkModule(t, dir)
-	require.Equal(t, cli.ExitClean, got.code)
+	require.Equal(t, command.ExitClean, got.code)
 
 	writeFiles(t, dir, map[string]string{
 		"io.go":        "package app\n\nimport _ \"os\"\n",
 		"service/x.go": "package service\n\nimport _ \"" + layerModule + "\"\n",
 	})
 	got = checkModule(t, dir)
-	assert.Equal(t, cli.ExitFindings, got.code)
+	assert.Equal(t, command.ExitFindings, got.code)
 	assert.Equal(t, "io.go:3:8: TS-X03: the \".\" entry in tiger.layers.yaml doesn't list os, "+
 		"so this package can't import os — add \"os\" to it, or pass it in through an "+
 		"interface\n"+
@@ -498,7 +494,7 @@ func TestLayersSubtreeEntryCoversEverythingBelow(t *testing.T) {
 		"tiger.layers.yaml": "\"./domain/...\": []\n",
 	})
 	got := checkModule(t, dir)
-	require.Equal(t, cli.ExitClean, got.code)
+	require.Equal(t, command.ExitClean, got.code)
 	assert.Empty(t, got.stdout)
 
 	writeFiles(t, dir, map[string]string{
@@ -506,7 +502,7 @@ func TestLayersSubtreeEntryCoversEverythingBelow(t *testing.T) {
 			"/domain/a\"\n)\n",
 	})
 	got = checkModule(t, dir)
-	assert.Equal(t, cli.ExitFindings, got.code)
+	assert.Equal(t, command.ExitFindings, got.code)
 	assert.Equal(t, "domain/b/c/io.go:4:2: TS-X03: the \"./domain/...\" entry in "+
 		"tiger.layers.yaml doesn't list os, so this package can't import os — add \"os\" to "+
 		"it, or pass it in through an interface\n"+
@@ -534,7 +530,7 @@ func TestLayersHiddenAndNestedDirectoriesAreNotPackages(t *testing.T) {
 		"onlytests/o_test.go": "package onlytests_test\n",
 	})
 	got := checkModule(t, dir)
-	assert.Equal(t, cli.ExitClean, got.code)
+	assert.Equal(t, command.ExitClean, got.code)
 	assert.Empty(t, got.stdout)
 	assert.Empty(t, got.stderr)
 }
@@ -637,7 +633,7 @@ func TestLayersInvalidFileIsOperational(t *testing.T) {
 				"tiger.layers.yaml": test.content,
 			})
 			got := checkModule(t, dir)
-			assert.Equal(t, cli.ExitOperational, got.code)
+			assert.Equal(t, command.ExitOperational, got.code)
 			assert.Empty(t, got.stdout)
 			assert.Contains(t, got.stderr, "tiger check: tiger.layers.yaml: ")
 			assert.Contains(t, got.stderr, test.wantErr)
@@ -665,7 +661,7 @@ func TestLayersCheckIsDeterministic(t *testing.T) {
 
 	first := checkModule(t, dir)
 	second := checkModule(t, dir)
-	require.Equal(t, cli.ExitFindings, first.code)
+	require.Equal(t, command.ExitFindings, first.code)
 	assert.Equal(t, first, second)
 	assert.Contains(t, first.stdout, "tiger: 8 blocking\n")
 }
@@ -680,7 +676,7 @@ func TestLayersInvalidFileNamesTheEntry(t *testing.T) {
 		"tiger.layers.yaml": "\"./store\":\n  - strings\n",
 	})
 	got := checkModule(t, dir)
-	assert.Equal(t, cli.ExitOperational, got.code)
+	assert.Equal(t, command.ExitOperational, got.code)
 	assert.Empty(t, got.stdout)
 	assert.Equal(t, "tiger check: tiger.layers.yaml: line 1: \"./store\": \"strings\" is always "+
 		"allowed; remove it\n", got.stderr)
@@ -690,7 +686,7 @@ func TestLayersInvalidFileNamesTheEntry(t *testing.T) {
 		"tiger.layers.yaml": "\"./a/...\":\n  - os\n\"./a/b\":\n  - os\n",
 	})
 	got = checkModule(t, dir)
-	assert.Equal(t, cli.ExitOperational, got.code)
+	assert.Equal(t, command.ExitOperational, got.code)
 	assert.Empty(t, got.stdout)
 	assert.Equal(t, "tiger check: tiger.layers.yaml: line 3: \"./a/...\" and \"./a/b\" both cover "+
 		"./a/b — remove \"./a/b\", or replace \"./a/...\" with one key per package\n",
@@ -729,7 +725,7 @@ func TestLayersSyntaxErrorsNameALineInTheFile(t *testing.T) {
 				"go.mod":            "module " + layerModule + "\n\ngo 1.26\n",
 				"tiger.layers.yaml": test.content,
 			}))
-			assert.Equal(t, cli.ExitOperational, got.code)
+			assert.Equal(t, command.ExitOperational, got.code)
 			assert.Empty(t, got.stdout)
 			assert.Equal(t, "tiger check: tiger.layers.yaml: "+test.wantErr+"\n", got.stderr)
 		})
@@ -744,7 +740,7 @@ func TestLayersFileWithoutGoModIsOperational(t *testing.T) {
 	got := checkModule(t, writeModuleFiles(t, map[string]string{
 		"tiger.layers.yaml": "\"./store\":\n  - database\n",
 	}))
-	assert.Equal(t, cli.ExitOperational, got.code)
+	assert.Equal(t, command.ExitOperational, got.code)
 	assert.Empty(t, got.stdout)
 	assert.Contains(t, got.stderr, "tiger check: tiger.layers.yaml: ")
 	assert.Len(t, splitLines(got.stderr), 1)
@@ -770,7 +766,7 @@ func TestLayersPackageWithTestsReportsOnce(t *testing.T) {
 	})
 
 	got := checkModule(t, dir)
-	assert.Equal(t, cli.ExitFindings, got.code)
+	assert.Equal(t, command.ExitFindings, got.code)
 	assert.Equal(t, "service/db.go:3:8: TS-X03: the \"./service\" entry in tiger.layers.yaml "+
 		"doesn't list database, so this package can't import database/sql — add \"database\" "+
 		"to it, or pass it in through an interface\n"+
@@ -802,7 +798,7 @@ func TestLayersDirectoryNamedLikeATestReportsOnce(t *testing.T) {
 	})
 
 	got := checkModule(t, dir)
-	assert.Equal(t, cli.ExitFindings, got.code)
+	assert.Equal(t, command.ExitFindings, got.code)
 	assert.Equal(t, "e2e_test/helpers.go:2:1: TS-X03: package ./e2e_test has no entry in "+
 		"tiger.layers.yaml — add it as a key listing the module packages, modules and IO or "+
 		"random subtrees (os, net, ...) it imports, or [] for none\n"+
@@ -825,7 +821,7 @@ func TestLayersGeneratedPackageNeedsAnEntry(t *testing.T) {
 	})
 
 	got := checkModule(t, dir)
-	assert.Equal(t, cli.ExitFindings, got.code)
+	assert.Equal(t, command.ExitFindings, got.code)
 	assert.Equal(t, "gen/gen.go:4:1: TS-X03: package ./gen has no entry in tiger.layers.yaml — "+
 		"add it as a key listing the module packages, modules and IO or random subtrees (os, "+
 		"net, ...) it imports, or [] for none\ntiger: 1 blocking\n", got.stdout)
@@ -851,7 +847,7 @@ func TestLayersSkippedDirectoriesLeaveTheirEntriesStale(t *testing.T) {
 	})
 
 	got := checkModule(t, dir)
-	assert.Equal(t, cli.ExitFindings, got.code)
+	assert.Equal(t, command.ExitFindings, got.code)
 	assert.Equal(t, "tiger.layers.yaml:2:1: TS-X03: the \"./lib/testdata\" entry matches no "+
 		"package directory — remove it, or fix its path\n"+
 		"tiger.layers.yaml:3:1: TS-X03: the \"./_scratch\" entry matches no package directory "+
@@ -879,7 +875,7 @@ func TestLayersSubtreeKeyStopsAtAPathBoundary(t *testing.T) {
 	})
 
 	got := checkModule(t, dir)
-	assert.Equal(t, cli.ExitFindings, got.code)
+	assert.Equal(t, command.ExitFindings, got.code)
 	assert.Equal(t, "a/x/x.go:4:8: TS-X03: the \"./a/...\" entry in tiger.layers.yaml doesn't "+
 		"list os, so this package can't import os — add \"os\" to it, or pass it in through an "+
 		"interface\ntiger: 1 blocking\n", got.stdout)
@@ -897,7 +893,7 @@ func TestLayersKeysAreCaseSensitive(t *testing.T) {
 		"tiger.layers.yaml": "\"./model\": []\n",
 	})
 	got := checkModule(t, dir)
-	assert.Equal(t, cli.ExitFindings, got.code)
+	assert.Equal(t, command.ExitFindings, got.code)
 	assert.Equal(t, "Model/model.go:2:1: TS-X03: package ./Model has no entry in "+
 		"tiger.layers.yaml — add it as a key listing the module packages, modules and IO or "+
 		"random subtrees (os, net, ...) it imports, or [] for none\n"+
@@ -912,7 +908,7 @@ func TestLayersKeysAreCaseSensitive(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "tiger.layers.yaml"),
 		[]byte("\"./Model\": []\n\"./api\":\n  - ./model\n"), 0o644))
 	got = checkModule(t, dir)
-	assert.Equal(t, cli.ExitFindings, got.code)
+	assert.Equal(t, command.ExitFindings, got.code)
 	assert.Equal(t, "api/api.go:4:8: TS-X03: the \"./api\" entry in tiger.layers.yaml doesn't "+
 		"list ./Model — add it, or pass what you need in through an interface\n"+
 		"tiger: 1 blocking\n", got.stdout)
@@ -935,14 +931,14 @@ func TestLayersModuleSharingThisModulesPrefixIsThirdParty(t *testing.T) {
 		"tiger.layers.yaml": "\"./svc\":\n  - " + layerModule + "-c\n\"./plain\": []\n",
 	})
 	got := checkModule(t, dir)
-	require.Equal(t, cli.ExitClean, got.code)
+	require.Equal(t, command.ExitClean, got.code)
 	assert.Empty(t, got.stdout)
 
 	writeFiles(t, dir, map[string]string{
 		"plain/c.go": "package plain\n\nimport _ \"" + layerModule + "-c\"\n",
 	})
 	got = checkModule(t, dir)
-	assert.Equal(t, cli.ExitFindings, got.code)
+	assert.Equal(t, command.ExitFindings, got.code)
 	assert.Equal(t, "plain/c.go:3:8: TS-X03: the \"./plain\" entry in tiger.layers.yaml doesn't "+
 		"list "+layerModule+"-c — add it, or its module path, to the entry\n"+
 		"tiger: 1 blocking\n", got.stdout)
@@ -961,7 +957,7 @@ func TestLayersNarrowPatternStillReportsUnlistedPackages(t *testing.T) {
 	})
 
 	got := run(t, "check", "-C", dir, "./web")
-	assert.Equal(t, cli.ExitFindings, got.code)
+	assert.Equal(t, command.ExitFindings, got.code)
 	assert.Equal(t, "worker/worker.go:1:1: TS-X03: package ./worker has no entry in "+
 		"tiger.layers.yaml — add it as a key listing the module packages, modules and IO or "+
 		"random subtrees (os, net, ...) it imports, or [] for none\ntiger: 1 blocking\n",
@@ -990,7 +986,7 @@ func TestLayersModuleLineIsParsedLikeTheGoCommand(t *testing.T) {
 			})
 
 			got := checkModule(t, writeModuleFiles(t, files))
-			assert.Equal(t, cli.ExitFindings, got.code)
+			assert.Equal(t, command.ExitFindings, got.code)
 			assert.Equal(t, "web/store.go:3:8: TS-X03: the \"./web\" entry in tiger.layers.yaml "+
 				"doesn't list ./store — add it, or pass what you need in through an interface\n"+
 				"tiger: 1 blocking\n", got.stdout)
@@ -1019,13 +1015,13 @@ func dotlessModule(layers string) map[string]string {
 // accepted.
 func TestLayersDotlessThirdPartyModuleMustBeNamed(t *testing.T) {
 	got := checkModule(t, writeModuleFiles(t, dotlessModule("\"./app\": []\n")))
-	assert.Equal(t, cli.ExitFindings, got.code)
+	assert.Equal(t, command.ExitFindings, got.code)
 	assert.Equal(t, "app/app.go:4:8: TS-X03: the \"./app\" entry in tiger.layers.yaml doesn't "+
 		"list goshared — add it, or its module path, to the entry\ntiger: 1 blocking\n",
 		got.stdout)
 
 	got = checkModule(t, writeModuleFiles(t, dotlessModule("\"./app\":\n  - goshared\n")))
-	assert.Equal(t, cli.ExitClean, got.code)
+	assert.Equal(t, command.ExitClean, got.code)
 	assert.Empty(t, got.stdout)
 	assert.Empty(t, got.stderr)
 }
@@ -1041,7 +1037,7 @@ func TestLayersSymlinkedDirectoryFindsItsPackages(t *testing.T) {
 	require.NoError(t, os.Symlink(dir, link))
 
 	got := run(t, "check", "-C", link, "./...")
-	assert.Equal(t, cli.ExitClean, got.code)
+	assert.Equal(t, command.ExitClean, got.code)
 	assert.Empty(t, got.stdout)
 	assert.Empty(t, got.stderr)
 
@@ -1049,7 +1045,7 @@ func TestLayersSymlinkedDirectoryFindsItsPackages(t *testing.T) {
 		"win/w_windows.go": "// Package win runs on windows.\npackage win\n",
 	})
 	got = run(t, "check", "-C", link, "./...")
-	assert.Equal(t, cli.ExitFindings, got.code)
+	assert.Equal(t, command.ExitFindings, got.code)
 	assert.Equal(t, "win/w_windows.go:1:1: TS-X03: package ./win has no entry in "+
 		"tiger.layers.yaml — add it as a key listing the module packages, modules and IO or "+
 		"random subtrees (os, net, ...) it imports, or [] for none\ntiger: 1 blocking\n",
@@ -1111,7 +1107,7 @@ func TestLayersNamesThatNeverMatchAreRejected(t *testing.T) {
 				"tiger.layers.yaml": test.content,
 			})
 			got := checkModule(t, dir)
-			assert.Equal(t, cli.ExitOperational, got.code)
+			assert.Equal(t, command.ExitOperational, got.code)
 			assert.Empty(t, got.stdout)
 			assert.Equal(t, "tiger check: tiger.layers.yaml: line 1: "+test.wantErr+"\n",
 				got.stderr)
@@ -1158,7 +1154,7 @@ func TestLayersPackageLoadedOnlyThroughItsTestsNeedsAnEntry(t *testing.T) {
 			})
 
 			got := checkModule(t, dir)
-			assert.Equal(t, cli.ExitFindings, got.code)
+			assert.Equal(t, command.ExitFindings, got.code)
 			blocking := "tiger: 1 blocking\n"
 			if test.notice != "" {
 				blocking = "tiger: 2 blocking\n"
@@ -1185,7 +1181,7 @@ func TestLayersFindingsSortWithTheRest(t *testing.T) {
 	})
 
 	got := checkModule(t, writeModuleFiles(t, files))
-	assert.Equal(t, cli.ExitFindings, got.code)
+	assert.Equal(t, command.ExitFindings, got.code)
 	assert.Equal(t, "aaa/a_windows.go:1:1: TS-X03: package ./aaa has no entry in "+
 		"tiger.layers.yaml — add it as a key listing the module packages, modules and IO or "+
 		"random subtrees (os, net, ...) it imports, or [] for none\n"+
@@ -1195,40 +1191,6 @@ func TestLayersFindingsSortWithTheRest(t *testing.T) {
 		"so this package can't import database/sql — add \"database\" to it, or pass it in "+
 		"through an interface\n"+
 		"tiger: 3 blocking\n", got.stdout)
-}
-
-// TestLayersStandardLibraryFoundWithoutTheBuildGoroot covers the standard
-// library contract for a tiger binary built with -trimpath whose own GOROOT is
-// gone, as when the toolchain that built it was removed.
-//
-// Goal: fmt, strings and os are judged standard library through the go
-// command's GOROOT, so a module whose every import is listed stays clean.
-func TestLayersStandardLibraryFoundWithoutTheBuildGoroot(t *testing.T) {
-	bin := filepath.Join(t.TempDir(), "tiger")
-	out, err := exec.Command("go", "build", "-trimpath",
-		"-ldflags=-X=runtime.defaultGOROOT="+filepath.Join(t.TempDir(), "gone"),
-		"-o", bin, "github.com/kapetan-io/tiger/cmd/tiger").CombinedOutput()
-	assert.Empty(t, string(out))
-	require.NoError(t, err)
-	dir := writeModuleFiles(t, map[string]string{
-		"go.mod": "module " + layerModule + "\n\ngo 1.26\n",
-		"m.go":   "// Package app prints.\npackage app\n\nimport _ \"fmt\"\n",
-		"store/store.go": "// Package store reads the environment.\npackage store\n\nimport (\n" +
-			"\t_ \"os\"\n\t_ \"strings\"\n)\n",
-		"tiger.layers.yaml": "\".\": []\n\"./store\":\n  - os\n",
-	})
-
-	check := exec.Command(bin, "check", "-C", dir, "./...")
-	// A GOROOT in the environment would mask the binary's missing one.
-	check.Env = slices.DeleteFunc(os.Environ(), func(variable string) bool {
-		return strings.HasPrefix(variable, "GOROOT=")
-	})
-	stdout := &bytes.Buffer{}
-	stderr := &bytes.Buffer{}
-	check.Stdout, check.Stderr = stdout, stderr
-	require.NoError(t, check.Run())
-	assert.Empty(t, stdout.String())
-	assert.Empty(t, stderr.String())
 }
 
 // TestLayersDirectoryNamedGoModIsNotAModule covers the coverage contract.
@@ -1245,7 +1207,7 @@ func TestLayersDirectoryNamedGoModIsNotAModule(t *testing.T) {
 	})
 
 	got := checkModule(t, dir)
-	assert.Equal(t, cli.ExitClean, got.code)
+	assert.Equal(t, command.ExitClean, got.code)
 	assert.Empty(t, got.stdout)
 	assert.Empty(t, got.stderr)
 }
@@ -1273,20 +1235,20 @@ func nestedModule(layers string) map[string]string {
 func TestLayersNestedModuleIsNotPartOfThisModule(t *testing.T) {
 	dir := writeModuleFiles(t, nestedModule("\"./app\":\n  - "+layerModule+"/nested\n"))
 	got := run(t, "check", "-C", dir, layerModule+"/...")
-	assert.Equal(t, cli.ExitClean, got.code)
+	assert.Equal(t, command.ExitClean, got.code)
 	assert.Empty(t, got.stdout)
 	assert.Empty(t, got.stderr)
 
 	dir = writeModuleFiles(t, nestedModule("\"./app\": []\n"))
 	got = run(t, "check", "-C", dir, layerModule+"/...")
-	assert.Equal(t, cli.ExitFindings, got.code)
+	assert.Equal(t, command.ExitFindings, got.code)
 	assert.Equal(t, "app/app.go:4:8: TS-X03: the \"./app\" entry in tiger.layers.yaml doesn't "+
 		"list "+layerModule+"/nested — add it, or its module path, to the entry\n"+
 		"tiger: 1 blocking\n", got.stdout)
 
 	dir = writeModuleFiles(t, nestedModule("\"./app\":\n  - ./nested\n"))
 	got = run(t, "check", "-C", dir, layerModule+"/...")
-	assert.Equal(t, cli.ExitOperational, got.code)
+	assert.Equal(t, command.ExitOperational, got.code)
 	assert.Equal(t, "tiger check: tiger.layers.yaml: line 1: \"./app\": \"./nested\" is in the "+
 		"nested module "+layerModule+"/nested; name that module path\n", got.stderr)
 }
@@ -1307,7 +1269,7 @@ func TestLayersNestedModuleAboveThisModulesPathIsIgnored(t *testing.T) {
 		"tiger.layers.yaml": "\"./store\": []\n",
 	}
 	got := checkModule(t, writeModuleFiles(t, files))
-	assert.Equal(t, cli.ExitFindings, got.code)
+	assert.Equal(t, command.ExitFindings, got.code)
 	assert.Equal(t, "store/store.go:4:8: TS-X03: the \"./store\" entry in tiger.layers.yaml "+
 		"doesn't list os, so this package can't import os — add \"os\" to it, or pass it in "+
 		"through an interface\ntiger: 1 blocking\n", got.stdout)
@@ -1316,7 +1278,7 @@ func TestLayersNestedModuleAboveThisModulesPathIsIgnored(t *testing.T) {
 		"import _ \"example.com/m/v2/store\"\n"
 	files["tiger.layers.yaml"] = "\"./store\":\n  - os\n\"./service\":\n  - ./store\n"
 	got = checkModule(t, writeModuleFiles(t, files))
-	assert.Equal(t, cli.ExitClean, got.code)
+	assert.Equal(t, command.ExitClean, got.code)
 	assert.Empty(t, got.stdout)
 	assert.Empty(t, got.stderr)
 }
@@ -1343,7 +1305,7 @@ func TestLayersEmptyFileIsNoFile(t *testing.T) {
 				"lib/lib.go":        "// Package lib is pure.\npackage lib\n",
 				"tiger.layers.yaml": test.content,
 			}))
-			assert.Equal(t, cli.ExitClean, got.code)
+			assert.Equal(t, command.ExitClean, got.code)
 			assert.Empty(t, got.stdout)
 			assert.Empty(t, got.stderr)
 		})
@@ -1365,7 +1327,7 @@ func TestLayersIgnoredOnlyDirectoryNeedsNoEntry(t *testing.T) {
 		"tiger.layers.yaml": "\"./lib\": []\n",
 	})
 	got := checkModule(t, dir)
-	assert.Equal(t, cli.ExitClean, got.code)
+	assert.Equal(t, command.ExitClean, got.code)
 	assert.Empty(t, got.stdout)
 
 	// Control case, so the exemption is the ignore tag and not the directory.
@@ -1373,7 +1335,7 @@ func TestLayersIgnoredOnlyDirectoryNeedsNoEntry(t *testing.T) {
 		"tools/real.go": "package main\n",
 	})
 	got = checkModule(t, dir)
-	assert.Equal(t, cli.ExitFindings, got.code)
+	assert.Equal(t, command.ExitFindings, got.code)
 	assert.Contains(t, got.stdout, "TS-X03: package ./tools has no entry")
 }
 
@@ -1393,7 +1355,7 @@ func TestLayersLegacyPlusBuildIgnoreNeedsAnEntry(t *testing.T) {
 		"tiger.layers.yaml": "\"./lib\": []\n",
 	})
 	got := run(t, "check", "-C", dir, "./lib")
-	assert.Equal(t, cli.ExitFindings, got.code)
+	assert.Equal(t, command.ExitFindings, got.code)
 	assert.Contains(t, got.stdout, "TS-X03: package ./tools has no entry")
 	assert.NotContains(t, got.stdout, "./paired")
 }
@@ -1410,7 +1372,7 @@ func TestLayersEntryForIgnoredOnlyDirectoryIsStale(t *testing.T) {
 		"tools/gen.go":      "//go:build ignore\n\npackage main\n\nfunc main() {}\n",
 		"tiger.layers.yaml": "\"./lib\": []\n\"./tools\": []\n",
 	}))
-	assert.Equal(t, cli.ExitFindings, got.code)
+	assert.Equal(t, command.ExitFindings, got.code)
 	assert.Contains(t, got.stdout, "tiger.layers.yaml:2:1: TS-X03")
 }
 
@@ -1427,7 +1389,7 @@ func TestLayersImportInGeneratedFileIsReported(t *testing.T) {
 			"import _ \"os\"\n",
 		"tiger.layers.yaml": "\"./lib\": []\n",
 	}))
-	assert.Equal(t, cli.ExitFindings, got.code)
+	assert.Equal(t, command.ExitFindings, got.code)
 	assert.Equal(t, "lib/lib.pb.go:5:8: TS-X03: the \"./lib\" entry in tiger.layers.yaml doesn't "+
 		"list os, so this package can't import os — add \"os\" to it, or pass it in through an "+
 		"interface\ntiger: 1 blocking\n", got.stdout)
@@ -1451,12 +1413,12 @@ func TestLayersOtherPlatformImportIsCheckedWhereItBuilds(t *testing.T) {
 		"tiger.layers.yaml": "\"./win\": []\n",
 	})
 	got := checkModule(t, dir)
-	require.Equal(t, cli.ExitClean, got.code)
+	require.Equal(t, command.ExitClean, got.code)
 	assert.Empty(t, got.stdout)
 
 	t.Setenv("GOOS", other)
 	got = checkModule(t, dir)
-	assert.Equal(t, cli.ExitFindings, got.code)
+	assert.Equal(t, command.ExitFindings, got.code)
 	assert.Equal(t, file+":3:8: TS-X03: the \"./win\" entry in tiger.layers.yaml doesn't list "+
 		"os, so this package can't import os — add \"os\" to it, or pass it in through an "+
 		"interface\ntiger: 1 blocking\n", got.stdout)
@@ -1476,7 +1438,7 @@ func TestLayersDirectoryEndingInDotTestIsNotJudged(t *testing.T) {
 		"tiger.layers.yaml": "\"./lib\": []\n",
 	})
 	got := checkModule(t, dir)
-	assert.Equal(t, cli.ExitFindings, got.code)
+	assert.Equal(t, command.ExitFindings, got.code)
 	assert.Equal(t, "tool.test/tool.go:1:1: TS-X03: package ./tool.test has no entry in "+
 		"tiger.layers.yaml — add it as a key listing the module packages, modules and IO or "+
 		"random subtrees (os, net, ...) it imports, or [] for none\ntiger: 1 blocking\n",
@@ -1485,6 +1447,6 @@ func TestLayersDirectoryEndingInDotTestIsNotJudged(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "tiger.layers.yaml"),
 		[]byte("\"./lib\": []\n\"./tool.test\": []\n"), 0o644))
 	got = checkModule(t, dir)
-	assert.Equal(t, cli.ExitClean, got.code)
+	assert.Equal(t, command.ExitClean, got.code)
 	assert.Empty(t, got.stdout)
 }

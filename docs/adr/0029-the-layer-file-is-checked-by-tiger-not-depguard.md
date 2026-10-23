@@ -74,7 +74,7 @@ ENG-328's wording about a TS-D01 category.
 ## Consequences
 
 - Every case above is judged correctly. `TestLayersModulePathsMatchExactly` in
-  `internal/cli/layers_test.go` reproduces cases 1, 2, 3, 5 and 6, with the
+  `internal/check/layers_test.go` reproduces cases 1, 2, 3, 5 and 6, with the
   `go.opentelemetry.io` names standing in for case 4's `go.mongodb.org`, and
   `TestLayersKeysAreCaseSensitive` reproduces case 8. Case 7 is not tested: Go import paths can't
   hold `[` or `{`, and macOS can't hold a Windows path; tiger never builds a glob from a path.
@@ -107,5 +107,5 @@ ENG-328's wording about a TS-D01 category.
   only Go files carry `//go:build ignore` is not a package and needs no entry; an entry for one is
   reported as matching no package. A layer file with no keys is the same as no file. Each limit in
   how tiger decides, every one here but
-  the list of subtrees and cgo, has a test that pins it, in `internal/cli/layers_test.go` or, for
+  the list of subtrees and cgo, has a test that pins it, in `internal/check/layers_test.go` or, for
   the plugin's `.test` case, `plugin/plugin_test.go`.

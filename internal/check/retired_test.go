@@ -1,4 +1,4 @@
-package cli_test
+package check_test
 
 import (
 	"os"
@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/kapetan-io/tiger/internal/cli"
+	"github.com/kapetan-io/tiger/internal/command"
 )
 
 // sourceFile is one file of a throwaway module.
@@ -94,7 +94,7 @@ func Sides(s Shape) int {
 `})
 
 	got := run(t, "check", "-C", dir, "./...")
-	assert.Equal(t, cli.ExitClean, got.code)
+	assert.Equal(t, command.ExitClean, got.code)
 	assert.Empty(t, got.stdout)
 	assert.Empty(t, got.stderr)
 }
@@ -137,7 +137,7 @@ func TestFitsOne(t *testing.T) {
 `})
 
 	got := run(t, "check", "-C", dir, "./...")
-	assert.Equal(t, cli.ExitClean, got.code)
+	assert.Equal(t, command.ExitClean, got.code)
 	assert.Empty(t, got.stdout)
 	assert.Empty(t, got.stderr)
 }
@@ -177,7 +177,7 @@ func Deferred(f *os.File) {
 `})
 
 	got := run(t, "check", "-C", dir, "./...")
-	assert.Equal(t, cli.ExitFindings, got.code)
+	assert.Equal(t, command.ExitFindings, got.code)
 	assert.Empty(t, got.stderr)
 	assert.Equal(t, 3, strings.Count(got.stdout, "TS-E02: this error is discarded with _"))
 	assert.Contains(t, got.stdout, "store.go:8:")
@@ -205,7 +205,7 @@ func TestCheckRetiredDirectiveVerbsFailL09(t *testing.T) {
 			})
 
 			got := run(t, "check", "-C", dir, "./...")
-			assert.Equal(t, cli.ExitFindings, got.code)
+			assert.Equal(t, command.ExitFindings, got.code)
 			assert.Empty(t, got.stderr)
 			assert.Contains(t, got.stdout,
 				"TS-L09: //tiger:"+test.verb+" is not a directive tiger recognizes")

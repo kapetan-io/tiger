@@ -201,3 +201,12 @@ func readModule(t *testing.T, dir string) string {
 	require.FailNow(t, "go.mod has no module line")
 	return ""
 }
+
+// TestShippedGolangciConfigDropsNewFromRev covers the removed recommendation.
+//
+// Goal: the config adopters copy, config/golangci.yml, no longer mentions
+// --new-from-rev, which silently drops findings outside a diff (ADR-0022).
+func TestShippedGolangciConfigDropsNewFromRev(t *testing.T) {
+	shipped := readFile(t, filepath.Join("..", "..", "config", "golangci.yml"))
+	assert.NotContains(t, shipped, "new-from-rev")
+}

@@ -1,4 +1,4 @@
-package cli
+package check
 
 import (
 	"flag"
@@ -9,25 +9,34 @@ import (
 	"strings"
 
 	"github.com/kapetan-io/tiger/internal/budget"
+	"github.com/kapetan-io/tiger/internal/command"
 	"github.com/kapetan-io/tiger/internal/config"
 	"github.com/kapetan-io/tiger/internal/driver"
 	"github.com/kapetan-io/tiger/internal/layerfile"
 	"github.com/kapetan-io/tiger/internal/rules"
 )
 
-// runBudget is tiger budget: the same analysis as tiger check over the
+// BudgetUsage is tiger budget's entry in the command listing.
+const BudgetUsage = `  tiger budget [-C dir] [--write] [packages]
+      report packages over their tiger.budget.yaml rows; --write lowers
+      rows to the current counts (never raises); exit 0 within budget,
+      1 overrun, 2 operational failure
+`
+
+// Budget is tiger budget: the same analysis as tiger check over the
 // packages, printing only the ratchet's overrun groups, exit 1 on overrun.
 // --write additionally lowers tiger.budget.yaml to the current counts;
 // overrun rows stay as they were (tiger never raises a budget, ADR-0011).
-func runBudget(args []string, streams Streams) int {
+func Budget(args []string, streams command.Streams) int {
 	flags := flag.NewFlagSet("tiger budget", flag.ContinueOnError)
 	flags.SetOutput(streams.Stderr)
+	flags.Usage = func() { command.PrintUsage(flags, BudgetUsage) }
 	chdir := flags.String("C", ".", "run as if tiger was started in this directory")
 	write := flags.Bool("write", false,
 		"lower every analyzed row to its current count, creating missing rows and "+
 			"deleting rows at 0; never raises a row")
 	if err := flags.Parse(args); err != nil {
-		return ExitOperational
+		return command.ExitOperational
 	}
 	patterns := flags.Args()
 	if len(patterns) == 0 {
@@ -37,17 +46,17 @@ func runBudget(args []string, streams Streams) int {
 	setup, err := prepare(*chdir)
 	if err != nil {
 		fmt.Fprintf(streams.Stderr, "tiger budget: %v\n", err)
-		return ExitOperational
+		return command.ExitOperational
 	}
 	report, err := driver.Run(*chdir, patterns, rules.Analyzers(), rules.Finishers())
 	if err != nil {
 		fmt.Fprintf(streams.Stderr, "tiger budget: %v\n", err)
-		return ExitOperational
+		return command.ExitOperational
 	}
 	sorted, err := partition(setup.module, report.Findings)
 	if err != nil {
 		fmt.Fprintf(streams.Stderr, "tiger budget: %v\n", err)
-		return ExitOperational
+		return command.ExitOperational
 	}
 	budgets := setup.budgets
 	if *write {
@@ -64,13 +73,13 @@ func runBudget(args []string, streams Streams) int {
 		})
 		if err := budgets.Write(*chdir); err != nil {
 			fmt.Fprintf(streams.Stderr, "tiger budget: %v\n", err)
-			return ExitOperational
+			return command.ExitOperational
 		}
 	}
 	if printRatchet(streams, budgets, sorted) > 0 {
-		return ExitFindings
+		return command.ExitFindings
 	}
-	return ExitClean
+	return command.ExitClean
 }
 
 // setup is what every analysis-running command loads from the run
@@ -149,7 +158,7 @@ func (c budgetCounts) add(pkg string, entry rules.CustomRule, finding driver.Fin
 // positioned at the budget row, then every counted finding for that
 // package and code as an ordinary blocking line — and returns the number
 // of lines printed. Under budget nothing prints.
-func printRatchet(streams Streams, budgets *budget.File, sorted partitioned) int {
+func printRatchet(streams command.Streams, budgets *budget.File, sorted partitioned) int {
 	printed := 0
 	for _, overrun := range budgets.Compare(sorted.counts.numbers) {
 		position := token.Position{Filename: budget.FileName, Line: overrun.Line}

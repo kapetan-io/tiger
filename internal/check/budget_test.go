@@ -1,4 +1,4 @@
-package cli_test
+package check_test
 
 import (
 	"os"
@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/kapetan-io/tiger/internal/cli"
+	"github.com/kapetan-io/tiger/internal/command"
 )
 
 // budgetFile is the fixed file name the ratchet reads and tiger budget
@@ -50,7 +50,7 @@ func budgetTree(t *testing.T, rows string) string {
 func TestCheckOverBudgetFailsAtTheRow(t *testing.T) {
 	got := run(t, "check", "-C", filepath.Join("testdata", "fixtures", "budget", "tree"),
 		"./internal/cli")
-	assert.Equal(t, cli.ExitFindings, got.code)
+	assert.Equal(t, command.ExitFindings, got.code)
 	assert.Empty(t, got.stderr)
 	assert.Equal(t, "tiger.budget.yaml:2: TS-D06: internal/cli has 4 skipped tests but "+
 		"tiger.budget.yaml allows 2 — fix 2 of them, or raise the number in a reviewed edit\n"+
@@ -66,7 +66,7 @@ func TestCheckOverBudgetFailsAtTheRow(t *testing.T) {
 // line; a package under budget prints nothing.
 func TestCheckWholeTreeReportsEveryOverrun(t *testing.T) {
 	got := run(t, "check", "-C", filepath.Join("testdata", "fixtures", "budget", "tree"), "./...")
-	assert.Equal(t, cli.ExitFindings, got.code)
+	assert.Equal(t, command.ExitFindings, got.code)
 	assert.Empty(t, got.stderr)
 	assert.Equal(t, "internal/store/store.go:18:2: TS-S18: panic is called directly here — "+
 		"use assert.Ok (condition), assert.Fail (formatted failure), or assert.Unreachable "+
@@ -95,7 +95,7 @@ func TestCheckWithinBudgetIsSilent(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			got := run(t, "check", "-C", budgetTree(t, test.rows), "./internal/cli")
-			assert.Equal(t, cli.ExitClean, got.code)
+			assert.Equal(t, command.ExitClean, got.code)
 			assert.Empty(t, got.stdout)
 			assert.Empty(t, got.stderr)
 		})
@@ -121,7 +121,7 @@ func TestCheckMissingRowFails(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			got := run(t, "check", "-C", budgetTree(t, test.rows), "./internal/cli")
-			assert.Equal(t, cli.ExitFindings, got.code)
+			assert.Equal(t, command.ExitFindings, got.code)
 			assert.Empty(t, got.stderr)
 			assert.Equal(t, want, got.stdout)
 		})
@@ -134,11 +134,11 @@ func TestCheckMissingRowFails(t *testing.T) {
 // and with slack alike, and creates no file when none exists.
 func TestCheckNeverWritesTheBudgetFile(t *testing.T) {
 	slack := budgetTree(t, "internal/cli:\n  TS-D07: 9\n")
-	require.Equal(t, cli.ExitClean, run(t, "check", "-C", slack, "./internal/cli").code)
+	require.Equal(t, command.ExitClean, run(t, "check", "-C", slack, "./internal/cli").code)
 	assert.Equal(t, "internal/cli:\n  TS-D07: 9\n", readFile(t, filepath.Join(slack, budgetFile)))
 
 	absent := budgetTree(t, "")
-	require.Equal(t, cli.ExitFindings, run(t, "check", "-C", absent, "./...").code)
+	require.Equal(t, command.ExitFindings, run(t, "check", "-C", absent, "./...").code)
 	assert.NoFileExists(t, filepath.Join(absent, budgetFile))
 }
 
@@ -151,7 +151,7 @@ func TestBudgetWriteLowersSlack(t *testing.T) {
 	dir := budgetTree(t, "internal/cli:\n  TS-D07: 6\ninternal/driver:\n  TS-D07: 1\n"+
 		"internal/store:\n  TS-L09: 3\n")
 	first := run(t, "budget", "-C", dir, "--write")
-	assert.Equal(t, cli.ExitClean, first.code)
+	assert.Equal(t, command.ExitClean, first.code)
 	assert.Empty(t, first.stdout)
 	assert.Empty(t, first.stderr)
 	want := "internal/cli:\n  TS-D07: 4\ninternal/driver:\n  TS-D07: 1\n" +
@@ -159,7 +159,7 @@ func TestBudgetWriteLowersSlack(t *testing.T) {
 	assert.Equal(t, want, readFile(t, filepath.Join(dir, budgetFile)))
 
 	second := run(t, "budget", "-C", dir, "--write")
-	assert.Equal(t, cli.ExitClean, second.code)
+	assert.Equal(t, command.ExitClean, second.code)
 	assert.Equal(t, want, readFile(t, filepath.Join(dir, budgetFile)))
 
 	entries, err := os.ReadDir(dir)
@@ -179,7 +179,7 @@ func TestBudgetWriteKeepsOverrunRows(t *testing.T) {
 	dir := budgetTree(t, "internal/cli:\n  TS-D07: 2\ninternal/driver:\n  TS-D07: 1\n"+
 		"internal/store:\n  TS-L09: 3\n")
 	got := run(t, "budget", "-C", dir, "--write")
-	assert.Equal(t, cli.ExitFindings, got.code)
+	assert.Equal(t, command.ExitFindings, got.code)
 	assert.Empty(t, got.stderr)
 	assert.Equal(t, "tiger.budget.yaml:2: TS-D06: internal/cli has 4 skipped tests but "+
 		"tiger.budget.yaml allows 2 — fix 2 of them, or raise the number in a reviewed edit\n"+
@@ -196,7 +196,7 @@ func TestBudgetWriteDeletesEmptyRows(t *testing.T) {
 	dir := budgetTree(t, "internal/cli:\n  TS-D07: 4\n  TS-L09: 1\ninternal/driver:\n"+
 		"  TS-D07: 1\n  TS-L09: 2\ninternal/other:\n  TS-D07: 7\n")
 	got := run(t, "budget", "-C", dir, "--write", "./internal/cli", "./internal/driver")
-	assert.Equal(t, cli.ExitClean, got.code)
+	assert.Equal(t, command.ExitClean, got.code)
 	assert.Empty(t, got.stdout)
 	assert.Equal(t, "internal/cli:\n  TS-D07: 4\ninternal/driver:\n  TS-D07: 1\n"+
 		"internal/other:\n  TS-D07: 7\n", readFile(t, filepath.Join(dir, budgetFile)))
@@ -209,7 +209,7 @@ func TestBudgetWriteDeletesEmptyRows(t *testing.T) {
 func TestBudgetWriteCreatesMissingRows(t *testing.T) {
 	dir := budgetTree(t, "")
 	got := run(t, "budget", "-C", dir, "--write")
-	assert.Equal(t, cli.ExitClean, got.code)
+	assert.Equal(t, command.ExitClean, got.code)
 	assert.Empty(t, got.stdout)
 	assert.Equal(t, "internal/cli:\n  TS-D07: 4\ninternal/driver:\n  TS-D07: 1\n"+
 		"internal/store:\n  TS-L09: 1\n", readFile(t, filepath.Join(dir, budgetFile)))
@@ -225,7 +225,7 @@ func TestBudgetReportsOverrunsOnly(t *testing.T) {
 		"  TS-L09: 3\n"
 	dir := budgetTree(t, rows)
 	over := run(t, "budget", "-C", dir)
-	assert.Equal(t, cli.ExitFindings, over.code)
+	assert.Equal(t, command.ExitFindings, over.code)
 	assert.Empty(t, over.stderr)
 	assert.Equal(t, "tiger.budget.yaml:2: TS-D06: internal/cli has 4 skipped tests but "+
 		"tiger.budget.yaml allows 2 — fix 2 of them, or raise the number in a reviewed edit\n"+
@@ -234,7 +234,7 @@ func TestBudgetReportsOverrunsOnly(t *testing.T) {
 	assert.Equal(t, rows, readFile(t, filepath.Join(dir, budgetFile)))
 
 	within := run(t, "budget", "-C", dir, "./internal/store")
-	assert.Equal(t, cli.ExitClean, within.code)
+	assert.Equal(t, command.ExitClean, within.code)
 	assert.Empty(t, within.stdout)
 	assert.Empty(t, within.stderr)
 }
@@ -284,9 +284,9 @@ func TestBudgetRejectsInvalidRows(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			dir := budgetTree(t, test.rows)
-			for _, command := range []string{"check", "budget"} {
-				got := run(t, command, "-C", dir, "./internal/cli")
-				assert.Equal(t, cli.ExitOperational, got.code)
+			for _, subcommand := range []string{"check", "budget"} {
+				got := run(t, subcommand, "-C", dir, "./internal/cli")
+				assert.Equal(t, command.ExitOperational, got.code)
 				assert.Empty(t, got.stdout)
 				assert.Contains(t, got.stderr, "tiger.budget.yaml")
 				assert.Contains(t, got.stderr, test.wantErr)
@@ -302,6 +302,6 @@ func TestBudgetRejectsInvalidRows(t *testing.T) {
 func TestBudgetRejectsUnknownFlag(t *testing.T) {
 	got := run(t, "budget", "-C", filepath.Join("testdata", "fixtures", "budget", "tree"),
 		"--show-facts")
-	assert.Equal(t, cli.ExitOperational, got.code)
+	assert.Equal(t, command.ExitOperational, got.code)
 	assert.Contains(t, got.stderr, "show-facts")
 }

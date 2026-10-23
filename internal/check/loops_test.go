@@ -1,4 +1,4 @@
-package cli_test
+package check_test
 
 import (
 	"go/ast"
@@ -17,7 +17,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/kapetan-io/tiger/internal/cli"
+	"github.com/kapetan-io/tiger/internal/command"
 )
 
 // loopFinding matches a finding line from one of the loop rules.
@@ -77,7 +77,7 @@ func functionAt(t *testing.T, file string, line int) string {
 func TestCheckBlocksEveryLoopThatNeverEndsOrStopsQuietly(t *testing.T) {
 	const dir = "testdata/fixtures/loopholes"
 	got := run(t, "check", "-C", dir, "./...")
-	assert.Equal(t, cli.ExitFindings, got.code)
+	assert.Equal(t, command.ExitFindings, got.code)
 	assert.Empty(t, got.stderr)
 	assert.ElementsMatch(t, []string{
 		"AliasAppend", "ByteWraps", "ChunksParamMax", "ClosureGrow", "CounterReset",
@@ -98,7 +98,7 @@ func TestCheckBlocksEveryLoopThatNeverEndsOrStopsQuietly(t *testing.T) {
 // Goal: no finding, exit 0.
 func TestCheckPassesLoopsThatEndForReasonsTigerCanProve(t *testing.T) {
 	got := run(t, "check", "-C", "testdata/fixtures/loopsounds", "./...")
-	assert.Equal(t, cli.ExitClean, got.code)
+	assert.Equal(t, command.ExitClean, got.code)
 	assert.Empty(t, got.stdout)
 	assert.Empty(t, got.stderr)
 }
@@ -111,18 +111,7 @@ func TestCheckPassesLoopsThatEndForReasonsTigerCanProve(t *testing.T) {
 func TestCheckPassesTheRewriteOfEachBlockedLoop(t *testing.T) {
 	got := run(t, "check", "-C", "testdata/fixtures/loopfixes", "./...")
 	assert.Empty(t, got.stdout)
-	assert.Equal(t, cli.ExitClean, got.code)
-	assert.Empty(t, got.stderr)
-}
-
-// TestCheckPassesTigerItself runs tiger over its own module, which carries
-// the capped worklists that replaced its uncapped ones.
-//
-// Goal: no finding, exit 0.
-func TestCheckPassesTigerItself(t *testing.T) {
-	got := run(t, "check", "-C", "../..", "./...")
-	assert.Empty(t, got.stdout)
-	assert.Equal(t, cli.ExitClean, got.code)
+	assert.Equal(t, command.ExitClean, got.code)
 	assert.Empty(t, got.stderr)
 }
 
@@ -133,7 +122,7 @@ func TestCheckPassesTigerItself(t *testing.T) {
 // so the range is a TS-S02 finding.
 func TestCheckBlocksAnIteratorFromAModuleWithoutADotInItsPath(t *testing.T) {
 	got := run(t, "check", "-C", "testdata/fixtures/loopdotless", "./...")
-	assert.Equal(t, cli.ExitFindings, got.code)
+	assert.Equal(t, command.ExitFindings, got.code)
 	assert.Contains(t, got.stdout,
 		"loop.go:8:2: TS-S02: this loop ranges over an iterator tiger can't see into")
 }

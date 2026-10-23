@@ -1,4 +1,4 @@
-package cli_test
+package check_test
 
 import (
 	"maps"
@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/kapetan-io/tiger/internal/cli"
+	"github.com/kapetan-io/tiger/internal/command"
 )
 
 // nolintTree copies the nolint fixture and, when config is not empty,
@@ -42,7 +42,7 @@ func TestNolintBanOffIgnoresNolint(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			got := run(t, "check", "-C", nolintTree(t, test.config), "./...")
-			assert.Equal(t, cli.ExitClean, got.code)
+			assert.Equal(t, command.ExitClean, got.code)
 			assert.Empty(t, got.stdout)
 			assert.Empty(t, got.stderr)
 		})
@@ -57,7 +57,7 @@ func TestNolintBanOnBlocksEveryNolint(t *testing.T) {
 	dir := nolintTree(t, "version: 1\nnolint:\n  forbid: true\n"+
 		"  reason: agents must fix findings, not silence them\n")
 	got := run(t, "check", "-C", dir, "./...")
-	assert.Equal(t, cli.ExitFindings, got.code)
+	assert.Equal(t, command.ExitFindings, got.code)
 	assert.Empty(t, got.stderr)
 	const rest = " has a //nolint, and this repository's tiger.yaml forbids them " +
 		"(nolint.forbid) — fix the finding it silences instead\n"
@@ -94,7 +94,7 @@ func TestNolintBanRejectsInvalidEntries(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			got := run(t, "check", "-C", nolintTree(t, test.config), "./...")
-			assert.Equal(t, cli.ExitOperational, got.code)
+			assert.Equal(t, command.ExitOperational, got.code)
 			assert.Empty(t, got.stdout)
 			assert.Contains(t, got.stderr, test.wantErr)
 		})
@@ -108,7 +108,7 @@ func TestNolintBanRejectsInvalidEntries(t *testing.T) {
 // fails the run, and a row of 1 passes it.
 func TestOpenEnumCountsAgainstBudget(t *testing.T) {
 	got := run(t, "check", "-C", filepath.Join("testdata", "fixtures", "openenum"), "./...")
-	assert.Equal(t, cli.ExitFindings, got.code)
+	assert.Equal(t, command.ExitFindings, got.code)
 	assert.Empty(t, got.stderr)
 	assert.Equal(t, "tiger.budget.yaml: TS-D06: . has 1 escape directive and "+
 		"tiger.budget.yaml has no row for it — fix it, or run tiger budget --write to record "+
@@ -122,7 +122,7 @@ func TestOpenEnumCountsAgainstBudget(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(dir, budgetFile),
 		[]byte(".:\n  TS-L09: 1\n"), 0o644))
 	budgeted := run(t, "check", "-C", dir, "./...")
-	assert.Equal(t, cli.ExitClean, budgeted.code)
+	assert.Equal(t, command.ExitClean, budgeted.code)
 	assert.Empty(t, budgeted.stdout)
 	assert.Empty(t, budgeted.stderr)
 }
@@ -134,7 +134,7 @@ func TestOpenEnumCountsAgainstBudget(t *testing.T) {
 // finding too.
 func TestOpenEnumWithoutReasonIsBlocking(t *testing.T) {
 	got := run(t, "check", "-C", filepath.Join("testdata", "fixtures", "reasonless"), "./...")
-	assert.Equal(t, cli.ExitFindings, got.code)
+	assert.Equal(t, command.ExitFindings, got.code)
 	assert.Empty(t, got.stderr)
 	assert.Contains(t, got.stdout, "mode.go:6:1: TS-L09: //tiger:openenum has no reason after it")
 	assert.Contains(t, got.stdout, "mode.go:21:2: TS-S08: this switch over Mode has a default arm")
@@ -195,11 +195,11 @@ func TestNolintBanSpellings(t *testing.T) {
 			got := run(t, "check", "-C", dir, "./...")
 			assert.Empty(t, got.stderr)
 			if test.wantHits == 0 {
-				assert.Equal(t, cli.ExitClean, got.code)
+				assert.Equal(t, command.ExitClean, got.code)
 				assert.Empty(t, got.stdout)
 				return
 			}
-			assert.Equal(t, cli.ExitFindings, got.code)
+			assert.Equal(t, command.ExitFindings, got.code)
 			assert.Contains(t, got.stdout, "a.go:1:1: TS-L09: line 3 has a //nolint")
 			assert.Contains(t, got.stdout, "tiger: 1 blocking\n")
 		})
@@ -219,7 +219,7 @@ func TestNolintBanCoversTestFilesAndEveryPackage(t *testing.T) {
 		"clean.go":         "package tree\n",
 	})
 	got := run(t, "check", "-C", dir, "./...")
-	assert.Equal(t, cli.ExitFindings, got.code)
+	assert.Equal(t, command.ExitFindings, got.code)
 	assert.Empty(t, got.stderr)
 	assert.Contains(t, got.stdout, "a_test.go:1:1: TS-L09: line 3 has a //nolint")
 	assert.Contains(t, got.stdout, "sub/pkg/inner.go:2:1: TS-L09: line 4 has a //nolint")
@@ -236,7 +236,7 @@ func TestNolintBanSkipsGeneratedFiles(t *testing.T) {
 			"var x = 1 //nolint\n",
 	})
 	got := run(t, "check", "-C", dir, "./...")
-	assert.Equal(t, cli.ExitClean, got.code)
+	assert.Equal(t, command.ExitClean, got.code)
 	assert.Empty(t, got.stdout)
 }
 
@@ -259,7 +259,7 @@ func TestNolintBlockLoadsAlongsideAnalyzerBlocks(t *testing.T) {
 			dir := writeTree(t, map[string]string{"tiger.yaml": test.config, "a.go": source})
 			got := run(t, "check", "-C", dir, "./...")
 			assert.Empty(t, got.stderr)
-			assert.Equal(t, cli.ExitFindings, got.code)
+			assert.Equal(t, command.ExitFindings, got.code)
 			assert.Contains(t, got.stdout, "TS-L09: line 5 has a //nolint")
 			assert.NotContains(t, got.stdout, "TS-N14")
 			assert.Contains(t, got.stdout, "tiger: 1 blocking\n")
@@ -282,7 +282,7 @@ func TestNolintBanRejectsBlankReasonAndWrongTypes(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			got := run(t, "check", "-C", nolintTree(t, test.config), "./...")
-			assert.Equal(t, cli.ExitOperational, got.code)
+			assert.Equal(t, command.ExitOperational, got.code)
 			assert.Empty(t, got.stdout)
 			assert.Contains(t, got.stderr, "tiger.yaml: nolint")
 		})
@@ -295,10 +295,10 @@ func TestNolintBanRejectsBlankReasonAndWrongTypes(t *testing.T) {
 // reports nothing, so the ban does not leak between invocations.
 func TestNolintBanStaysOnAcrossRuns(t *testing.T) {
 	on := run(t, "check", "-C", nolintTree(t, banConfig), "./...")
-	assert.Equal(t, cli.ExitFindings, on.code)
+	assert.Equal(t, command.ExitFindings, on.code)
 
 	off := run(t, "check", "-C", nolintTree(t, ""), "./...")
-	assert.Equal(t, cli.ExitClean, off.code)
+	assert.Equal(t, command.ExitClean, off.code)
 	assert.Empty(t, off.stdout)
 }
 
@@ -314,7 +314,7 @@ func TestOpenEnumReasonRequirement(t *testing.T) {
 		"a.go": "package tree\n\n//tiger:openenum   \ntype Mode int" + body,
 	})
 	got := run(t, "check", "-C", blank, "./...")
-	assert.Equal(t, cli.ExitFindings, got.code)
+	assert.Equal(t, command.ExitFindings, got.code)
 	assert.Contains(t, got.stdout, "a.go:3:1: TS-L09: //tiger:openenum has no reason after it")
 
 	grouped := writeTree(t, map[string]string{
@@ -324,7 +324,7 @@ func TestOpenEnumReasonRequirement(t *testing.T) {
 	})
 	again := run(t, "check", "-C", grouped, "./...")
 	assert.Empty(t, again.stderr)
-	assert.Equal(t, cli.ExitClean, again.code)
+	assert.Equal(t, command.ExitClean, again.code)
 	assert.Empty(t, again.stdout)
 }
 
@@ -335,12 +335,12 @@ func TestOpenEnumReasonRequirement(t *testing.T) {
 func TestBudgetWriteCountsOpenEnum(t *testing.T) {
 	dir := copyFixture(t, "openenum")
 	written := run(t, "budget", "-C", dir, "--write")
-	assert.Equal(t, cli.ExitClean, written.code)
+	assert.Equal(t, command.ExitClean, written.code)
 	assert.Empty(t, written.stdout)
 	assert.Equal(t, ".:\n  TS-L09: 1\n", readFile(t, filepath.Join(dir, budgetFile)))
 
 	checked := run(t, "check", "-C", dir, "./...")
-	assert.Equal(t, cli.ExitClean, checked.code)
+	assert.Equal(t, command.ExitClean, checked.code)
 	assert.Empty(t, checked.stdout)
 }
 
@@ -352,15 +352,6 @@ func TestOpenEnumOverBudgetFails(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(dir, budgetFile),
 		[]byte(".:\n  TS-L09: 0\n"), 0o644))
 	got := run(t, "check", "-C", dir, "./...")
-	assert.Equal(t, cli.ExitFindings, got.code)
+	assert.Equal(t, command.ExitFindings, got.code)
 	assert.Contains(t, got.stdout, "TS-D06")
-}
-
-// TestShippedGolangciConfigDropsNewFromRev covers the removed recommendation.
-//
-// Goal: the config adopters copy, config/golangci.yml, no longer mentions
-// --new-from-rev, which silently drops findings outside a diff (ADR-0022).
-func TestShippedGolangciConfigDropsNewFromRev(t *testing.T) {
-	shipped := readFile(t, filepath.Join("..", "..", "config", "golangci.yml"))
-	assert.NotContains(t, shipped, "new-from-rev")
 }
