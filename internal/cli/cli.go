@@ -9,6 +9,7 @@ import (
 	"github.com/kapetan-io/tiger/internal/changed"
 	"github.com/kapetan-io/tiger/internal/check"
 	"github.com/kapetan-io/tiger/internal/command"
+	"github.com/kapetan-io/tiger/internal/golangci"
 	"github.com/kapetan-io/tiger/internal/pattern"
 )
 
@@ -22,10 +23,8 @@ const (
 )
 
 const usage = `usage:
-` + check.Usage + check.BudgetUsage + `  tiger golangci [-C dir] [--init | --print]
-      audit the project golangci-lint config against the auto-rule baseline,
-      generate it with --init, or write it to stdout with --print
-` + pattern.Usage + changed.Usage + `  tiger pin [-C dir] [--dry-run] <Name> [<Name>...] [packages]
+` + check.Usage + check.BudgetUsage + golangci.Usage + pattern.Usage +
+	changed.Usage + `  tiger pin [-C dir] [--dry-run] <Name> [<Name>...] [packages]
       freeze each named function's computed facts into //tiger: pins
       written at their targets; exit 0 written or already satisfied,
       1 refusals, 2 could not proceed
@@ -44,7 +43,7 @@ func Run(args []string, streams Streams) int {
 	case "budget":
 		return check.Budget(args[1:], streams)
 	case "golangci":
-		return runGolangci(args[1:], streams)
+		return golangci.Run(args[1:], streams)
 	case "pattern":
 		return pattern.Run(args[1:], streams)
 	case "changed":

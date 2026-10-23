@@ -118,7 +118,7 @@ per run, never serialized.
 
 **Registry**:
 The closed set of every rule — custom rules bound to their analyzer and severity,
-auto rules bound to their golangci-lint linter and baseline settings — from which the binary,
+auto rules (in `internal/rules/auto`) bound to their golangci-lint linter and baseline settings — from which the binary,
 docs, meta-tests, and the `tiger golangci` audit are derived; the single source of rule identity.
 
 **Corpus**:

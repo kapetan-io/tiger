@@ -13,23 +13,23 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/kapetan-io/tiger/assert"
-	"github.com/kapetan-io/tiger/internal/rules"
+	"github.com/kapetan-io/tiger/internal/rules/auto"
 	"github.com/kapetan-io/tiger/internal/worklist"
 )
 
 // Generate derives the baseline golangci-lint configuration from the
-// registry's auto rules, with module filled into the module-dependent
+// auto rules, with module filled into the module-dependent
 // settings. The result passes Verify unchanged, by construction: the enable
 // lists and settings are built from the same table Verify audits.
 func Generate(module string) ([]byte, error) {
 	document := map[string]any{
 		"version": "2",
-		rules.SectionLinters: map[string]any{
+		auto.SectionLinters: map[string]any{
 			"default": "standard",
-			"enable":  enabledLinters(rules.SectionLinters),
+			"enable":  enabledLinters(auto.SectionLinters),
 		},
-		rules.SectionFormatters: map[string]any{
-			"enable": enabledLinters(rules.SectionFormatters),
+		auto.SectionFormatters: map[string]any{
+			"enable": enabledLinters(auto.SectionFormatters),
 		},
 		// A finding you cannot see is a finding you will not fix.
 		"issues": map[string]any{
@@ -37,9 +37,9 @@ func Generate(module string) ([]byte, error) {
 			"max-same-issues":       0,
 		},
 	}
-	for _, rule := range rules.AutoRules() {
+	for _, rule := range auto.AutoRules() {
 		for _, setting := range rule.Settings {
-			insert(document, setting.Path, rules.SubstituteModule(setting.Want, module))
+			insert(document, setting.Path, auto.SubstituteModule(setting.Want, module))
 		}
 	}
 	root := encode(document)
@@ -85,12 +85,12 @@ func Init(dir string) (string, error) {
 func enabledLinters(section string) []any {
 	seen := map[string]bool{}
 	names := []string{}
-	for _, rule := range rules.AutoRules() {
+	for _, rule := range auto.AutoRules() {
 		if rule.Section != section || seen[rule.Linter] {
 			continue
 		}
 		seen[rule.Linter] = true
-		if section == rules.SectionLinters && rules.StandardLinter(rule.Linter) {
+		if section == auto.SectionLinters && auto.StandardLinter(rule.Linter) {
 			continue
 		}
 		names = append(names, rule.Linter)

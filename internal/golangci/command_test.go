@@ -1,6 +1,7 @@
-package cli_test
+package golangci_test
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"strings"
@@ -9,8 +10,42 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/kapetan-io/tiger/internal/cli"
+	"github.com/kapetan-io/tiger/internal/command"
+	"github.com/kapetan-io/tiger/internal/golangci"
 )
+
+type outcome struct {
+	code   int
+	stdout string
+	stderr string
+}
+
+// run invokes tiger golangci once. The leading word keeps each call site
+// reading as the command line it stands for.
+func run(t *testing.T, args ...string) outcome {
+	t.Helper()
+	require.Equal(t, "golangci", args[0])
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	code := golangci.Run(args[1:], command.Streams{Stdout: stdout, Stderr: stderr})
+	return outcome{code: code, stdout: stdout.String(), stderr: stderr.String()}
+}
+
+// copyFixture copies one fixture module into a fresh temp dir, so a test
+// that reads it back cannot disturb the committed fixture.
+func copyFixture(t *testing.T, name string) string {
+	t.Helper()
+	dir := t.TempDir()
+	require.NoError(t, os.CopyFS(dir, os.DirFS(filepath.Join("testdata", "fixtures", name))))
+	return dir
+}
+
+// readFile returns one file's bytes as a string.
+func readFile(t *testing.T, path string) string {
+	t.Helper()
+	content, err := os.ReadFile(path)
+	require.NoError(t, err)
+	return string(content)
+}
 
 // moduleFile writes a minimal go.mod so tiger can read the module path.
 type moduleFile struct {
@@ -33,7 +68,7 @@ func TestGolangciInitThenVerifyRoundTrip(t *testing.T) {
 	moduleFile{dir: dir, module: "roundtrip.example/project"}.write(t)
 
 	created := run(t, "golangci", "-C", dir, "--init")
-	require.Equal(t, cli.ExitClean, created.code)
+	require.Equal(t, command.ExitClean, created.code)
 	assert.Contains(t, created.stdout, ".golangci.yml")
 	assert.Empty(t, created.stderr)
 
@@ -45,7 +80,7 @@ func TestGolangciInitThenVerifyRoundTrip(t *testing.T) {
 	assert.NotContains(t, string(generated), "TS-P01")
 
 	verified := run(t, "golangci", "-C", dir)
-	assert.Equal(t, cli.ExitClean, verified.code)
+	assert.Equal(t, command.ExitClean, verified.code)
 	assert.Empty(t, verified.stdout)
 	assert.Empty(t, verified.stderr)
 }
@@ -67,7 +102,7 @@ func TestGolangciInitRefusesExistingConfig(t *testing.T) {
 		filepath.Join("testdata", "fixtures", "initexisting"),
 		"--init",
 	)
-	assert.Equal(t, cli.ExitOperational, refused.code)
+	assert.Equal(t, command.ExitOperational, refused.code)
 	assert.Empty(t, refused.stdout)
 	assert.Contains(t, refused.stderr, "already exists")
 
@@ -82,7 +117,7 @@ func TestGolangciInitRefusesExistingConfig(t *testing.T) {
 // auto rule that stopped being enforced and the change that restores it.
 func TestGolangciMissingLinterFindsTheAutoRule(t *testing.T) {
 	got := run(t, "golangci", "-C", filepath.Join("testdata", "fixtures", "missinglinter"))
-	assert.Equal(t, cli.ExitFindings, got.code)
+	assert.Equal(t, command.ExitFindings, got.code)
 	assert.Empty(t, got.stderr)
 	assert.Contains(t, got.stdout, "TS-S04: funlen is missing from linters.enable")
 	assert.Contains(t, got.stdout, "add funlen to linters.enable")
@@ -94,7 +129,7 @@ func TestGolangciMissingLinterFindsTheAutoRule(t *testing.T) {
 // v1 — produces a finding naming the auto rule and both values.
 func TestGolangciDriftedSettingFindsTheAutoRule(t *testing.T) {
 	got := run(t, "golangci", "-C", filepath.Join("testdata", "fixtures", "drifted"))
-	assert.Equal(t, cli.ExitFindings, got.code)
+	assert.Equal(t, command.ExitFindings, got.code)
 	assert.Empty(t, got.stderr)
 	assert.Contains(t, got.stdout,
 		"TS-S04: linters.settings.funlen.lines is 60, but tiger's baseline for the rule "+
@@ -108,7 +143,7 @@ func TestGolangciDriftedSettingFindsTheAutoRule(t *testing.T) {
 // not a verification verdict.
 func TestGolangciAbsentConfigExitsTwo(t *testing.T) {
 	got := run(t, "golangci", "-C", filepath.Join("testdata", "fixtures", "noconfig"))
-	assert.Equal(t, cli.ExitOperational, got.code)
+	assert.Equal(t, command.ExitOperational, got.code)
 	assert.Empty(t, got.stdout)
 	assert.Contains(t, got.stderr, "no golangci-lint config found")
 }
@@ -122,8 +157,8 @@ func TestGolangciGeneratedConfigIsDeterministic(t *testing.T) {
 	moduleFile{dir: first, module: "determinism.example/project"}.write(t)
 	moduleFile{dir: second, module: "determinism.example/project"}.write(t)
 
-	require.Equal(t, cli.ExitClean, run(t, "golangci", "-C", first, "--init").code)
-	require.Equal(t, cli.ExitClean, run(t, "golangci", "-C", second, "--init").code)
+	require.Equal(t, command.ExitClean, run(t, "golangci", "-C", first, "--init").code)
+	require.Equal(t, command.ExitClean, run(t, "golangci", "-C", second, "--init").code)
 
 	firstBytes, err := os.ReadFile(filepath.Join(first, ".golangci.yml"))
 	require.NoError(t, err)
@@ -145,7 +180,7 @@ func TestGolangciPrintWritesBaselineToStdout(t *testing.T) {
 	require.NoError(t, err)
 
 	printed := run(t, "golangci", "-C", existing, "--print")
-	assert.Equal(t, cli.ExitClean, printed.code)
+	assert.Equal(t, command.ExitClean, printed.code)
 	assert.Empty(t, printed.stderr)
 	assert.Contains(t, printed.stdout, "Generated by tiger golangci --init")
 	assert.Equal(t, before, readFile(t, filepath.Join(existing, ".golangci.yml")))
@@ -155,7 +190,7 @@ func TestGolangciPrintWritesBaselineToStdout(t *testing.T) {
 
 	fresh := t.TempDir()
 	moduleFile{dir: fresh, module: readModule(t, existing)}.write(t)
-	require.Equal(t, cli.ExitClean, run(t, "golangci", "-C", fresh, "--init").code)
+	require.Equal(t, command.ExitClean, run(t, "golangci", "-C", fresh, "--init").code)
 	assert.Equal(t, readFile(t, filepath.Join(fresh, ".golangci.yml")), printed.stdout)
 
 	again := run(t, "golangci", "-C", existing, "--print")
@@ -168,10 +203,10 @@ func TestGolangciPrintWritesBaselineToStdout(t *testing.T) {
 func TestGolangciPrintWithoutModuleExitsTwo(t *testing.T) {
 	dir := t.TempDir()
 	printed := run(t, "golangci", "-C", dir, "--print")
-	assert.Equal(t, cli.ExitOperational, printed.code)
+	assert.Equal(t, command.ExitOperational, printed.code)
 	assert.Empty(t, printed.stdout)
 	initialized := run(t, "golangci", "-C", dir, "--init")
-	assert.Equal(t, cli.ExitOperational, initialized.code)
+	assert.Equal(t, command.ExitOperational, initialized.code)
 	assert.Equal(t, initialized.stderr, printed.stderr)
 	assert.Contains(t, printed.stderr, "reading module path")
 }
@@ -183,7 +218,7 @@ func TestGolangciInitAndPrintTogetherExitTwo(t *testing.T) {
 	dir := t.TempDir()
 	moduleFile{dir: dir, module: "both.example/project"}.write(t)
 	got := run(t, "golangci", "-C", dir, "--init", "--print")
-	assert.Equal(t, cli.ExitOperational, got.code)
+	assert.Equal(t, command.ExitOperational, got.code)
 	assert.Empty(t, got.stdout)
 	assert.Contains(t, got.stderr, "--init")
 	assert.Contains(t, got.stderr, "--print")

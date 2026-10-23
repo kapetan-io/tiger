@@ -60,7 +60,7 @@ jobs:
             fi
           }
           # test also reads docs/ (internal/rules/docs_test.go) and config/
-          # (internal/cli/nolint_test.go); lint skips testdata because Go does.
+          # (internal/golangci/command_test.go); lint skips testdata because Go does.
           decide test "$every|^docs/|^config/|$fixtures|$golangci|$tiger"
           decide patterns "$every|$tiger"
           decide lint "$every|$golangci"

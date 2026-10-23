@@ -2,11 +2,10 @@
 // and the single source of rule identity.
 //
 // Custom rules bind a diagnostic category to the analyzer that enforces it
-// and its severity; auto rules (auto.go) bind a rule to the golangci-lint
-// linter and baseline settings that enforce it. The tiger binary's analyzer
-// set, the corpus meta-tests, the run's severity behavior, and the
-// tiger golangci audit are all derived from this package, so a rule cannot
-// exist half-way: registered means enforced.
+// and its severity. Auto rules live in internal/rules/auto. The tiger
+// binary's analyzer set, the corpus meta-tests and the run's severity
+// behavior are all derived from this package, so a rule cannot exist
+// half-way: registered means enforced.
 package rules
 
 import (
