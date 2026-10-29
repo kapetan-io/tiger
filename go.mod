@@ -1,6 +1,6 @@
 module github.com/kapetan-io/tiger
 
-go 1.26.2
+go 1.26.10
 
 require (
 	github.com/golangci/plugin-module-register v0.1.2
