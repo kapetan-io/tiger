@@ -1649,9 +1649,11 @@ that cannot fill the third column does not go in.
 | TS-L05 | Struct order is fields, nested types, constructor, methods | B0 | Coord |
 | TS-L06 | Comments are sentences | B0 | Coord |
 | TS-L07 | Every exported identifier has a doc comment starting wi... | B3, B0 | Mixed |
+| TS-L08 | Retired, no mechanical check and comments are banned (ADR-0032) | — | Retired |
 | TS-L09 | Every escape-hatch directive carries a reason | B7, B2 | Sub |
 | TS-L10 | Blank lines group acquisition with its defer, and no de... | B2, B3 | Sub |
 | TS-L11 | Imports grouped standard, external, internal | B0 | Coord |
+| TS-L13 | Retired, the `Why:` commit section never had a check (ADR-0032) | — | Retired |
 | TS-D01 | The pure standard library, and nothing else, unless the lay... | B8, B6 | Sub |
 | TS-D02 | Dependencies are vendored and pinned, including the too... | B4, B8 | Sub |
 | TS-D03 | Scripts are Go programs, not shell | B4, B0 | Mixed |
