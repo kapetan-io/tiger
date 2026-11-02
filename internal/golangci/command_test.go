@@ -293,7 +293,8 @@ func TestGolangciMissingCommentsPresetFindsStutterRule(t *testing.T) {
 			},
 			want: "TS-N10: linters.exclusions.presets doesn't include comments, which " +
 				"tiger's baseline for the rule \"no stutter\" needs — add comments to " +
-				"linters.exclusions.presets (revive's exported rule demands doc comments without it)",
+				"linters.exclusions.presets (revive's exported rule demands doc " +
+				"comments without it)",
 		},
 		{
 			name: "noExclusionsBlock",
