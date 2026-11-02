@@ -1705,8 +1705,8 @@ that cannot fill the third column does not go in.
 | B5 Defect discovery | 15 |
 | B8 Blast radius | 10 |
 
-Of 143 rule IDs, 122 are live: 100 substantive, 13 substantive in a conventional form, and 9 pure
-convention. The other 21 are retired (18) or deleted (3). Short defect distance and local reasoning
+Of 143 rule IDs, 120 are live: 99 substantive, 12 substantive in a conventional form, and 9 pure
+convention. The other 23 are retired (20) or deleted (3). Short defect distance and local reasoning
 carry the document between them, which is a fair description of what TigerStyle is once the poetry
 is stripped off. B0 is cited by 21 rules, so roughly one rule in six exists for agreement rather
 than correctness. Better to know that number than to pretend it is zero.

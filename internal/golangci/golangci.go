@@ -107,8 +107,9 @@ func verifyRule(document map[string]any, rule auto.AutoRule, module string) []Fi
 				Linter: rule.Linter,
 				Message: fmt.Sprintf(
 					"%s: %s isn't set, and tiger's baseline for the rule %q needs it — "+
-						"set %s to %v",
-					rule.RuleID, joined, rule.Title, joined, formatWant(want)),
+						"set %s to %v%s",
+					rule.RuleID, joined, rule.Title, joined, formatWant(want),
+					reasonSuffix(setting)),
 			})
 			continue
 		}
@@ -119,8 +120,8 @@ func verifyRule(document map[string]any, rule auto.AutoRule, module string) []Fi
 					Linter: rule.Linter,
 					Message: fmt.Sprintf(
 						"%[1]s: %[2]s doesn't include %[3]s, which tiger's baseline for the "+
-							"rule %[4]q needs — add %[3]s to %[2]s",
-						rule.RuleID, joined, absent, rule.Title),
+							"rule %[4]q needs — add %[3]s to %[2]s%[5]s",
+						rule.RuleID, joined, absent, rule.Title, reasonSuffix(setting)),
 				})
 			}
 			continue
@@ -143,6 +144,13 @@ func verifyRule(document map[string]any, rule auto.AutoRule, module string) []Fi
 		}
 	}
 	return findings
+}
+
+func reasonSuffix(setting auto.Setting) string {
+	if setting.Reason == "" {
+		return ""
+	}
+	return " (" + setting.Reason + ")"
 }
 
 // missingFrom returns the baseline list's elements that got lacks,

@@ -45,6 +45,9 @@ type Setting struct {
 	// Contains makes a scalar list pass when it holds every Want element,
 	// extras and any order included, instead of equaling Want exactly.
 	Contains bool
+	// Reason is appended to the finding, for a setting whose name alone
+	// does not tell an adopter what it prevents.
+	Reason string
 }
 
 // AutoRule binds one specification rule to the golangci-lint linter and
@@ -320,6 +323,7 @@ var autoRules = []AutoRule{
 				Path:     []string{"linters", "exclusions", "presets"},
 				Want:     []any{"comments"},
 				Contains: true,
+				Reason:   "revive's exported rule demands doc comments without it",
 			},
 		},
 	},

@@ -37,10 +37,10 @@ have no other home, such as "config is process-global; leave nothing installed".
 
 A plain comment never changes what tiger's own analyzers report. Only a change to the code, or one
 of tiger's own `//tiger:` directives, makes one of their findings go away. The auto rules that
-golangci-lint runs still read comments today. TS-L06 (`godot`) and TS-L07 (revive's `exported` and
-`package-comments`) are the two that can change with a comment. The `golangci-template` piece of
-ENG-408 removes TS-L07 from the template and the auto table, and TS-N10 audits that golangci-lint's
-`comments` exclusion preset is on, so revive's `exported` rule keeps checking stutter but stops asking for doc comments.
+golangci-lint runs mostly ignore comments. TS-L06 (`godot`) still reads them. TS-L07 (revive's
+`exported` and `package-comments`) is retired, and TS-N10 audits that golangci-lint's `comments`
+exclusion preset is on, so revive's `exported` rule keeps checking stutter but stops asking for doc
+comments.
 
 **Production code carries no prose.** Below the `package` clause of a production Go file, only a
 closed set of directives survives: `//go:`, `//tiger:`, `//nolint`, `//line `, `//export ` and
