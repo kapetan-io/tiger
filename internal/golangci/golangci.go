@@ -112,6 +112,19 @@ func verifyRule(document map[string]any, rule auto.AutoRule, module string) []Fi
 			})
 			continue
 		}
+		if setting.Contains {
+			if absent := strings.Join((baseline{want: want}).missingFrom(got), ", "); absent != "" {
+				findings = append(findings, Finding{
+					RuleID: rule.RuleID,
+					Linter: rule.Linter,
+					Message: fmt.Sprintf(
+						"%[1]s: %[2]s doesn't include %[3]s, which tiger's baseline for the "+
+							"rule %[4]q needs — add %[3]s to %[2]s",
+						rule.RuleID, joined, absent, rule.Title),
+				})
+			}
+			continue
+		}
 		if !(baseline{want: want}).matches(got) {
 			findings = append(findings, Finding{
 				RuleID: rule.RuleID,
@@ -130,6 +143,29 @@ func verifyRule(document map[string]any, rule auto.AutoRule, module string) []Fi
 		}
 	}
 	return findings
+}
+
+// missingFrom returns the baseline list's elements that got lacks,
+// rendered as text. Elements compare by their rendering, so a project list
+// holding maps cannot panic the comparison.
+func (b baseline) missingFrom(got any) []string {
+	held := map[string]bool{}
+	if listed, ok := got.([]any); ok {
+		for _, element := range listed {
+			held[fmt.Sprint(element)] = true
+		}
+	}
+	required, ok := b.want.([]any)
+	if !ok {
+		return nil
+	}
+	absent := []string{}
+	for _, element := range required {
+		if !held[fmt.Sprint(element)] {
+			absent = append(absent, fmt.Sprint(element))
+		}
+	}
+	return absent
 }
 
 // enabled reports whether the rule's linter is on: named in its section's

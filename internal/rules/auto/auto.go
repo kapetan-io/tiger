@@ -42,6 +42,9 @@ type Setting struct {
 	Path []string
 	// Want is the baseline expectation: a scalar, []any, or map[string]any.
 	Want any
+	// Contains makes a scalar list pass when it holds every Want element,
+	// extras and any order included, instead of equaling Want exactly.
+	Contains bool
 }
 
 // AutoRule binds one specification rule to the golangci-lint linter and
@@ -313,6 +316,11 @@ var autoRules = []AutoRule{
 			{Path: []string{"linters", "settings", "revive", "rules"}, Want: []any{
 				map[string]any{"name": "exported"},
 			}},
+			{
+				Path:     []string{"linters", "exclusions", "presets"},
+				Want:     []any{"comments"},
+				Contains: true,
+			},
 		},
 	},
 	{
@@ -354,16 +362,6 @@ var autoRules = []AutoRule{
 		Settings: []Setting{
 			{Path: []string{"linters", "settings", "godot", "scope"}, Want: "declarations"},
 			{Path: []string{"linters", "settings", "godot", "capital"}, Want: true},
-		},
-	},
-	{
-		RuleID: "TS-L07", Linter: "revive", Section: SectionLinters,
-		Title: "every exported identifier has a doc comment",
-		Settings: []Setting{
-			{Path: []string{"linters", "settings", "revive", "rules"}, Want: []any{
-				map[string]any{"name": "exported"},
-				map[string]any{"name": "package-comments"},
-			}},
 		},
 	},
 	{

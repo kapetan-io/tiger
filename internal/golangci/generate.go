@@ -104,8 +104,8 @@ func enabledLinters(section string) []any {
 }
 
 // insert places a baseline fragment at path, creating nested maps on the
-// way. Rules sharing a list-valued path (the revive rules of TS-N01, TS-N10,
-// and TS-L07) merge their elements instead of overwriting each other, in
+// way. Rules sharing a list-valued path (the revive rules of TS-N01 and
+// TS-N10) merge their elements instead of overwriting each other, in
 // registry order, so the generated list satisfies every contributing rule.
 func insert(document map[string]any, path []string, fragment any) {
 	current := document

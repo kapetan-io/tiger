@@ -1283,7 +1283,9 @@ Enforce. via `TS-N14`.
 **`TS-N10` No stutter, no context-dependent overloading.**
 Why. `replica.ReplicaState` reads badly. Worse, reusing a term that already means something else in
 your domain costs a whole team a whole meeting.
-Enforce. `revive` (auto) for stutter; overloading is `review` against a domain glossary.
+Enforce. `revive` (auto) for stutter; overloading is `review` against a domain glossary. `tiger golangci`
+also requires the `comments` exclusion preset, which stops revive's `exported` rule from demanding doc
+comments that the production-code comment ban forbids (ADR-0031).
 
 **`TS-N11` Money and other exact quantities are integers, never floats.**
 Why. Binary floating point cannot represent a tenth.
@@ -1331,9 +1333,11 @@ Why. Comments are prose describing the code, not scribbling in the margin. Trail
 fragments.
 Enforce. `godot` (auto).
 
-**`TS-L07` Every exported identifier has a doc comment starting with its name.**
+**`TS-L07` Retired. Every exported identifier had a doc comment starting with its name.**
 Why. It is what `go doc` prints, and the only documentation most callers read.
-Enforce. `revive` exported rule (auto).
+Enforce. None. Retired by ADR-0031, which bans exported-identifier doc comments in production code.
+Library docs live in the package doc and `Example` tests, and `tiger golangci` no longer asks revive for
+`package-comments`.
 
 **`TS-L08` Always say why.**
 Why. Code says what. A comment repeating the what is noise; one giving the reason gives the reader the
@@ -1661,7 +1665,7 @@ that cannot fill the third column does not go in.
 | TS-L04 | Important things near the top. Entry points first | B0, B3 | Coord |
 | TS-L05 | Struct order is fields, nested types, constructor, methods | B0 | Coord |
 | TS-L06 | Comments are sentences | B0 | Coord |
-| TS-L07 | Every exported identifier has a doc comment starting wi... | B3, B0 | Mixed |
+| TS-L07 | Retired, doc comments are banned in production code (ADR-0031) | — | Retired |
 | TS-L08 | Always say why (no longer applies, ADR-0031) | B7, B3 | Sub |
 | TS-L09 | Every escape-hatch directive carries a reason | B7, B2 | Sub |
 | TS-L10 | Blank lines group acquisition with its defer, and no de... | B2, B3 | Sub |
@@ -1704,13 +1708,13 @@ that cannot fill the third column does not go in.
 Of 143 rule IDs, 122 are live: 100 substantive, 13 substantive in a conventional form, and 9 pure
 convention. The other 21 are retired (18) or deleted (3). Short defect distance and local reasoning
 carry the document between them, which is a fair description of what TigerStyle is once the poetry
-is stripped off. B0 is cited by 22 rules, so roughly one rule in six exists for agreement rather
+is stripped off. B0 is cited by 21 rules, so roughly one rule in six exists for agreement rather
 than correctness. Better to know that number than to pretend it is zero.
 
 ## The nine coordination-only rules
 
 `TS-N01`, `TS-N10`, `TS-L01`, `TS-L02`, `TS-L03`, `TS-L04`, `TS-L05`, `TS-L06`, `TS-L11`, plus the
-formatting halves of the 13 `Mixed` rules.
+formatting halves of the 12 `Mixed` rules.
 
 These are conventions. Their entire value is that everyone follows them, they are enforced by tooling
 so nobody has to think about them, and arguing about them is the most expensive thing you can do with

@@ -245,3 +245,92 @@ func TestShippedGolangciConfigDropsNewFromRev(t *testing.T) {
 	shipped := readFile(t, filepath.Join("..", "..", "config", "golangci.yml"))
 	assert.NotContains(t, shipped, "new-from-rev")
 }
+
+// shippedConfigIn copies config/golangci.yml, the template adopters copy,
+// into a fresh module as its .golangci.yml and returns the module dir.
+func shippedConfigIn(t *testing.T, edit func(string) string) string {
+	t.Helper()
+	dir := t.TempDir()
+	moduleFile{dir: dir, module: "shipped.example/project"}.write(t)
+	shipped := readFile(t, filepath.Join("..", "..", "config", "golangci.yml"))
+	const placeholder, module = "prefix(myrepo)", "prefix(shipped.example/project)"
+	config := edit(strings.Replace(shipped, placeholder, module, 1))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".golangci.yml"), []byte(config), 0o644))
+	return dir
+}
+
+// TestShippedGolangciConfigPassesTheAudit covers the template adopters copy.
+//
+// Goal: config/golangci.yml carries the comments exclusion preset and
+// passes tiger golangci with no findings.
+func TestShippedGolangciConfigPassesTheAudit(t *testing.T) {
+	shipped := readFile(t, filepath.Join("..", "..", "config", "golangci.yml"))
+	assert.Contains(t, shipped, "      - comments\n")
+	assert.NotContains(t, shipped, "package-comments")
+
+	unchanged := func(config string) string { return config }
+	got := run(t, "golangci", "-C", shippedConfigIn(t, unchanged))
+	assert.Equal(t, command.ExitClean, got.code)
+	assert.Empty(t, got.stdout)
+	assert.Empty(t, got.stderr)
+}
+
+// TestGolangciMissingCommentsPresetFindsStutterRule covers the comments preset
+// audit.
+//
+// Goal: a config whose exclusion presets lack comments, or that has no
+// exclusions block at all, produces a TS-N10 finding naming the edit.
+func TestGolangciMissingCommentsPresetFindsStutterRule(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		edit func(string) string
+		want string
+	}{
+		{
+			name: "presetDropped",
+			edit: func(config string) string {
+				return strings.Replace(config, "      - comments\n", "", 1)
+			},
+			want: "TS-N10: linters.exclusions.presets doesn't include comments, which " +
+				"tiger's baseline for the rule \"no stutter\" needs — add comments to " +
+				"linters.exclusions.presets",
+		},
+		{
+			name: "noExclusionsBlock",
+			edit: func(config string) string {
+				return strings.Replace(config, "  exclusions:\n    generated: strict\n"+
+					"    presets:\n      - comments\n      - common-false-positives\n", "", 1)
+			},
+			want: "TS-N10: linters.exclusions.presets isn't set",
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			dir := shippedConfigIn(t, test.edit)
+			shipped := readFile(t, filepath.Join("..", "..", "config", "golangci.yml"))
+			require.NotEqual(t, shipped, test.edit(shipped))
+			got := run(t, "golangci", "-C", dir)
+			assert.Equal(t, command.ExitFindings, got.code)
+			assert.Empty(t, got.stderr)
+			assert.Contains(t, got.stdout, test.want)
+		})
+	}
+}
+
+// TestGolangciGeneratedConfigDropsDocCommentRules covers the generated baseline.
+//
+// Goal: the generated baseline excludes the comments preset and no longer
+// asks revive for package-comments, and a config without package-comments
+// raises no finding.
+func TestGolangciGeneratedConfigDropsDocCommentRules(t *testing.T) {
+	dir := t.TempDir()
+	moduleFile{dir: dir, module: "doccomments.example/project"}.write(t)
+	require.Equal(t, command.ExitClean, run(t, "golangci", "-C", dir, "--init").code)
+
+	generated := readFile(t, filepath.Join(dir, ".golangci.yml"))
+	assert.Contains(t, generated, "- comments")
+	assert.NotContains(t, generated, "package-comments")
+
+	got := run(t, "golangci", "-C", dir)
+	assert.Equal(t, command.ExitClean, got.code)
+	assert.Empty(t, got.stdout)
+}
