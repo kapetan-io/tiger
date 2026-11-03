@@ -32,8 +32,6 @@ import (
 	"golang.org/x/tools/go/analysis"
 )
 
-// Analyzer enforces TS-C02, TS-C03 and TS-C09: every goroutine starts through
-// a group that waits for it.
 var Analyzer = &analysis.Analyzer{
 	Name: "nogoroutine",
 	Doc:  "TS-C02, TS-C03 and TS-C09: every goroutine starts through a group that waits for it.",
@@ -80,8 +78,6 @@ func run(pass *analysis.Pass) (any, error) {
 	return nil, nil
 }
 
-// check reports a finding for spawn, choosing TS-C09 over TS-C02 when
-// spawn sits inside a loop. A loop spawn in a _test.go file is exempt.
 func check(pass *analysis.Pass, spawn *ast.GoStmt, ancestors []ast.Node) {
 	if insideLoop(ancestors) {
 		if strings.HasSuffix(pass.Fset.PositionFor(spawn.Pos(), false).Filename, "_test.go") {
@@ -93,7 +89,6 @@ func check(pass *analysis.Pass, spawn *ast.GoStmt, ancestors []ast.Node) {
 	pass.Report(analysis.Diagnostic{Pos: spawn.Pos(), Category: "TS-C02", Message: msgUnowned})
 }
 
-// insideLoop reports whether any ancestor is a for or range loop.
 func insideLoop(ancestors []ast.Node) bool {
 	for _, node := range ancestors {
 		switch node.(type) {

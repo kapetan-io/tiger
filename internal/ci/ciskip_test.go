@@ -116,6 +116,16 @@ func pullRequestEditing(t *testing.T, name repoPath) checkout {
 	return c
 }
 
+// fork copies the checkout into a new temporary directory, so cases that share
+// a base commit skip the git processes that build it.
+func (c checkout) fork(t *testing.T) checkout {
+	t.Helper()
+	dir, err := filepath.EvalSymlinks(t.TempDir())
+	require.NoError(t, err)
+	require.NoError(t, os.CopyFS(dir, os.DirFS(c.dir)))
+	return checkout{t: t, dir: dir}
+}
+
 // decide runs the changes job's script in the checkout, as the event, with
 // the commit before HEAD as the pull request's base, and returns the per-job
 // outputs it wrote.
@@ -125,7 +135,7 @@ func (c checkout) decide(event string) map[string]string {
 	cmd := exec.Command("bash", "-e", "-c", decideScript(c.t))
 	cmd.Dir = c.dir
 	cmd.Env = append(cleanGitEnviron(), "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_NOSYSTEM=1",
-		"EVENT="+event, "BASE="+c.git("rev-parse", "HEAD~1"), "GITHUB_OUTPUT="+output)
+		"EVENT="+event, "BASE=HEAD~1", "GITHUB_OUTPUT="+output)
 	out, err := cmd.CombinedOutput()
 	require.NoError(c.t, err, string(out))
 
@@ -156,6 +166,7 @@ func runsOnly(jobs ...string) map[string]string {
 // Goal: each file class turns on exactly the jobs that read it, so a pull
 // request touching nothing a job reads skips that job.
 func TestCIChangesJobSkipsJobsAPullRequestCannotAffect(t *testing.T) {
+	base := baseCheckout(t, "keep2.txt")
 	for _, test := range []struct {
 		name string
 		file repoPath
@@ -200,7 +211,11 @@ func TestCIChangesJobSkipsJobsAPullRequestCannotAffect(t *testing.T) {
 		{name: "otherWorkflow", file: ".github/workflows/release.yml", want: runsOnly()},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			assert.Equal(t, test.want, pullRequestEditing(t, test.file).decide("pull_request"))
+			t.Parallel()
+			c := base.fork(t)
+			c.write(test.file, "changed\n")
+			c.commit("head")
+			assert.Equal(t, test.want, c.decide("pull_request"))
 		})
 	}
 }

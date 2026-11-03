@@ -1,8 +1,6 @@
 version: 1
 comments:
   allow:
-    - value: assert
-      reason: prose not yet moved into tests; ENG-663 clears it
     - value: internal/analyzers/internal/assertpkg
       reason: prose not yet moved into tests; ENG-660 clears it
     - value: internal/analyzers/internal/attach
@@ -27,34 +25,6 @@ comments:
       reason: prose not yet moved into tests; ENG-660 clears it
     - value: internal/analyzers/internal/words
       reason: prose not yet moved into tests; ENG-660 clears it
-    - value: internal/analyzers/maporder
-      reason: prose not yet moved into tests; ENG-659 clears it
-    - value: internal/analyzers/nogoroutine
-      reason: prose not yet moved into tests; ENG-659 clears it
-    - value: internal/analyzers/nogoto
-      reason: prose not yet moved into tests; ENG-659 clears it
-    - value: internal/analyzers/norecursion
-      reason: prose not yet moved into tests; ENG-659 clears it
-    - value: internal/analyzers/paniccheck
-      reason: prose not yet moved into tests; ENG-659 clears it
-    - value: internal/analyzers/participle
-      reason: prose not yet moved into tests; ENG-659 clears it
-    - value: internal/analyzers/poolzero
-      reason: prose not yet moved into tests; ENG-659 clears it
-    - value: internal/analyzers/returnarity
-      reason: prose not yet moved into tests; ENG-659 clears it
-    - value: internal/analyzers/sametypeparams
-      reason: prose not yet moved into tests; ENG-659 clears it
-    - value: internal/analyzers/selectctx
-      reason: prose not yet moved into tests; ENG-659 clears it
-    - value: internal/analyzers/skipcheck
-      reason: prose not yet moved into tests; ENG-659 clears it
-    - value: internal/analyzers/tablename
-      reason: prose not yet moved into tests; ENG-659 clears it
-    - value: internal/analyzers/testpackage
-      reason: prose not yet moved into tests; ENG-659 clears it
-    - value: internal/analyzers/variant
-      reason: prose not yet moved into tests; ENG-659 clears it
     - value: internal/budget
       reason: prose not yet moved into tests; ENG-661 clears it
     - value: internal/callinventory
@@ -99,5 +69,3 @@ comments:
       reason: prose not yet moved into tests; ENG-662 clears it
     - value: internal/worklist
       reason: prose not yet moved into tests; ENG-661 clears it
-    - value: plugin
-      reason: prose not yet moved into tests; ENG-663 clears it

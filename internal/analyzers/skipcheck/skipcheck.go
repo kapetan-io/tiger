@@ -15,17 +15,14 @@ import (
 	"golang.org/x/tools/go/analysis"
 )
 
-// Analyzer enforces TS-D07: skipped tests are reported on every run.
 var Analyzer = &analysis.Analyzer{
 	Name: "skipcheck",
 	Doc:  "TS-D07: skipped tests are reported on every run",
 	Run:  run,
 }
 
-// skipMethods names the testing methods the report covers.
 var skipMethods = map[string]bool{"Skip": true, "Skipf": true, "SkipNow": true}
 
-// testingTypes names the testing receiver types the report covers.
 var testingTypes = map[string]bool{"T": true, "B": true, "F": true, "TB": true}
 
 func run(pass *analysis.Pass) (any, error) {
@@ -38,7 +35,6 @@ func run(pass *analysis.Pass) (any, error) {
 	return nil, nil
 }
 
-// inspectCall reports node when it is a testing skip call.
 func inspectCall(pass *analysis.Pass, node ast.Node) {
 	call, ok := node.(*ast.CallExpr)
 	if !ok {
@@ -59,8 +55,6 @@ func inspectCall(pass *analysis.Pass, node ast.Node) {
 	})
 }
 
-// isTestingReceiver reports whether target is *testing.T, *testing.B,
-// *testing.F, or testing.TB.
 func isTestingReceiver(target types.Type) bool {
 	if target == nil {
 		return false
