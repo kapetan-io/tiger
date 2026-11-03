@@ -18,16 +18,12 @@ import (
 	"github.com/kapetan-io/tiger/internal/directive"
 )
 
-// Fact identifies one reported fact: the rule that computed it, the
-// function it belongs to, and the directive that freezes it. The
-// directive's verb selects the wording.
 type Fact struct {
 	RuleID    string
 	Function  string
 	Directive directive.Directive
 }
 
-// Message formats one reported fact for the --show-facts channel.
 func Message(f Fact) string {
 	pin := directive.Format(f.Directive)
 	tail := " — nothing to fix; to make tiger fail the build if that changes, add " + pin
@@ -41,7 +37,6 @@ func Message(f Fact) string {
 	}
 }
 
-// Extract returns the directive embedded in a reported fact's message.
 func Extract(message string) (directive.Directive, error) {
 	at := strings.Index(message, directive.Prefix)
 	if at < 0 {

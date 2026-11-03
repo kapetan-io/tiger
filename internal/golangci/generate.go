@@ -17,10 +17,6 @@ import (
 	"github.com/kapetan-io/tiger/internal/worklist"
 )
 
-// Generate derives the baseline golangci-lint configuration from the
-// auto rules, with module filled into the module-dependent
-// settings. The result passes Verify unchanged, by construction: the enable
-// lists and settings are built from the same table Verify audits.
 func Generate(module string) ([]byte, error) {
 	document := map[string]any{
 		"version": "2",
@@ -31,7 +27,6 @@ func Generate(module string) ([]byte, error) {
 		auto.SectionFormatters: map[string]any{
 			"enable": enabledLinters(auto.SectionFormatters),
 		},
-		// A finding you cannot see is a finding you will not fix.
 		"issues": map[string]any{
 			"max-issues-per-linter": 0,
 			"max-same-issues":       0,
@@ -49,8 +44,6 @@ func Generate(module string) ([]byte, error) {
 	return yaml.Marshal(root)
 }
 
-// Print returns the baseline Init would write for dir's module, reading
-// nothing but go.mod and writing nothing.
 func Print(dir string) ([]byte, error) {
 	module, err := modulePath(dir)
 	if err != nil {
@@ -59,8 +52,6 @@ func Print(dir string) ([]byte, error) {
 	return Generate(module)
 }
 
-// Init writes the generated baseline into dir, refusing to touch an
-// existing configuration. It returns the path written.
 func Init(dir string) (string, error) {
 	if existing, found := configPath(dir); found {
 		return "", fmt.Errorf("%w: %s", ErrConfigExists, existing)
@@ -80,8 +71,6 @@ func Init(dir string) (string, error) {
 	return path, nil
 }
 
-// enabledLinters collects the linters a section must enable, sorted,
-// skipping the members of golangci-lint's standard default group.
 func enabledLinters(section string) []any {
 	seen := map[string]bool{}
 	names := []string{}
@@ -103,10 +92,6 @@ func enabledLinters(section string) []any {
 	return listed
 }
 
-// insert places a baseline fragment at path, creating nested maps on the
-// way. Rules sharing a list-valued path (the revive rules of TS-N01 and
-// TS-N10) merge their elements instead of overwriting each other, in
-// registry order, so the generated list satisfies every contributing rule.
 func insert(document map[string]any, path []string, fragment any) {
 	current := document
 	for _, key := range path[:len(path)-1] {
@@ -135,17 +120,11 @@ func insert(document map[string]any, path []string, fragment any) {
 	current[leaf] = fragment
 }
 
-// encodeTask pairs one fragment with the node the walk fills for it.
 type encodeTask struct {
 	fragment any
 	node     *yaml.Node
 }
 
-// encode builds a yaml.Node tree with map keys sorted, so the generated
-// document is byte-identical across runs — yaml.Marshal on plain maps would
-// leak map iteration order into the output (constraint 4). The walk is an
-// index-advancing worklist: nested fragments get empty child nodes filled
-// on later passes.
 func encode(fragment any) *yaml.Node {
 	root := &yaml.Node{}
 	work := []encodeTask{{fragment: fragment, node: root}}
@@ -157,7 +136,6 @@ func encode(fragment any) *yaml.Node {
 	return root
 }
 
-// fillNode fills one task's node, appending child tasks for nested values.
 func fillNode(work []encodeTask, i int) []encodeTask {
 	node := work[i].node
 	switch typed := work[i].fragment.(type) {

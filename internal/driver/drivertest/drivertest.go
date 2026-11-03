@@ -23,13 +23,10 @@ import (
 	"github.com/kapetan-io/tiger/internal/finish"
 )
 
-// Reporter is the subset of testing.TB the harness reports through, so a
-// caller that only wants the findings can pass a silent implementation.
 type Reporter interface {
 	Errorf(format string, args ...any)
 }
 
-// expectation is one // want pattern: where it sits and what it matches.
 type expectation struct {
 	file    string
 	line    int
@@ -37,14 +34,8 @@ type expectation struct {
 	matched bool
 }
 
-// wantPattern finds the expectation list after "want" in a comment.
 var wantPattern = regexp.MustCompile(`\bwant\s+(.*)$`)
 
-// Run runs finisher's analyzer — and its finish function, when set — over
-// the module at root through driver.Check, reports every mismatch between
-// findings and // want expectations through t, and returns every finding
-// so a caller can check messages against the registry and the style
-// guide. A driver error is reported through t and yields no findings.
 func Run(t Reporter, root string, finisher finish.Finisher) []driver.Finding {
 	finishers := []finish.Finisher{}
 	if finisher.Run != nil {
@@ -77,8 +68,6 @@ func Run(t Reporter, root string, finisher finish.Finisher) []driver.Finding {
 	return findings
 }
 
-// match marks the first unmatched expectation on finding's line whose
-// pattern matches its message.
 func match(expectations []*expectation, finding driver.Finding) bool {
 	for _, want := range expectations {
 		if want.matched || want.file != finding.Position.Filename ||
@@ -93,7 +82,6 @@ func match(expectations []*expectation, finding driver.Finding) bool {
 	return false
 }
 
-// collect parses every Go file under root for // want comments.
 func collect(root string) ([]*expectation, error) {
 	expectations := []*expectation{}
 	fset := token.NewFileSet()
@@ -129,7 +117,6 @@ func collect(root string) ([]*expectation, error) {
 	return expectations, err
 }
 
-// parseWant reads the quoted patterns after "want" in one comment, if any.
 func parseWant(text string) ([]*regexp.Regexp, error) {
 	located := wantPattern.FindStringSubmatch(text)
 	if located == nil {
@@ -137,8 +124,6 @@ func parseWant(text string) ([]*regexp.Regexp, error) {
 	}
 	patterns := []*regexp.Regexp{}
 	rest := strings.TrimSpace(located[1])
-	// Every pass consumes at least one byte of rest, so the comment's
-	// length bounds the loop.
 	for range len(rest) {
 		if rest == "" {
 			break
@@ -161,8 +146,6 @@ func parseWant(text string) ([]*regexp.Regexp, error) {
 	return patterns, nil
 }
 
-// quotedEnd returns the index just past the Go string literal at the front
-// of text.
 func quotedEnd(text string) (int, error) {
 	switch text[0] {
 	case '`':
@@ -192,7 +175,6 @@ func quotedEnd(text string) (int, error) {
 	}
 }
 
-// parseError reports a // want comment whose patterns are not quoted.
 type parseError struct {
 	text string
 }

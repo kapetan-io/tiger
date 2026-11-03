@@ -53,25 +53,3 @@ comments:
       reason: prose not yet moved into tests; ENG-658 clears it
     - value: internal/analyzers/limitrelate
       reason: prose not yet moved into tests; ENG-658 clears it
-    - value: internal/config
-      reason: prose not yet moved into tests; ENG-662 clears it
-    - value: internal/directive
-      reason: prose not yet moved into tests; ENG-662 clears it
-    - value: internal/driver
-      reason: prose not yet moved into tests; ENG-662 clears it
-    - value: internal/driver/drivertest
-      reason: prose not yet moved into tests; ENG-662 clears it
-    - value: internal/facts
-      reason: prose not yet moved into tests; ENG-662 clears it
-    - value: internal/finish
-      reason: prose not yet moved into tests; ENG-662 clears it
-    - value: internal/golangci
-      reason: prose not yet moved into tests; ENG-662 clears it
-    - value: internal/layerfile
-      reason: prose not yet moved into tests; ENG-662 clears it
-    - value: internal/module
-      reason: prose not yet moved into tests; ENG-662 clears it
-    - value: internal/rules
-      reason: prose not yet moved into tests; ENG-662 clears it
-    - value: internal/rules/auto
-      reason: prose not yet moved into tests; ENG-662 clears it

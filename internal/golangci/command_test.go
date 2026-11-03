@@ -335,3 +335,60 @@ func TestGolangciGeneratedConfigDropsDocCommentRules(t *testing.T) {
 	assert.Equal(t, command.ExitClean, got.code)
 	assert.Empty(t, got.stdout)
 }
+
+// TestGolangciGeneratedConfigUncapsIssueReports covers the generated baseline.
+//
+// Goal: the generated config lifts golangci-lint's per-linter and
+// same-message caps, because a finding the cap hides is a finding nobody fixes.
+func TestGolangciGeneratedConfigUncapsIssueReports(t *testing.T) {
+	dir := t.TempDir()
+	moduleFile{dir: dir, module: "uncapped.example/project"}.write(t)
+	require.Equal(t, command.ExitClean, run(t, "golangci", "-C", dir, "--init").code)
+
+	generated := readFile(t, filepath.Join(dir, ".golangci.yml"))
+	assert.Contains(t, generated, "max-issues-per-linter: 0")
+	assert.Contains(t, generated, "max-same-issues: 0")
+}
+
+// TestGolangciGeneratedConfigMergesSharedReviveRules covers the generated baseline.
+//
+// Goal: TS-N01 and TS-N10 both contribute to revive's rules list; the
+// generated list holds both rules so each rule's audit passes, instead of
+// the later one overwriting the earlier.
+func TestGolangciGeneratedConfigMergesSharedReviveRules(t *testing.T) {
+	dir := t.TempDir()
+	moduleFile{dir: dir, module: "revive.example/project"}.write(t)
+	require.Equal(t, command.ExitClean, run(t, "golangci", "-C", dir, "--init").code)
+
+	generated := readFile(t, filepath.Join(dir, ".golangci.yml"))
+	assert.Contains(t, generated, "- name: var-naming")
+	assert.Contains(t, generated, "- name: exported")
+}
+
+// TestGolangciAuditPassesExtrasBeyondTheBaseline covers the audit contract.
+//
+// Goal: a config stricter or larger than the baseline still conforms: an
+// extra linter, an extra list-of-maps element, an extra map key, and an
+// integer written where the baseline holds a float (5 for 5.0) add no finding.
+func TestGolangciAuditPassesExtrasBeyondTheBaseline(t *testing.T) {
+	dir := t.TempDir()
+	moduleFile{dir: dir, module: "extras.example/project"}.write(t)
+	require.Equal(t, command.ExitClean, run(t, "golangci", "-C", dir, "--init").code)
+
+	path := filepath.Join(dir, ".golangci.yml")
+	config := readFile(t, path)
+	for _, edit := range [][2]string{
+		{"        - containedctx\n", "        - containedctx\n        - extralinter\n"},
+		{"                - name: exported\n", "                - name: exported\n                - name: extrarule\n"},
+		{"            package-average: 5.0\n", "            package-average: 5\n            extra-key: true\n"},
+	} {
+		require.Contains(t, config, edit[0])
+		config = strings.Replace(config, edit[0], edit[1], 1)
+	}
+	require.NoError(t, os.WriteFile(path, []byte(config), 0o644))
+
+	got := run(t, "golangci", "-C", dir)
+	assert.Equal(t, command.ExitClean, got.code)
+	assert.Empty(t, got.stdout)
+	assert.Empty(t, got.stderr)
+}
