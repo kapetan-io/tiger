@@ -1074,6 +1074,21 @@ the difference being injection config. This is what stops the simulated and real
 two test suites that check different things.
 Enforce. `review`.
 
+**`TS-I08` Diagnostics go through a structured logger, never `fmt.Print`.**
+Why. Standard output is shared by everything in the process, and a library does not own it. A
+library that prints there corrupts the output of whatever process embeds it, such as a CLI that pipes
+JSON, and a test cannot capture or assert on text written straight to the process's stdout. A
+structured logger carries a level and a destination the caller chooses, so the same line is silenced,
+redirected, or collected without editing the code, and the adopter picks the logger. The cost is that a
+logger has to be passed in or constructed, which a one-line `fmt.Println` avoids. Retire this rule if
+most findings are commands writing their own result to stdout, because that would show a ban on
+`fmt.Print` cannot tell output from diagnostics.
+Enforce. `forbidigo` on `^fmt\.Print.*$`, which covers `fmt.Print`, `fmt.Printf` and `fmt.Println`.
+The pattern is set in `config/golangci.yml` and is not one of the rules `tiger golangci` audits, so
+`tiger golangci --init` does not write it and the audit neither requires nor rejects it in an adopter's
+config. Not caught: `fmt.Fprint*` (a command may write its result to a writer it was given) and the
+`print` builtin. A helper several frames down that calls `fmt.Print` is not caught either.
+
 ## Memory and performance
 
 Go's GC means "no dynamic allocation after startup" cannot be stated, let alone enforced. What
@@ -1611,6 +1626,7 @@ that cannot fill the third column does not go in.
 | TS-I05 | A surface interface must be able to express every fault... | B5, B4 | Sub |
 | TS-I06 | Deleted, not decidable without a surface declaration | — | Deleted |
 | TS-I07 | Fidelity is configuration, not code | B4, B7 | Sub |
+| TS-I08 | Diagnostics go through a structured logger, never fmt.Print | B4, B8 | Sub |
 | TS-M01 | Preallocate with a known capacity | B6 | Sub |
 | TS-M02 | Retired with the `hot` verb (ADR-0028) | — | Retired |
 | TS-M03 | Pass structs larger than 64 bytes by pointer | B6 | Sub |
@@ -1687,12 +1703,12 @@ that cannot fill the third column does not go in.
 | B7 Change safety | 24 |
 | B0 Uniformity | 21 |
 | B1 Bounded execution | 17 |
-| B4 Determinism | 17 |
+| B4 Determinism | 18 |
 | B6 Predictable cost | 16 |
 | B5 Defect discovery | 15 |
-| B8 Blast radius | 10 |
+| B8 Blast radius | 11 |
 
-Of 143 rule IDs, 118 are live: 97 substantive, 12 substantive in a conventional form, and 9 pure
+Of 144 rule IDs, 119 are live: 98 substantive, 12 substantive in a conventional form, and 9 pure
 convention. The other 25 are retired (22) or deleted (3). Short defect distance and local reasoning
 carry the document between them, which is a fair description of what TigerStyle is once the poetry
 is stripped off. B0 is cited by 21 rules, so roughly one rule in six exists for agreement rather
@@ -1762,7 +1778,7 @@ changes what it checks), or **not built**.
 | --- | --- | --- | --- |
 | `contracts` | TS-V03 | Abstract interpretation over nil-ness, integer ranges, length relations, invariant IDs | built |
 | `variant` | TS-V01, V02 | AST and `go/types`; synthesizes variants for fixed steps, constant division and shifts, slicing by a part shown non-empty, struct fields no call receives, and `&&` conditions; matches variables by identity; verifies pinned ones at loop head and back edges; its verified loops are the result `boundedloop` reads | built (ADR-0013) |
-| `surfaces` | TS-I01, I03, I05, I07 | Not planned. TS-I01's direct half is `TS-T01`'s bans, the rest is review with `tiger changed`; I03, I05, I07 are review | not built |
+| `surfaces` | TS-I01, I03, I05, I07 | Not planned. TS-I01's direct half is `TS-T01`'s bans, the rest is review with `tiger changed`; I03, I05, I07 are review; TS-I08 is `forbidigo` | not built |
 | `canonical` | TS-K01, K02, K04, K05 | AST, with auto-fix | not built |
 | `surfacediff` | TS-R02 | Serialize the exported surface, diff against a checked-in file | not built |
 | `invariantrefs` | TS-A07 | Group `assert.Invariant` calls by constant, count referencing functions | built |
@@ -1965,7 +1981,7 @@ refactoring, so run advisory and ratchet per package.
 functions could have written this value" a short list a reviewer can name. Highest value, and the
 prerequisite for everything else.
 
-**Chain 2, surfaces.** `TS-I01` through `TS-I07`. Independent of chain 1 and the thing that makes the
+**Chain 2, surfaces.** `TS-I01` through `TS-I08`. Independent of chain 1 and the thing that makes the
 test suite worth trusting. Do it early; `TS-I05` in particular is worth more than any three analyzers.
 
 **Chain 3, layering.** `TS-D01`, then the `TS-X03` layer file. A package that does IO almost always

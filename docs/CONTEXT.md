@@ -290,7 +290,7 @@ _Avoid_: calling a rule a check (see Rule)
 
 ## Flagged ambiguities
 
-- "surface" is overloaded: the specification's **surface** (TS-I01..I07, an injectable boundary
+- "surface" is overloaded: the specification's **surface** (TS-I01..I08, an injectable boundary
   for nondeterministic effects) is unrelated to **surface testing** (the testing philosophy used
   by this repo's tests). Qualify which one you mean.
 - "linter" vs "analyzer": golangci-lint linters enforce auto rules; tiger analyzers enforce custom
