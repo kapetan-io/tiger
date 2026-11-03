@@ -550,31 +550,47 @@ func TestChangedCountsEqualTheVisibleLines(t *testing.T) {
 // short hash alone for a hash prefix of any length, and the merge base when
 // it differs from the tip of the ref, whether the ref is a name or a hash.
 func TestChangedNamesTheBaseRevision(t *testing.T) {
-	c := fixture(t, "call-added")
-	head := c.short("HEAD")
-	title := func(base string) string {
-		got := run(t, "changed", "-C", c.dir, base)
-		require.Equal(t, command.ExitClean, got.code)
-		first, _, _ := strings.Cut(got.stdout, "\n")
-		return first
+	// Each loads and type-checks both trees, so the cases run side by side.
+	type revision struct {
+		name  string
+		base  string
+		title string
+	}
+	check := func(c checkout, cases []revision) {
+		for _, test := range cases {
+			t.Run(test.name, func(t *testing.T) {
+				t.Parallel()
+				got := run(t, "changed", "-C", c.dir, test.base)
+				require.Equal(t, command.ExitClean, got.code)
+				first, _, _ := strings.Cut(got.stdout, "\n")
+				assert.Equal(t, test.title, first)
+			})
+		}
 	}
 
+	c := fixture(t, "call-added")
+	head := c.short("HEAD")
 	tip := c.git("rev-parse", "main")
 	split := c.short("main")
-	assert.Equal(t, "tiger changed: main ("+split+") -> "+head, title("main"))
-	assert.Equal(t, "tiger changed: "+split+" -> "+head, title(split))
-	assert.Equal(t, "tiger changed: "+split+" -> "+head, title(tip[:10]))
-	assert.Equal(t, "tiger changed: "+split+" -> "+head, title(tip))
-	assert.Equal(t, "tiger changed: HEAD~1 ("+split+") -> "+head, title("HEAD~1"))
+	check(c, []revision{
+		{"branch", "main", "tiger changed: main (" + split + ") -> " + head},
+		{"short-hash", split, "tiger changed: " + split + " -> " + head},
+		{"hash-prefix", tip[:10], "tiger changed: " + split + " -> " + head},
+		{"full-hash", tip, "tiger changed: " + split + " -> " + head},
+		{"ancestor", "HEAD~1", "tiger changed: HEAD~1 (" + split + ") -> " + head},
+	})
 
-	c.git("checkout", "-q", "main")
-	c.write("store/store.go", queueSource)
-	c.commit("main moves on")
-	c.git("checkout", "-q", "feature")
-	moved := c.short("main")
-	assert.Equal(t, "tiger changed: main (merge base "+split+") -> "+head, title("main"))
-	assert.Equal(t, "tiger changed: "+moved+" (merge base "+split+") -> "+head, title(moved))
-	assert.Equal(t, "tiger changed: main~1 ("+split+") -> "+head, title("main~1"))
+	moving := fixture(t, "call-added")
+	moving.git("checkout", "-q", "main")
+	moving.write("store/store.go", queueSource)
+	moving.commit("main moves on")
+	moving.git("checkout", "-q", "feature")
+	moved := moving.short("main")
+	check(moving, []revision{
+		{"moved-branch", "main", "tiger changed: main (merge base " + split + ") -> " + head},
+		{"moved-hash", moved, "tiger changed: " + moved + " (merge base " + split + ") -> " + head},
+		{"moved-ancestor", "main~1", "tiger changed: main~1 (" + split + ") -> " + head},
+	})
 }
 
 const extraSource = `package web
