@@ -18,8 +18,10 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/sync/errgroup"
 	"golang.org/x/tools/go/analysis"
-	"golang.org/x/tools/go/analysis/analysistest"
+	"golang.org/x/tools/go/analysis/checker"
+	"golang.org/x/tools/go/packages"
 
 	"github.com/kapetan-io/tiger/internal/check"
 	"github.com/kapetan-io/tiger/internal/command"
@@ -47,6 +49,10 @@ func (quietRun) Errorf(format string, args ...any) {}
 // (analyzer, rule) pair.
 func corpora(t *testing.T) []corpusFor {
 	t.Helper()
+	return corporaFromRegistry()
+}
+
+func corporaFromRegistry() []corpusFor {
 	seen := map[string]bool{}
 	listed := []corpusFor{}
 	for _, rule := range rules.CustomRules() {
@@ -93,7 +99,7 @@ type bound struct {
 }
 
 // replay runs an analyzer's whole corpus through the driver its layout
-// needs: analysistest over testdata/src for a per-package rule, the tiger
+// needs: one shared load of testdata/src for a per-package rule, the tiger
 // driver's finish step over testdata/module for a whole-program rule
 // (ADR-0010). Either way every emitted diagnostic comes back for the
 // registry and style checks.
@@ -116,16 +122,9 @@ func replay(t *testing.T, analyzer *analysis.Analyzer, dirs []string) []emitted 
 		}
 		return collected
 	}
-	installLayerFile(t, analyzer.Name)
-	results := analysistest.Run(quietRun{}, testdataPath(t, analyzer.Name), analyzer, dirs...)
-	for _, result := range results {
-		for _, diagnostic := range result.Diagnostics {
-			collected = append(collected, emitted{
-				category: diagnostic.Category, message: diagnostic.Message,
-			})
-		}
-	}
-	return collected
+	shared := sharedLoad()
+	require.NoError(t, shared.err)
+	return shared.byAnalyzer[analyzer.Name]
 }
 
 // replays holds each analyzer's replay so the registry test and the style
@@ -161,22 +160,177 @@ func replayOnce(t *testing.T, analyzer *analysis.Analyzer, dirs []string) []emit
 	return cached.collected
 }
 
-// installLayerFile installs the layer file a corpus directory carries, the
-// way a driver installs the run directory's, so a corpus that needs one (the
-// layers analyzer's) replays here as it does under its own test.
-func installLayerFile(t *testing.T, analyzerName string) {
-	t.Helper()
-	src := filepath.Join(testdataPath(t, analyzerName), "src")
+// loaded is every per-package analyzer's corpus diagnostics.
+type loaded struct {
+	byAnalyzer map[string][]emitted
+	err        error
+}
+
+var (
+	loadOnce   sync.Once
+	loadResult loaded
+)
+
+// sharedLoad loads and analyzes every per-package corpus once for the whole
+// test binary. Loading type-checks the corpus and its imports from source,
+// which is the cost, so analyzers whose testdata trees name no package in
+// common share one load and the groups load in parallel.
+func sharedLoad() loaded {
+	loadOnce.Do(func() { loadResult = loadCorpora() })
+	return loadResult
+}
+
+// corpusGroup is analyzers loaded together: their testdata/src trees go on one
+// GOPATH, so no top-level package name may appear in two of them.
+type corpusGroup struct {
+	analyzers []*analysis.Analyzer
+	names     map[string]bool
+	roots     []string
+}
+
+func loadCorpora() loaded {
+	dirsOf := map[string][]string{}
+	groups := []*corpusGroup{}
+	listed, err := fs.Glob(os.DirFS(filepath.Join("..", "analyzers")), "*/testdata/src/*")
+	if err != nil {
+		return loaded{err: err}
+	}
+	for _, analyzer := range rules.Analyzers() {
+		if rules.WholeProgram(analyzer.Name) {
+			continue
+		}
+		src, err := filepath.Abs(filepath.Join("..", "analyzers", analyzer.Name, "testdata", "src"))
+		if err != nil {
+			return loaded{err: err}
+		}
+		names := []string{}
+		for _, entry := range listed {
+			if strings.HasPrefix(entry, analyzer.Name+"/") {
+				names = append(names, path.Base(entry))
+			}
+		}
+		var target *corpusGroup
+		for _, group := range groups {
+			if !slices.ContainsFunc(names, func(name string) bool { return group.names[name] }) {
+				target = group
+				break
+			}
+		}
+		if target == nil {
+			target = &corpusGroup{names: map[string]bool{}}
+			groups = append(groups, target)
+		}
+		target.analyzers = append(target.analyzers, analyzer)
+		target.roots = append(target.roots, filepath.Dir(src))
+		for _, name := range names {
+			target.names[name] = true
+		}
+	}
+	for _, corpus := range corporaFromRegistry() {
+		dirsOf[corpus.analyzerName] = append(dirsOf[corpus.analyzerName], corpus.dir)
+	}
+
+	// Only the layers analyzer reads the installed layer file.
+	if err := installLayerFile(); err != nil {
+		return loaded{err: err}
+	}
+	defer layerfile.Install(nil)
+
+	merged := make([]map[string][]emitted, len(groups))
+	var load errgroup.Group
+	for i, group := range groups {
+		load.Go(func() error {
+			var err error
+			merged[i], err = replayGroup(group, dirsOf)
+			return err
+		})
+	}
+	result := loaded{byAnalyzer: map[string][]emitted{}, err: load.Wait()}
+	for _, found := range merged {
+		maps.Copy(result.byAnalyzer, found)
+	}
+	return result
+}
+
+// replayGroup runs every analyzer of the group over the group's corpora in one
+// load and keeps each analyzer's diagnostics from its own corpus packages.
+func replayGroup(group *corpusGroup, dirsOf map[string][]string) (map[string][]emitted, error) {
+	// A group shares no package name, so a corpus directory has one owner here.
+	owner := map[string]string{}
+	patterns := []string{}
+	for _, analyzer := range group.analyzers {
+		for _, dir := range dirsOf[analyzer.Name] {
+			owner[dir] = analyzer.Name
+			patterns = append(patterns, dir)
+		}
+	}
+	pkgs, err := packages.Load(&packages.Config{
+		Mode: packages.NeedName | packages.NeedFiles | packages.NeedCompiledGoFiles |
+			packages.NeedImports | packages.NeedTypes | packages.NeedTypesSizes |
+			packages.NeedSyntax | packages.NeedTypesInfo | packages.NeedDeps | packages.NeedModule,
+		Dir:   group.roots[0],
+		Tests: true,
+		Env: append(os.Environ(), "GOPATH="+strings.Join(group.roots, string(os.PathListSeparator)),
+			"GO111MODULE=off", "GOWORK=off"),
+	}, patterns...)
+	if err != nil {
+		return nil, err
+	}
+	for _, pkg := range pkgs {
+		if pkg.Name == "" {
+			return nil, fmt.Errorf("failed to load %q: %v", pkg.PkgPath, pkg.Errors)
+		}
+	}
+	analyzed, err := checker.Analyze(group.analyzers, pkgs, &checker.Options{SanityCheck: true})
+	if err != nil {
+		return nil, err
+	}
+	collected := map[string][]emitted{}
+	seen := map[string]bool{}
+	for _, action := range analyzed.Roots {
+		dir := strings.TrimSuffix(strings.TrimSuffix(action.Package.PkgPath, ".test"), "_test")
+		if owner[dir] != action.Analyzer.Name {
+			continue
+		}
+		seen[dir] = true
+		if action.Err != nil {
+			return nil, fmt.Errorf("analyzing %s: %w", action, action.Err)
+		}
+		for _, diagnostic := range action.Diagnostics {
+			collected[action.Analyzer.Name] = append(collected[action.Analyzer.Name], emitted{
+				category: diagnostic.Category, message: diagnostic.Message,
+			})
+		}
+	}
+	for _, dir := range slices.Sorted(maps.Keys(owner)) {
+		if !seen[dir] {
+			return nil, fmt.Errorf("corpus %s produced no analyzed package", dir)
+		}
+	}
+	return collected, nil
+}
+
+// installLayerFile installs the layer file the layers corpus carries, the way a
+// driver installs the run directory's, so that corpus replays here as it does
+// under its own test.
+func installLayerFile() error {
+	src, err := filepath.Abs(filepath.Join("..", "analyzers", "layers", "testdata", "src"))
+	if err != nil {
+		return err
+	}
 	found, err := fs.Glob(os.DirFS(src), path.Join("*", layerfile.FileName))
-	require.NoError(t, err)
-	require.LessOrEqual(t, len(found), 1)
-	if len(found) == 0 {
-		return
+	if err != nil {
+		return err
+	}
+	if len(found) != 1 {
+		return fmt.Errorf("want one layer file under %s, found %v", src, found)
 	}
 	loaded, err := layerfile.Load(filepath.Join(src, path.Dir(found[0])))
-	require.NoError(t, err)
+	if err != nil {
+		return err
+	}
 	layerfile.Install(loaded)
-	t.Cleanup(func() { layerfile.Install(nil) })
+	return nil
 }
 
 // resolve maps an emitted diagnostic to the analyzer and rule ID the
