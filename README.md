@@ -51,11 +51,11 @@ and 2 when no report can be produced. Flags go before `<base>`.
 
 `tiger changed` answers whether a standard library function reaches package
 `syscall` from `.tiger/stdreach-<goos>-<goarch>.txt` in the module root. The
-file's first line names the exact Go version, GOOS and GOARCH it was made for.
-When the file is missing or names another toolchain, tiger regenerates it from
-source, which takes a few seconds, and writes it back. Commit the file to share
-it, or ignore `.tiger/`; tiger does neither for you, and an unignored, uncommitted
-file shows as an uncommitted change in the report's head label.
+file's first line names the exact Go version, GOOS, GOARCH and `CGO_ENABLED`
+setting it was made for. When the file is missing or names another toolchain,
+tiger regenerates it from source, which takes a few seconds, and writes it back.
+Commit the file to share it, or ignore `.tiger/`; tiger does neither for you, and
+an uncommitted reach file never counts as an uncommitted change in the head label.
 
 ### Posting the report on a pull request
 

@@ -17,9 +17,10 @@ import (
 // run with.
 func reachKey(t *testing.T) string {
 	t.Helper()
-	out, err := exec.Command("go", "env", "GOVERSION", "GOOS", "GOARCH").Output()
+	out, err := exec.Command("go", "env", "GOVERSION", "GOOS", "GOARCH", "CGO_ENABLED").Output()
 	require.NoError(t, err)
-	return "tiger-stdreach/1 " + strings.Join(strings.Fields(string(out)), " ")
+	fields := strings.Fields(string(out))
+	return "tiger-stdreach/1 " + strings.Join(fields[:3], " ") + " cgo=" + fields[3]
 }
 
 // reachPath is where a project keeps the reach file for the toolchain in use,
@@ -73,6 +74,36 @@ func TestChangedKeepsTheStandardLibraryReachInTheProject(t *testing.T) {
 		assert.Equal(t, reachKey(t), firstLine(t, filepath.Join(c.dir, file)))
 	})
 
+	t.Run("anotherCgoSetting", func(t *testing.T) {
+		t.Parallel()
+		c := fixture(t, "call-added")
+		want := c.changed().stdout
+		key := reachKey(t)
+		other := strings.TrimSuffix(key, "1") + "1"
+		if strings.HasSuffix(key, "=1") {
+			other = strings.TrimSuffix(key, "1") + "0"
+		}
+		c.write(repoPath(filepath.ToSlash(file)), other+"\nend\n")
+
+		got := c.changed()
+		assert.Equal(t, want, got.stdout)
+		assert.Equal(t, key, firstLine(t, filepath.Join(c.dir, file)))
+	})
+
+	t.Run("conflictMarkers", func(t *testing.T) {
+		t.Parallel()
+		c := fixture(t, "call-added")
+		want := c.changed().stdout
+		body := reachKey(t) + "\n<<<<<<< HEAD\n=======\n>>>>>>> feature\nend\n"
+		c.write(repoPath(filepath.ToSlash(file)), body)
+
+		got := c.changed()
+		assert.Equal(t, want, got.stdout)
+		data, err := os.ReadFile(filepath.Join(c.dir, file))
+		require.NoError(t, err)
+		assert.NotContains(t, string(data), "<<<<<<<")
+	})
+
 	t.Run("moduleRoot", func(t *testing.T) {
 		t.Parallel()
 		c := fixture(t, "call-added")
@@ -88,10 +119,9 @@ func TestChangedKeepsTheStandardLibraryReachInTheProject(t *testing.T) {
 		t.Parallel()
 		c := fixture(t, "call-added")
 		want := c.changed().stdout
-		dir := filepath.Join(c.dir, ".tiger")
-		require.NoError(t, os.RemoveAll(dir))
-		require.NoError(t, os.Mkdir(dir, 0o500))
-		t.Cleanup(func() { assert.NoError(t, os.Chmod(dir, 0o755)) })
+		path := filepath.Join(c.dir, file)
+		require.NoError(t, os.Remove(path))
+		require.NoError(t, os.Mkdir(path, 0o755))
 
 		got := c.changed()
 		assert.Equal(t, command.ExitClean, got.code)
@@ -126,6 +156,41 @@ func TestChangedIgnoresItsOwnReachFileWhenCountingChanges(t *testing.T) {
 	second := c.report()
 	assert.Equal(t, false, first.Head["dirty"])
 	assert.Equal(t, first.Head, second.Head)
+}
+
+// TestChangedCountsChangesOutsideTheDirectoryItRunsIn covers head naming.
+//
+// Goal: with -C pointing below the repository root, an uncommitted edit
+// elsewhere in the repository still marks the head dirty, and the reach file
+// the run wrote does not.
+func TestChangedCountsChangesOutsideTheDirectoryItRunsIn(t *testing.T) {
+	c := fixture(t, "call-added")
+	c.write(".git/info/exclude", "")
+	clean := run(t, "changed", "-C", filepath.Join(c.dir, "web"), "--format", "json", "main")
+	require.Equal(t, command.ExitClean, clean.code)
+	assert.Contains(t, clean.stdout, `"dirty": false`)
+
+	c.write("NOTES.md", "outside web\n")
+	dirty := run(t, "changed", "-C", filepath.Join(c.dir, "web"), "--format", "json", "main")
+	require.Equal(t, command.ExitClean, dirty.code)
+	assert.Contains(t, dirty.stdout, `"dirty": true`)
+}
+
+// TestChangedLeavesNoTemporaryFileInTheProject covers the reach file write.
+//
+// Goal: after a run, .tiger holds the reach file and nothing else, and a
+// stray stdreach-*.txt left by a killed run does not make the head dirty.
+func TestChangedLeavesNoTemporaryFileInTheProject(t *testing.T) {
+	c := fixture(t, "call-added")
+	c.write(".git/info/exclude", "")
+	require.NoError(t, os.RemoveAll(filepath.Join(c.dir, ".tiger")))
+	c.write(".tiger/stdreach-4242.txt", "left by a killed run\n")
+
+	first := c.report()
+	assert.Equal(t, false, first.Head["dirty"])
+	entries, err := os.ReadDir(filepath.Join(c.dir, ".tiger"))
+	require.NoError(t, err)
+	assert.Len(t, entries, 2)
 }
 
 // TestChangedReadsAReachFileTheProjectCommitted covers committing the file.

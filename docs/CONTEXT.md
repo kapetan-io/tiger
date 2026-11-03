@@ -81,7 +81,7 @@ _Avoid_: diff, effect report
 **Reach file**:
 The per-GOOS/GOARCH file `.tiger/stdreach-<goos>-<goarch>.txt` in the module root that lists which standard
 library functions statically reach package `syscall`. `tiger changed` reads it instead of type-checking the
-standard library, and regenerates it when its first line names another Go version, GOOS or GOARCH.
+standard library, and regenerates it when its first line names another Go version, GOOS, GOARCH or `CGO_ENABLED` setting.
 
 **Owner**:
 In a `tiger changed` report, the named type that holds a method where a call is written, or the free

@@ -75,7 +75,7 @@ func (r Repository) Compare(base string) (Comparison, error) {
 			"no common ancestor of %s and HEAD; in CI fetch full history (fetch-depth: 0)", base)
 	}
 	status, err := r.git("status", "--porcelain", "--untracked-files=all",
-		"--", ".", ":(exclude,glob)**/.tiger/stdreach-*.txt")
+		"--", ":/", ":(top,exclude,glob)**/.tiger/stdreach-*.txt")
 	if err != nil {
 		return Comparison{}, fmt.Errorf("git status failed: %w", err)
 	}

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"go/token"
 	"go/types"
 	"io"
 	"maps"
@@ -15,6 +16,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"unicode"
 
 	"golang.org/x/tools/go/packages"
 	"golang.org/x/tools/go/ssa"
@@ -42,11 +44,12 @@ type toolchain struct {
 	Version string `json:"GOVERSION"`
 	OS      string `json:"GOOS"`
 	Arch    string `json:"GOARCH"`
+	Cgo     string `json:"CGO_ENABLED"`
 	Mod     string `json:"GOMOD"`
 }
 
 func (t toolchain) key() string {
-	return stdReachMagic + " " + t.Version + " " + t.OS + " " + t.Arch
+	return stdReachMagic + " " + t.Version + " " + t.OS + " " + t.Arch + " cgo=" + t.Cgo
 }
 
 func (t toolchain) root(dir string) string {
@@ -57,7 +60,7 @@ func (t toolchain) root(dir string) string {
 }
 
 func goToolchain(dir string) (toolchain, error) {
-	cmd := exec.Command("go", "env", "-json", "GOVERSION", "GOOS", "GOARCH", "GOMOD")
+	cmd := exec.Command("go", "env", "-json", "GOVERSION", "GOOS", "GOARCH", "CGO_ENABLED", "GOMOD")
 	cmd.Dir = dir
 	out, err := cmd.Output()
 	if err != nil {
@@ -108,7 +111,7 @@ func writeFileAtomic(path string, data []byte) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
-	temp, err := os.CreateTemp(filepath.Dir(path), ".stdreach-*")
+	temp, err := os.CreateTemp(filepath.Dir(path), "stdreach-*.txt")
 	if err != nil {
 		return err
 	}
@@ -141,13 +144,37 @@ func (t *StdReach) parse(text string, chain toolchain) error {
 			if pkg == "" {
 				return fmt.Errorf("line %d: member before any package", i+2)
 			}
+			if !memberName(line[1:]) {
+				return fmt.Errorf("line %d: %q is not a member name", i+2, line[1:])
+			}
 			t.reaches[pkg+"."+line[1:]] = true
 		default:
+			if !importPath(line) {
+				return fmt.Errorf("line %d: %q is not a package path", i+2, line)
+			}
 			pkg = line
 			t.packages[pkg] = true
 		}
 	}
 	return nil
+}
+
+func importPath(path string) bool {
+	for _, r := range path {
+		if !unicode.IsLetter(r) && !unicode.IsDigit(r) && !strings.ContainsRune("-._~/", r) {
+			return false
+		}
+	}
+	return path != ""
+}
+
+func memberName(name string) bool {
+	for _, part := range strings.Split(name, ".") {
+		if !token.IsIdentifier(part) {
+			return false
+		}
+	}
+	return true
 }
 
 func (t *StdReach) knows(path string) bool {
@@ -179,7 +206,8 @@ func writeStdReach(w io.Writer, dir string, chain toolchain) error {
 	pkgs, err := packages.Load(&packages.Config{
 		Mode: packages.LoadAllSyntax,
 		Dir:  dir,
-		Env:  append(os.Environ(), "GOOS="+chain.OS, "GOARCH="+chain.Arch, "CGO_ENABLED=0"),
+		Env: append(os.Environ(),
+			"GOOS="+chain.OS, "GOARCH="+chain.Arch, "CGO_ENABLED="+chain.Cgo),
 	}, "std")
 	if err != nil {
 		return err
