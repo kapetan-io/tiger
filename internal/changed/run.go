@@ -81,7 +81,9 @@ func Run(args []string, streams command.Streams) int {
 	return command.ExitClean
 }
 
-func compareRevisions(dir string, rev revision.Comparison, table *callinventory.StdReach) (Report, error) {
+func compareRevisions(
+	dir string, rev revision.Comparison, table *callinventory.StdReach,
+) (Report, error) {
 	headLabel := "head (" + revision.Short(rev.Head) + ")"
 	var group sync.WaitGroup
 	var base callinventory.Inventory
@@ -101,7 +103,9 @@ func compareRevisions(dir string, rev revision.Comparison, table *callinventory.
 	return Compare(Sides{Base: base, Head: head}), nil
 }
 
-func loadBase(rev revision.Comparison, table *callinventory.StdReach) (inv callinventory.Inventory, err error) {
+func loadBase(
+	rev revision.Comparison, table *callinventory.StdReach,
+) (inv callinventory.Inventory, err error) {
 	tree, err := rev.Extract()
 	if err != nil {
 		return inv, err

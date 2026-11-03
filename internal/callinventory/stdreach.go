@@ -19,6 +19,8 @@ import (
 	"golang.org/x/tools/go/packages"
 	"golang.org/x/tools/go/ssa"
 	"golang.org/x/tools/go/ssa/ssautil"
+
+	"github.com/kapetan-io/tiger/assert"
 )
 
 const stdReachDir = ".tiger"
@@ -200,7 +202,9 @@ func writeStdReach(w io.Writer, dir string, chain toolchain) error {
 				return fmt.Errorf("%s: %w", fn, err)
 			}
 			if found {
-				members = append(members, strings.TrimPrefix(memberKey(fn.Object().(*types.Func)), pkg.PkgPath+"."))
+				obj, isFunc := fn.Object().(*types.Func)
+				assert.Ok(isFunc, "a table member has a declaration")
+				members = append(members, strings.TrimPrefix(memberKey(obj), pkg.PkgPath+"."))
 			}
 		}
 		slices.Sort(members)
@@ -222,8 +226,8 @@ func importable(path string) bool {
 	if strings.HasPrefix(path, "cmd/") || strings.HasPrefix(path, "vendor/") {
 		return false
 	}
-	return path != "internal" && !strings.HasPrefix(path, "internal/") && !strings.Contains(path, "/internal/") &&
-		!strings.HasSuffix(path, "/internal")
+	return path != "internal" && !strings.HasPrefix(path, "internal/") &&
+		!strings.Contains(path, "/internal/") && !strings.HasSuffix(path, "/internal")
 }
 
 func exportedMembers(prog *ssa.Program, pkg *types.Package) []*ssa.Function {

@@ -23,7 +23,8 @@ func writeModule(t *testing.T, files map[string]string) string {
 	dir := t.TempDir()
 	require.NoError(t, os.CopyFS(dir, module))
 	require.NoError(t, os.Mkdir(filepath.Join(dir, ".tiger"), 0o755))
-	require.NoError(t, os.WriteFile(filepath.Join(dir, ".tiger", reachFile.name), reachFile.data, 0o644))
+	seed := filepath.Join(dir, ".tiger", reachFile.name)
+	require.NoError(t, os.WriteFile(seed, reachFile.data, 0o644))
 	return dir
 }
 

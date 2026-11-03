@@ -27,8 +27,10 @@ func TestMain(m *testing.M) {
 	dir, err := os.MkdirTemp("", "tiger-reach-seed")
 	assert.NoError(err, "temporary directory")
 	defer func() { assert.NoError(os.RemoveAll(dir), "remove "+dir) }()
-	assert.NoError(os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module example.com/seed\n\ngo 1.26\n"), 0o644), "go.mod")
-	assert.NoError(os.WriteFile(filepath.Join(dir, "seed.go"), []byte("package seed\n"), 0o644), "seed.go")
+	module := []byte("module example.com/seed\n\ngo 1.26\n")
+	assert.NoError(os.WriteFile(filepath.Join(dir, "go.mod"), module, 0o644), "go.mod")
+	source := []byte("package seed\n")
+	assert.NoError(os.WriteFile(filepath.Join(dir, "seed.go"), source, 0o644), "seed.go")
 	git := func(args ...string) {
 		cmd := exec.Command("git", args...)
 		cmd.Dir = dir
@@ -39,7 +41,8 @@ func TestMain(m *testing.M) {
 	git("add", "-A")
 	git("-c", "user.name=seed", "-c", "user.email=seed@example.com", "commit", "-q", "-m", "seed")
 
-	code := changed.Run([]string{"-C", dir, "main"}, command.Streams{Stdout: io.Discard, Stderr: io.Discard})
+	discard := command.Streams{Stdout: io.Discard, Stderr: io.Discard}
+	code := changed.Run([]string{"-C", dir, "main"}, discard)
 	assert.Equal(code, command.ExitClean, "generating the reach file")
 	files, err := filepath.Glob(filepath.Join(dir, ".tiger", "stdreach-*.txt"))
 	assert.NoError(err, "glob")

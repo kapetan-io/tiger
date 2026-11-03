@@ -156,7 +156,8 @@ func TestChangedReadsAReachFileTheProjectCommitted(t *testing.T) {
 func TestChangedRegeneratesAReachFileThatWasCutShort(t *testing.T) {
 	c := fixture(t, "call-added")
 	want := c.changed().stdout
-	c.write(repoPath(".tiger/"+reachFile.name), firstLine(t, filepath.Join(c.dir, ".tiger", reachFile.name))+"\npackage-nobody-has\n")
+	seeded := filepath.Join(c.dir, ".tiger", reachFile.name)
+	c.write(repoPath(".tiger/"+reachFile.name), firstLine(t, seeded)+"\npackage-nobody-has\n")
 
 	got := c.changed()
 	assert.Equal(t, want, got.stdout)
