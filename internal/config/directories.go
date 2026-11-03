@@ -8,9 +8,6 @@ import (
 	"strings"
 )
 
-// Directories is the flag value kind for a setting that holds module
-// directories. Only tiger.yaml sets it, because every entry names a directory
-// and a reason and the command line has no room for the reason.
 type Directories struct {
 	Name string
 }
@@ -19,19 +16,15 @@ var _ flag.Value = Directories{Name: ""}
 
 func (d Directories) String() string { return "" }
 
-// Set refuses every command-line value.
 func (d Directories) Set(string) error {
 	return errors.New(d.Name + " is set only in " + FileName + ", each directory with a reason")
 }
 
-// directoryFlag reports whether a flag holds directories.
 func directoryFlag(value flag.Value) bool {
 	_, found := value.(Directories)
 	return found
 }
 
-// directory checks one directory entry against the module at root and
-// rewrites it to the package pattern that covers the directory's subtree.
 func (f *File) directory(key Key, entry Entry) (Entry, error) {
 	fail := func(problem string) (Entry, error) {
 		return Entry{}, &Error{
@@ -67,8 +60,6 @@ func (f *File) directory(key Key, entry Entry) (Entry, error) {
 	return entry, nil
 }
 
-// nestedModule returns the first directory on the way down to rel, rel
-// included, that holds its own go.mod.
 func (f *File) nestedModule(rel string) string {
 	walked := ""
 	for _, segment := range strings.Split(rel, "/") {

@@ -26,30 +26,21 @@ import (
 	"github.com/kapetan-io/tiger/internal/module"
 )
 
-// FileName is the config file's fixed name in the run directory.
 const FileName = "tiger.yaml"
 
-// version is the only schema version this loader accepts.
 const version = 1
 
-// Entry is one config value with the reason a reviewer accepted it and the
-// module-relative package patterns it applies to; empty Packages means the
-// whole module.
 type Entry struct {
 	Value    string   `yaml:"value"`
 	Reason   string   `yaml:"reason"`
 	Packages []string `yaml:"packages"`
 }
 
-// Key names one analyzer setting: the analyzer and its flag name, the
-// two levels a tiger.yaml entry sits under.
 type Key struct {
 	Analyzer string
 	Flag     string
 }
 
-// File is a loaded, validated tiger.yaml bound to the module it was read
-// from.
 type File struct {
 	module  module.Path
 	root    string
@@ -57,8 +48,6 @@ type File struct {
 	nolint  bool
 }
 
-// Error is a load failure carrying the analyzer, key, and value the
-// one-line message names.
 type Error struct {
 	Analyzer string
 	Key      string
@@ -80,26 +69,17 @@ func (e *Error) Error() string {
 	return strings.Join(parts, ": ") + ": " + e.Problem
 }
 
-// document is the file's decoded shape: version, then one map per analyzer
-// name of key to entries.
 type document struct {
 	Version   int                           `yaml:"version"`
 	Nolint    yaml.Node                     `yaml:"nolint"`
 	Analyzers map[string]map[string][]Entry `yaml:",inline"`
 }
 
-// nolintBlock is the one entry that is not an analyzer setting: it turns
-// on the ban on //nolint (ADR-0023), so it has no value list or package scope.
 type nolintBlock struct {
 	Forbid bool   `yaml:"forbid"`
 	Reason string `yaml:"reason"`
 }
 
-// Load reads dir's tiger.yaml and validates it against analyzers: every
-// top-level key names a registered analyzer and every key under it names
-// one of that analyzer's flags. An absent file returns (nil, nil). The
-// module path comes from dir's go.mod, which the file requires so package
-// patterns can be resolved.
 func Load(dir string, analyzers []*analysis.Analyzer) (*File, error) {
 	raw, err := os.ReadFile(filepath.Join(dir, FileName))
 	if errors.Is(err, os.ErrNotExist) {
@@ -134,9 +114,6 @@ func Load(dir string, analyzers []*analysis.Analyzer) (*File, error) {
 	return loaded, nil
 }
 
-// parseNolint validates the nolint block, if the file has one, and reports
-// whether it forbids //nolint. A key other than forbid and reason is an
-// error so a typo cannot leave the ban silently off.
 func parseNolint(node *yaml.Node) (bool, error) {
 	if node.IsZero() {
 		return false, nil
@@ -163,7 +140,6 @@ func parseNolint(node *yaml.Node) (bool, error) {
 	return block.Forbid, nil
 }
 
-// add validates one analyzer's block and records its entries.
 func (f *File) add(name string, flags map[string][]Entry, analyzers []*analysis.Analyzer) error {
 	registered := byName(analyzers, name)
 	if registered == nil {
@@ -194,7 +170,6 @@ func (f *File) add(name string, flags map[string][]Entry, analyzers []*analysis.
 	return nil
 }
 
-// validate checks one entry: a value, a reason, and well-formed patterns.
 func validate(key Key, entry Entry) error {
 	if strings.TrimSpace(entry.Value) == "" {
 		return &Error{Analyzer: key.Analyzer, Key: key.Flag, Problem: "an entry has an " +
@@ -218,12 +193,8 @@ func validate(key Key, entry Entry) error {
 	return nil
 }
 
-// pattern is a module-relative Go package pattern: ".", "...", "a/b", or
-// "a/b/...".
 type pattern string
 
-// wellFormed reports whether the pattern has no absolute, parent, or
-// current-directory segments and no wildcard except a trailing one.
 func (p pattern) wellFormed() bool {
 	if p == "." || p == "..." {
 		return true
@@ -240,8 +211,6 @@ func (p pattern) wellFormed() bool {
 	return true
 }
 
-// matches reports whether the module-relative package path rel is covered
-// by the pattern.
 func (p pattern) matches(rel string) bool {
 	if p == "..." {
 		return true
@@ -252,7 +221,6 @@ func (p pattern) matches(rel string) bool {
 	return string(p) == rel
 }
 
-// byName finds one analyzer by name.
 func byName(analyzers []*analysis.Analyzer, name string) *analysis.Analyzer {
 	for _, analyzer := range analyzers {
 		if analyzer.Name == name {
@@ -262,30 +230,20 @@ func byName(analyzers []*analysis.Analyzer, name string) *analysis.Analyzer {
 	return nil
 }
 
-// oneLine collapses a multi-line yaml error into one line (ADR-0009).
 func oneLine(err error) string {
 	return strings.Join(strings.Fields(err.Error()), " ")
 }
 
-// installed is the process-global config the current run installed — the
-// same shape as analyzer flags, and reset the same way: every run installs
-// what its directory holds, an absent file included.
 var installed *File
 
-// Install makes file the config every analyzer queries for the rest of
-// the process, or clears it when file is nil.
 func Install(file *File) {
 	installed = file
 }
 
-// Installed reports whether a config file is currently installed.
 func Installed() bool {
 	return installed != nil
 }
 
-// Values returns the values of key that apply to the package at pkgPath:
-// entries with no scope, plus entries whose scope covers the package's
-// module-relative path. Nothing installed means nothing returned.
 func Values(pkgPath string, key Key) []string {
 	if installed == nil {
 		return nil
@@ -309,8 +267,6 @@ func Values(pkgPath string, key Key) []string {
 	return values
 }
 
-// NolintForbidden reports whether the installed config turns on the ban on
-// //nolint. Nothing installed means the ban is off.
 func NolintForbidden() bool {
 	return installed != nil && installed.nolint
 }
