@@ -12,7 +12,8 @@ TS-M05
 Tiger checks that `*b = T{}` runs before `Put` on every path (TS-M05). It cannot check that nothing
 writes the value after the zeroing. `ZeroThenUse` zeroes the buffer when it takes it out and then
 writes the user and data, so the zeroing precedes `Put` and tiger stays silent while the buffer goes
-back dirty. `UseThenZero` zeroes after the last write.
+back dirty. `UseThenZero` zeroes after the last write. `Buffer` is a pooled value that remembers who
+used it last, in `User` and `Data`, so the next `Get` of a dirty buffer sees this user's data.
 
 ## Bug
 

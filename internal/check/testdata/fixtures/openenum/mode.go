@@ -2,8 +2,8 @@
 // reason tiger needs to count the claim.
 package openenum
 
-// Mode is the transfer mode a peer asks for.
-//
+
+
 //tiger:openenum peers on the wire add modes before we upgrade
 type Mode int
 
@@ -12,7 +12,7 @@ const (
 	ModeMove
 )
 
-// Name labels a mode, with a catch-all for modes this build predates.
+
 func Name(mode Mode) string {
 	switch mode {
 	case ModeCopy:

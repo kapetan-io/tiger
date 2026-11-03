@@ -1377,6 +1377,14 @@ Enforce. `deferdistance` (custom). Blocking on the loop case, advisory on distan
 Why. Mechanical, so let the machine do it.
 Enforce. `gci` (auto).
 
+**`TS-L14` No prose comments below the package line of a production file.**
+Why. A comment drifts from the code and nothing catches it, yet readers and agents trust it. One of the
+trial bugs (TS-C05) sat under a doc comment that promised a cancellation the code did not have. The code,
+its tests and tiger's directives carry the meaning.
+Enforce. `comments` (custom), blocking. Below `package`, only `//go:`, `//tiger:`, a `//nolint` or `//nolint:` comment,
+`//line `, `/*line `, `//export ` and `//extern ` comments survive (ADR-0031). Test files, generated files and directories listed
+under `comments.allow` in `tiger.yaml`, each with a reason, are exempt. No fix ships (ADR-0008).
+
 ## Dependencies and tooling
 
 **`TS-D01` The pure standard library, and nothing else, unless the layer file allows more.**
@@ -1658,6 +1666,7 @@ that cannot fill the third column does not go in.
 | TS-L10 | Blank lines group acquisition with its defer, and no de... | B2, B3 | Sub |
 | TS-L11 | Imports grouped standard, external, internal | B0 | Coord |
 | TS-L13 | Retired, the `Why:` commit section never had a check (ADR-0032) | — | Retired |
+| TS-L14 | No prose comments below the package line of a production file | B7 | Sub |
 | TS-D01 | The pure standard library, and nothing else, unless the lay... | B8, B6 | Sub |
 | TS-D02 | Dependencies are vendored and pinned, including the too... | B4, B8 | Sub |
 | TS-D03 | Scripts are Go programs, not shell | B4, B0 | Mixed |
@@ -1799,6 +1808,7 @@ changes what it checks), or **not built**.
 | `nofloat` | TS-N11 | `types`, float types in the packages a `tiger.yaml` entry lists | not built |
 | `declorder` | TS-L05 | AST, declaration and method order (TS-L04 not shipped, see TS-L04) | built |
 | `deferdistance` | TS-L10 | AST plus token positions | built |
+| `comments` | TS-L14 | AST, comment groups classified by `directive.Classify`; `comments.allow` exempts directories | built (ADR-0031) |
 | `directives` | TS-L09 | AST, every escape-hatch directive and `//tiger:openenum` carries a reason; with `nolint.forbid` on, every `//nolint` is a finding | built (ADR-0023, ENG-179) |
 | `maporder` | TS-T02 | `buildssa`, allowlist of order-safe loop bodies; collect-then-sort with plain sorts or full-coverage comparators; the `maps` escape closed | built (ADR-0021) |
 | `fuzzcoverage` | TS-T03 | `packages`, parsers must have a Fuzz function | not built |

@@ -2,5 +2,5 @@
 // KeySigning still fires TS-N14 here.
 package api
 
-// KeySigning is deliberately named with a trailing participle.
+
 type KeySigning struct{}

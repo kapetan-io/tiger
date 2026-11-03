@@ -1,6 +1,6 @@
 package findings
 
-// Sum adds rows, escaping two loops with a label.
+
 func Sum(rows [][]int) int {
 	total := 0
 scan:

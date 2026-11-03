@@ -13,7 +13,9 @@ Tiger checks that a goroutine starts through a group and that a `Wait` on the gr
 exported method of the owning type (TS-C02). It cannot check that every path through that method
 reaches the `Wait`. `DaemonSkipsWait.Shutdown` closes the stop channel, flushes, and waits only when
 the flush worked, so on a flush error it returns while the goroutine is still winding down. Tiger
-stays silent because a `Wait` is there. `Daemon.Shutdown` waits first and flushes after.
+stays silent because a `Wait` is there. `Daemon.Shutdown` waits first and flushes after. The wait must
+follow the signal or it never returns, and it comes before the flush so a flush error cannot skip it. `Daemon.Start` runs the
+server goroutine, and its `windDown` argument stands in for the goroutine's cleanup work.
 
 ## Bug
 

@@ -12,25 +12,18 @@ import (
 	"github.com/kapetan-io/tiger/patterns/ledger/inv"
 )
 
-// HeaderSizeBytes = 4 checksum + 4 length + 4 sequence.
 const HeaderSizeBytes = 12
 
-// Header frames one batch in the ledger's log.
 type Header struct {
 	Checksum uint32
 	Length   uint32
 	Sequence uint32
 }
 
-// Length counts the payload bytes a header frames (TS-Q01: domain
-// quantities are named types, so a swapped argument is a compile error).
 type Length uint32
 
-// Sequence orders frames within the log (TS-Q01).
 type Sequence uint32
 
-// EncodeHeader frames length and sequence into a HeaderSizeBytes buffer,
-// computing the checksum over the payload fields.
 func EncodeHeader(length Length, sequence Sequence) []byte {
 	target := make([]byte, HeaderSizeBytes)
 	binary.BigEndian.PutUint32(target[4:8], uint32(length))
@@ -42,7 +35,6 @@ func EncodeHeader(length Length, sequence Sequence) []byte {
 	return target
 }
 
-// DecodeHeader reads a Header back out of target, refusing corrupt input.
 func DecodeHeader(target []byte) Header {
 	assert.Invariant(inv.HeaderSize, len(target) == HeaderSizeBytes)
 	header := Header{

@@ -16,6 +16,15 @@ accepted as a bound. The right shape in `List` keeps two
 limits: `len(names)` against the page limit, clamped to `pageMax`, and rows read against `scanMax`,
 returning `ErrScanLimit` when it is hit. Tiger sees only the second bound.
 
+`scanMax` bounds how long a filtered list runs, the way `pageMax` bounds how much it returns, and
+the constant `_ = uint(scanMax - pageMax)` stops the package compiling when a scan is shorter than a
+page, which could never fill a dense page. `ErrScanLimit` reports that `List` read `scanMax` rows
+before it filled the page or reached the end, so the page may be missing matches. `List` returns
+early for a limit of zero or less because it would never equal `len(names)`, turning the page bound
+off. A table of exactly `scanMax` rows ends cleanly, so `List` probes for one more row with
+`rows.Scan` before it returns `ErrScanLimit`. `Scan` is false for a read error as well as the end,
+so `List` returns `rows.Err()` and a failed read does not pass as a short page.
+
 ## Bug
 
 Querator's Badger list loop filtered rows before counting them, and returned a short page while more

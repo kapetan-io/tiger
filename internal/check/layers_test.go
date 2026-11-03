@@ -45,6 +45,12 @@ func writeModuleFiles(t *testing.T, files map[string]string) string {
 	t.Helper()
 	dir := t.TempDir()
 	writeFiles(t, dir, files)
+	_, hasConfig := files["tiger.yaml"]
+	_, hasModule := files["go.mod"]
+	if !hasConfig && hasModule {
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "tiger.yaml"),
+			[]byte("version: 1\n"+allowProse), 0o644))
+	}
 	return dir
 }
 

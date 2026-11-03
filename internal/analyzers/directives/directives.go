@@ -35,8 +35,11 @@ func run(pass *analysis.Pass) (any, error) {
 	for _, file := range pass.Files {
 		for _, group := range file.Comments {
 			for _, comment := range group.List {
-				inspect(pass, comment)
-				if forbid && isNolint(comment.Text) {
+				class := directive.Classify(file, comment)
+				if class == directive.Tiger {
+					inspect(pass, comment)
+				}
+				if forbid && class == directive.Nolint {
 					reportNolint(pass, file, comment)
 				}
 			}
@@ -45,11 +48,8 @@ func run(pass *analysis.Pass) (any, error) {
 	return nil, nil
 }
 
-// inspect reports one comment's directive findings, if it is a directive.
+// inspect reports one tiger directive's findings.
 func inspect(pass *analysis.Pass, comment *ast.Comment) {
-	if !directive.Is(comment.Text) {
-		return
-	}
 	parsed, err := directive.Parse(comment.Text)
 	var unknown *directive.UnknownVerbError
 	var unreasoned *directive.MissingReasonError
@@ -101,20 +101,6 @@ func inspect(pass *analysis.Pass, comment *ast.Comment) {
 			})
 		}
 	}
-}
-
-// isNolint reports whether a line comment is a //nolint directive, matched
-// the way golangci-lint 2.11 honors it: slashes and spaces after the opening
-// slashes are skipped, then nolint must stand alone or be followed by a space
-// or colon. Block comments and tabs are not honored there, so they are not
-// findings here.
-func isNolint(text string) bool {
-	body, found := strings.CutPrefix(text, "//")
-	if !found {
-		return false
-	}
-	rest, found := strings.CutPrefix(strings.TrimLeft(body, "/ "), "nolint")
-	return found && (rest == "" || rest[0] == ' ' || rest[0] == ':')
 }
 
 // reportNolint reports a //nolint at the file's package line rather than at

@@ -48,7 +48,7 @@ func Collect(fset *token.FileSet, files []*ast.File) Set {
 			end := fset.Position(group.End())
 			key := lineKey{file: end.Filename, line: end.Line + 1}
 			for _, comment := range group.List {
-				collected.add(key, comment)
+				collected.add(key, file, comment)
 			}
 		}
 	}
@@ -56,8 +56,8 @@ func Collect(fset *token.FileSet, files []*ast.File) Set {
 }
 
 // add appends one comment's pin to key, if it is a well-formed pin.
-func (s Set) add(key lineKey, comment *ast.Comment) {
-	if !directive.Is(comment.Text) {
+func (s Set) add(key lineKey, file *ast.File, comment *ast.Comment) {
+	if directive.Classify(file, comment) != directive.Tiger {
 		return
 	}
 	parsed, err := directive.Parse(comment.Text)

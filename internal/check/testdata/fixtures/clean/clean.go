@@ -2,7 +2,7 @@
 // panics, no directives.
 package clean
 
-// Total sums entries.
+
 func Total(entries []int) int {
 	total := 0
 	for _, entry := range entries {

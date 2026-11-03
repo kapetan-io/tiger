@@ -18,6 +18,7 @@ import (
 
 	"github.com/kapetan-io/tiger/internal/analyzers/boundedloop"
 	"github.com/kapetan-io/tiger/internal/analyzers/chandecl"
+	"github.com/kapetan-io/tiger/internal/analyzers/comments"
 	"github.com/kapetan-io/tiger/internal/analyzers/compoundcond"
 	"github.com/kapetan-io/tiger/internal/analyzers/contracts"
 	"github.com/kapetan-io/tiger/internal/analyzers/declorder"
@@ -235,6 +236,11 @@ var customRules = []CustomRule{
 		Category: "TS-T10", RuleID: "TS-T10", Analyzer: tablename.Analyzer,
 		Severity: SeverityBlocking,
 		Title:    "table-driven tests have named cases",
+	},
+	{
+		Category: "TS-L14", RuleID: "TS-L14", Analyzer: comments.Analyzer,
+		Severity: SeverityBlocking,
+		Title:    "no prose comments below the package line of a production file",
 	},
 	{
 		Category: "TS-T12", RuleID: "TS-T12", Analyzer: testpackage.Analyzer,

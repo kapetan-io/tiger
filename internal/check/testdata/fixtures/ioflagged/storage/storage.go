@@ -3,7 +3,7 @@
 // database/sql or net/http, just not on the seed allowlist by default.
 package storage
 
-// Save writes one item to the backing store.
+
 func Save(item string) error {
 	return nil
 }

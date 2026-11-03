@@ -102,10 +102,10 @@ var vocabulary = []Verb{
 	{Name: "openenum", Kind: KindEscape},
 }
 
-// Is reports whether a comment's text is a tiger directive. Text with a
+// is reports whether a comment's text is a tiger directive. Text with a
 // space after the slashes is prose, not a directive, matching how Go treats
 // its own //go: comments.
-func Is(text string) bool {
+func is(text string) bool {
 	return strings.HasPrefix(text, Prefix)
 }
 
@@ -115,7 +115,7 @@ func Is(text string) bool {
 // text was present, so a caller can name the offending verb in a finding.
 // The errors are *UnknownVerbError and *MissingReasonError.
 func Parse(text string) (Directive, error) {
-	if !Is(text) {
+	if !is(text) {
 		return Directive{Verb: "", Args: ""}, errors.New("not a tiger directive: " + text)
 	}
 	rest := text[len(Prefix):]

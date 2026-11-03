@@ -1,6 +1,8 @@
 package directive_test
 
 import (
+	"go/parser"
+	"go/token"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -147,16 +149,63 @@ func TestParseErrorStillNamesTheVerb(t *testing.T) {
 	assert.Equal(t, "trust me", parsed.Args)
 }
 
-// TestIsRecognizesThePrefixExactly covers directive recognition.
+// TestClassify pins the class every reader of a comment binds to.
 //
-// Goal: only comments beginning exactly //tiger: are directives; a space
-// after the slashes is prose, matching Go's own //go: convention.
-func TestIsRecognizesThePrefixExactly(t *testing.T) {
-	assert.True(t, directive.Is("//tiger:batched reason"))
-	assert.True(t, directive.Is("//tiger:"))
-	assert.False(t, directive.Is("// tiger:batched reason"))
-	assert.False(t, directive.Is("//tigerstyle:batched reason"))
-	assert.False(t, directive.Is("prose mentioning //tiger:batched"))
+// Goal: the same text means the same thing to the comment ban, the pin
+// readers and the nolint check; only the Header class depends on position.
+func TestClassify(t *testing.T) {
+	const pkg = "package p\n"
+	for _, test := range []struct {
+		name string
+		code string
+		want directive.Class
+	}{
+		{name: "TigerDirective", code: pkg + "//tiger:batched reason\n", want: directive.Tiger},
+		{name: "BareTigerPrefix", code: pkg + "//tiger:\n", want: directive.Tiger},
+		{
+			name: "SpaceAfterSlashesIsProse",
+			code: pkg + "// tiger:batched reason\n",
+			want: directive.Prose,
+		},
+		{name: "LongerWordIsProse", code: pkg + "//tigerstyle:batched x\n", want: directive.Prose},
+		{name: "GoGenerate", code: pkg + "//go:generate x\n", want: directive.GoDirective},
+		{name: "GoEmbed", code: pkg + "//go:embed f\n", want: directive.GoDirective},
+		{name: "Line", code: pkg + "//line a.go:10\n", want: directive.GoDirective},
+		{name: "BlockLine", code: pkg + "/*line a.go:10*/\n", want: directive.GoDirective},
+		{name: "Export", code: pkg + "//export F\n", want: directive.GoDirective},
+		{name: "Extern", code: pkg + "//extern f\n", want: directive.GoDirective},
+		{name: "OtherWordColonWord", code: pkg + "//easyjson:json\n", want: directive.Prose},
+		{name: "WhyDirective", code: pkg + "//why:x\n", want: directive.Prose},
+		{name: "LintIgnore", code: pkg + "//lint:ignore SA1 x\n", want: directive.Prose},
+		{name: "BareNolint", code: pkg + "//nolint\n", want: directive.Nolint},
+		{
+			name: "NolintWithLinter",
+			code: pkg + "//nolint:errcheck // reason\n",
+			want: directive.Nolint,
+		},
+		{name: "SpacedNolint", code: pkg + "// nolint\n", want: directive.Nolint},
+		{name: "TripleSlashNolint", code: pkg + "///nolint\n", want: directive.Nolint},
+		{name: "NolintPrefixOfAWord", code: pkg + "//nolinting\n", want: directive.Prose},
+		{name: "PlainProse", code: pkg + "// x\n", want: directive.Prose},
+		{name: "BlockProse", code: pkg + "/* x */\n", want: directive.Prose},
+		{name: "BareSlashes", code: pkg + "//\n", want: directive.Prose},
+		{name: "TrailingOnPackageLine", code: "package p // x\n", want: directive.Prose},
+		{name: "AbovePackage", code: "// x\npackage p\n", want: directive.Header},
+		{name: "BuildTag", code: "//go:build linux\n\npackage p\n", want: directive.GoDirective},
+		{
+			name: "TigerAbovePackage",
+			code: "//tiger:batched r\n\npackage p\n",
+			want: directive.Tiger,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			file, err := parser.ParseFile(token.NewFileSet(), "p.go", test.code,
+				parser.ParseComments)
+			require.NoError(t, err)
+			require.Len(t, file.Comments, 1)
+			assert.Equal(t, test.want, directive.Classify(file, file.Comments[0].List[0]))
+		})
+	}
 }
 
 // TestVocabularyKinds covers the declaration-model classification.
