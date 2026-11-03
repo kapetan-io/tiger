@@ -14,9 +14,6 @@ import (
 	"golang.org/x/tools/go/ssa"
 )
 
-// StaticCall is one call whose callee is statically known: a direct
-// function call, a method call on a concrete type, or an immediately
-// invoked or spawned function literal.
 type StaticCall struct {
 	Callee  *ssa.Function
 	Pos     token.Pos
@@ -24,9 +21,6 @@ type StaticCall struct {
 	Spawned bool
 }
 
-// StaticCalls enumerates fn's statically resolvable calls in block and
-// instruction order. Calls through interfaces or unresolved function
-// values are absent — the known-miss boundary, never guessed at.
 func StaticCalls(fn *ssa.Function) []StaticCall {
 	calls := []StaticCall{}
 	for _, block := range fn.Blocks {

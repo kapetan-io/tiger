@@ -1,15 +1,3 @@
-// Package counter decides whether a for loop's counter is a sound bound,
-// shared by boundedloop (TS-S02), limitflow (TS-S02 limits) and variant
-// (TS-V01).
-//
-// A counter is a bound only when its comparison is a top-level && term of
-// the loop's condition, pairs < or <= with ++ or += (or > or >= with -- or
-// -=, never !=), nothing in the body writes the counter or its limit, and
-// the counter reaches the limit before it wraps around the type's range.
-// The limit may call only len, cap, min, max, conversions and declared
-// functions or methods; a function value could return something larger on
-// every pass. A declared getter such as tuple.Len() is trusted, so a body
-// that grows the receiver through a method call goes unseen.
 package counter
 
 import (
@@ -23,10 +11,6 @@ import (
 	"github.com/kapetan-io/tiger/internal/analyzers/internal/mutation"
 )
 
-// Term is a counter's march toward a limit: the comparison that bounds it,
-// whether the comparison includes the limit itself, and the constant step
-// the counter takes on each pass toward it. The counter is a loop counter, or
-// a struct field when TS-V01 checks a measure that is not one.
 type Term struct {
 	Counter   *types.Var
 	Limit     ast.Expr
@@ -35,16 +19,12 @@ type Term struct {
 	Down      bool
 }
 
-// step is how a Post clause moves its counter on every pass.
 type step struct {
 	counter *types.Var
 	size    int64
 	down    bool
 }
 
-// Terms returns the comparisons in loop's condition that bound the loop
-// soundly. It is empty when the loop has no counter, the counter is
-// disturbed, or no comparison qualifies.
 func Terms(scope mutation.Scope, loop *ast.ForStmt) []Term {
 	if loop.Cond == nil {
 		return nil
@@ -66,12 +46,8 @@ func Terms(scope mutation.Scope, loop *ast.ForStmt) []Term {
 	return terms
 }
 
-// addsOrSubtracts are the compound assignments that step a counter.
 var addsOrSubtracts = map[token.Token]bool{token.ADD_ASSIGN: true, token.SUB_ASSIGN: true}
 
-// Counted reports whether the loop advances a counter its condition reads,
-// by ++, --, += or -= of any step, sound or not. Such a loop is judged by
-// whether the counter bounds it, and not by the shape of its condition.
 func Counted(scope mutation.Scope, loop *ast.ForStmt) bool {
 	if loop.Cond == nil {
 		return false
@@ -92,7 +68,6 @@ func Counted(scope mutation.Scope, loop *ast.ForStmt) bool {
 	return ok && scope.Mentions(loop.Cond, counted)
 }
 
-// advance reads the counter and the constant step a Post clause applies.
 func advance(info *types.Info, post ast.Stmt) (step, bool) {
 	switch stmt := post.(type) {
 	case *ast.IncDecStmt:
@@ -115,7 +90,6 @@ func advance(info *types.Info, post ast.Stmt) (step, bool) {
 	return step{}, false
 }
 
-// integerVar resolves expr to a local integer variable.
 func integerVar(info *types.Info, expr ast.Expr) (*types.Var, bool) {
 	ident, ok := ast.Unparen(expr).(*ast.Ident)
 	if !ok {
@@ -128,8 +102,6 @@ func integerVar(info *types.Info, expr ast.Expr) (*types.Var, bool) {
 	return v, intrange.IsInteger(v.Type())
 }
 
-// disturbed reports whether the body, or something outside it, writes the
-// counter.
 func disturbed(scope mutation.Scope, loop *ast.ForStmt, counter *types.Var) bool {
 	if len(scope.Writes(loop.Body, counter)) > 0 {
 		return true
@@ -137,8 +109,6 @@ func disturbed(scope mutation.Scope, loop *ast.ForStmt, counter *types.Var) bool
 	return scope.Escapes(counter)
 }
 
-// compare reads one conjunct as counter-versus-limit in the direction the
-// step moves, and checks the limit holds still while the loop runs.
 func compare(
 	scope mutation.Scope, loop *ast.ForStmt, conjunct ast.Expr, moved step,
 ) (Term, bool) {
@@ -171,14 +141,11 @@ func compare(
 	}, true
 }
 
-// flipped returns the comparison that reads the same with its operands
-// swapped.
 func flipped(op token.Token) token.Token {
 	mirrored, _ := condition.Mirror(op)
 	return mirrored
 }
 
-// stable reports whether nothing in the loop can change limit's value.
 func stable(scope mutation.Scope, loop *ast.ForStmt, limit ast.Expr) bool {
 	holds := true
 	ast.Inspect(limit, func(n ast.Node) bool {
@@ -203,15 +170,10 @@ func stable(scope mutation.Scope, loop *ast.ForStmt, limit ast.Expr) bool {
 	return holds
 }
 
-// limitBuiltins are the builtins whose result a loop body cannot grow from
-// the outside.
 var limitBuiltins = map[string]bool{"len": true, "cap": true, "min": true, "max": true}
 
-// valueOperators are the unary operators that leave a limit a plain value.
 var valueOperators = map[token.Token]bool{token.SUB: true, token.ADD: true, token.XOR: true}
 
-// writesText reports whether the body assigns an expression written exactly
-// like expr, which is how a write through a dereference or an element shows.
 func writesText(body *ast.BlockStmt, expr ast.Expr) bool {
 	want := types.ExprString(expr)
 	found := false
@@ -230,11 +192,6 @@ func writesText(body *ast.BlockStmt, expr ast.Expr) bool {
 	return found
 }
 
-// staysPut reports whether a call in a limit is trusted to hold still: a
-// conversion, a builtin that reads its operands, or a call to a declared
-// function or method such as tuple.Len(). The operands of the call are
-// judged with the rest of the limit; a function value is not trusted,
-// because nothing says what it returns next.
 func staysPut(info *types.Info, call *ast.CallExpr) bool {
 	if info.Types[call.Fun].IsType() {
 		return true
@@ -255,8 +212,6 @@ func staysPut(info *types.Info, call *ast.CallExpr) bool {
 	return false
 }
 
-// variableHolds reports whether the variable ident names is unwritten by
-// the loop and by anything that outlives it.
 func variableHolds(scope mutation.Scope, loop *ast.ForStmt, ident *ast.Ident) bool {
 	v, ok := scope.Info().ObjectOf(ident).(*types.Var)
 	if !ok || v.IsField() {
@@ -271,8 +226,6 @@ func variableHolds(scope mutation.Scope, loop *ast.ForStmt, ident *ast.Ident) bo
 	return !scope.Escapes(v)
 }
 
-// growable reports whether t is a map or a channel, which a function handed
-// one can grow.
 func growable(t types.Type) bool {
 	switch t.Underlying().(type) {
 	case *types.Map, *types.Chan:
@@ -281,9 +234,6 @@ func growable(t types.Type) bool {
 	return false
 }
 
-// fieldHolds reports whether the field a selector reads is unwritten by the
-// loop, by anything that outlives it, and by any call the body makes with
-// the struct that owns it.
 func fieldHolds(scope mutation.Scope, loop *ast.ForStmt, selector *ast.SelectorExpr) bool {
 	selection := scope.Info().Selections[selector]
 	if selection == nil || selection.Kind() != types.FieldVal {
@@ -302,27 +252,17 @@ func fieldHolds(scope mutation.Scope, loop *ast.ForStmt, selector *ast.SelectorE
 	return !scope.ReceivesOwner(loop.Body, selection.Recv())
 }
 
-// trusted reports whether a counter is taken to arrive at a limit nobody can
-// reduce to a constant. The limit may sit at the edge of the type, so the
-// counter is trusted when one step cannot overshoot it, a step of one toward
-// an exclusive limit, or when the type is wide enough that its far edge is out
-// of reach. Counting down on an unsigned type reaches its edge at zero, which
-// is close.
 func trusted(typed intrange.Span, term Term) bool {
 	if term.Size == 1 && !term.Inclusive {
 		return true
 	}
 	wide := typed.OutOfReach()
 	if term.Down {
-		// A wide signed type counting down needs 2^31 passes to reach its low
-		// edge; an unsigned one reaches its edge at zero.
 		return wide && typed.Low.Sign() < 0
 	}
 	return wide
 }
 
-// Reaches reports whether the counter arrives at the limit before it wraps
-// around the end of its type.
 func Reaches(scope mutation.Scope, term Term) bool {
 	typed, ok := intrange.Of(term.Counter.Type(), scope.Sizes())
 	if !ok {

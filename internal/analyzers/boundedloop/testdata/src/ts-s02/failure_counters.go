@@ -42,7 +42,8 @@ func variableStep(n, step int) {
 	}
 }
 
-// limitFromFunctionValue asks a function value for the limit on every pass.
+// limitFromFunctionValue asks a function value for the limit on every pass. A
+// function value is not trusted, because nothing says what it returns next.
 func limitFromFunctionValue(limit func() int) {
 	for i := 0; i < limit(); i++ { // want `TS-S02: this counter does not bound the loop`
 	}

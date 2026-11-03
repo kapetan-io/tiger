@@ -13,25 +13,18 @@ import (
 	"github.com/kapetan-io/tiger/assert"
 )
 
-// termsMax bounds how many nodes the flattening of one condition visits. No
-// real condition has this many terms, but generated code can have thousands.
 const termsMax = 1 << 16
 
 const _ = uint(1<<20 - termsMax)
 
-// Conjuncts splits expr on top-level && into its terms. It looks through
-// parentheses, and stops at a negation or a disjunction.
 func Conjuncts(expr ast.Expr) []ast.Expr {
 	return split(expr, token.LAND)
 }
 
-// Disjuncts splits expr on top-level || into its terms. It looks through
-// parentheses, and stops at a negation or a conjunction.
 func Disjuncts(expr ast.Expr) []ast.Expr {
 	return split(expr, token.LOR)
 }
 
-// split flattens a tree of op into its leaves, left to right.
 func split(expr ast.Expr, op token.Token) []ast.Expr {
 	pending := []ast.Expr{expr}
 	var terms []ast.Expr
@@ -50,20 +43,15 @@ func split(expr ast.Expr, op token.Token) []ast.Expr {
 	return terms
 }
 
-// swapped maps a comparison to the one that reads the same with its operands
-// swapped.
 var swapped = map[token.Token]token.Token{
 	token.LSS: token.GTR, token.LEQ: token.GEQ, token.GTR: token.LSS, token.GEQ: token.LEQ,
 }
 
-// Mirror returns the comparison that reads the same as op with its operands
-// swapped, and reports whether op is an ordering comparison.
 func Mirror(op token.Token) (token.Token, bool) {
 	mirrored, ok := swapped[op]
 	return mirrored, ok
 }
 
-// IsNil reports whether expr is the predeclared nil.
 func IsNil(info *types.Info, expr ast.Expr) bool {
 	ident, ok := ast.Unparen(expr).(*ast.Ident)
 	if !ok {
@@ -73,8 +61,6 @@ func IsNil(info *types.Info, expr ast.Expr) bool {
 	return isNilObject
 }
 
-// Uninstantiated returns the function named by fun without the type arguments
-// of an explicit instantiation, so f[int](x) resolves like f(x).
 func Uninstantiated(fun ast.Expr) ast.Expr {
 	fun = ast.Unparen(fun)
 	switch instantiated := fun.(type) {

@@ -25,39 +25,27 @@ import (
 	"github.com/kapetan-io/tiger/internal/analyzers/internal/intrange"
 )
 
-// Inserts says whether growing a map or channel counts as a write. It does
-// when the target is something whose length a loop may be measuring.
 type Inserts bool
 
 const (
-	// CountInserts counts m[k] = v as a write to the map m.
-	CountInserts Inserts = true
-	// IgnoreInserts does not.
+	CountInserts  Inserts = true
 	IgnoreInserts Inserts = false
 )
 
-// Kind says how a statement changes a variable.
 type Kind int
 
 const (
-	// Assign is a plain, compound, or define assignment to the variable.
 	Assign Kind = iota
-	// Range is a range clause that reassigns the variable on each pass.
 	Range
-	// Insert stores into a map or sends on a channel, growing its length.
 	Insert
-	// Closure is a write inside a function literal.
 	Closure
 )
 
-// Write is one statement that changes a variable or field.
 type Write struct {
 	Node ast.Node
 	Kind Kind
 }
 
-// Scope is the declaration a loop sits in, the widest place a pointer or
-// closure that outlives the loop body could be made.
 type Scope struct {
 	info   *types.Info
 	root   ast.Node
@@ -66,9 +54,6 @@ type Scope struct {
 	sizes  types.Sizes
 }
 
-// External reports whether pkg is declared outside the module under
-// analysis. Without module information, any package but the one under
-// analysis counts as outside.
 func (s Scope) External(pkg *types.Package) bool {
 	if pkg == nil || pkg == s.home {
 		return false
@@ -79,22 +64,14 @@ func (s Scope) External(pkg *types.Package) bool {
 	return pkg.Path() != s.module && !strings.HasPrefix(pkg.Path(), s.module+"/")
 }
 
-// Writes collects every write to v in node. A write inside a function
-// literal is reported as Closure, because the literal may run any number of
-// times.
 func (s Scope) Writes(node ast.Node, v *types.Var) []Write {
 	return s.collect(node, func(expr ast.Expr) bool { return s.IsVar(expr, v) }, CountInserts)
 }
 
-// FieldWrites collects every write to the struct field in node, whatever
-// value holds the struct.
 func (s Scope) FieldWrites(node ast.Node, field *types.Var) []Write {
 	return s.collect(node, func(expr ast.Expr) bool { return s.isField(expr, field) }, CountInserts)
 }
 
-// Escapes reports whether something outside the loop body could write v: it
-// lives outside any function, its address is taken, a pointer-receiver
-// method is called on it, or a function literal in scope writes it.
 func (s Scope) Escapes(v *types.Var) bool {
 	if v.IsField() {
 		return true
@@ -106,18 +83,11 @@ func (s Scope) Escapes(v *types.Var) bool {
 		s.ClosureWrites(func(expr ast.Expr) bool { return s.IsVar(expr, v) }, v.Pos())
 }
 
-// FieldEscapes reports whether something outside the loop body could write
-// the field: its address is taken or a function literal in scope writes it.
 func (s Scope) FieldEscapes(field *types.Var) bool {
 	return s.addressTaken(func(expr ast.Expr) bool { return s.isField(expr, field) }) ||
 		s.ClosureWrites(func(expr ast.Expr) bool { return s.isField(expr, field) }, token.NoPos)
 }
 
-// ReceivesOwner reports whether a call in node receives a value of the
-// struct type that owns a field, or a pointer to one. The call may write the
-// field through it, so the field cannot be trusted across the call. A struct
-// declared outside the module is the exception: its own code does not reach
-// into the fields a caller reads, such as testing.B's N.
 func (s Scope) ReceivesOwner(node ast.Node, owner types.Type) bool {
 	want := DerefNamed(owner)
 	if want == nil || s.External(want.Obj().Pkg()) {
@@ -134,8 +104,6 @@ func (s Scope) ReceivesOwner(node ast.Node, owner types.Type) bool {
 	return found
 }
 
-// receives reports whether call passes want, or a pointer to it, as an
-// argument or as the receiver of a method.
 func (s Scope) receives(call *ast.CallExpr, want *types.Named) bool {
 	if selector, ok := call.Fun.(*ast.SelectorExpr); ok {
 		if isType(s.info.TypeOf(selector.X), want) {
@@ -150,13 +118,11 @@ func (s Scope) receives(call *ast.CallExpr, want *types.Named) bool {
 	return false
 }
 
-// isType reports whether t is want or a pointer to want.
 func isType(t types.Type, want *types.Named) bool {
 	named := DerefNamed(t)
 	return named != nil && named.Obj() == want.Obj()
 }
 
-// DerefNamed returns the named type behind t or a pointer to t.
 func DerefNamed(t types.Type) *types.Named {
 	if t == nil {
 		return nil
@@ -171,13 +137,11 @@ func DerefNamed(t types.Type) *types.Named {
 	return named
 }
 
-// IsVar reports whether expr is a use of v.
 func (s Scope) IsVar(expr ast.Expr, v *types.Var) bool {
 	ident, ok := ast.Unparen(expr).(*ast.Ident)
 	return ok && s.info.ObjectOf(ident) == v
 }
 
-// isField reports whether expr selects the field.
 func (s Scope) isField(expr ast.Expr, field *types.Var) bool {
 	selector, ok := ast.Unparen(expr).(*ast.SelectorExpr)
 	if !ok {
@@ -187,8 +151,6 @@ func (s Scope) isField(expr ast.Expr, field *types.Var) bool {
 	return selection != nil && selection.Kind() == types.FieldVal && selection.Obj() == field
 }
 
-// collect walks node for statements whose target satisfies match. A write
-// inside a function literal is reported as Closure.
 func (s Scope) collect(node ast.Node, match func(ast.Expr) bool, inserts Inserts) []Write {
 	var found []Write
 	var literals []*ast.FuncLit
@@ -209,7 +171,6 @@ func (s Scope) collect(node ast.Node, match func(ast.Expr) bool, inserts Inserts
 	return found
 }
 
-// targets returns the writes one node makes to expressions satisfying match.
 func (s Scope) targets(n ast.Node, match func(ast.Expr) bool, inserts Inserts) []Write {
 	var found []Write
 	switch stmt := n.(type) {
@@ -247,8 +208,6 @@ func (s Scope) targets(n ast.Node, match func(ast.Expr) bool, inserts Inserts) [
 	return found
 }
 
-// insertsInto reports whether lhs is m[k] with m satisfying match and m a
-// map.
 func (s Scope) insertsInto(lhs ast.Expr, match func(ast.Expr) bool) bool {
 	index, ok := lhs.(*ast.IndexExpr)
 	if !ok || !match(index.X) {
@@ -258,8 +217,6 @@ func (s Scope) insertsInto(lhs ast.Expr, match func(ast.Expr) bool) bool {
 	return isMap
 }
 
-// addressTaken reports whether &target appears anywhere in scope, or a
-// pointer-receiver method is called on a value satisfying match.
 func (s Scope) addressTaken(match func(ast.Expr) bool) bool {
 	found := false
 	ast.Inspect(s.root, func(n ast.Node) bool {
@@ -278,8 +235,6 @@ func (s Scope) addressTaken(match func(ast.Expr) bool) bool {
 	return found
 }
 
-// pointerMethod reports whether selector names a method with a pointer
-// receiver called on an addressable value, which takes its address.
 func (s Scope) pointerMethod(selector *ast.SelectorExpr) bool {
 	selection := s.info.Selections[selector]
 	if selection == nil || selection.Kind() != types.MethodVal {
@@ -301,10 +256,6 @@ func (s Scope) pointerMethod(selector *ast.SelectorExpr) bool {
 	return !held
 }
 
-// ClosureWrites reports whether any function literal in scope writes a
-// target satisfying match. A literal that declares the target holds the
-// target's own writes, so it counts only for a target declared outside it;
-// token.NoPos says the target is declared nowhere in scope, as a field is.
 func (s Scope) ClosureWrites(match func(ast.Expr) bool, declared token.Pos) bool {
 	found := false
 	ast.Inspect(s.root, func(n ast.Node) bool {
@@ -322,8 +273,6 @@ func (s Scope) ClosureWrites(match func(ast.Expr) bool, declared token.Pos) bool
 	return found
 }
 
-// Declarations returns one scope per top-level declaration in the files
-// under analysis, the unit a loop's escapes are judged in.
 func Declarations(pass *analysis.Pass) []Scope {
 	module := ""
 	if pass.Module != nil {
@@ -344,26 +293,18 @@ func Declarations(pass *analysis.Pass) []Scope {
 	return scopes
 }
 
-// Sizes returns the target's type sizes, the common 64-bit layout when the
-// driver supplied none.
 func (s Scope) Sizes() types.Sizes {
 	return s.sizes
 }
 
-// Root returns the declaration the scope covers.
 func (s Scope) Root() ast.Node {
 	return s.root
 }
 
-// Info returns the type information the scope resolves identifiers with.
 func (s Scope) Info() *types.Info {
 	return s.info
 }
 
-// ConstantRange returns the smallest and largest value expr can take when it
-// is a constant, or a local variable whose every assignment is a constant.
-// It reports false for anything else, including a variable something
-// outside its writes could change.
 func (s Scope) ConstantRange(expr ast.Expr) (intrange.Span, bool) {
 	if value, constant := s.constant(expr); constant {
 		return intrange.Span{Low: value, High: value}, true
@@ -394,9 +335,6 @@ func (s Scope) ConstantRange(expr ast.Expr) (intrange.Span, bool) {
 	return span, defined && span.Low != nil
 }
 
-// defines reports whether a write declares its variable, as opposed to
-// assigning one declared elsewhere, such as a parameter that arrives with a
-// value of its own.
 func (s Scope) defines(write Write) bool {
 	if assign, ok := write.Node.(*ast.AssignStmt); ok {
 		return assign.Tok == token.DEFINE
@@ -405,7 +343,6 @@ func (s Scope) defines(write Write) bool {
 	return isSpec
 }
 
-// assigned returns the constant a write stores into v.
 func (s Scope) assigned(write Write, v *types.Var) (*big.Int, bool) {
 	match := func(expr ast.Expr) bool { return s.IsVar(expr, v) }
 	switch stmt := write.Node.(type) {
@@ -431,7 +368,6 @@ func (s Scope) assigned(write Write, v *types.Var) (*big.Int, bool) {
 	return nil, false
 }
 
-// constant returns expr's value when the compiler folded it to an integer.
 func (s Scope) constant(expr ast.Expr) (*big.Int, bool) {
 	value := s.info.Types[expr].Value
 	if value == nil || value.Kind() != constant.Int {
@@ -442,7 +378,6 @@ func (s Scope) constant(expr ast.Expr) (*big.Int, bool) {
 	return number, ok
 }
 
-// Mentions reports whether expr reads v anywhere inside it.
 func (s Scope) Mentions(expr ast.Expr, v *types.Var) bool {
 	found := false
 	ast.Inspect(expr, func(n ast.Node) bool {
@@ -455,9 +390,6 @@ func (s Scope) Mentions(expr ast.Expr, v *types.Var) bool {
 	return found
 }
 
-// PassedToCall reports whether a call in node takes v as an argument or as the
-// receiver of a method. A map handed to a function can be inserted into there,
-// unlike a slice, whose length the callee cannot change.
 func (s Scope) PassedToCall(node ast.Node, v *types.Var) bool {
 	found := false
 	ast.Inspect(node, func(n ast.Node) bool {
@@ -488,8 +420,6 @@ func (s Scope) PassedToCall(node ast.Node, v *types.Var) bool {
 	return found
 }
 
-// Parameters collects every function parameter declared in the scope's
-// declaration, the declaration's own and those of function literals inside it.
 func (s Scope) Parameters() map[*types.Var]bool {
 	found := map[*types.Var]bool{}
 	ast.Inspect(s.root, func(node ast.Node) bool {

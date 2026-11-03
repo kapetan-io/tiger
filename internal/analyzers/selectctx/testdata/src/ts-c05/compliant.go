@@ -7,6 +7,7 @@ package fixture
 
 import "context"
 
+// A parameter context is live because the caller decides when to cancel it.
 func awaitWithShutdown(ctx context.Context, ready chan struct{}) error {
 	select {
 	case <-ready:
