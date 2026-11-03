@@ -33,10 +33,8 @@ import (
 	"github.com/kapetan-io/tiger/internal/module"
 )
 
-// FileName is the layer file's fixed name in the module root.
 const FileName = "tiger.layers.yaml"
 
-// RuleID is the rule the layer file backs.
 const RuleID = "TS-X03"
 
 const (
@@ -45,24 +43,16 @@ const (
 	rootKey      = "."
 )
 
-// impure are the standard library subtrees that leave the process or are
-// nondeterministic. Naming one in a package's list allows its whole subtree
-// for that package.
 var impure = []string{
 	"crypto/rand", "database", "io/ioutil", "math/rand", "net", "os", "plugin", "syscall",
 }
 
-// entry is one key of the layer file: a package, or a subtree of packages,
-// the names it may import beyond the pure standard library, and the line the
-// key sits on.
 type entry struct {
 	key   string
 	names []string
 	line  int
 }
 
-// File is a loaded, validated layer file bound to the module it was read
-// from. The zero value is an empty file.
 type File struct {
 	module   module.Path
 	layout   module.Layout
@@ -71,13 +61,10 @@ type File struct {
 	digest   string
 }
 
-// Empty reports whether there is no layer file, or it lists nothing.
 func (f *File) Empty() bool {
 	return f == nil || len(f.entries) == 0
 }
 
-// Digest identifies the file's bytes, so a driver that caches results can
-// tell one layer file from another; an absent file has the empty digest.
 func (f *File) Digest() string {
 	if f == nil {
 		return ""
@@ -85,11 +72,6 @@ func (f *File) Digest() string {
 	return f.digest
 }
 
-// Load reads dir's layer file, the module path from dir's go.mod, and the
-// module's layout. An absent file is an empty File, because the layer file
-// is opt-in. A key that is not a package, two keys that cover the same
-// package, or a name that can never match an import is an error naming the
-// entry and its line.
 func Load(dir string) (*File, error) {
 	raw, err := os.ReadFile(filepath.Join(dir, FileName))
 	if errors.Is(err, os.ErrNotExist) {
@@ -119,10 +101,6 @@ func Load(dir string) (*File, error) {
 	return loaded, nil
 }
 
-// parse decodes raw into entries. It walks yaml nodes rather than decoding
-// into a map so each entry keeps its line and a repeated key is still an
-// error. The parser can name a line past the end, so every line is clamped to
-// the file's last.
 func (f *File) parse(raw []byte) error {
 	last := lastLine(raw)
 	decoder := yaml.NewDecoder(bytes.NewReader(raw))
@@ -172,7 +150,6 @@ func (f *File) parse(raw []byte) error {
 	return validateDistinct(f.entries)
 }
 
-// lastLine is the number of the file's last line, 1 for an empty file.
 func lastLine(raw []byte) int {
 	count := bytes.Count(raw, []byte("\n"))
 	if len(raw) > 0 && raw[len(raw)-1] != '\n' {
@@ -181,8 +158,6 @@ func lastLine(raw []byte) int {
 	return max(count, 1)
 }
 
-// syntaxError rewords a parser error to read like the other load errors,
-// "line N: ...", without the parser's "yaml: " prefix.
 func syntaxError(err error, last int) error {
 	text := strings.TrimPrefix(strings.Join(strings.Fields(err.Error()), " "), "yaml: ")
 	rest, found := strings.CutPrefix(text, "line ")
@@ -194,9 +169,6 @@ func syntaxError(err error, last int) error {
 	return fmt.Errorf("line %d: %s", min(line, last), message)
 }
 
-// secondDocumentLine finds the "---" that starts the second document: the
-// first document marker after the line the first document starts on. The
-// parser can't say when the second document fails to parse.
 func secondDocumentLine(raw []byte, start int) int {
 	for i, line := range strings.Split(string(raw), "\n") {
 		line = strings.TrimRight(line, "\r")
@@ -209,33 +181,25 @@ func secondDocumentLine(raw []byte, start int) int {
 	return start
 }
 
-// blank reports whether a document's node is the empty value a document of
-// only "---" and comments holds.
 func blank(node *yaml.Node) bool {
 	return node.Kind == yaml.ScalarNode && node.Tag == "!!null" && node.Value == ""
 }
 
-// shapeError is the error for a file that is not a map of keys to lists.
 func shapeError(line int) error {
 	return fmt.Errorf("line %d: expected entries like \"./store\": [database, ./internal/types]",
 		line)
 }
 
-// Coverage is how the layer file and a module's packages disagree.
 type Coverage struct {
-	// Unlisted are packages with no entry.
 	Unlisted []module.Package
-	// Stale are entries that match no package.
-	Stale []Stale
+	Stale    []Stale
 }
 
-// Stale is an entry that matches no package: its key and the line it sits on.
 type Stale struct {
 	Key  string
 	Line int
 }
 
-// Coverage compares the entries with the packages the module's layout holds.
 func (f *File) Coverage() Coverage {
 	var found Coverage
 	if f.Empty() {
@@ -257,9 +221,6 @@ func (f *File) Coverage() Coverage {
 	return found
 }
 
-// relative rewrites pkgPath relative to the module, as module.Path.Relative
-// does, except that a package of a nested module is outside: it belongs to
-// that module and its own layer file.
 func (f *File) relative(pkgPath string) (string, bool) {
 	rel, inModule := f.module.Relative(pkgPath)
 	if !inModule || f.nestedOwner(importPath(pkgPath)) != "" {
@@ -268,11 +229,6 @@ func (f *File) relative(pkgPath string) (string, bool) {
 	return rel, true
 }
 
-// nestedOwner returns the nested module that owns p, or "". The go command
-// gives a package to the longest module path that matches it, so only a nested
-// module whose path lies inside this module's path can take one of its
-// packages; one whose path is a prefix of this module's, like example.com/m
-// nested in example.com/m/v2, never does.
 func (f *File) nestedOwner(p importPath) module.Path {
 	owner := module.Path("")
 	for _, nested := range f.layout.Nested {
@@ -284,33 +240,22 @@ func (f *File) nestedOwner(p importPath) module.Path {
 	return owner
 }
 
-// installed is the process-global layer file the current run installed,
-// reset the same way as config.Install: every run installs what its
-// directory holds, an absent file included.
 var installed *File
 
-// Install makes file the layer file the layers analyzer queries for the
-// rest of the process, or clears it when file is nil or empty.
 func Install(file *File) {
 	installed = file
 }
 
-// Installed reports whether a non-empty layer file is installed.
 func Installed() bool {
 	return !installed.Empty()
 }
 
-// Importer is one package as the installed layer file sees it: whether it is
-// in the module, its directory, and the entry covering it, if any.
 type Importer struct {
 	file  *File
 	dir   string
 	entry *entry
 }
 
-// Locate places the package at pkgPath against the installed layer file.
-// Nothing installed places every package outside the module, and so does a
-// nested module.
 func Locate(pkgPath string) Importer {
 	if installed.Empty() {
 		return Importer{}
@@ -321,8 +266,6 @@ func Locate(pkgPath string) Importer {
 	}
 	located := Importer{file: installed, dir: rel}
 	for i := range installed.entries {
-		// Keys never overlap (validated at load), so at most one entry covers
-		// a package.
 		if installed.entries[i].covers(rel) {
 			located.entry = &installed.entries[i]
 			break
@@ -331,29 +274,20 @@ func Locate(pkgPath string) Importer {
 	return located
 }
 
-// InModule reports whether the package belongs to the layered module.
 func (i Importer) InModule() bool {
 	return i.dir != ""
 }
 
-// Listed reports whether an entry covers the package.
 func (i Importer) Listed() bool {
 	return i.entry != nil
 }
 
-// Dir is the package's directory relative to the module root: "." or
-// "internal/store"; empty outside the module.
 func (i Importer) Dir() string {
 	return i.dir
 }
 
-// breach is the kind of import an entry does not allow; the zero value is
-// none.
 type breach int
 
-// The breaches: a package of this module the entry does not name, a
-// third-party package no named module path covers, and a standard library
-// package in an impure subtree the entry does not name.
 const (
 	noBreach breach = iota
 	unlistedPackage
@@ -361,8 +295,6 @@ const (
 	unlistedImpure
 )
 
-// Verdict is the judgment on one import: allowed, or what the entry lacks.
-// The zero value allows the import.
 type Verdict struct {
 	breach   breach
 	entryKey string
@@ -370,15 +302,10 @@ type Verdict struct {
 	name     string
 }
 
-// Allowed reports whether the entry allows the import.
 func (v Verdict) Allowed() bool {
 	return v.breach == noBreach
 }
 
-// Judge decides whether the package's entry allows importing imported.
-// Matching is exact: an in-module name is one package, a module path covers
-// itself and the paths below it on a "/" boundary, and an impure name covers
-// its subtree the same way. The package must be Listed.
 func (i Importer) Judge(imported string) Verdict {
 	assert.Ok(i.entry != nil, "only a package with an entry is judged import by import")
 	names := i.entry.names
@@ -407,8 +334,6 @@ func (i Importer) Judge(imported string) Verdict {
 	return verdict
 }
 
-// impureSubtree returns the impure subtree a standard library path sits in,
-// or "".
 func impureSubtree(imported string) string {
 	for _, root := range impure {
 		if importPath(imported).within(root) {
@@ -418,17 +343,12 @@ func impureSubtree(imported string) string {
 	return ""
 }
 
-// importPath is a package import path.
 type importPath string
 
-// within reports whether the path is root or a path below it on a "/"
-// boundary, so "a/b" holds "a/b/c" but not "a/b-c".
 func (p importPath) within(root string) bool {
 	return string(p) == root || strings.HasPrefix(string(p), root+"/")
 }
 
-// packageKey spells a package directory, "." or "internal/store", the way
-// the layer file names a package: "." for the root and "./dir" for the rest.
 func packageKey(dir string) string {
 	if dir == rootKey {
 		return dir
@@ -436,8 +356,6 @@ func packageKey(dir string) string {
 	return modulePrefix + dir
 }
 
-// keyDir splits a key into its directory, "." for the root, and whether it
-// names a subtree. The key is already validated.
 func keyDir(key string) (string, bool) {
 	if key == rootKey {
 		return rootKey, false
@@ -446,8 +364,6 @@ func keyDir(key string) (string, bool) {
 	return strings.CutSuffix(rest, subtreeTail)
 }
 
-// covers reports whether the entry covers the package in dir, "." or
-// "internal/store".
 func (e entry) covers(dir string) bool {
 	keyed, subtree := keyDir(e.key)
 	if !subtree {
@@ -456,10 +372,6 @@ func (e entry) covers(dir string) bool {
 	return dir == keyed || strings.HasPrefix(dir, keyed+"/")
 }
 
-// validateEntry checks one key and its names. A name spelled as this
-// module's import path is refused, because Judge matches in-module imports
-// against the "./dir" spelling only, and so is a "./dir" name inside a nested
-// module, which Judge matches by that module's path.
 func (f *File) validateEntry(key string, names []string) error {
 	if err := validateKey(key); err != nil {
 		return err
@@ -483,8 +395,6 @@ func (f *File) validateEntry(key string, names []string) error {
 	return nil
 }
 
-// nestedModule returns the nested module an in-module name, "./dir", sits in,
-// or "".
 func (f *File) nestedModule(name string) module.Path {
 	dir, found := strings.CutPrefix(name, modulePrefix)
 	if !found {
@@ -493,7 +403,6 @@ func (f *File) nestedModule(name string) module.Path {
 	return f.nestedOwner(importPath(string(f.module) + "/" + dir))
 }
 
-// validateKey accepts ".", "./dir" and "./dir/...".
 func validateKey(key string) error {
 	if key == rootKey {
 		return nil
@@ -506,16 +415,12 @@ func validateKey(key string) error {
 	return nil
 }
 
-// cleanDir reports whether dir is a clean, relative, non-empty directory
-// inside the module with no wildcard element.
 func cleanDir(dir string) bool {
 	return dir != "" && dir != "." && path.Clean(dir) == dir && !strings.HasPrefix(dir, "/") &&
 		dir != ".." && !strings.HasPrefix(dir, "../") &&
 		!slices.Contains(strings.Split(dir, "/"), "...")
 }
 
-// validateName accepts an in-module package, an impure subtree, or a module
-// path, and refuses a name no import can match with what to write instead.
 func (f *File) validateName(name string) error {
 	if name == rootKey || slices.Contains(impure, name) {
 		return nil
@@ -546,8 +451,6 @@ func (f *File) validateName(name string) error {
 	return fmt.Errorf("%q is always allowed; remove it", name)
 }
 
-// validateModuleName checks a "./dir" name: one clean package of this
-// module, never a subtree, because an in-module name matches one package.
 func validateModuleName(name string) error {
 	rest := strings.TrimPrefix(name, modulePrefix)
 	if dir, found := strings.CutSuffix(rest, "..."); found {
@@ -568,8 +471,6 @@ func validateModuleName(name string) error {
 	return fmt.Errorf("%q isn't a package of this module; write it like %q", name, example)
 }
 
-// validateDistinct refuses two keys covering the same package. Two keys
-// overlap only when one covers the other, so the broader one is a subtree.
 func validateDistinct(entries []entry) error {
 	for i, first := range entries {
 		for _, second := range entries[:i] {

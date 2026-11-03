@@ -6,8 +6,6 @@ import (
 	"github.com/kapetan-io/tiger/assert"
 )
 
-// Message words a verdict that does not allow the import: what was imported, and the
-// exact name to add, or the way to keep it out.
 func (v Verdict) Message() string {
 	entryText := fmt.Sprintf("the %q entry in %s", v.entryKey, FileName)
 	text := ""
@@ -28,8 +26,6 @@ func (v Verdict) Message() string {
 	return text
 }
 
-// MissingEntryMessage words the finding for the package in dir, "." or
-// "internal/store", that no entry covers.
 func MissingEntryMessage(dir string) string {
 	key := packageKey(dir)
 	subject := "package " + key
@@ -41,14 +37,11 @@ func MissingEntryMessage(dir string) string {
 		RuleID, subject, FileName)
 }
 
-// StaleMessage words the finding for an entry that matches no package.
 func StaleMessage(key string) string {
 	return fmt.Sprintf("%s: the %q entry matches no package directory — remove it, or fix its "+
 		"path", RuleID, key)
 }
 
-// packageName names a package key in a message; "." alone reads as
-// punctuation.
 func packageName(key string) string {
 	if key == rootKey {
 		return `the root package "."`

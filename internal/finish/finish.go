@@ -25,18 +25,12 @@ import (
 	"golang.org/x/tools/go/analysis"
 )
 
-// Package is one loaded package as the finish step sees it.
 type Package struct {
 	Pkg       *types.Package
 	TypesInfo *types.Info
 	Syntax    []*ast.File
 }
 
-// Program is the finish step's input: every loaded package in the stable
-// topological order the passes used, one file set positioning all of
-// them, and read access to every fact the owning analyzer exported during
-// the run — package facts in export order, object facts likewise. Nothing
-// else: no results cache, no other analyzer's facts.
 type Program struct {
 	Fset         *token.FileSet
 	Packages     []Package
@@ -44,9 +38,6 @@ type Program struct {
 	ObjectFacts  []analysis.ObjectFact
 }
 
-// Lookup returns the loaded package with the given import path. Under the
-// test-augmented variant seam ("pkg [pkg.test]") the augmented variant is
-// the one loaded, and its path is the plain import path.
 func (p *Program) Lookup(path string) (Package, bool) {
 	for _, pkg := range p.Packages {
 		if pkg.Pkg.Path() == path {
@@ -56,15 +47,8 @@ func (p *Program) Lookup(path string) (Package, bool) {
 	return Package{}, false
 }
 
-// Func is one analyzer's finish half. It returns diagnostics in the same
-// shape passes emit; every position must resolve inside the loaded module.
-// A returned error, like a panic, is an operational failure for the whole
-// run — no findings are returned. Determinism is the function's own
-// responsibility: the driver hands it packages and facts in a stable
-// order, and a function that builds maps must sort before emitting.
 type Func func(program *Program) ([]analysis.Diagnostic, error)
 
-// Finisher pairs a finish function with the analyzer whose facts it reads.
 type Finisher struct {
 	Analyzer *analysis.Analyzer
 	Run      Func

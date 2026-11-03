@@ -10,43 +10,30 @@ import (
 	"github.com/kapetan-io/tiger/assert"
 )
 
-// AtomKind classifies one operand of the variant and contracts languages.
 type AtomKind int
 
 const (
-	// AtomNumber is an integer literal.
 	AtomNumber AtomKind = iota
-	// AtomRef is a dot-separated path over locals, parameters, or results.
 	AtomRef
-	// AtomLen is len(path), the one call the languages admit.
 	AtomLen
-	// AtomNil is the nil keyword; contracts only.
 	AtomNil
 )
 
-// Atom is one operand: an integer, a path, len(path), or nil.
 type Atom struct {
 	Kind AtomKind
 	Int  int64
 	Ref  string
 }
 
-// VariantTerm is one term of a variant expression with its leading sign;
-// the first term of a variant is always positive.
 type VariantTerm struct {
 	Minus bool
 	Atom  Atom
 }
 
-// Variant is a linear integer ranking expression: a signed sum of integer
-// literals, paths, and len() calls. Term order is preserved — it is
-// semantic, not presentational.
 type Variant struct {
 	Terms []VariantTerm
 }
 
-// Predicate is one contracts predicate: either a comparison of two atoms or
-// a bare invariant ID reference.
 type Predicate struct {
 	Invariant string
 	Op        string
@@ -54,11 +41,8 @@ type Predicate struct {
 	Right     Atom
 }
 
-// comparisonOps lists the admitted operators, two-character forms first so
-// the scanner never splits <= into < and a stray =.
 var comparisonOps = []string{"==", "!=", "<=", ">=", "<", ">"}
 
-// ParseVariant reads a variant pin's argument text into its term list.
 func ParseVariant(args string) (Variant, error) {
 	trimmed := strings.TrimSpace(args)
 	if trimmed == "" {
@@ -68,8 +52,6 @@ func ParseVariant(args string) (Variant, error) {
 	}
 	parsed := Variant{}
 	minus := false
-	// splitTerms alternates atom text and operator: even positions are
-	// atoms, odd positions the sign that precedes the next one.
 	for i, segment := range splitTerms(trimmed) {
 		if i%2 == 1 {
 			minus = segment == "-"
@@ -87,8 +69,6 @@ func ParseVariant(args string) (Variant, error) {
 	return parsed, nil
 }
 
-// splitTerms splits a variant expression on top-level + and -, returning
-// alternating atoms and the operators between them.
 func splitTerms(text string) []string {
 	segments := []string{}
 	depth, start := 0, 0
@@ -108,7 +88,6 @@ func splitTerms(text string) []string {
 	return append(segments, strings.TrimSpace(text[start:]))
 }
 
-// language names which atom set a parse admits, for error text.
 type language struct {
 	name     string
 	allowNil bool
@@ -129,7 +108,6 @@ var (
 	}
 )
 
-// parseAtom reads one operand.
 func parseAtom(text string, lang language) (Atom, error) {
 	outside := fmt.Errorf("has %q, which is not %s — rewrite the %s using only those%s",
 		text, lang.atoms, lang.name, lang.hint)
@@ -162,7 +140,6 @@ func parseAtom(text string, lang language) (Atom, error) {
 	return Atom{Kind: AtomRef, Ref: text}, nil
 }
 
-// formatAtom prints one operand canonically.
 func formatAtom(atom Atom) string {
 	printed := ""
 	switch atom.Kind {
@@ -180,8 +157,6 @@ func formatAtom(atom Atom) string {
 	return printed
 }
 
-// FormatVariant prints a variant canonically: terms joined by their signs
-// with single spaces.
 func FormatVariant(parsed Variant) string {
 	printed := &strings.Builder{}
 	for i, term := range parsed.Terms {
@@ -197,8 +172,6 @@ func FormatVariant(parsed Variant) string {
 	return printed.String()
 }
 
-// ParsePredicate reads a requires or ensures pin's argument text: a
-// comparison of two atoms, or a bare invariant ID.
 func ParsePredicate(args string) (Predicate, error) {
 	trimmed := strings.TrimSpace(args)
 	if trimmed == "" {
@@ -243,13 +216,11 @@ func ParsePredicate(args string) (Predicate, error) {
 	return Predicate{Op: found.op, Left: left, Right: right}, nil
 }
 
-// operatorMatch is one located comparison operator and its byte offset.
 type operatorMatch struct {
 	op string
 	at int
 }
 
-// findOperator locates the first top-level comparison operator.
 func findOperator(text string) (operatorMatch, bool) {
 	depth := 0
 	for i := range len(text) {
@@ -271,8 +242,6 @@ func findOperator(text string) (operatorMatch, bool) {
 	return operatorMatch{}, false
 }
 
-// FormatPredicate prints a predicate canonically: the invariant ID alone,
-// or the two atoms around their operator with single spaces.
 func FormatPredicate(parsed Predicate) string {
 	if parsed.Invariant != "" {
 		return parsed.Invariant
@@ -280,8 +249,6 @@ func FormatPredicate(parsed Predicate) string {
 	return formatAtom(parsed.Left) + " " + parsed.Op + " " + formatAtom(parsed.Right)
 }
 
-// splitCommas splits text on commas outside parentheses, trimming each
-// element. Empty elements are preserved so callers can name them.
 func splitCommas(text string) []string {
 	elements := []string{}
 	depth, start := 0, 0
@@ -301,14 +268,11 @@ func splitCommas(text string) []string {
 	return append(elements, strings.TrimSpace(text[start:]))
 }
 
-// call is one term split into its name and, when parenthesized, its
-// comma-split inner arguments; a bare term carries nil inner.
 type call struct {
 	name  string
 	inner []string
 }
 
-// splitCall splits one term into its call form.
 func splitCall(term string) (call, error) {
 	open := strings.IndexByte(term, '(')
 	if open < 0 {
@@ -331,8 +295,6 @@ func splitCall(term string) (call, error) {
 	return split, nil
 }
 
-// validPath reports whether text is a parameter-rooted path: one or more
-// dot-separated Go identifiers.
 func validPath(text string) bool {
 	for segment := range strings.SplitSeq(text, ".") {
 		if !validIdentifier(segment) {
@@ -342,7 +304,6 @@ func validPath(text string) bool {
 	return true
 }
 
-// validIdentifier reports whether text is a Go identifier.
 func validIdentifier(text string) bool {
 	if text == "" {
 		return false
