@@ -78,7 +78,9 @@ func TestCheckFindingsEndWithTheirPointerWithinTheCap(t *testing.T) {
 
 	outcomes := make([]outcome, len(fixtures))
 	operational := map[string]bool{
-		"testdata/fixtures/broken": true, "testdata/fixtures/budget": true, "testdata/fixtures/config": true,
+		"testdata/fixtures/broken": true,
+		"testdata/fixtures/budget": true,
+		"testdata/fixtures/config": true,
 	}
 	var group sync.WaitGroup
 	for i, dir := range fixtures {
