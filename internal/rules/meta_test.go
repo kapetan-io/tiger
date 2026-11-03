@@ -130,7 +130,10 @@ func replay(t *testing.T, analyzer *analysis.Analyzer, dirs []string) []emitted 
 
 // replays holds each analyzer's replay so the registry test and the style
 // test, which judge the same corpora, pay for the type-check once.
-var replays sync.Map
+var (
+	replaysLock sync.Mutex
+	replays     = map[string]*replayed{}
+)
 
 type replayed struct {
 	once      sync.Once
@@ -141,8 +144,13 @@ type replayed struct {
 // replayOnce is replay, run at most once per analyzer for the whole package.
 func replayOnce(t *testing.T, analyzer *analysis.Analyzer, dirs []string) []emitted {
 	t.Helper()
-	entry, _ := replays.LoadOrStore(analyzer.Name, &replayed{})
-	cached := entry.(*replayed)
+	replaysLock.Lock()
+	cached, found := replays[analyzer.Name]
+	if !found {
+		cached = &replayed{}
+		replays[analyzer.Name] = cached
+	}
+	replaysLock.Unlock()
 	cached.once.Do(func() {
 		cached.collected = replay(t, analyzer, dirs)
 		cached.finished = true
