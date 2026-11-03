@@ -60,7 +60,7 @@ linters:
 
     # Naming
     - varnamelen        # TS-N02 no invented abbreviations
-    - revive            # TS-N01, TS-N10, TS-L07 naming, stutter, doc comments
+    - revive            # TS-N01, TS-N10 naming, stutter
     - interfacebloat    # minimum of excellent abstractions
     - recvcheck         # consistent receiver types
 
@@ -234,8 +234,7 @@ linters:
 
     revive:
       rules:
-        - name: exported          # TS-L07
-        - name: package-comments  # TS-L07
+        - name: exported          # TS-N10
         - name: var-naming        # TS-N01
         - name: receiver-naming   # TS-N02
         - name: context-as-argument   # TS-C07
@@ -293,6 +292,7 @@ linters:
   exclusions:
     generated: strict
     presets:
+      - comments
       - common-false-positives
     rules:
       # Tests get the structural rules relaxed, not the safety ones. They keep

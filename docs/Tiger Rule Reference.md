@@ -2310,7 +2310,6 @@ golangci-lint findings fail its run.
 | TS-L02 | lines at most 100 columns | lll |
 | TS-L03 | declaration order is const, var, type, func | decorder |
 | TS-L06 | comments are sentences | godot |
-| TS-L07 | every exported identifier has a doc comment | revive |
 | TS-L09 | every suppression carries a reason | nolintlint |
 | TS-L11 | imports grouped standard, external, internal | gci |
 | TS-T01 | time and randomness are injected | forbidigo |
