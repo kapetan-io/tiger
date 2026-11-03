@@ -20,7 +20,12 @@ import (
 // under dir. Test files and generated files are left out. A module package
 // that does not load is named in NotCompared and contributes nothing; Load
 // fails only when the load itself cannot run.
-func Load(dir string) (Inventory, error) {
+//
+// The module's packages and its third-party dependencies are read from
+// source, so their function bodies can be walked for a reach to syscall. The
+// standard library is read from compiler export data, which has no bodies;
+// the reach of its functions comes from table, see NewStdReach.
+func Load(dir string, table *StdReach) (Inventory, error) {
 	run, err := filepath.Abs(dir)
 	if err != nil {
 		return Inventory{}, err
@@ -28,8 +33,10 @@ func Load(dir string) (Inventory, error) {
 	if run, err = filepath.EvalSymlinks(run); err != nil {
 		return Inventory{}, err
 	}
-	roots, err := packages.Load(&packages.Config{
-		Mode: packages.LoadAllSyntax | packages.NeedModule,
+	// The first load reads only package metadata: the whole import graph,
+	// standard library included, for a fraction of the cost of type-checking.
+	graph, err := packages.Load(&packages.Config{
+		Mode: packages.NeedName | packages.NeedImports | packages.NeedDeps | packages.NeedModule,
 		Dir:  run,
 	}, "./...")
 	if err != nil {
@@ -41,9 +48,9 @@ func Load(dir string) (Inventory, error) {
 		Roots:     map[string]string{},
 		Above:     map[string]string{},
 	}
-	module := mainModule(roots)
+	module := mainModule(graph)
 	if module == nil {
-		if len(roots) > 0 {
+		if len(graph) > 0 {
 			return Inventory{}, fmt.Errorf("no Go module found for %s", dir)
 		}
 		return inv, nil
@@ -65,15 +72,32 @@ func Load(dir string) (Inventory, error) {
 		module:   module.Path,
 		prefix:   filepath.ToSlash(prefix),
 		inv:      &inv,
-		reaches:  importReach(roots),
-		body:     newBodyReach(),
+		reaches:  importReach(graph),
+		body:     newBodyReach(table),
 		compared: map[string]bool{},
 		skipped:  map[string]bool{},
 		names:    map[string]string{},
 		underRun: map[string]bool{},
 	}
+	if err := table.ready(); err != nil {
+		return Inventory{}, fmt.Errorf("standard library reach: %w", err)
+	}
+	patterns := append([]string{"./..."}, load.outsideSource(graph, table)...)
+	loaded, err := packages.Load(&packages.Config{
+		Mode: packages.LoadSyntax | packages.NeedModule,
+		Dir:  run,
+	}, patterns...)
+	if err != nil {
+		return Inventory{}, err
+	}
+	var roots []*packages.Package
+	for _, pkg := range loaded {
+		if load.inModule(pkg.PkgPath) {
+			roots = append(roots, pkg)
+		}
+	}
 	load.classify(roots)
-	prog, _ := ssautil.AllPackages(roots, 0)
+	prog, _ := ssautil.Packages(loaded, 0)
 	prog.Build()
 	load.fset = prog.Fset
 	if err := load.walk(prog, roots); err != nil {
@@ -148,6 +172,30 @@ type callTarget struct {
 
 func (l *loader) inModule(path string) bool {
 	return path == l.module || strings.HasPrefix(path, l.module+"/")
+}
+
+// outsideSource lists, in byte order, the packages outside the module whose
+// bodies a load reads from source because the reach table does not know
+// them: the third-party dependencies. Packages of the standard library's own internals are left to
+// export data, since nothing outside it can call them, as are packages that
+// did not list; their errors surface through the module packages that import
+// them.
+func (l *loader) outsideSource(graph []*packages.Package, table *StdReach) []string {
+	var paths []string
+	packages.Visit(graph, nil, func(pkg *packages.Package) {
+		path := pkg.PkgPath
+		if l.inModule(path) || len(pkg.Errors) > 0 || table.knows(path) {
+			return
+		}
+		if pkg.Module == nil {
+			if !importable(path) {
+				return
+			}
+		}
+		paths = append(paths, path)
+	})
+	slices.Sort(paths)
+	return paths
 }
 
 // classify sorts the loaded packages into compared, not compared and

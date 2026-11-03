@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"sync"
 
 	"github.com/kapetan-io/tiger/internal/callinventory"
 	"github.com/kapetan-io/tiger/internal/command"
@@ -60,9 +61,14 @@ func Run(args []string, streams command.Streams) int {
 	if err != nil {
 		return changedFailure(streams, err)
 	}
-	report, err := compareRevisions(*chdir, rev)
+	table := callinventory.NewStdReach(*chdir)
+	report, err := compareRevisions(*chdir, rev, table)
 	if err != nil {
 		return changedFailure(streams, err)
+	}
+	if err := table.SaveError(); err != nil {
+		fmt.Fprintf(streams.Stderr, "tiger changed: cannot save the standard library reach file, "+
+			"so every run rebuilds it: %v\n", err)
 	}
 	if *format == "markdown" {
 		fmt.Fprint(streams.Stdout, report.Markdown(rev))
@@ -83,28 +89,43 @@ func Run(args []string, streams command.Streams) int {
 }
 
 // compareRevisions loads the head tree and the base tree and compares them.
-func compareRevisions(dir string, rev revision.Comparison) (report Report, err error) {
+// The two loads wait mostly on go list, so they run side by side.
+func compareRevisions(dir string, rev revision.Comparison, table *callinventory.StdReach) (Report, error) {
 	headLabel := "head (" + revision.Short(rev.Head) + ")"
-	head, err := callinventory.Load(dir)
-	if err != nil {
-		return Report{}, fmt.Errorf("cannot load the Go packages at %s: %w", headLabel, err)
+	var group sync.WaitGroup
+	var base callinventory.Inventory
+	var baseErr error
+	group.Go(func() { base, baseErr = loadBase(rev, table) })
+	head, headErr := callinventory.Load(dir, table)
+	group.Wait()
+	if headErr != nil {
+		return Report{}, fmt.Errorf("cannot load the Go packages at %s: %w", headLabel, headErr)
 	}
 	if len(head.Packages) == 0 {
 		return Report{}, noPackages(head, headLabel)
 	}
-	tree, err := rev.Extract()
-	if err != nil {
-		return Report{}, err
-	}
-	defer func() { err = errors.Join(err, tree.Close()) }()
-	var base callinventory.Inventory
-	if tree.Present {
-		if base, err = callinventory.Load(tree.Dir); err != nil {
-			return Report{}, fmt.Errorf("cannot load the Go packages at base (%s): %w",
-				revision.Short(rev.MergeBase), err)
-		}
+	if baseErr != nil {
+		return Report{}, baseErr
 	}
 	return Compare(Sides{Base: base, Head: head}), nil
+}
+
+// loadBase extracts the merge base and loads it; a merge base without a Go
+// tree loads as an empty inventory.
+func loadBase(rev revision.Comparison, table *callinventory.StdReach) (inv callinventory.Inventory, err error) {
+	tree, err := rev.Extract()
+	if err != nil {
+		return inv, err
+	}
+	defer func() { err = errors.Join(err, tree.Close()) }()
+	if !tree.Present {
+		return inv, nil
+	}
+	if inv, err = callinventory.Load(tree.Dir, table); err != nil {
+		return inv, fmt.Errorf("cannot load the Go packages at base (%s): %w",
+			revision.Short(rev.MergeBase), err)
+	}
+	return inv, nil
 }
 
 func noPackages(inv callinventory.Inventory, label string) error {

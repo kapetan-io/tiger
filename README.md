@@ -49,6 +49,14 @@ and 2 when no report can be produced. Flags go before `<base>`.
 (`tiger.changed/v1`) that also gives every call site as a file and line, tagged
 `base` or `head`, for an agent reviewer. ADR-0030 records the rule.
 
+`tiger changed` answers whether a standard library function reaches package
+`syscall` from `.tiger/stdreach-<goos>-<goarch>.txt` in the module root. The
+file's first line names the exact Go version, GOOS and GOARCH it was made for.
+When the file is missing or names another toolchain, tiger regenerates it from
+source, which takes a few seconds, and writes it back. Commit the file to share
+it, or ignore `.tiger/`; tiger does neither for you, and an unignored, uncommitted
+file shows as an uncommitted change in the report's head label.
+
 ### Posting the report on a pull request
 
 `--format markdown` prints the report as a pull request comment. Its first line is

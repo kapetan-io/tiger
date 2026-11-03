@@ -62,6 +62,8 @@ func newCheckout(t *testing.T) checkout {
 	require.NoError(t, err)
 	c := checkout{t: t, dir: dir}
 	c.git("init", "-q", "-b", "main")
+	c.write(repoPath(".git/info/exclude"), c.read(".git/info/exclude")+".tiger/\n")
+	c.write(repoPath(".tiger/"+reachFile.name), string(reachFile.data))
 	return c
 }
 

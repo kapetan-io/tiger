@@ -31,16 +31,20 @@ func importReach(roots []*packages.Package) map[string]bool {
 
 // bodyReach decides whether an outside free function statically reaches
 // package syscall through its own body, following static calls, referenced
-// functions and closures, but not interface calls.
+// functions and closures, but not interface calls. A function loaded from
+// export data has no body to follow; the table answers for it instead.
 type bodyReach struct {
 	// known holds a settled answer per function. A search that finds nothing
 	// settles every function it visited as false, since it expanded all of
 	// them. A search that finds syscall settles only its start as true.
 	known map[*ssa.Function]bool
+	// table answers for functions without a body, nil when every function the
+	// walk can meet was built from source.
+	table *StdReach
 }
 
-func newBodyReach() *bodyReach {
-	return &bodyReach{known: map[*ssa.Function]bool{}}
+func newBodyReach(table *StdReach) *bodyReach {
+	return &bodyReach{known: map[*ssa.Function]bool{}, table: table}
 }
 
 // errWalkTooLarge reports a reach question that visited maxWalk functions
@@ -63,6 +67,11 @@ func (b *bodyReach) reaches(start *ssa.Function) (bool, error) {
 		if _, settled := b.known[fn]; settled {
 			continue
 		}
+		// No blocks means the function came from export data, so the table answers.
+		if len(fn.Blocks) == 0 && b.table != nil && b.table.member(fn) {
+			b.known[start] = true
+			return true, nil
+		}
 		for _, next := range referenced(fn) {
 			if !seen[next] {
 				seen[next] = true
@@ -79,12 +88,18 @@ func (b *bodyReach) reaches(start *ssa.Function) (bool, error) {
 	return false, nil
 }
 
+// isSyscall reports whether fn belongs to package syscall or one of its
+// internal helpers. A method created on demand from export data has no SSA
+// package, so its declaration names the package instead.
 func isSyscall(fn *ssa.Function) bool {
-	pkg := fn.Package()
-	if pkg == nil {
+	var path string
+	if pkg := fn.Package(); pkg != nil {
+		path = pkg.Pkg.Path()
+	} else if obj := fn.Object(); obj != nil && obj.Pkg() != nil {
+		path = obj.Pkg().Path()
+	} else {
 		return false
 	}
-	path := pkg.Pkg.Path()
 	return path == "syscall" || strings.HasPrefix(path, "internal/syscall")
 }
 

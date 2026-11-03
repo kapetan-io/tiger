@@ -2330,4 +2330,6 @@ freeze with `tiger pin`.
 
 An unpinned variant is just the current value. Pin it and drift becomes a blocking finding.
 Changes in what a function does are not pinned. `tiger changed <base>` reports the calls a
-branch added and removed instead (ADR-0026, ADR-0030).
+branch added and removed instead (ADR-0026, ADR-0030). It keeps the standard library's reach to
+`syscall` in `.tiger/stdreach-<goos>-<goarch>.txt` in the module root, regenerated from source when
+the file is missing or was made by another Go version, GOOS or GOARCH; a project commits or ignores it.

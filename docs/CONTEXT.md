@@ -78,6 +78,11 @@ between the merge base of a base revision and the working tree; it replaces effe
 (ADR-0026 and its amendment, ADR-0030).
 _Avoid_: diff, effect report
 
+**Reach file**:
+The per-GOOS/GOARCH file `.tiger/stdreach-<goos>-<goarch>.txt` in the module root that lists which standard
+library functions statically reach package `syscall`. `tiger changed` reads it instead of type-checking the
+standard library, and regenerates it when its first line names another Go version, GOOS or GOARCH.
+
 **Owner**:
 In a `tiger changed` report, the named type that holds a method where a call is written, or the free
 function itself.

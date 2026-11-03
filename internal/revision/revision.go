@@ -91,7 +91,10 @@ func (r Repository) Compare(base string) (Comparison, error) {
 		return Comparison{}, fmt.Errorf(
 			"no common ancestor of %s and HEAD; in CI fetch full history (fetch-depth: 0)", base)
 	}
-	status, err := r.git("status", "--porcelain", "--untracked-files=all")
+	// tiger's own reach file is not a change the author made, and the first
+	// run writes it, so counting it would make the second run report differently.
+	status, err := r.git("status", "--porcelain", "--untracked-files=all",
+		"--", ".", ":(exclude,glob)**/.tiger/stdreach-*.txt")
 	if err != nil {
 		return Comparison{}, fmt.Errorf("git status failed: %w", err)
 	}
