@@ -14,7 +14,6 @@ import (
 	"golang.org/x/tools/go/analysis"
 )
 
-// Analyzer enforces TS-T12: tests live in the external _test package.
 var Analyzer = &analysis.Analyzer{
 	Name: "testpackage",
 	Doc:  "TS-T12: tests live in the external _test package.",
@@ -42,15 +41,10 @@ func run(pass *analysis.Pass) (any, error) {
 	return nil, nil
 }
 
-// Internal reports whether a test file declaring name is in the package under
-// test. A package can itself be named foo_test, so the suffix alone cannot
-// tell internal test files from external ones. A name that a non-test file of
-// the directory also declares (underTest) can.
 func Internal(name string, underTest map[string]bool) bool {
 	return !strings.HasSuffix(name, testSuffix) || underTest[name]
 }
 
-// Message is the finding for a test file declaring package name.
 func Message(name string) string {
 	return "TS-T12: this test file declares package " + name + ", which gives it " +
 		"every unexported name — declare package " + name + testSuffix +

@@ -28,7 +28,6 @@ import (
 	"github.com/kapetan-io/tiger/internal/analyzers/internal/assertpkg"
 )
 
-// Analyzer enforces TS-N07 and TS-N08: no adjacent same-type parameters, no bool parameters.
 var Analyzer = &analysis.Analyzer{
 	Name: "sametypeparams",
 	Doc:  "TS-N07 and TS-N08: no adjacent same-type parameters, no bool parameters.",
@@ -37,8 +36,6 @@ var Analyzer = &analysis.Analyzer{
 
 const maxParams = 4
 
-// paramSlot is one flattened parameter: a field with N names contributes N
-// slots sharing that field's type, and an unnamed field contributes one.
 type paramSlot struct {
 	typ types.Type
 	pos token.Pos
@@ -66,8 +63,6 @@ func run(pass *analysis.Pass) (any, error) {
 	return nil, nil
 }
 
-// checkParams reports TS-N07 for an over-long parameter list and for each
-// adjacent same-type pair, and TS-N08 for each plain bool parameter.
 func checkParams(pass *analysis.Pass, funcType *ast.FuncType) {
 	slots := flattenParams(pass, funcType.Params)
 	exempt := leadingExempt(slots)
@@ -91,7 +86,6 @@ func checkParams(pass *analysis.Pass, funcType *ast.FuncType) {
 	}
 }
 
-// leadingExempt returns how many leading slots the parameter limit ignores.
 func leadingExempt(slots []paramSlot) int {
 	exempt := 0
 	if len(slots) > 0 && isTestingHandle(slots[0].typ) {
@@ -103,7 +97,6 @@ func leadingExempt(slots []paramSlot) int {
 	return exempt
 }
 
-// isTestingHandle reports whether typ is testing.TB, *testing.T or *testing.B.
 func isTestingHandle(typ types.Type) bool {
 	if ptr, ok := types.Unalias(typ).(*types.Pointer); ok {
 		return isNamed(ptr.Elem(), "testing.T") || isNamed(ptr.Elem(), "testing.B")
@@ -111,8 +104,6 @@ func isTestingHandle(typ types.Type) bool {
 	return isNamed(typ, "testing.TB")
 }
 
-// isNamed reports whether typ is the named type with the import-path
-// qualified name, such as "context.Context".
 func isNamed(typ types.Type, qualified string) bool {
 	named, ok := types.Unalias(typ).(*types.Named)
 	if !ok {
@@ -122,8 +113,6 @@ func isNamed(typ types.Type, qualified string) bool {
 	return obj.Pkg() != nil && obj.Pkg().Path()+"."+obj.Name() == qualified
 }
 
-// checkAdjacent reports TS-N07 when the parameter at index and the one
-// after it share an identical declared type.
 func checkAdjacent(pass *analysis.Pass, slots []paramSlot, index int) {
 	current, next := slots[index], slots[index+1]
 	if current.typ == nil || next.typ == nil || !types.Identical(current.typ, next.typ) {
@@ -138,8 +127,6 @@ func checkAdjacent(pass *analysis.Pass, slots []paramSlot, index int) {
 	})
 }
 
-// checkBoolParam reports TS-N08 when slot's type is exactly the
-// predeclared bool.
 func checkBoolParam(pass *analysis.Pass, slot paramSlot) {
 	basic, ok := slot.typ.(*types.Basic)
 	if !ok || basic.Kind() != types.Bool {
@@ -154,8 +141,6 @@ func checkBoolParam(pass *analysis.Pass, slot paramSlot) {
 	})
 }
 
-// flattenParams expands a parameter field list into one slot per parameter
-// value, preserving declaration order.
 func flattenParams(pass *analysis.Pass, list *ast.FieldList) []paramSlot {
 	if list == nil {
 		return nil

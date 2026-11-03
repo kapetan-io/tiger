@@ -15,7 +15,6 @@ import (
 	"golang.org/x/tools/go/analysis"
 )
 
-// Analyzer enforces TS-T10: table-driven tests have named cases.
 var Analyzer = &analysis.Analyzer{
 	Name: "tablename",
 	Doc:  "TS-T10: table-driven tests have named cases.",
@@ -38,8 +37,6 @@ func run(pass *analysis.Pass) (any, error) {
 	return nil, nil
 }
 
-// isTestFuncName reports whether name matches the Test/Benchmark/Fuzz
-// prefixes the rule scopes to.
 func isTestFuncName(name string) bool {
 	for _, prefix := range []string{"Test", "Benchmark", "Fuzz"} {
 		if strings.HasPrefix(name, prefix) {
@@ -49,8 +46,6 @@ func isTestFuncName(name string) bool {
 	return false
 }
 
-// checkFunc walks a Test/Benchmark/Fuzz function body for unnamed
-// table-driven case structs.
 func checkFunc(pass *analysis.Pass, fn *ast.FuncDecl) {
 	ast.Inspect(fn.Body, func(node ast.Node) bool {
 		composite, ok := node.(*ast.CompositeLit)
@@ -62,8 +57,6 @@ func checkFunc(pass *analysis.Pass, fn *ast.FuncDecl) {
 	})
 }
 
-// checkComposite reports a slice-of-anonymous-struct literal that declares
-// no "name"/"Name" field.
 func checkComposite(pass *analysis.Pass, composite *ast.CompositeLit) {
 	array, ok := composite.Type.(*ast.ArrayType)
 	if !ok || array.Len != nil {
@@ -81,8 +74,6 @@ func checkComposite(pass *analysis.Pass, composite *ast.CompositeLit) {
 	})
 }
 
-// hasNameField reports whether spec declares a field literally named "name"
-// or "Name".
 func hasNameField(spec *ast.StructType) bool {
 	for _, field := range spec.Fields.List {
 		for _, name := range field.Names {

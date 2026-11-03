@@ -15,6 +15,18 @@ import (
 // reactive spawns inside a loop fire as TS-C09 instead, a package that starts
 // goroutines with no goleak check fires as TS-C03, and a started goroutine
 // whose group is waited on stays silent.
+//
+// Goal, TS-C03: only a TestMain calling goleak.VerifyTestMain counts; naming
+// another goleak function or calling it inside an `if false` body checks
+// nothing (ts-c03verify, ts-c03dead).
+//
+// Goal, TS-C02: a Wait inside a select case on ctx.Done() is the early return
+// of a caller that gave up, so it does not count; a goroutine waiting on its
+// own group never finishes (waitsOnItself); TryGo needs a Wait on only some
+// path after it, since the path where it returned false started nothing
+// (tryGoWaited); a return of a non-nil error is the failure path, so it
+// needs no Wait; a path ending in panic never returns and needs none either,
+// though no corpus case covers panic.
 func TestCorpus(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), nogoroutine.Analyzer,
 		"ts-c02", "ts-c03", "ts-c03eg", "ts-c03go", "ts-c03ignore", "ts-c03ok",

@@ -15,25 +15,7 @@ import (
 	"github.com/kapetan-io/tiger/internal/worklist"
 )
 
-// Allowlist notes. When carried is non-nil, no read may see state an earlier
-// visit wrote: such a read lets visit order pick which entries are written or
-// what is written. The accumulator forms (x += e, x = max(x, e),
-// if e < x { x = e }) read their own target by design; only e is checked for
-// them. A nil carried skips the check, which classifyMessage uses to name the
-// cause. An assignment to anything but a plain identifier (a field, a slice
-// element) is not a local and is refused. A body that can break or return
-// must change nothing but constant booleans and per-visit locals (walkBody).
-
-// carry is the state a loop's body writes that outlives one iteration.
-// Variables assigned or incremented are tracked by object. Maps written or
-// deleted from are tracked by type, so a read through another variable
-// holding the same map is caught too. When every write to maps of a type is
-// m[k], with k the range key, each visit touches only its own entry, so
-// reading any map of that type at [k] sees nothing an earlier visit wrote.
 type carry struct {
-	// reshapes is set when the body writes or deletes an entry of the map
-	// being ranged over other than the current one, which changes which
-	// entries the range goes on to visit.
 	reshapes bool
 	objs     map[types.Object]bool
 	maps     []types.Type
@@ -41,8 +23,6 @@ type carry struct {
 	key      types.Object
 }
 
-// carriedState collects what loop's body writes that is declared outside
-// it.
 func carriedState(pass *analysis.Pass, loop *ast.RangeStmt) *carry {
 	c := &carry{objs: map[types.Object]bool{}}
 	if key, ok := loop.Key.(*ast.Ident); ok && key.Name != "_" && distinctKeys(pass, loop) {
@@ -85,8 +65,6 @@ func carriedState(pass *analysis.Pass, loop *ast.RangeStmt) *carry {
 					c.objs[obj] = true
 				}
 			}
-			// A field written through a pointer may be read through
-			// another entry that shares the pointer.
 			if sel, ok := ast.Unparen(target).(*ast.SelectorExpr); ok && throughPointer(pass, sel) {
 				if obj := pass.TypesInfo.ObjectOf(sel.Sel); obj != nil {
 					c.objs[obj] = true
@@ -98,9 +76,6 @@ func carriedState(pass *analysis.Pass, loop *ast.RangeStmt) *carry {
 	return c
 }
 
-// rangedMap returns the source text of the map loop ranges over, looking
-// through maps.Keys, maps.Values and maps.All, or "" when it is not a plain
-// expression.
 func rangedMap(loop *ast.RangeStmt) string {
 	expr := ast.Unparen(loop.X)
 	if call, ok := expr.(*ast.CallExpr); ok && len(call.Args) == 1 {
@@ -109,8 +84,6 @@ func rangedMap(loop *ast.RangeStmt) string {
 	return types.ExprString(expr)
 }
 
-// distinctKeys reports whether loop's first variable differs on every
-// visit: a map's keys do, maps.Values' elements need not.
 func distinctKeys(pass *analysis.Pass, loop *ast.RangeStmt) bool {
 	call, ok := ast.Unparen(loop.X).(*ast.CallExpr)
 	if !ok {
@@ -119,8 +92,6 @@ func distinctKeys(pass *analysis.Pass, loop *ast.RangeStmt) bool {
 	return !isFunc(pass, call.Fun, "maps.Values")
 }
 
-// throughPointer reports whether a selector chain dereferences a pointer
-// anywhere, so the field it names may be shared.
 func throughPointer(pass *analysis.Pass, sel *ast.SelectorExpr) bool {
 	for range maxPathDepth {
 		selection := pass.TypesInfo.Selections[sel]
@@ -136,19 +107,15 @@ func throughPointer(pass *analysis.Pass, sel *ast.SelectorExpr) bool {
 	return true
 }
 
-// isKey reports whether expr is the range key itself.
 func (c *carry) isKey(pass *analysis.Pass, expr ast.Expr) bool {
 	ident, ok := ast.Unparen(expr).(*ast.Ident)
 	return ok && c.key != nil && pass.TypesInfo.ObjectOf(ident) == c.key
 }
 
-// writtenMap reports whether t is the type of a map the body writes.
 func (c *carry) writtenMap(t types.Type) bool {
 	return slices.ContainsFunc(c.maps, func(m types.Type) bool { return types.Identical(m, t) })
 }
 
-// ownSlot reports whether index reads the range key's entry of a map type
-// that is only ever written at the range key.
 func (c *carry) ownSlot(pass *analysis.Pass, index *ast.IndexExpr) bool {
 	t := pass.TypesInfo.TypeOf(index.X)
 	if t == nil || !c.writtenMap(t) || !c.isKey(pass, index.Index) {
@@ -157,7 +124,6 @@ func (c *carry) ownSlot(pass *analysis.Pass, index *ast.IndexExpr) bool {
 	return !slices.ContainsFunc(c.unkeyed, func(u types.Type) bool { return types.Identical(u, t) })
 }
 
-// dirty reports whether expr reads state an earlier visit may have written.
 func (c *carry) dirty(pass *analysis.Pass, expr ast.Expr) bool {
 	found := false
 	ast.Inspect(expr, func(node ast.Node) bool {
@@ -180,12 +146,10 @@ func (c *carry) dirty(pass *analysis.Pass, expr ast.Expr) bool {
 	return found
 }
 
-// clean reports whether expr reads nothing carried.
 func clean(pass *analysis.Pass, expr ast.Expr, carried *carry) bool {
 	return carried == nil || !carried.dirty(pass, expr)
 }
 
-// readsAny reports whether expr mentions any object in objs.
 func readsAny(pass *analysis.Pass, expr ast.Expr, objs map[types.Object]bool) bool {
 	found := false
 	ast.Inspect(expr, func(node ast.Node) bool {
@@ -197,20 +161,11 @@ func readsAny(pass *analysis.Pass, expr ast.Expr, objs map[types.Object]bool) bo
 	return found
 }
 
-// bodyAllowed walks loop's body against the closed allowlist. Nested
-// if/block statements are expanded onto the worklist rather than recursed
-// into, so the whole walk stays iterative. A body that can leave the loop
-// early must have no effect outside one visit, because which entries a
-// break or return skips depends on visit order.
 func bodyAllowed(pass *analysis.Pass, loop *ast.RangeStmt, carried *carry) bool {
 	allowed, early := walkBody(pass, loop, carried)
 	return allowed && !early
 }
 
-// walkBody reports whether every statement of loop's body is allowlisted,
-// and whether it is unstable: the body can leave the loop early and either
-// has an effect that outlives one visit or has an exit that skips an outcome
-// another entry sets.
 func walkBody(pass *analysis.Pass, loop *ast.RangeStmt, carried *carry) (allowed, unstable bool) {
 	if carried != nil && carried.reshapes {
 		return false, false
@@ -243,8 +198,6 @@ func walkBody(pass *analysis.Pass, loop *ast.RangeStmt, carried *carry) (allowed
 	return true, exits && (effects || !exitsCarryOutcomes(pass, loop, outcomes))
 }
 
-// outcomeKey names what an assignment of a constant to a boolean or a
-// return of constants leaves behind once the loop is done.
 func outcomeKey(pass *analysis.Pass, loop *ast.RangeStmt, stmt ast.Stmt) (string, bool) {
 	switch stmt := stmt.(type) {
 	case *ast.AssignStmt:
@@ -266,10 +219,6 @@ func outcomeKey(pass *analysis.Pass, loop *ast.RangeStmt, stmt ast.Stmt) (string
 	return "", false
 }
 
-// exitsCarryOutcomes reports whether every break and return in loop's body
-// comes with every outcome the body can leave. Then whichever entry stops
-// the loop, the result is the same: a flag set on one entry and a break on
-// another would not be, because the break can come first.
 func exitsCarryOutcomes(pass *analysis.Pass, loop *ast.RangeStmt, outcomes map[string]bool) bool {
 	type block struct {
 		list    []ast.Stmt
@@ -307,9 +256,6 @@ func exitsCarryOutcomes(pass *analysis.Pass, loop *ast.RangeStmt, outcomes map[s
 	return true
 }
 
-// outlivesVisit reports whether a leaf statement changes anything but
-// booleans set to a constant or variables declared inside the loop body. Any
-// other kind of statement counts as an effect.
 func outlivesVisit(pass *analysis.Pass, loop *ast.RangeStmt, stmt ast.Stmt) bool {
 	switch stmt := stmt.(type) {
 	case *ast.BlockStmt, *ast.DeclStmt:
@@ -332,8 +278,6 @@ func outlivesVisit(pass *analysis.Pass, loop *ast.RangeStmt, stmt ast.Stmt) bool
 	return true
 }
 
-// stmtAllowed classifies one statement, returning the nested statements
-// still to check.
 func stmtAllowed(
 	pass *analysis.Pass, loop *ast.RangeStmt, stmt ast.Stmt, carried *carry,
 ) ([]ast.Stmt, bool) {
@@ -358,9 +302,6 @@ func stmtAllowed(
 	return nil, false
 }
 
-// assignAllowed classifies an assignment against the map-write, integer
-// accumulation, min/max reduction, boolean-constant, and local-declaration
-// arms of the allowlist.
 func assignAllowed(
 	pass *analysis.Pass, loop *ast.RangeStmt, assign *ast.AssignStmt, carried *carry,
 ) bool {
@@ -379,8 +320,6 @@ func assignAllowed(
 	return localAssign(pass, loop, assign, carried)
 }
 
-// mapWriteAssign reports whether every LHS of assign indexes into a map,
-// with keys and values that read no carried state.
 func mapWriteAssign(pass *analysis.Pass, assign *ast.AssignStmt, carried *carry) bool {
 	for _, lhs := range assign.Lhs {
 		index, ok := ast.Unparen(lhs).(*ast.IndexExpr)
@@ -396,7 +335,6 @@ func mapWriteAssign(pass *analysis.Pass, assign *ast.AssignStmt, carried *carry)
 	return true
 }
 
-// isMapIndex reports whether expr is an index expression into a map.
 func isMapIndex(pass *analysis.Pass, expr ast.Expr) bool {
 	index, ok := expr.(*ast.IndexExpr)
 	if !ok {
@@ -410,8 +348,6 @@ func isMapIndex(pass *analysis.Pass, expr ast.Expr) bool {
 	return mapped
 }
 
-// intAccumAssign reports whether assign is x += e or x -= e for an integer
-// x and an e that reads no carried state.
 func intAccumAssign(pass *analysis.Pass, assign *ast.AssignStmt, carried *carry) bool {
 	if assign.Tok != token.ADD_ASSIGN && assign.Tok != token.SUB_ASSIGN {
 		return false
@@ -422,7 +358,6 @@ func intAccumAssign(pass *analysis.Pass, assign *ast.AssignStmt, carried *carry)
 	return isIntIdent(pass, assign.Lhs[0]) && clean(pass, assign.Rhs[0], carried)
 }
 
-// isIntIdent reports whether expr is an identifier of integer type.
 func isIntIdent(pass *analysis.Pass, expr ast.Expr) bool {
 	ident, ok := expr.(*ast.Ident)
 	if !ok {
@@ -436,8 +371,6 @@ func isIntIdent(pass *analysis.Pass, expr ast.Expr) bool {
 	return ok && basic.Info()&types.IsInteger != 0
 }
 
-// minMaxAssign reports whether assign sets an integer x to min(x, e) or
-// max(x, e), with any number of e, where each e reads no carried state.
 func minMaxAssign(pass *analysis.Pass, assign *ast.AssignStmt, carried *carry) bool {
 	if assign.Tok != token.ASSIGN || len(assign.Lhs) != 1 || len(assign.Rhs) != 1 {
 		return false
@@ -467,8 +400,6 @@ func minMaxAssign(pass *analysis.Pass, assign *ast.AssignStmt, carried *carry) b
 	return self
 }
 
-// boolConstAssign reports whether assign sets a boolean identifier to the
-// constant true or false — half of the short-circuit shape.
 func boolConstAssign(pass *analysis.Pass, assign *ast.AssignStmt) bool {
 	if assign.Tok != token.ASSIGN && assign.Tok != token.DEFINE {
 		return false
@@ -483,7 +414,6 @@ func boolConstAssign(pass *analysis.Pass, assign *ast.AssignStmt) bool {
 	return isBoolConst(pass, assign.Rhs[0])
 }
 
-// isBoolIdent reports whether ident has boolean type.
 func isBoolIdent(pass *analysis.Pass, ident *ast.Ident) bool {
 	identType := pass.TypesInfo.TypeOf(ident)
 	if identType == nil {
@@ -493,8 +423,6 @@ func isBoolIdent(pass *analysis.Pass, ident *ast.Ident) bool {
 	return ok && basic.Info()&types.IsBoolean != 0
 }
 
-// isBoolConst reports whether expr is the predeclared constant true or
-// false.
 func isBoolConst(pass *analysis.Pass, expr ast.Expr) bool {
 	ident, ok := expr.(*ast.Ident)
 	if !ok {
@@ -507,8 +435,6 @@ func isBoolConst(pass *analysis.Pass, expr ast.Expr) bool {
 	return ok && obj.Pkg() == nil
 }
 
-// localAssign reports whether assign declares or reassigns only identifiers
-// declared inside loop's body, from pure values that read no carried state.
 func localAssign(
 	pass *analysis.Pass, loop *ast.RangeStmt, assign *ast.AssignStmt, carried *carry,
 ) bool {
@@ -540,11 +466,6 @@ func localAssign(
 	return true
 }
 
-// fieldWriteRoot accepts x.f.g = e where x is the range value (the entry
-// the visit owns; pointers allowed) or a struct declared in the body (no
-// pointer on the way, so it can't alias anything outside), and returns x.
-// Slice and array element writes are refused: an index can name a slot
-// another visit also writes.
 func fieldWriteRoot(pass *analysis.Pass, loop *ast.RangeStmt, lhs ast.Expr) (*ast.Ident, bool) {
 	indirect := false
 	expr := ast.Unparen(lhs)
@@ -575,9 +496,6 @@ func fieldWriteRoot(pass *analysis.Pass, loop *ast.RangeStmt, lhs ast.Expr) (*as
 	return root, ok && pass.TypesInfo.ObjectOf(root) == pass.TypesInfo.ObjectOf(value)
 }
 
-// readsLoopLocal reports whether expr reads the range key or anything
-// declared in the body. A write to the entry must not: two keys can hold
-// the same pointer, and then both visits must write the same value.
 func readsLoopLocal(pass *analysis.Pass, loop *ast.RangeStmt, expr ast.Expr) bool {
 	found := false
 	ast.Inspect(expr, func(node ast.Node) bool {
@@ -599,9 +517,6 @@ func readsLoopLocal(pass *analysis.Pass, loop *ast.RangeStmt, expr ast.Expr) boo
 	return found
 }
 
-// declaredWithin reports whether ident's declaration lies inside loop's
-// body, so it is a fresh per-iteration local rather than state carried
-// across iterations.
 func declaredWithin(pass *analysis.Pass, loop *ast.RangeStmt, ident *ast.Ident) bool {
 	obj := pass.TypesInfo.ObjectOf(ident)
 	if obj == nil {
@@ -610,8 +525,6 @@ func declaredWithin(pass *analysis.Pass, loop *ast.RangeStmt, ident *ast.Ident) 
 	return obj.Pos() >= loop.Body.Pos() && obj.Pos() < loop.Body.End()
 }
 
-// incDecAllowed reports whether stmt increments or decrements a map index
-// whose key reads no carried state, or an integer identifier.
 func incDecAllowed(pass *analysis.Pass, stmt *ast.IncDecStmt, carried *carry) bool {
 	if index, ok := ast.Unparen(stmt.X).(*ast.IndexExpr); ok && isMapIndex(pass, stmt.X) {
 		return clean(pass, index.Index, carried)
@@ -619,8 +532,6 @@ func incDecAllowed(pass *analysis.Pass, stmt *ast.IncDecStmt, carried *carry) bo
 	return isIntIdent(pass, stmt.X)
 }
 
-// deleteAllowed reports whether stmt is a bare call to the builtin delete
-// whose key reads no carried state.
 func deleteAllowed(pass *analysis.Pass, stmt *ast.ExprStmt, carried *carry) bool {
 	call, ok := stmt.X.(*ast.CallExpr)
 	if !ok || !isBuiltin(pass, call.Fun, "delete") || len(call.Args) != 2 {
@@ -629,8 +540,6 @@ func deleteAllowed(pass *analysis.Pass, stmt *ast.ExprStmt, carried *carry) bool
 	return clean(pass, call.Args[1], carried)
 }
 
-// declStmtAllowed reports whether stmt is a var declaration of locals
-// declared inside loop's body with pure initializers.
 func declStmtAllowed(
 	pass *analysis.Pass, loop *ast.RangeStmt, stmt *ast.DeclStmt, carried *carry,
 ) bool {
@@ -657,8 +566,6 @@ func declStmtAllowed(
 	return true
 }
 
-// returnAllowed reports whether stmt returns only constant booleans (or
-// nothing) — the other half of the short-circuit shape.
 func returnAllowed(pass *analysis.Pass, stmt *ast.ReturnStmt) bool {
 	for _, result := range stmt.Results {
 		if !isBoolConst(pass, result) {
@@ -668,9 +575,6 @@ func returnAllowed(pass *analysis.Pass, stmt *ast.ReturnStmt) bool {
 	return true
 }
 
-// ifAllowed reports whether ifStmt is the min/max if-form (a leaf, nothing
-// further to check) or an if whose condition is pure and reads no carried
-// state; in the latter case it returns the body and else statements.
 func ifAllowed(pass *analysis.Pass, ifStmt *ast.IfStmt, carried *carry) ([]ast.Stmt, bool) {
 	if minMaxIfForm(pass, ifStmt, carried) {
 		return nil, true
@@ -694,9 +598,6 @@ func ifAllowed(pass *analysis.Pass, ifStmt *ast.IfStmt, carried *carry) ([]ast.S
 	return next, true
 }
 
-// minMaxIfForm reports whether ifStmt is `if e > x { x = e }` or
-// `if e < x { x = e }` (or the symmetric operand order), where e reads no
-// carried state.
 func minMaxIfForm(pass *analysis.Pass, ifStmt *ast.IfStmt, carried *carry) bool {
 	if ifStmt.Init != nil || ifStmt.Else != nil {
 		return false
@@ -718,8 +619,6 @@ func minMaxIfForm(pass *analysis.Pass, ifStmt *ast.IfStmt, carried *carry) bool 
 	return matchesMinMaxUpdate(pass, binary, assign) && clean(pass, assign.Rhs[0], carried)
 }
 
-// matchesMinMaxUpdate reports whether assign sets the identifier on one
-// side of binary to the expression on the other side.
 func matchesMinMaxUpdate(pass *analysis.Pass, binary *ast.BinaryExpr, assign *ast.AssignStmt) bool {
 	ident, ok := assign.Lhs[0].(*ast.Ident)
 	if !ok || !isIntIdent(pass, ident) {
@@ -738,8 +637,6 @@ func matchesMinMaxUpdate(pass *analysis.Pass, binary *ast.BinaryExpr, assign *as
 	return right == target && left == rhs
 }
 
-// identDecl returns the object expr resolves to when expr is an
-// identifier, or nil otherwise.
 func identDecl(pass *analysis.Pass, expr ast.Expr) types.Object {
 	ident, ok := ast.Unparen(expr).(*ast.Ident)
 	if !ok {
@@ -748,8 +645,6 @@ func identDecl(pass *analysis.Pass, expr ast.Expr) types.Object {
 	return pass.TypesInfo.ObjectOf(ident)
 }
 
-// pureExpr reports whether expr contains no calls other than the builtins
-// len, cap, min, and max.
 func pureExpr(pass *analysis.Pass, expr ast.Expr) bool {
 	pure := true
 	ast.Inspect(expr, func(node ast.Node) bool {

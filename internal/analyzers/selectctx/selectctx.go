@@ -27,7 +27,6 @@ import (
 	"github.com/kapetan-io/tiger/internal/analyzers/internal/stopcase"
 )
 
-// Analyzer enforces TS-C05: every blocking receive or send has a stop case.
 var Analyzer = &analysis.Analyzer{
 	Name: "selectctx",
 	Doc:  "TS-C05: every blocking receive or send has a stop case.",
@@ -57,10 +56,6 @@ func run(pass *analysis.Pass) (any, error) {
 					})
 				}
 			case *ast.UnaryExpr:
-				// A bare receive from a live ctx.Done() or a channel the
-				// package closes is itself the shutdown wait; asking to
-				// wrap it in a select would restate the code that is
-				// already there.
 				if stmt.Op == token.ARROW && !protected[stmt] && !stops.BareReceive(stmt) {
 					pass.Report(analysis.Diagnostic{
 						Pos: stmt.Pos(), Category: "TS-C05", Message: msgUnwrapped,
@@ -73,8 +68,6 @@ func run(pass *analysis.Pass) (any, error) {
 	return nil, nil
 }
 
-// checkSelect fires TS-C05 for a blocking select (no default clause) that
-// carries no stop case.
 func checkSelect(pass *analysis.Pass, stops *stopcase.Finder, sel *ast.SelectStmt) {
 	if hasDefault(sel) || hasStopCase(stops, sel) {
 		return
@@ -82,8 +75,6 @@ func checkSelect(pass *analysis.Pass, stops *stopcase.Finder, sel *ast.SelectStm
 	pass.Report(analysis.Diagnostic{Pos: sel.Pos(), Category: "TS-C05", Message: msgNoShutdown})
 }
 
-// hasDefault reports whether sel carries a default clause, which makes it
-// non-blocking.
 func hasDefault(sel *ast.SelectStmt) bool {
 	for _, clause := range sel.Body.List {
 		if comm, ok := clause.(*ast.CommClause); ok && comm.Comm == nil {
@@ -93,7 +84,6 @@ func hasDefault(sel *ast.SelectStmt) bool {
 	return false
 }
 
-// hasStopCase reports whether sel carries a case that ends the wait.
 func hasStopCase(stops *stopcase.Finder, sel *ast.SelectStmt) bool {
 	for _, clause := range sel.Body.List {
 		if comm, ok := clause.(*ast.CommClause); ok && stops.Case(comm.Comm) {
@@ -103,10 +93,6 @@ func hasStopCase(stops *stopcase.Finder, sel *ast.SelectStmt) bool {
 	return false
 }
 
-// commHeadlines collects every select case's headline receive expression
-// and headline send statement across file, so the generic walk can skip
-// flagging a select's own comm operation as a blocking op outside a
-// select.
 func commHeadlines(file *ast.File) map[ast.Node]bool {
 	protected := map[ast.Node]bool{}
 	ast.Inspect(file, func(node ast.Node) bool {
