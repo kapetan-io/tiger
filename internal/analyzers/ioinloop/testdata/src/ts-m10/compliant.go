@@ -65,3 +65,34 @@ func setHeaders(req *http.Request, headers map[string]string) {
 		req.Header.Set(k, v)
 	}
 }
+
+// readInLoopHeader reads in the for-statement's Init: it runs once per
+// loop, not once per iteration, so only the body counts as the loop.
+func readInLoopHeader(path string) int {
+	count := 0
+	for data, err := os.ReadFile(path); err == nil && count < len(data); count++ {
+	}
+	return count
+}
+
+// sink is declared here, so a call through it resolves to this package even
+// when the value is an *os.File.
+type sink interface {
+	Write(p []byte) (int, error)
+}
+
+// writeAllSink writes through a local interface holding a file.
+func writeAllSink(path string, chunks [][]byte) error {
+	file, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	var out sink = file
+	for _, chunk := range chunks {
+		if _, err := out.Write(chunk); err != nil {
+			return err
+		}
+	}
+	return nil
+}

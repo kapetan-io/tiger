@@ -25,8 +25,6 @@ import (
 	"golang.org/x/tools/go/analysis"
 )
 
-// Analyzer enforces TS-L10: no defer inside a loop, and defers stay next to
-// their acquisition.
 var Analyzer = &analysis.Analyzer{
 	Name: "deferdistance",
 	Doc:  "TS-L10: no defer inside a loop, and defers stay next to their acquisition.",
@@ -41,11 +39,6 @@ func run(pass *analysis.Pass) (any, error) {
 	return nil, nil
 }
 
-// checkLoopDefers reports every DeferStmt lexically inside a
-// ForStmt/RangeStmt body in the same frame. Entering a func literal saves
-// the loop depth and starts from zero: the closure's defers resolve when
-// its own frame returns, once per call, no matter how many frames the
-// enclosing loop spawns.
 func checkLoopDefers(pass *analysis.Pass, file *ast.File) {
 	depth := 0
 	saved := []int{}
@@ -83,10 +76,6 @@ func checkLoopDefers(pass *analysis.Pass, file *ast.File) {
 	})
 }
 
-// checkDeferDistance visits every block in file and checks each direct
-// DeferStmt child against the statements preceding it in that same block,
-// tracking the innermost enclosing function body so a release of something
-// acquired outside that frame stays silent.
 func checkDeferDistance(pass *analysis.Pass, file *ast.File) {
 	bodies := []*ast.BlockStmt{}
 	entered := []bool{}
@@ -119,7 +108,6 @@ func checkDeferDistance(pass *analysis.Pass, file *ast.File) {
 	})
 }
 
-// functionBody returns node's body when node opens a new frame.
 func functionBody(node ast.Node) *ast.BlockStmt {
 	switch fn := node.(type) {
 	case *ast.FuncDecl:
@@ -130,12 +118,6 @@ func functionBody(node ast.Node) *ast.BlockStmt {
 	return nil
 }
 
-// checkDistance reports deferStmt when its acquisition statement is not
-// found immediately behind it (skipping only err-check IfStmts) among
-// preceding, the statements before it in the same block. A target declared
-// outside frame — a captured variable, a parameter, a package-level var
-// with no acquisition-shaped statement here — was acquired by another frame
-// and has nothing local to sit next to, so it stays silent.
 func checkDistance(
 	pass *analysis.Pass,
 	preceding []ast.Stmt,
@@ -165,7 +147,6 @@ func checkDistance(
 	reportDistance(pass, deferStmt)
 }
 
-// declaredWithin reports whether target's declaration sits inside frame.
 func declaredWithin(pass *analysis.Pass, target *ast.Ident, frame *ast.BlockStmt) bool {
 	declared := pass.TypesInfo.Uses[target]
 	if declared == nil {
@@ -174,8 +155,6 @@ func declaredWithin(pass *analysis.Pass, target *ast.Ident, frame *ast.BlockStmt
 	return declared.Pos() >= frame.Pos() && declared.Pos() <= frame.End()
 }
 
-// everyCheckReferences reports whether every statement in skipped is an
-// IfStmt whose condition references one of names.
 func everyCheckReferences(skipped []ast.Stmt, names []string) bool {
 	for _, stmt := range skipped {
 		ifStmt, ok := stmt.(*ast.IfStmt)
@@ -186,9 +165,6 @@ func everyCheckReferences(skipped []ast.Stmt, names []string) bool {
 	return true
 }
 
-// deferTarget extracts the plain-identifier receiver of a deferred selector
-// call (f.Close), reporting ok=false for closures, package-qualified calls,
-// or any other call shape.
 func deferTarget(pass *analysis.Pass, deferStmt *ast.DeferStmt) (*ast.Ident, bool) {
 	selector, ok := deferStmt.Call.Fun.(*ast.SelectorExpr)
 	if !ok {
@@ -204,9 +180,6 @@ func deferTarget(pass *analysis.Pass, deferStmt *ast.DeferStmt) (*ast.Ident, boo
 	return ident, true
 }
 
-// acquisitionNames reports the identifiers stmt declares, assigns, or calls
-// a method on — mu.Lock is the acquisition defer mu.Unlock releases — and
-// whether target is one of them.
 func acquisitionNames(stmt ast.Stmt, target string) ([]string, bool) {
 	assign, ok := stmt.(*ast.AssignStmt)
 	if ok {
@@ -237,8 +210,6 @@ func acquisitionNames(stmt ast.Stmt, target string) ([]string, bool) {
 	return names, containsName(names, target)
 }
 
-// methodCallReceiver extracts the plain-identifier receiver of a bare
-// method-call statement (mu.Lock(), now.Freeze(t)).
 func methodCallReceiver(stmt ast.Stmt) (string, bool) {
 	expr, ok := stmt.(*ast.ExprStmt)
 	if !ok {
@@ -259,8 +230,6 @@ func methodCallReceiver(stmt ast.Stmt) (string, bool) {
 	return ident.Name, true
 }
 
-// identNames returns the plain identifier names among exprs, skipping
-// non-identifier targets such as a selector or index expression.
 func identNames(exprs []ast.Expr) []string {
 	names := []string{}
 	for _, expr := range exprs {
@@ -272,7 +241,6 @@ func identNames(exprs []ast.Expr) []string {
 	return names
 }
 
-// containsName reports whether target is present in names.
 func containsName(names []string, target string) bool {
 	for _, name := range names {
 		if name == target {
@@ -282,7 +250,6 @@ func containsName(names []string, target string) bool {
 	return false
 }
 
-// condReferencesAny reports whether cond mentions any identifier in names.
 func condReferencesAny(cond ast.Expr, names []string) bool {
 	found := false
 	ast.Inspect(cond, func(node ast.Node) bool {

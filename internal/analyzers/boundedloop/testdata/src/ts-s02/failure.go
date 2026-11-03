@@ -338,3 +338,65 @@ func resetCounterFires(limit int, again func() bool) int {
 	}
 	return rounds
 }
+
+// gapCounterReassignedFires: the body moves i, so the post no longer
+// shrinks the gap by a fixed step each round.
+func gapCounterReassignedFires(entries []int, skip func() bool) int {
+	count := 0
+	for i, j := 0, len(entries)-1; i < j; i, j = i+1, j-1 { // want `TS-S02: tiger can't tell how many times this loop runs`
+		if skip() {
+			i--
+		}
+		count++
+	}
+	return count
+}
+
+// gapUpperReassignedFires: same proof, defeated by a write to j.
+func gapUpperReassignedFires(entries []int, grow func() bool) int {
+	count := 0
+	for i, j := 0, len(entries)-1; i < j; i, j = i+1, j-1 { // want `TS-S02: tiger can't tell how many times this loop runs`
+		if grow() {
+			j += 2
+		}
+		count++
+	}
+	return count
+}
+
+// nestedContinueFires: the continue belongs to the inner loop and cannot
+// skip the shift, but the skip scan does not tell the loops apart.
+func nestedContinueFires(x uint, pick func() bool) int {
+	count := 0
+	for x != 0 { // want `TS-S02: tiger can't tell how many times this loop runs`
+		for k := 0; k < 3; k++ {
+			if pick() {
+				continue
+			}
+			count++
+		}
+		x >>= 1
+	}
+	return count
+}
+
+// divideByOneFires: x / 1 never moves x, so only a divisor above 1 counts.
+func divideByOneFires(x int) int {
+	count := 0
+	for x != 0 { // want `TS-S02: tiger can't tell how many times this loop runs`
+		x /= 1
+		count++
+	}
+	return count
+}
+
+// negatedNotEqualFires: !(x != 0) runs while x is zero, so
+// the shift toward zero is no bound.
+func negatedNotEqualFires(x uint) int {
+	count := 0
+	for !(x != 0) { // want `TS-S02: tiger can't tell how many times this loop runs`
+		x >>= 1
+		count++
+	}
+	return count
+}

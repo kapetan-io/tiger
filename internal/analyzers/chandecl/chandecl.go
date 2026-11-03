@@ -29,7 +29,6 @@ import (
 	"golang.org/x/tools/go/analysis"
 )
 
-// Analyzer enforces TS-C12: channel types are declared in one file per package.
 var Analyzer = &analysis.Analyzer{
 	Name: "chandecl",
 	Doc:  "TS-C12: channel types are declared in one file per package",
@@ -67,8 +66,6 @@ func run(pass *analysis.Pass) (any, error) {
 	return nil, nil
 }
 
-// channelDecls returns every type declaration in file whose type expression
-// contains a channel type: a direct alias or a struct with a channel field.
 func channelDecls(file *ast.File) []*ast.TypeSpec {
 	found := []*ast.TypeSpec{}
 	for _, top := range file.Decls {
@@ -89,8 +86,6 @@ func channelDecls(file *ast.File) []*ast.TypeSpec {
 	return found
 }
 
-// hasChanType reports whether expr's type expression contains a ChanType
-// anywhere within it.
 func hasChanType(expr ast.Expr) bool {
 	found := false
 	ast.Inspect(expr, func(node ast.Node) bool {

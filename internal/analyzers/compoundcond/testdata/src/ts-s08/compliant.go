@@ -135,3 +135,29 @@ func openEnumPlainDefaultCompliant(reason PackReason) string {
 		return "unknown"
 	}
 }
+
+type (
+	// Channel is marked inside a grouped type declaration, where the
+	// directive sits on the spec rather than on the "type" keyword.
+	//
+	//tiger:openenum peers on the wire add channels before we upgrade
+	Channel string
+)
+
+const (
+	ChannelMain Channel = "main"
+	ChannelBeta Channel = "beta"
+)
+
+// groupedOpenEnumPlainDefaultCompliant has a plain default arm, accepted
+// because the grouped declaration marks Channel open.
+func groupedOpenEnumPlainDefaultCompliant(channel Channel) string {
+	switch channel {
+	case ChannelMain:
+		return "main"
+	case ChannelBeta:
+		return "beta"
+	default:
+		return "unknown"
+	}
+}

@@ -18,7 +18,6 @@ import (
 	"golang.org/x/tools/go/analysis"
 )
 
-// Analyzer enforces TS-E02: an error discarded with _ is a finding.
 var Analyzer = &analysis.Analyzer{
 	Name: "errignore",
 	Doc:  "TS-E02: discarding an error with _ is a finding, whatever comment sits next to it",
@@ -53,8 +52,6 @@ func run(pass *analysis.Pass) (any, error) {
 	return nil, nil
 }
 
-// isTestingCleanup reports whether call is a Cleanup method call on one of
-// testing's types.
 func isTestingCleanup(pass *analysis.Pass, call *ast.CallExpr) bool {
 	sel, ok := call.Fun.(*ast.SelectorExpr)
 	if !ok || sel.Sel.Name != "Cleanup" {
@@ -64,8 +61,6 @@ func isTestingCleanup(pass *analysis.Pass, call *ast.CallExpr) bool {
 	return obj != nil && obj.Pkg() != nil && obj.Pkg().Path() == "testing"
 }
 
-// inspectAssign reports every blank left-hand side of assign whose matching
-// right-hand-side result is error-typed.
 func inspectAssign(pass *analysis.Pass, assign *ast.AssignStmt) {
 	results := resultTypes(pass, assign)
 	if len(results) != len(assign.Lhs) {
@@ -89,10 +84,6 @@ func inspectAssign(pass *analysis.Pass, assign *ast.AssignStmt) {
 	}
 }
 
-// resultTypes returns one type per left-hand-side position of assign. A
-// single call on the right assigned to more than one name yields the
-// call's result tuple; otherwise each right-hand-side expression is typed
-// on its own.
 func resultTypes(pass *analysis.Pass, assign *ast.AssignStmt) []types.Type {
 	if len(assign.Rhs) == 1 && len(assign.Lhs) > 1 {
 		tuple, ok := pass.TypesInfo.TypeOf(assign.Rhs[0]).(*types.Tuple)
@@ -112,7 +103,6 @@ func resultTypes(pass *analysis.Pass, assign *ast.AssignStmt) []types.Type {
 	return results
 }
 
-// isError reports whether t is the predeclared error interface.
 func isError(t types.Type) bool {
 	if t == nil {
 		return false

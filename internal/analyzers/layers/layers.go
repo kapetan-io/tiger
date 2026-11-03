@@ -21,7 +21,6 @@ import (
 	"github.com/kapetan-io/tiger/internal/layerfile"
 )
 
-// Analyzer enforces TS-X03: the package import graph is declared and enforced.
 var Analyzer = &analysis.Analyzer{
 	Name: "layers",
 	Doc:  "TS-X03: the package import graph is declared and enforced.",
@@ -66,13 +65,10 @@ func run(pass *analysis.Pass) (any, error) {
 	return nil, nil
 }
 
-// testMain reports whether the package is the main package go test
-// synthesizes to run a package's tests, which no layer file can list.
 func testMain(pass *analysis.Pass) bool {
 	return pass.Pkg.Name() == "main" && strings.HasSuffix(pass.Pkg.Path(), ".test")
 }
 
-// sourceFiles returns the package's non-test files.
 func sourceFiles(pass *analysis.Pass) []*ast.File {
 	files := []*ast.File{}
 	for _, file := range pass.Files {
