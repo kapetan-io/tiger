@@ -77,6 +77,9 @@ func TestCheckFindingsEndWithTheirPointerWithinTheCap(t *testing.T) {
 		"testdata/fixtures/invariants/unviolated", "testdata/fixtures/invariants/singlesite")
 
 	outcomes := make([]outcome, len(fixtures))
+	operational := map[string]bool{
+		"testdata/fixtures/broken": true, "testdata/fixtures/budget": true, "testdata/fixtures/config": true,
+	}
 	var group sync.WaitGroup
 	for i, dir := range fixtures {
 		group.Go(func() { outcomes[i] = runIsolated(t, "-C", dir, "./...") })
@@ -86,10 +89,13 @@ func TestCheckFindingsEndWithTheirPointerWithinTheCap(t *testing.T) {
 	forms := map[string]bool{}
 	for i, dir := range fixtures {
 		got := outcomes[i]
-		// The broken fixture exits ExitOperational on purpose; a crash is not that.
-		require.NotEqual(t, -1, got.code)
-		require.NotContains(t, got.stderr, "panic:")
-		if got.code != command.ExitFindings {
+		if operational[dir] {
+			require.Equal(t, command.ExitOperational, got.code, got.stderr)
+			continue
+		}
+		// A load failure under parallel pressure must fail here, not skip the fixture.
+		require.Contains(t, []int{command.ExitClean, command.ExitFindings}, got.code, got.stderr)
+		if got.code == command.ExitClean {
 			continue
 		}
 		for _, line := range strings.Split(got.stdout, "\n") {
