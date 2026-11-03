@@ -1,20 +1,55 @@
 package check_test
 
 import (
+	"bytes"
+	"errors"
 	"os"
+	"os/exec"
 	"regexp"
 	"strings"
+	"sync"
 	"testing"
 	"unicode/utf8"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/kapetan-io/tiger/internal/check"
 	"github.com/kapetan-io/tiger/internal/command"
 	"github.com/kapetan-io/tiger/internal/rules"
 )
 
 var findingLine = regexp.MustCompile(`^\S+: (TS-[A-Z]+[0-9]+): (.*)$`)
+
+const childEnv = "TIGER_CHECK_TEST_CHILD"
+
+// TestMain lets runIsolated re-execute this binary as a plain `tiger check`.
+func TestMain(m *testing.M) {
+	if os.Getenv(childEnv) != "" {
+		os.Exit(check.Run(os.Args[1:], command.Streams{Stdout: os.Stdout, Stderr: os.Stderr}))
+	}
+	os.Exit(m.Run())
+}
+
+// runIsolated runs `tiger check` with args in its own process so runs can
+// overlap. A run installs process-global config that two runs in one process
+// race on, which is why every other test runs `check` in-process, one at a time.
+func runIsolated(t *testing.T, args ...string) outcome {
+	t.Helper()
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	cmd := exec.Command(os.Args[0], args...)
+	cmd.Env = append(os.Environ(), childEnv+"=1")
+	cmd.Stdout, cmd.Stderr = stdout, stderr
+	code := 0
+	if err := cmd.Run(); err != nil {
+		var exit *exec.ExitError
+		if !errors.As(err, &exit) {
+			t.Errorf("start child: %v", err)
+		}
+		code = cmd.ProcessState.ExitCode()
+	}
+	return outcome{code: code, stdout: stdout.String(), stderr: stderr.String()}
+}
 
 // TestCheckFindingsEndWithTheirPointerWithinTheCap reads every finding the
 // fixtures produce.
@@ -41,10 +76,28 @@ func TestCheckFindingsEndWithTheirPointerWithinTheCap(t *testing.T) {
 	fixtures = append(fixtures, "testdata/fixtures/invariants/unasserted",
 		"testdata/fixtures/invariants/unviolated", "testdata/fixtures/invariants/singlesite")
 
+	outcomes := make([]outcome, len(fixtures))
+	operational := map[string]bool{
+		"testdata/fixtures/broken": true,
+		"testdata/fixtures/budget": true,
+		"testdata/fixtures/config": true,
+	}
+	var group sync.WaitGroup
+	for i, dir := range fixtures {
+		group.Go(func() { outcomes[i] = runIsolated(t, "-C", dir, "./...") })
+	}
+	group.Wait()
+
 	forms := map[string]bool{}
-	for _, dir := range fixtures {
-		got := run(t, "check", "-C", dir, "./...")
-		if got.code != command.ExitFindings {
+	for i, dir := range fixtures {
+		got := outcomes[i]
+		if operational[dir] {
+			require.Equal(t, command.ExitOperational, got.code, got.stderr)
+			continue
+		}
+		// A load failure under parallel pressure must fail here, not skip the fixture.
+		require.Contains(t, []int{command.ExitClean, command.ExitFindings}, got.code, got.stderr)
+		if got.code == command.ExitClean {
 			continue
 		}
 		for _, line := range strings.Split(got.stdout, "\n") {
