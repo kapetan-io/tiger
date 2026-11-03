@@ -47,3 +47,33 @@ func callNeedsPositiveVariable(count int) int {
 func okNonNegative() int {
 	return 0
 }
+
+// nakedReturnEnsures returns a negative value through its named result.
+//
+//tiger:ensures n >= 0
+func nakedReturnEnsures() (n int) {
+	n = -1
+	return
+}
+
+// outerWithNegativeLiteral returns a non-negative value; the negative
+// return belongs to the literal, which has no pin.
+//
+//tiger:ensures result >= 0
+func outerWithNegativeLiteral() int {
+	inner := func() int { return -1 }
+	return inner() + 1
+}
+
+// sumFrom requires a positive first argument.
+//
+//tiger:requires first > 0
+func sumFrom(first int, rest ...int) int {
+	return first + len(rest)
+}
+
+// callSumFromSpread spreads its rest argument, so the arguments no longer
+// line up with the parameters.
+func callSumFromSpread(rest []int) int {
+	return sumFrom(0, rest...)
+}

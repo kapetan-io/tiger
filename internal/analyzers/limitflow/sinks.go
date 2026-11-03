@@ -10,21 +10,14 @@ import (
 	"github.com/kapetan-io/tiger/internal/analyzers/internal/intrange"
 )
 
-// sinkKind says where a value becomes a loop limit.
 type sinkKind int
 
 const (
-	// The sink is the limit in a loop's own header.
 	loopLimit sinkKind = iota
-	// The sink is an argument passed to a parameter that bounds a loop.
 	callArg
-	// The sink is a value written into a field that bounds a loop.
 	fieldWrite
 )
 
-// reach says whether a traced value is read straight from a loop's header
-// (atHeader) or arrived through a variable, a call, or a write (downstream).
-// Only a value read atHeader teaches the trace which fields bound a loop.
 type reach bool
 
 const (
@@ -32,7 +25,6 @@ const (
 	downstream reach = false
 )
 
-// sink is one value that may become a loop limit.
 type sink struct {
 	kind   sinkKind
 	expr   ast.Expr
@@ -42,9 +34,6 @@ type sink struct {
 	field  *types.Var
 }
 
-// active reports whether the sink feeds a loop given the facts so far: a
-// loop's own limit always does, an argument does when its parameter bounds a
-// loop, and a write does when its field bounds one.
 func (s *state) active(candidate sink) bool {
 	if candidate.kind == callArg {
 		return slices.Contains(s.limitParamsOf(candidate.callee), candidate.index)
@@ -56,7 +45,6 @@ func (s *state) active(candidate sink) bool {
 	return true
 }
 
-// sinksIn lists every place in fn where a value can become a loop limit.
 func (s *state) sinksIn(fn *function) []sink {
 	var found []sink
 	ast.Inspect(fn.decl.Body, func(n ast.Node) bool {
@@ -79,7 +67,6 @@ func (s *state) sinksIn(fn *function) []sink {
 	return found
 }
 
-// limitsOf returns the limit of each sound counter comparison in a loop.
 func (s *state) limitsOf(fn *function, loop *ast.ForStmt) []sink {
 	var found []sink
 	for _, term := range counter.Terms(fn.scope, loop) {
@@ -88,8 +75,6 @@ func (s *state) limitsOf(fn *function, loop *ast.ForStmt) []sink {
 	return found
 }
 
-// argumentsOf returns each argument of a call to a declared function or
-// method, which bounds a loop when the callee's parameter does.
 func (s *state) argumentsOf(call *ast.CallExpr) []sink {
 	callee := s.callee(call)
 	if callee == nil || call.Ellipsis.IsValid() {
@@ -108,9 +93,6 @@ func (s *state) argumentsOf(call *ast.CallExpr) []sink {
 	return found
 }
 
-// receiverArguments returns how many leading arguments of a call are the
-// receiver rather than a parameter: one for a method expression such as
-// Spinner.Spin(s, limit), none for any other call.
 func (s *state) receiverArguments(call *ast.CallExpr) int {
 	selector, ok := ast.Unparen(call.Fun).(*ast.SelectorExpr)
 	if !ok {
@@ -123,9 +105,6 @@ func (s *state) receiverArguments(call *ast.CallExpr) int {
 	return 0
 }
 
-// callee resolves a call to the declared function or method it names. A call
-// through a function value or an interface method returns nil, a recorded
-// miss.
 func (s *state) callee(call *ast.CallExpr) *types.Func {
 	var name *ast.Ident
 	switch fun := condition.Uninstantiated(call.Fun).(type) {
@@ -143,7 +122,6 @@ func (s *state) callee(call *ast.CallExpr) *types.Func {
 	return fn.Origin()
 }
 
-// literalFields returns each keyed value of a struct literal.
 func (s *state) literalFields(literal *ast.CompositeLit) []sink {
 	var found []sink
 	for _, element := range literal.Elts {
@@ -164,7 +142,6 @@ func (s *state) literalFields(literal *ast.CompositeLit) []sink {
 	return found
 }
 
-// assignedFields returns each value assigned straight into a struct field.
 func (s *state) assignedFields(assign *ast.AssignStmt) []sink {
 	if len(assign.Lhs) != len(assign.Rhs) {
 		return nil
@@ -188,10 +165,6 @@ func (s *state) assignedFields(assign *ast.AssignStmt) []sink {
 	return found
 }
 
-// fieldKey names a struct field the same way in every package: the path of
-// the package that declares the struct, the struct's name, the field's name.
-// A field of an anonymous or function-local struct has no such name, so it
-// gets none and no fact is kept for it.
 func (s *state) fieldKey(field *types.Var) string {
 	field = field.Origin()
 	if field.Pkg() == nil {

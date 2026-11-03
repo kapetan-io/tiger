@@ -40,8 +40,6 @@ import (
 	"github.com/kapetan-io/tiger/internal/config"
 )
 
-// seedPackages are the stdlib import paths whose operations are
-// unconditionally IO, independent of receiver type.
 var seedPackages = []string{"os", "net", "net/http", "database/sql", "syscall"}
 
 const msg = "TS-M10: this call does IO (network, disk, or database) and runs once per loop " +
@@ -61,7 +59,6 @@ func newAnalyzer() *analysis.Analyzer {
 	return built
 }
 
-// Analyzer enforces TS-M10: no IO call inside a loop body.
 var Analyzer = newAnalyzer()
 
 func run(pass *analysis.Pass) (any, error) {
@@ -73,8 +70,6 @@ func run(pass *analysis.Pass) (any, error) {
 	return nil, nil
 }
 
-// allowlist merges seedPackages with the per-repo -packages flag and the
-// tiger.yaml ioinloop.packages entries that apply to the analyzed package.
 func allowlist(pass *analysis.Pass) map[string]bool {
 	allowed := map[string]bool{}
 	for _, path := range seedPackages {
@@ -93,23 +88,12 @@ func allowlist(pass *analysis.Pass) map[string]bool {
 	return allowed
 }
 
-// walker holds the state that stays fixed for one pass.Files entry —
-// pass, file, and the merged IO allowlist — so walk/walkOpt only need to
-// carry what changes as they descend: root and frame.
 type walker struct {
 	pass    *analysis.Pass
 	file    *ast.File
 	allowed map[string]bool
 }
 
-// walk restarts ast.Inspect at root, carrying frame — the //tiger:batched
-// state of every same-frame loop currently open, innermost last. A
-// ForStmt/RangeStmt pushes its own annotated flag only around Body:
-// Init/Cond/Post/X are walked under the unchanged frame, since they run
-// once per loop rather than once per iteration. A FuncLit resets frame to
-// nil, starting a new accounting frame. Both cases return false to stop
-// ast.Inspect's automatic descent, since the children are walked manually
-// with the correct frame.
 func (w *walker) walk(root ast.Node, frame []bool) {
 	ast.Inspect(root, func(node ast.Node) bool {
 		switch n := node.(type) {
@@ -120,8 +104,6 @@ func (w *walker) walk(root ast.Node, frame []bool) {
 			w.walkOpt(n.Init, frame)
 			w.walkOpt(n.Cond, frame)
 			w.walkOpt(n.Post, frame)
-			// Full-slice expression keeps sibling loops that share a
-			// parent frame from aliasing one another's backing array.
 			w.walkOpt(n.Body, append(frame[:len(frame):len(frame)], w.annotated(n)))
 			return false
 		case *ast.RangeStmt:
@@ -137,9 +119,6 @@ func (w *walker) walk(root ast.Node, frame []bool) {
 	})
 }
 
-// walkOpt calls walk unless node is the true nil an unset Init/Cond/Post
-// carries (ForStmt/RangeStmt bodies are never nil for parsed source, so no
-// typed-nil pointer ever reaches here as a node).
 func (w *walker) walkOpt(node ast.Node, frame []bool) {
 	if node == nil {
 		return
@@ -147,21 +126,11 @@ func (w *walker) walkOpt(node ast.Node, frame []bool) {
 	w.walk(node, frame)
 }
 
-// annotated reports whether loop carries a well-formed //tiger:batched
-// directive. Validation (a known verb, a reason) is the directives
-// analyzer's job; a malformed attempt simply does not attach here.
 func (w *walker) annotated(loop ast.Node) bool {
 	_, ok := attach.Directive(w.pass.Fset, w.file, loop, "batched")
 	return ok
 }
 
-// isIO reports whether call resolves to a *types.Func declared in a
-// package on w.allowed. A method whose receiver's underlying type is a
-// map, slice, or basic value is exempt even there: a pure container or
-// value cannot hold a connection or descriptor, so its methods are
-// in-memory (http.Header.Set on the wire path is the archetype — a map
-// write, not IO). IO lives behind struct-backed receivers (os.File,
-// http.Client, sql.DB) and package-level functions.
 func (w *walker) isIO(call *ast.CallExpr) bool {
 	fn := w.calleeFunc(call)
 	if fn == nil || fn.Pkg() == nil {
@@ -170,8 +139,6 @@ func (w *walker) isIO(call *ast.CallExpr) bool {
 	return w.allowed[fn.Pkg().Path()] && !containerMethod(fn)
 }
 
-// containerMethod reports whether fn is a method on a receiver whose
-// underlying type — behind any pointer — is a map, slice, or basic value.
 func containerMethod(fn *types.Func) bool {
 	recv := fn.Signature().Recv()
 	if recv == nil {
@@ -189,13 +156,6 @@ func containerMethod(fn *types.Func) bool {
 	}
 }
 
-// calleeFunc resolves call's callee to a *types.Func through
-// pass.TypesInfo, never by name. A method call resolves through
-// Selections to the func actually bound to the receiver's type — for an
-// interface-typed receiver that is the interface's own method declaration,
-// carrying the interface's declaring package, not any concrete
-// implementer's. A plain identifier call (a package-level function, a
-// package-qualified call such as os.ReadFile) resolves through Uses.
 func (w *walker) calleeFunc(call *ast.CallExpr) *types.Func {
 	switch fun := call.Fun.(type) {
 	case *ast.Ident:

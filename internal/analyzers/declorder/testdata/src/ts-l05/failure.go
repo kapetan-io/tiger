@@ -39,3 +39,23 @@ func newLimiter(rate int) *Limiter { // want `TS-L05: constructor newLimiter is 
 type Limiter struct {
 	rate int
 }
+
+// Get is declared before the generic type Box: the receiver's type-parameter
+// brackets do not hide which type it belongs to.
+func (b *Box[T]) Get() T { // want `TS-L05: method Get is declared before its type Box`
+	return b.value
+}
+
+type Box[T any] struct {
+	value T
+}
+
+// Key is the same with two type parameters.
+func (p *Pair[K, V]) Key() K { // want `TS-L05: method Key is declared before its type Pair`
+	return p.key
+}
+
+type Pair[K comparable, V any] struct {
+	key K
+	val V
+}

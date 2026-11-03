@@ -50,41 +50,28 @@ const (
 		"nothing — pass a declared maximum instead"
 )
 
-// roundsMax bounds how many times the trace repeats while facts spread
-// through callers.
 const roundsMax = 64
 
 const _ = uint(1<<10 - roundsMax)
 
-// LimitParams marks the parameters of a function that bound a loop.
 type LimitParams struct{ Index []int }
 
-// AFact marks LimitParams as an analysis fact.
 func (*LimitParams) AFact() {}
 
 func (f *LimitParams) String() string { return fmt.Sprint(f.Index) }
 
-// LimitFields lists the struct fields (package path, type, field) that bound
-// a loop. It is a package fact because the field may belong to another
-// package than the loop.
 type LimitFields struct{ Keys []string }
 
-// AFact marks LimitFields as an analysis fact.
 func (*LimitFields) AFact() {}
 
 func (f *LimitFields) String() string { return fmt.Sprint(f.Keys) }
 
-// BoundedResult marks a function whose result is bounded whenever the
-// parameters it lists are.
 type BoundedResult struct{ DependsOn []int }
 
-// AFact marks BoundedResult as an analysis fact.
 func (*BoundedResult) AFact() {}
 
 func (f *BoundedResult) String() string { return fmt.Sprint(f.DependsOn) }
 
-// Analyzer enforces the limit half of TS-S02: every loop limit has an upper
-// bound where it enters the program.
 var Analyzer = &analysis.Analyzer{
 	Name: "limitflow",
 	Doc:  "TS-S02: every loop limit is a constant, a length, or clamped where it enters.",
@@ -94,31 +81,23 @@ var Analyzer = &analysis.Analyzer{
 	},
 }
 
-// function is one declaration with a body, the unit the trace works in.
 type function struct {
-	obj    *types.Func
-	decl   *ast.FuncDecl
-	scope  mutation.Scope
-	params map[*types.Var]int
-	// literalParams are the parameters of function literals inside the
-	// declaration. A literal is called through a function value, which the
-	// trace does not follow, so what arrives in them is not judged.
+	obj           *types.Func
+	decl          *ast.FuncDecl
+	scope         mutation.Scope
+	params        map[*types.Var]int
 	literalParams map[*types.Var]bool
 }
 
-// state is everything the trace knows about the package under analysis and,
-// through facts, the packages it imports.
 type state struct {
 	pass        *analysis.Pass
 	funcs       []*function
 	limitParams map[*types.Func]map[int]bool
 	limitFields map[string]bool
 	sizes       types.Sizes
-	// ownFields is the part of limitFields this package learned, and the
-	// only part it exports.
-	ownFields map[string]bool
-	results   map[*types.Func][]int
-	sinks     map[*function][]sink
+	ownFields   map[string]bool
+	results     map[*types.Func][]int
+	sinks       map[*function][]sink
 }
 
 func run(pass *analysis.Pass) (any, error) {
@@ -144,9 +123,6 @@ func run(pass *analysis.Pass) (any, error) {
 	return nil, nil
 }
 
-// standardLibrary reports whether the package under analysis ships with Go.
-// Its loops are not ours to judge, and nothing in a caller's module can write
-// into its limits, so it exports no facts.
 func standardLibrary(pass *analysis.Pass) bool {
 	if len(pass.Files) == 0 {
 		return false
@@ -156,8 +132,6 @@ func standardLibrary(pass *analysis.Pass) bool {
 	return strings.HasPrefix(name, root)
 }
 
-// collect gathers the declarations with bodies and the places in each where
-// a value can become a loop limit.
 func (s *state) collect() {
 	for _, scope := range mutation.Declarations(s.pass) {
 		decl, ok := scope.Root().(*ast.FuncDecl)
@@ -186,15 +160,10 @@ func (s *state) collect() {
 	}
 }
 
-// inTestFile reports whether decl sits in a _test.go file. A test's table
-// values are not input from outside, so no limit in one is traced.
 func (s *state) inTestFile(decl *ast.FuncDecl) bool {
 	return strings.HasSuffix(s.pass.Fset.File(decl.Pos()).Name(), "_test.go")
 }
 
-// settle repeats the trace until no new limit parameter, limit field, or
-// bounded result turns up. Facts only grow, so it ends; roundsMax is the
-// guard if that ever stops being true.
 func (s *state) settle() {
 	settled := false
 	for round := 0; round < roundsMax; round++ {
@@ -206,8 +175,6 @@ func (s *state) settle() {
 	assert.Ok(settled, "limitflow: trace did not settle within roundsMax rounds")
 }
 
-// round traces every sink and every result once and reports whether any
-// fact grew.
 func (s *state) round() bool {
 	grew := false
 	for _, fn := range s.funcs {
@@ -223,8 +190,6 @@ func (s *state) round() bool {
 	return grew
 }
 
-// learn records what a traced sink teaches: the parameters of fn that feed
-// it, and the limit fields it reads.
 func (s *state) learn(fn *function, result traceResult) bool {
 	grew := false
 	for _, index := range result.params {
@@ -247,8 +212,6 @@ func (s *state) learn(fn *function, result traceResult) bool {
 	return grew
 }
 
-// learnResult records whether fn returns a value bounded whenever some of
-// its parameters are.
 func (s *state) learnResult(fn *function) bool {
 	signature, ok := fn.obj.Type().(*types.Signature)
 	if !ok || signature.Results().Len() != 1 ||
@@ -289,8 +252,6 @@ func (s *state) learnResult(fn *function) bool {
 	return true
 }
 
-// returnedValue returns the expression a return statement hands back. A bare
-// return in a function with a named result hands back that result.
 func (s *state) returnedValue(fn *function, stmt *ast.ReturnStmt) ast.Expr {
 	if len(stmt.Results) == 1 {
 		return stmt.Results[0]
@@ -303,8 +264,6 @@ func (s *state) returnedValue(fn *function, stmt *ast.ReturnStmt) ast.Expr {
 	return nil
 }
 
-// report traces every active sink once more, with the facts settled, and
-// reports each value that enters with no bound or too large to reach.
 func (s *state) report() {
 	reported := map[token.Pos]bool{}
 	for _, fn := range s.funcs {
@@ -323,7 +282,6 @@ func (s *state) report() {
 	}
 }
 
-// say reports message at expr once.
 func (s *state) say(reported map[token.Pos]bool, expr ast.Expr, message string) {
 	if reported[expr.Pos()] {
 		return
@@ -334,7 +292,6 @@ func (s *state) say(reported map[token.Pos]bool, expr ast.Expr, message string) 
 	})
 }
 
-// export publishes the facts other packages need.
 func (s *state) export() {
 	for _, fn := range s.funcs {
 		if indexes, ok := s.limitParams[fn.obj]; ok {
@@ -349,8 +306,6 @@ func (s *state) export() {
 	}
 }
 
-// limitParamsOf returns the parameters of fn that bound a loop, from this
-// package's trace or from an imported package's fact.
 func (s *state) limitParamsOf(fn *types.Func) []int {
 	if known, ok := s.limitParams[fn]; ok {
 		return slices.Sorted(maps.Keys(known))
@@ -362,8 +317,6 @@ func (s *state) limitParamsOf(fn *types.Func) []int {
 	return nil
 }
 
-// resultOf returns the parameters fn's result depends on, and whether fn
-// returns a bounded result at all.
 func (s *state) resultOf(fn *types.Func) ([]int, bool) {
 	if depends, ok := s.results[fn]; ok {
 		return depends, true

@@ -18,7 +18,6 @@ import (
 	"golang.org/x/tools/go/analysis"
 )
 
-// Analyzer enforces TS-L05: struct declaration order.
 var Analyzer = &analysis.Analyzer{
 	Name: "declorder",
 	Doc:  "TS-L05: struct declaration order.",
@@ -30,14 +29,11 @@ func run(pass *analysis.Pass) (any, error) {
 	return nil, nil
 }
 
-// structInfo pairs a struct type's name with its TypeSpec, scoped to one
-// file (TS-L05 never compares across files).
 type structInfo struct {
 	name string
 	spec *ast.TypeSpec
 }
 
-// checkStructOrder enforces TS-L05.
 func checkStructOrder(pass *analysis.Pass) {
 	for _, file := range pass.Files {
 		decls := fileDecls(file)
@@ -47,15 +43,11 @@ func checkStructOrder(pass *analysis.Pass) {
 	}
 }
 
-// fileDeclEntities holds one file's top-level struct type declarations and
-// FuncDecls together, since checkStructOrder always needs both at once.
 type fileDeclEntities struct {
 	structs []structInfo
 	funcs   []*ast.FuncDecl
 }
 
-// fileDecls partitions file's top-level declarations into its struct type
-// declarations and its FuncDecls.
 func fileDecls(file *ast.File) fileDeclEntities {
 	structs := []structInfo{}
 	funcs := []*ast.FuncDecl{}
@@ -82,10 +74,6 @@ func fileDecls(file *ast.File) fileDeclEntities {
 	return fileDeclEntities{structs: structs, funcs: funcs}
 }
 
-// checkOneStructOrder finds s's file-local constructor and methods among
-// funcs, then fires TS-L05 at every declaration that precedes something it
-// must follow: a constructor before the type, or a method before the type
-// or before the constructor.
 func checkOneStructOrder(pass *analysis.Pass, s structInfo, funcs []*ast.FuncDecl) {
 	var constructor *ast.FuncDecl
 	methods := []*ast.FuncDecl{}
@@ -115,14 +103,10 @@ func checkOneStructOrder(pass *analysis.Pass, s structInfo, funcs []*ast.FuncDec
 	}
 }
 
-// isConstructorName reports whether name is s's New<Type> or new<Type>
-// constructor name.
 func (s structInfo) isConstructorName(name string) bool {
 	return name == "New"+s.name || name == "new"+s.name
 }
 
-// receiverTypeName extracts fn's receiver base type name, unwrapping a
-// pointer receiver and a generic receiver's type-parameter brackets.
 func receiverTypeName(fn *ast.FuncDecl) (string, bool) {
 	if fn.Recv == nil || len(fn.Recv.List) != 1 {
 		return "", false

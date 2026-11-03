@@ -13,10 +13,6 @@ import (
 	"github.com/kapetan-io/tiger/internal/analyzers/internal/intrange"
 )
 
-// clamped reports whether a statement that dominates expr keeps it below a
-// declared maximum: an earlier if that rejects a value above a constant, an
-// earlier assignment of min(expr, constant), or an enclosing if that only
-// runs when expr is at most a constant.
 func (t *tracer) clamped(expr ast.Expr) bool {
 	file := t.s.fileOf(expr.Pos())
 	if file == nil || !t.simple(expr) {
@@ -44,11 +40,6 @@ func (t *tracer) clamped(expr ast.Expr) bool {
 	return false
 }
 
-// rewrittenByClosure reports whether a function literal writes the variable
-// or any field along the chain expr names, on the same variable the use reads.
-// The literal can run after the clamp, so the clamp no longer bounds the value
-// at the use. Order is not tracked, so a literal that runs before the clamp
-// counts too.
 func (t *tracer) rewrittenByClosure(expr ast.Expr) bool {
 	expr = t.s.withoutConversions(expr)
 	for steps := 0; steps < unwrapMax; steps++ {
@@ -72,7 +63,6 @@ func (t *tracer) rewrittenByClosure(expr ast.Expr) bool {
 	return false
 }
 
-// isLoopStmt reports whether node is a for or range statement.
 func isLoopStmt(node ast.Node) bool {
 	switch node.(type) {
 	case *ast.ForStmt, *ast.RangeStmt:
@@ -81,10 +71,6 @@ func isLoopStmt(node ast.Node) bool {
 	return false
 }
 
-// simple reports whether expr is a variable, or a chain of fields over one,
-// which holds still between two reads unless something writes it. A call or an
-// index can answer differently each time, so a clamp on one says nothing about
-// the next.
 func (t *tracer) simple(expr ast.Expr) bool {
 	expr = t.s.withoutConversions(expr)
 	for steps := 0; steps < unwrapMax; steps++ {
@@ -99,16 +85,11 @@ func (t *tracer) simple(expr ast.Expr) bool {
 	return false
 }
 
-// pathStep is one node on the way up from an expression and the node that
-// holds it.
 type pathStep struct {
 	node   ast.Node
 	parent ast.Node
 }
 
-// dominated reports whether the statements before node in its parent, or
-// the parent's own condition, keep the expression named want bounded. A write
-// to the expression after the clamp undoes it.
 func (t *tracer) dominated(step pathStep, target ast.Expr, want string) bool {
 	var list []ast.Stmt
 	switch p := step.parent.(type) {
@@ -133,9 +114,6 @@ func (t *tracer) dominated(step pathStep, target ast.Expr, want string) bool {
 	return clamped
 }
 
-// writesTo reports whether stmt changes the variable or field chain expr
-// names: it assigns any field along the chain, assigns the variable or what a
-// pointer to it points at, or hands a value of a holding struct to a call.
 func (t *tracer) writesTo(stmt ast.Stmt, expr ast.Expr) bool {
 	expr = t.s.withoutConversions(expr)
 	for steps := 0; steps < unwrapMax; steps++ {
@@ -152,8 +130,6 @@ func (t *tracer) writesTo(stmt ast.Stmt, expr ast.Expr) bool {
 	return false
 }
 
-// writesField reports whether stmt assigns the field a selector reads, or
-// passes a call a value of the struct that holds it.
 func (t *tracer) writesField(stmt ast.Stmt, selector *ast.SelectorExpr) bool {
 	selection := t.s.pass.TypesInfo.Selections[selector]
 	if selection == nil || selection.Kind() != types.FieldVal {
@@ -169,8 +145,6 @@ func (t *tracer) writesField(stmt ast.Stmt, selector *ast.SelectorExpr) bool {
 	return t.fn.scope.ReceivesOwner(stmt, selection.Recv())
 }
 
-// writesVariable reports whether stmt assigns the variable expr names or
-// what it points at.
 func (t *tracer) writesVariable(stmt ast.Stmt, expr ast.Expr) bool {
 	ident, ok := expr.(*ast.Ident)
 	if !ok {
@@ -200,8 +174,6 @@ func (t *tracer) writesVariable(stmt ast.Stmt, expr ast.Expr) bool {
 	return found
 }
 
-// guardedBy reports whether current is the branch of an if that only runs
-// while the expression named want is at most a declared maximum.
 func (t *tracer) guardedBy(check *ast.IfStmt, current ast.Node, target ast.Expr) bool {
 	want := t.s.identity(target)
 	if current == check.Body {
@@ -217,8 +189,6 @@ func (t *tracer) guardedBy(check *ast.IfStmt, current ast.Node, target ast.Expr)
 	return false
 }
 
-// writtenBefore reports whether a statement of body that comes before the use
-// of target writes it, which undoes the check the body is guarded by.
 func (t *tracer) writtenBefore(body *ast.BlockStmt, target ast.Expr) bool {
 	for _, stmt := range body.List {
 		if stmt.Pos() >= target.Pos() {
@@ -231,9 +201,6 @@ func (t *tracer) writtenBefore(body *ast.BlockStmt, target ast.Expr) bool {
 	return false
 }
 
-// clampsBefore reports whether stmt, which runs before the use, bounds the
-// expression named want. The else branch of a rejecting if runs when the
-// value is within the maximum, so it must not write the value.
 func (t *tracer) clampsBefore(stmt ast.Stmt, target ast.Expr, want string) bool {
 	switch s := stmt.(type) {
 	case *ast.AssignStmt:
@@ -247,8 +214,6 @@ func (t *tracer) clampsBefore(stmt ast.Stmt, target ast.Expr, want string) bool 
 	return false
 }
 
-// assignsMin reports whether assign is want = min(want, bound) with a bound
-// that is a constant or a length.
 func (t *tracer) assignsMin(assign *ast.AssignStmt, want string) bool {
 	if len(assign.Lhs) != 1 || len(assign.Rhs) != 1 || t.s.identity(assign.Lhs[0]) != want {
 		return false
@@ -256,8 +221,6 @@ func (t *tracer) assignsMin(assign *ast.AssignStmt, want string) bool {
 	return t.clampsItself(assign.Rhs[0])
 }
 
-// isBuiltin reports whether call is to the named predeclared function, not a
-// function of the same name declared in the package.
 func (t *tracer) isBuiltin(call *ast.CallExpr, name string) bool {
 	ident, ok := ast.Unparen(call.Fun).(*ast.Ident)
 	if !ok {
@@ -267,8 +230,6 @@ func (t *tracer) isBuiltin(call *ast.CallExpr, name string) bool {
 	return ok && builtin.Name() == name
 }
 
-// declaredMaximum reports whether expr is a constant small enough for a loop
-// to reach, a len, or a cap.
 func (t *tracer) declaredMaximum(expr ast.Expr) bool {
 	if t.reachable(expr) {
 		return true
@@ -277,15 +238,11 @@ func (t *tracer) declaredMaximum(expr ast.Expr) bool {
 	return ok && (t.isBuiltin(call, "len") || t.isBuiltin(call, "cap"))
 }
 
-// reachable reports whether expr is a constant small enough for a loop to
-// count up to.
 func (t *tracer) reachable(expr ast.Expr) bool {
 	known := t.s.pass.TypesInfo.Types[expr]
 	return known.Value != nil && !t.tooLarge(known)
 }
 
-// exceeds reports whether cond, split on ||, has a term true when the
-// expression named want is above a declared maximum.
 func (t *tracer) exceeds(cond ast.Expr, want string) bool {
 	for _, term := range condition.Disjuncts(cond) {
 		if t.comparesWithMaximum(term, want, above) {
@@ -295,23 +252,16 @@ func (t *tracer) exceeds(cond ast.Expr, want string) bool {
 	return false
 }
 
-// ordering is a pair of comparison operators, one that excludes the maximum
-// and one that includes it.
 type ordering struct {
 	strict token.Token
 	loose  token.Token
 }
 
 var (
-	// The value is below its maximum, or at it.
 	below = ordering{strict: token.LSS, loose: token.LEQ}
-	// The value is above its maximum, or at it.
 	above = ordering{strict: token.GTR, loose: token.GEQ}
 )
 
-// comparesWithMaximum reports whether term compares the expression named want with a
-// declared maximum using one of the ordering's operators, in either operand
-// order.
 func (t *tracer) comparesWithMaximum(term ast.Expr, want string, how ordering) bool {
 	binary, ok := ast.Unparen(term).(*ast.BinaryExpr)
 	if !ok {
@@ -332,15 +282,10 @@ func (t *tracer) comparesWithMaximum(term ast.Expr, want string, how ordering) b
 	return t.reachable(right)
 }
 
-// unwrapMax bounds how many nested conversions or selectors withoutConversions
-// and qualified peel off one expression. Real code nests a handful.
 const unwrapMax = 1 << 6
 
 const _ = uint(1<<20 - unwrapMax)
 
-// leaves reports whether body ends by leaving the code that follows the if:
-// a return, a break or continue, a panic, or an assignment of a declared
-// maximum to want.
 func (t *tracer) leaves(body *ast.BlockStmt, want string) bool {
 	if len(body.List) == 0 {
 		return false
@@ -365,17 +310,10 @@ func (t *tracer) leaves(body *ast.BlockStmt, want string) bool {
 	return false
 }
 
-// identity prints expr with conversions and parentheses removed and its
-// variable named by where it is declared, so a shadow that is spelled the
-// same is a different expression and a clamp on req.Limit matches a use
-// written int(req.Limit).
 func (s *state) identity(expr ast.Expr) string {
 	return s.qualified(s.withoutConversions(expr))
 }
 
-// withoutConversions removes parentheses and conversions around expr. A
-// conversion that narrows, such as int8(x), stays: a check on the narrowed
-// value says nothing about x.
 func (s *state) withoutConversions(expr ast.Expr) ast.Expr {
 	for steps := 0; steps < unwrapMax; steps++ {
 		expr = ast.Unparen(expr)
@@ -392,8 +330,6 @@ func (s *state) withoutConversions(expr ast.Expr) ast.Expr {
 	return expr
 }
 
-// narrows reports whether a conversion can lose values: its target is not an
-// integer type that holds every value of its operand's type.
 func (s *state) narrows(conversion *ast.CallExpr) bool {
 	to, toOK := intrange.Of(s.pass.TypesInfo.TypeOf(conversion), s.sizes)
 	from, fromOK := intrange.Of(s.pass.TypesInfo.TypeOf(conversion.Args[0]), s.sizes)
@@ -403,8 +339,6 @@ func (s *state) narrows(conversion *ast.CallExpr) bool {
 	return to.Low.Cmp(from.Low) > 0 || to.High.Cmp(from.High) < 0
 }
 
-// qualified prints a chain of field selectors over a variable, naming the
-// variable by its declaration, and any other expression as written.
 func (s *state) qualified(expr ast.Expr) string {
 	var fields string
 	for steps := 0; steps < unwrapMax; steps++ {
@@ -425,7 +359,6 @@ func (s *state) qualified(expr ast.Expr) string {
 	return ""
 }
 
-// fileOf returns the file holding pos.
 func (s *state) fileOf(pos token.Pos) *ast.File {
 	for _, file := range s.pass.Files {
 		if file.Pos() <= pos && pos <= file.End() {

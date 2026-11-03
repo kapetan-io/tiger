@@ -15,7 +15,11 @@ import (
 // constant-negative return proves an ensures violation; every compliant
 // call and return stays silent; and the documented known-miss cases —
 // flow-only nil, a bare invariant ID, a cross-package callee — stay silent
-// too.
+// too. A naked return stays silent because judging the named results needs
+// flow analysis. A call spreading arguments with "..." is skipped because
+// the spread breaks the positional match between parameters and arguments.
+// A return inside a nested function literal is never attributed to the
+// enclosing function.
 func TestCorpus(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), contracts.Analyzer, "ts-v03")
 }

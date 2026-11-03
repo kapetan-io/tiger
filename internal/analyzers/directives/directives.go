@@ -22,8 +22,6 @@ import (
 	"github.com/kapetan-io/tiger/internal/directive"
 )
 
-// Analyzer enforces TS-L09: every directive parses, and every escape
-// carries a reason and stays visible.
 var Analyzer = &analysis.Analyzer{
 	Name: "directives",
 	Doc:  "TS-L09: every tiger directive parses, and every escape carries a reason",
@@ -48,7 +46,6 @@ func run(pass *analysis.Pass) (any, error) {
 	return nil, nil
 }
 
-// inspect reports one tiger directive's findings.
 func inspect(pass *analysis.Pass, comment *ast.Comment) {
 	parsed, err := directive.Parse(comment.Text)
 	var unknown *directive.UnknownVerbError
@@ -56,8 +53,6 @@ func inspect(pass *analysis.Pass, comment *ast.Comment) {
 	var malformed *directive.MalformedArgsError
 	switch {
 	case errors.As(err, &unknown):
-		// A rule code written as the verb is the unshipped deviation form;
-		// naming it generically keeps a second rule code out of the body.
 		verb := parsed.Verb
 		if strings.HasPrefix(verb, "TS-") {
 			verb = "<rule code>"
@@ -84,8 +79,6 @@ func inspect(pass *analysis.Pass, comment *ast.Comment) {
 				"; until it parses, this comment enforces nothing",
 		})
 	case err != nil:
-		// Is() accepted the prefix, so Parse can only fail one of the ways
-		// above; a new failure mode must land in this switch.
 		return
 	default:
 		spec, _ := directive.Lookup(parsed.Verb)
@@ -103,8 +96,6 @@ func inspect(pass *analysis.Pass, comment *ast.Comment) {
 	}
 }
 
-// reportNolint reports a //nolint at the file's package line rather than at
-// the comment, so a //nolint on the original line cannot cover its own finding.
 func reportNolint(pass *analysis.Pass, file *ast.File, comment *ast.Comment) {
 	line := pass.Fset.Position(comment.Pos()).Line
 	pass.Report(analysis.Diagnostic{
@@ -115,8 +106,6 @@ func reportNolint(pass *analysis.Pass, file *ast.File, comment *ast.Comment) {
 	})
 }
 
-// reasonAdvice tells the author what a verb's reason has to say, with an
-// example that fits the verb.
 func reasonAdvice(verb string) string {
 	if verb == "openenum" {
 		return "say why the set of values is open, for example //tiger:openenum peers on " +

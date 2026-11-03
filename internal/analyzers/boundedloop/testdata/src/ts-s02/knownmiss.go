@@ -83,3 +83,17 @@ func filteredCountRowsKnownMiss(rows *sql.Rows, keep func() bool, limit int) int
 	}
 	return kept
 }
+
+// negatedInequalityKnownMiss: !(i < 10) runs while i is at least 10, yet it
+// reads as another inequality against the stated bound 10.
+//
+// known-miss: a negated < > <= >= comparison is judged like the plain one.
+func negatedInequalityKnownMiss(next func() int) int {
+	i := next()
+	count := 0
+	for !(i < 10) {
+		i = next()
+		count++
+	}
+	return count
+}

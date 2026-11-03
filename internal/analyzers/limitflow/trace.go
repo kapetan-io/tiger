@@ -14,9 +14,6 @@ import (
 	"github.com/kapetan-io/tiger/internal/worklist"
 )
 
-// traceResult is what tracing one value found: the places it enters with no
-// bound, the constants too large to reach, the parameters it depends on, and
-// the limit fields it reads straight into a loop.
 type traceResult struct {
 	bad    []ast.Expr
 	huge   []ast.Expr
@@ -24,12 +21,10 @@ type traceResult struct {
 	fields []*types.Var
 }
 
-// bounded reports whether nothing in the traceResult is a finding.
 func (r traceResult) bounded() bool {
 	return len(r.bad) == 0 && len(r.huge) == 0
 }
 
-// nodeKind classifies a node of the tree a trace builds over one value.
 type nodeKind int
 
 const (
@@ -42,9 +37,6 @@ const (
 	nodeAny
 )
 
-// node is one step of the trace: a leaf, or a join of other nodes. A join
-// of kind nodeAll is bounded when every child is; one of kind nodeAny, like
-// min, when any child is.
 type node struct {
 	kind     nodeKind
 	expr     ast.Expr
@@ -55,15 +47,12 @@ type node struct {
 	found    traceResult
 }
 
-// task asks for one expression to be expanded into the node at index.
 type task struct {
 	index int
 	expr  ast.Expr
 	mode  reach
 }
 
-// tracer builds and evaluates the tree for one value. The tree is built with
-// an index-advancing worklist and evaluated bottom-up, never recursively.
 type tracer struct {
 	s     *state
 	fn    *function
@@ -72,23 +61,16 @@ type tracer struct {
 	vars  map[*types.Var]int
 }
 
-// joins maps the arithmetic operators to how their operands combine: all of
-// them must be bounded, or either.
 var joins = map[token.Token]nodeKind{
 	token.ADD: nodeAll, token.SUB: nodeAll, token.MUL: nodeAll,
 	token.SHL: nodeAll, token.OR: nodeAll, token.XOR: nodeAll,
 	token.AND_NOT: nodeAll, token.AND: nodeAny,
 }
 
-// addsOrSubtracts are the operators of a running total.
 var addsOrSubtracts = map[token.Token]bool{token.ADD: true, token.SUB: true}
 
-// unaryJoins are the unary operators that leave a value as bounded as it was.
-// A negation or complement turns a large negative value into a large positive
-// one, and every clamp tiger accepts caps only the upper end.
 var unaryJoins = map[token.Token]bool{token.ADD: true}
 
-// trace follows root back to where it enters the program.
 func (s *state) trace(fn *function, root ast.Expr, mode reach) traceResult {
 	t := &tracer{s: s, fn: fn, vars: map[*types.Var]int{}}
 	t.nodes = []node{{}}
@@ -101,7 +83,6 @@ func (s *state) trace(fn *function, root ast.Expr, mode reach) traceResult {
 	return t.evaluate(root)
 }
 
-// child adds a node under parent and queues expr to fill it.
 func (t *tracer) child(parent int, expr ast.Expr, mode reach) {
 	index := len(t.nodes)
 	t.nodes = append(t.nodes, node{})
@@ -109,20 +90,17 @@ func (t *tracer) child(parent int, expr ast.Expr, mode reach) {
 	t.work = append(t.work, task{index: index, expr: expr, mode: mode})
 }
 
-// leaf adds a leaf node under parent, settled with the rest in evaluate.
 func (t *tracer) leaf(parent int, kind nodeKind, expr ast.Expr) {
 	index := len(t.nodes)
 	t.nodes = append(t.nodes, node{kind: kind, expr: expr})
 	t.nodes[parent].children = append(t.nodes[parent].children, index)
 }
 
-// set fills the node at index as a leaf.
 func (t *tracer) set(index int, kind nodeKind, expr ast.Expr) {
 	t.nodes[index].kind = kind
 	t.nodes[index].expr = expr
 }
 
-// expand fills one node from its expression.
 func (t *tracer) expand(current task) {
 	expr := ast.Unparen(current.expr)
 	if t.constant(current.index, expr) {
@@ -148,8 +126,6 @@ func (t *tracer) expand(current task) {
 	}
 }
 
-// constant fills the node when expr folds to a constant: bounded, or huge
-// when the loop could never reach it.
 func (t *tracer) constant(index int, expr ast.Expr) bool {
 	known := t.s.pass.TypesInfo.Types[expr]
 	if known.Value == nil {
@@ -163,8 +139,6 @@ func (t *tracer) constant(index int, expr ast.Expr) bool {
 	return true
 }
 
-// tooLarge reports whether a constant is at least half of its integer type's
-// maximum, on a type wide enough that a loop to that count is out of reach.
 func (t *tracer) tooLarge(known types.TypeAndValue) bool {
 	span, ok := intrange.Of(known.Type, t.fn.scope.Sizes())
 	if !ok || !span.OutOfReach() {
@@ -174,8 +148,6 @@ func (t *tracer) tooLarge(known types.TypeAndValue) bool {
 	return exact && value.Cmp(new(big.Int).Rsh(span.High, 1)) >= 0
 }
 
-// call fills the node from a conversion, a builtin, or a call to a declared
-// function whose result is bounded when its arguments are.
 func (t *tracer) call(current task, call *ast.CallExpr) {
 	info := t.s.pass.TypesInfo
 	if info.Types[call.Fun].IsType() && len(call.Args) == 1 {
@@ -212,7 +184,6 @@ func (t *tracer) call(current task, call *ast.CallExpr) {
 	t.set(current.index, nodeUnbounded, call)
 }
 
-// builtin fills the node from len, cap, min or max.
 func (t *tracer) builtin(current task, call *ast.CallExpr, name string) {
 	switch name {
 	case "len", "cap":
@@ -232,9 +203,6 @@ func (t *tracer) builtin(current task, call *ast.CallExpr, name string) {
 	}
 }
 
-// binary fills the node from arithmetic on two operands. A remainder is as
-// bounded as its divisor, a quotient or right shift as bounded as its
-// dividend, and a mask as bounded as either side.
 func (t *tracer) binary(current task, expr *ast.BinaryExpr) {
 	if !t.signSafe(expr) {
 		t.set(current.index, nodeUnbounded, expr)
@@ -260,14 +228,6 @@ func (t *tracer) binary(current task, expr *ast.BinaryExpr) {
 	t.child(current.index, expr.Y, current.mode)
 }
 
-// signSafe reports whether an operator keeps its result bounded when the
-// operands are, though a clamp leaves each operand free to be very negative.
-// A subtraction needs a subtrahend that is not negative, and so does a
-// remainder for its divisor. A quotient needs a dividend or divisor that is
-// not negative, because a negative divisor flips a negative dividend. A
-// product and an exclusive or turn two very negative operands into a large positive
-// result, so one must be a length or a constant that is not negative. A
-// bit-clear is safe when its second operand is such a value.
 func (t *tracer) signSafe(expr *ast.BinaryExpr) bool {
 	if expr.Op == token.SUB || expr.Op == token.REM {
 		return t.nonNegative(expr.Y)
@@ -284,8 +244,6 @@ func (t *tracer) signSafe(expr *ast.BinaryExpr) bool {
 	return true
 }
 
-// nonNegative reports whether expr is a constant of at least 0, a len, a cap,
-// or a value of an unsigned type.
 func (t *tracer) nonNegative(expr ast.Expr) bool {
 	known := t.s.pass.TypesInfo.Types[expr]
 	if known.Value != nil {
@@ -299,7 +257,6 @@ func (t *tracer) nonNegative(expr ast.Expr) bool {
 	return ok && (t.isBuiltin(call, "len") || t.isBuiltin(call, "cap"))
 }
 
-// unary fills the node from a sign or complement of one operand.
 func (t *tracer) unary(current task, expr *ast.UnaryExpr) {
 	if !unaryJoins[expr.Op] {
 		t.set(current.index, nodeUnbounded, expr)
@@ -309,11 +266,6 @@ func (t *tracer) unary(current task, expr *ast.UnaryExpr) {
 	t.child(current.index, expr.X, current.mode)
 }
 
-// selector fills the node from a struct field read. A field already known to
-// bound a loop (limitFields) is bounded. A field read straight into a loop
-// header is recorded in the node as a new limit field, so every write into it
-// is judged. A header read of a field of an unnamed struct cannot be recorded,
-// so it is trusted. Any other field read is a value from outside.
 func (t *tracer) selector(current task, expr *ast.SelectorExpr) {
 	selection := t.s.pass.TypesInfo.Selections[expr]
 	if selection == nil || selection.Kind() != types.FieldVal {
@@ -342,9 +294,6 @@ func (t *tracer) selector(current task, expr *ast.SelectorExpr) {
 	t.set(current.index, nodeUnbounded, expr)
 }
 
-// ident fills the node from a variable: a parameter passes the question to
-// the caller, a local is as bounded as everything written into it, and a
-// package-level variable is a value from outside.
 func (t *tracer) ident(current task, ident *ast.Ident) {
 	v, ok := t.s.pass.TypesInfo.ObjectOf(ident).(*types.Var)
 	if !ok || v.IsField() {
@@ -368,8 +317,6 @@ func (t *tracer) ident(current task, ident *ast.Ident) {
 	t.local(current, v, ident)
 }
 
-// parameter fills the node from a parameter. The caller's argument is one
-// source, and every write the function makes into the parameter is another.
 func (t *tracer) parameter(current task, v *types.Var, index int, use *ast.Ident) {
 	writes := t.fn.scope.Writes(t.fn.decl, v)
 	if len(writes) == 0 {
@@ -391,7 +338,6 @@ func (t *tracer) parameter(current task, v *types.Var, index int, use *ast.Ident
 	}
 }
 
-// local fills the node from every write into a local variable.
 func (t *tracer) local(current task, v *types.Var, use *ast.Ident) {
 	t.nodes[current.index].kind = nodeAll
 	if t.fn.scope.Escapes(v) {
@@ -412,7 +358,6 @@ func (t *tracer) local(current task, v *types.Var, use *ast.Ident) {
 	}
 }
 
-// written adds the node for one write into v.
 func (t *tracer) written(parent int, v *types.Var, write mutation.Write, use *ast.Ident) {
 	switch stmt := write.Node.(type) {
 	case *ast.AssignStmt:
@@ -428,12 +373,6 @@ func (t *tracer) written(parent int, v *types.Var, write mutation.Write, use *as
 	}
 }
 
-// assigned adds the node for an assignment into v. It trusts v += x and
-// v = v + x to be as bounded as x: an accumulator runs in loops that are
-// themselves bounded, so it grows by at most bound(x) times the loop's bound.
-// That is a recorded miss. A variable that feeds itself any other way, such
-// as doubling, grows without a bound, and a value that arrives with several
-// results is not followed.
 func (t *tracer) assigned(parent int, v *types.Var, stmt *ast.AssignStmt) {
 	for i, lhs := range stmt.Lhs {
 		ident, ok := lhs.(*ast.Ident)
@@ -454,9 +393,6 @@ func (t *tracer) assigned(parent int, v *types.Var, stmt *ast.AssignStmt) {
 	}
 }
 
-// assignedValue adds the node for the value assigned into v. The form
-// v = v + x adds x to a running total, and any other value that reads v
-// feeds itself.
 func (t *tracer) assignedValue(parent int, v *types.Var, value ast.Expr) {
 	if !t.fn.scope.Mentions(value, v) {
 		t.child(parent, value, downstream)
@@ -474,9 +410,6 @@ func (t *tracer) assignedValue(parent int, v *types.Var, value ast.Expr) {
 	t.leaf(parent, nodeUnbounded, value)
 }
 
-// clampsItself reports whether value is a call to min with an argument that is
-// a constant or a length, as in "spins = min(spins, spinsMax)". The variable
-// reads itself on purpose, to be cut down.
 func (t *tracer) clampsItself(value ast.Expr) bool {
 	call, ok := ast.Unparen(value).(*ast.CallExpr)
 	if !ok {
@@ -493,7 +426,6 @@ func (t *tracer) clampsItself(value ast.Expr) bool {
 	return false
 }
 
-// declared adds the node for var v T or var v = value.
 func (t *tracer) declared(parent int, v *types.Var, spec *ast.ValueSpec, use *ast.Ident) {
 	if len(spec.Values) == 0 {
 		t.leaf(parent, nodeBounded, use)
@@ -508,10 +440,6 @@ func (t *tracer) declared(parent int, v *types.Var, spec *ast.ValueSpec, use *as
 	t.leaf(parent, nodeUnbounded, use)
 }
 
-// ranged adds the node for a range clause that assigns v. The index of a
-// slice, array or string is below its length, the index of an integer range
-// is below that integer, and anything else a range hands out is a value from
-// outside.
 func (t *tracer) ranged(parent int, v *types.Var, stmt *ast.RangeStmt) {
 	key, isKey := stmt.Key.(*ast.Ident)
 	if !isKey || t.s.pass.TypesInfo.ObjectOf(key) != v {
@@ -537,8 +465,6 @@ func (t *tracer) ranged(parent int, v *types.Var, stmt *ast.RangeStmt) {
 	}
 }
 
-// constantElements reports whether every element of a literal slice or array
-// is a constant.
 func (t *tracer) constantElements(literal *ast.CompositeLit) bool {
 	for _, element := range literal.Elts {
 		if t.s.pass.TypesInfo.Types[element].Value == nil {
@@ -548,8 +474,6 @@ func (t *tracer) constantElements(literal *ast.CompositeLit) bool {
 	return true
 }
 
-// constantList adds a node for each constant in a literal list, so one too
-// large to reach is found like any other constant.
 func (t *tracer) constantList(parent int, literal *ast.CompositeLit) {
 	for _, element := range literal.Elts {
 		kind := nodeBounded
@@ -560,10 +484,6 @@ func (t *tracer) constantList(parent int, literal *ast.CompositeLit) {
 	}
 }
 
-// evaluate settles every node bottom-up. Children sit after their parents in
-// creation order except a shared variable's node, so the pass repeats until
-// len(nodes)+1 passes have run. A node that depends on a cycle never settles,
-// so a trace that does not settle counts as unbounded.
 func (t *tracer) evaluate(root ast.Expr) traceResult {
 	rounds := len(t.nodes)
 	for round := 0; round <= rounds; round++ {
@@ -580,7 +500,6 @@ func (t *tracer) evaluate(root ast.Expr) traceResult {
 	return t.nodes[0].found
 }
 
-// resolveNode computes one node when all of its children are settled.
 func (t *tracer) resolveNode(index int) {
 	current := &t.nodes[index]
 	if current.done {
@@ -611,7 +530,6 @@ func (t *tracer) resolveNode(index int) {
 	}
 }
 
-// joinAll merges the results of children that must all be bounded.
 func (t *tracer) joinAll(children []int) traceResult {
 	var merged traceResult
 	for _, child := range children {
@@ -620,9 +538,6 @@ func (t *tracer) joinAll(children []int) traceResult {
 	return merged
 }
 
-// joinAny merges the results of children of which one is enough. It takes
-// the bounded child that needs the fewest parameters; when none is bounded,
-// everything the children found.
 func (t *tracer) joinAny(children []int) traceResult {
 	var best *traceResult
 	for _, child := range children {
@@ -640,7 +555,6 @@ func (t *tracer) joinAny(children []int) traceResult {
 	return t.joinAll(children)
 }
 
-// merge combines two results.
 func (r traceResult) merge(other traceResult) traceResult {
 	return traceResult{
 		bad:    append(slices.Clone(r.bad), other.bad...),

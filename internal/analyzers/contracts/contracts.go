@@ -40,8 +40,6 @@ const (
 	ensuresExit  = "change the returned value so the condition holds"
 )
 
-// Analyzer enforces TS-V03: a requires or ensures pin fails only when the
-// analyzer can prove the violation by constant or nil-literal reasoning.
 var Analyzer = &analysis.Analyzer{
 	Name: "contracts",
 	Doc: "TS-V03: a proven requires or ensures violation blocks; every unproven obligation stays " +
@@ -49,8 +47,6 @@ var Analyzer = &analysis.Analyzer{
 	Run: run,
 }
 
-// pinnedFunc is a same-package function bearing at least one requires pin,
-// with the FuncDecl needed to name its parameters at a call site.
 type pinnedFunc struct {
 	decl     *ast.FuncDecl
 	requires []placement.Pin
@@ -89,10 +85,6 @@ func run(pass *analysis.Pass) (any, error) {
 	return nil, nil
 }
 
-// checkRequires evaluates every requires pin on call's callee, when the
-// callee is a same-package pinned function found in funcs and the call
-// passes a fixed argument list — a "..." spread breaks the positional
-// correspondence between parameter names and arguments, so it is skipped.
 func checkRequires(pass *analysis.Pass, funcs map[types.Object]pinnedFunc, call *ast.CallExpr) {
 	if call.Ellipsis != token.NoPos {
 		return
@@ -122,9 +114,6 @@ func checkRequires(pass *analysis.Pass, funcs map[types.Object]pinnedFunc, call 
 	}
 }
 
-// checkEnsures evaluates every ensures pin on fn against each of its
-// return statements. It skips past a nested function literal so a
-// closure's own return is never attributed to fn.
 func checkEnsures(pass *analysis.Pass, collected placement.Set, fn *ast.FuncDecl) {
 	ensures := collected.At(fn, "ensures")
 	if len(ensures) == 0 {
@@ -151,9 +140,6 @@ func checkEnsures(pass *analysis.Pass, collected placement.Set, fn *ast.FuncDecl
 	})
 }
 
-// checkReturn evaluates every ensures pin against one return statement. A
-// naked return (no Results, valid only with named results) is silent — the
-// analyzer would need flow analysis to know the named results' values.
 func checkReturn(
 	pass *analysis.Pass, ensures []placement.Pin, results []string, ret *ast.ReturnStmt,
 ) {
@@ -178,19 +164,12 @@ func checkReturn(
 	}
 }
 
-// mustPredicate re-parses a pin's argument text. The placement.Set collector only
-// collects well-formed pins, so the parse cannot fail here.
 func mustPredicate(pin placement.Pin) directive.Predicate {
 	pred, err := directive.ParsePredicate(pin.Directive.Args)
 	assert.Ok(err == nil, "placement.Set guarantees well-formed predicate args")
 	return pred
 }
 
-// proveViolation reports whether pred is provably false given names bound
-// positionally to exprs — parameters bound to call arguments, or named
-// results bound to a return statement's values. The returned bool is false
-// whenever the analyzer cannot decide, the silent, unproven case TS-V03
-// degrades to a runtime assertion.
 func proveViolation(
 	pass *analysis.Pass, pred directive.Predicate, names []string, exprs []ast.Expr,
 ) (string, bool) {
@@ -203,10 +182,6 @@ func proveViolation(
 	return proveIntViolation(pass, pred, names, exprs)
 }
 
-// proveNilViolation resolves the non-nil predicate atom against a
-// substituted argument or return value: a literal nil against a "!="
-// requirement, or an address-of expression — provably never nil — against
-// a "==" requirement.
 func proveNilViolation(
 	pass *analysis.Pass, pred directive.Predicate, names []string, exprs []ast.Expr,
 ) (string, bool) {
@@ -233,18 +208,11 @@ func proveNilViolation(
 	return "", false
 }
 
-// isAddressOf reports whether expr takes the address of another value —
-// the one syntactic shape the predicate language treats as provably
-// non-nil.
 func isAddressOf(expr ast.Expr) bool {
 	unary, ok := expr.(*ast.UnaryExpr)
 	return ok && unary.Op == token.AND
 }
 
-// proveIntViolation resolves both predicate atoms to compile-time integer
-// values and checks the comparison. Either side may be a parameter/result
-// ref, a len() of one, or a same-package named constant; anything else
-// leaves the comparison unproven.
 func proveIntViolation(
 	pass *analysis.Pass, pred directive.Predicate, names []string, exprs []ast.Expr,
 ) (string, bool) {
@@ -259,10 +227,6 @@ func proveIntViolation(
 	return fmt.Sprintf("%d %s %d does not hold", left, pred.Op, right), true
 }
 
-// resolveConstant resolves one predicate atom to a compile-time integer
-// value: a literal from the predicate itself, a substituted argument's
-// constant value or length, or a same-package named constant when the ref
-// names neither a parameter nor a result.
 func resolveConstant(
 	pass *analysis.Pass, atom directive.Atom, names []string, exprs []ast.Expr,
 ) (int64, bool) {
@@ -286,10 +250,6 @@ func resolveConstant(
 	return 0, false
 }
 
-// refArg substitutes a bare (undotted) predicate ref for the value bound to
-// the same-named entry in names — a call argument or a return value. A
-// dotted ref (a field path) or one matching no entry returns ok=false: both
-// are unprovable, so the caller degrades to silence.
 func refArg(ref string, names []string, exprs []ast.Expr) (ast.Expr, bool) {
 	if strings.Contains(ref, ".") {
 		return nil, false
@@ -306,9 +266,6 @@ func refArg(ref string, names []string, exprs []ast.Expr) (ast.Expr, bool) {
 	return nil, false
 }
 
-// exprIntConst reads expr's compile-time integer value, when the type
-// checker recorded one — true for both integer literals and named integer
-// constants used as arguments.
 func exprIntConst(pass *analysis.Pass, expr ast.Expr) (int64, bool) {
 	folded := pass.TypesInfo.Types[expr].Value
 	if folded == nil {
@@ -320,9 +277,6 @@ func exprIntConst(pass *analysis.Pass, expr ast.Expr) (int64, bool) {
 	return constant.Int64Val(folded)
 }
 
-// namedIntConst resolves ref as a package-level named integer constant —
-// the "HeaderSizeBytes" half of len(target) == HeaderSizeBytes, which names
-// no parameter of the callee.
 func namedIntConst(pass *analysis.Pass, ref string) (int64, bool) {
 	obj := pass.Pkg.Scope().Lookup(ref)
 	named, ok := obj.(*types.Const)
@@ -335,8 +289,6 @@ func namedIntConst(pass *analysis.Pass, ref string) (int64, bool) {
 	return constant.Int64Val(named.Val())
 }
 
-// lengthOf resolves a compile-time length for expr: a string constant's
-// length, a composite literal's element count, or an array type's length.
 func lengthOf(pass *analysis.Pass, expr ast.Expr) (int64, bool) {
 	tv := pass.TypesInfo.Types[expr]
 	if tv.Value != nil && tv.Value.Kind() == constant.String {
@@ -355,8 +307,6 @@ func lengthOf(pass *analysis.Pass, expr ast.Expr) (int64, bool) {
 	return array.Len(), true
 }
 
-// resolveCallee resolves call's callee to the types.Object its declaration
-// was checked against, for both a plain call and a method call.
 func resolveCallee(pass *analysis.Pass, call *ast.CallExpr) types.Object {
 	if ident, ok := call.Fun.(*ast.Ident); ok {
 		return pass.TypesInfo.Uses[ident]
@@ -367,8 +317,6 @@ func resolveCallee(pass *analysis.Pass, call *ast.CallExpr) types.Object {
 	return nil
 }
 
-// fieldNames flattens a parameter or result list into positional names —
-// "" for an unnamed field, which never matches a predicate ref.
 func fieldNames(fields *ast.FieldList) []string {
 	if fields == nil {
 		return nil
@@ -386,9 +334,6 @@ func fieldNames(fields *ast.FieldList) []string {
 	return names
 }
 
-// evalComparison applies pred's comparison operator to two resolved
-// integer values. The op parameter is always one of the six the predicate
-// grammar admits.
 func evalComparison(left int64, op string, right int64) bool {
 	if op == "==" {
 		return left == right

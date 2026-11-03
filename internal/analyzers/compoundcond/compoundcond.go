@@ -18,8 +18,6 @@ import (
 	"github.com/kapetan-io/tiger/internal/worklist"
 )
 
-// Analyzer enforces TS-S06, TS-S07, and TS-S08: simple conditions, split
-// assertions, asserted default arms.
 var Analyzer = &analysis.Analyzer{
 	Name: "compoundcond",
 	Doc:  "TS-S06, TS-S07, and TS-S08: simple conditions, split assertions, asserted default arms.",
@@ -48,15 +46,6 @@ func run(pass *analysis.Pass) (any, error) {
 	return nil, nil
 }
 
-// collectOpenEnums finds every named type declared in the package under
-// analysis whose type declaration carries a well-formed //tiger:openenum
-// directive. Recognition is same-package only: the directive is looked up
-// on both the GenDecl (covers `type X T`, whose doc comment attaches to
-// the GenDecl) and the TypeSpec (covers a grouped `type ( X T )`, whose
-// doc comment attaches per-spec), so either placement is recognized.
-// Because every candidate comes from pass.Files, every marked type
-// necessarily belongs to the package under analysis — a directive on a
-// type in another package is invisible here, by construction.
 func collectOpenEnums(pass *analysis.Pass) map[*types.Named]bool {
 	marked := map[*types.Named]bool{}
 	for _, file := range pass.Files {
@@ -90,10 +79,6 @@ func collectOpenEnums(pass *analysis.Pass) map[*types.Named]bool {
 	return marked
 }
 
-// logicShape records which logical connectives appear in a boolean
-// expression tree, per TS-S06's definition of that tree: BinaryExpr nodes
-// joined by && or ||, seen through parens and unary !. Anything else (a
-// call, a comparison, an identifier) is a leaf.
 type logicShape struct {
 	hasAnd bool
 	hasOr  bool
@@ -126,8 +111,6 @@ func scanLogic(expr ast.Expr) logicShape {
 	return shape
 }
 
-// reportMixedLogic fires TS-S06 when cond's boolean expression tree mixes
-// && and ||. A nil cond (a ForStmt with no condition) is silent.
 func reportMixedLogic(pass *analysis.Pass, cond ast.Expr) {
 	if cond == nil {
 		return
@@ -144,9 +127,6 @@ func reportMixedLogic(pass *analysis.Pass, cond ast.Expr) {
 	})
 }
 
-// calleeName resolves call's function to a *types.Func and reports its
-// unqualified name, but only when that function belongs to tiger's assert
-// package, the sanctioned home for Ok, Invariant, and Unreachable.
 func calleeName(pass *analysis.Pass, call *ast.CallExpr) (string, bool) {
 	var ident *ast.Ident
 	if plain, ok := call.Fun.(*ast.Ident); ok {
@@ -165,8 +145,6 @@ func calleeName(pass *analysis.Pass, call *ast.CallExpr) (string, bool) {
 	return callee.Name(), true
 }
 
-// reportSplitAssertion fires TS-S07 when an assert.Ok or assert.Invariant
-// call's condition argument contains &&.
 func reportSplitAssertion(pass *analysis.Pass, call *ast.CallExpr) {
 	name, ok := calleeName(pass, call)
 	if !ok {
@@ -194,8 +172,6 @@ func reportSplitAssertion(pass *analysis.Pass, call *ast.CallExpr) {
 	})
 }
 
-// closedSetPackage reports whether named's own package declares at least
-// one constant of that exact type — TS-S08's definition of a closed set.
 func closedSetPackage(named *types.Named) bool {
 	pkg := named.Obj().Pkg()
 	if pkg == nil {
@@ -210,7 +186,6 @@ func closedSetPackage(named *types.Named) bool {
 	return false
 }
 
-// defaultCase returns switchStmt's default clause, or nil when it has none.
 func defaultCase(switchStmt *ast.SwitchStmt) *ast.CaseClause {
 	for _, stmt := range switchStmt.Body.List {
 		clause, ok := stmt.(*ast.CaseClause)
@@ -221,8 +196,6 @@ func defaultCase(switchStmt *ast.SwitchStmt) *ast.CaseClause {
 	return nil
 }
 
-// endsInUnreachable reports whether clause's last statement is a call to
-// assert.Unreachable.
 func endsInUnreachable(pass *analysis.Pass, clause *ast.CaseClause) bool {
 	if len(clause.Body) == 0 {
 		return false
@@ -239,15 +212,6 @@ func endsInUnreachable(pass *analysis.Pass, clause *ast.CaseClause) bool {
 	return ok && name == "Unreachable"
 }
 
-// reportClosedSwitch fires TS-S08 when switchStmt tags a closed-set named
-// type and either has no default clause or its default does not end in
-// assert.Unreachable. Type switches, tagless switches, and switches over
-// plain basic types or open sets stay silent.
-//
-// A type marked //tiger:openenum (openEnums) is a deliberately extensible
-// wire vocabulary: its switches still need a default arm — the value came
-// off the wire — but that default is a legitimate catch-all, so any body
-// is compliant and assert.Unreachable is not required.
 func reportClosedSwitch(
 	pass *analysis.Pass,
 	switchStmt *ast.SwitchStmt,

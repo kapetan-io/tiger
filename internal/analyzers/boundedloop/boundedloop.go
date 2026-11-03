@@ -79,8 +79,6 @@ const (
 		"net/http's Server.Shutdown does"
 )
 
-// Analyzer enforces TS-S02 and TS-S03: every loop has an upper bound, or the
-// event-loop shape.
 var Analyzer = &analysis.Analyzer{
 	Name:     "boundedloop",
 	Doc:      "TS-S02 and TS-S03: every loop has an upper bound or the event-loop shape.",
@@ -88,9 +86,6 @@ var Analyzer = &analysis.Analyzer{
 	Run:      run,
 }
 
-// checker holds what judging one loop needs: the declaration it sits in,
-// the loops TS-V01 verified, and the statements that follow each statement
-// in its block.
 type checker struct {
 	pass      *analysis.Pass
 	scope     mutation.Scope
@@ -125,8 +120,6 @@ func run(pass *analysis.Pass) (any, error) {
 	return nil, nil
 }
 
-// followingStatements maps every statement in decl to the statements after
-// it in the same block, where a cap's report sits.
 func followingStatements(decl ast.Node) map[ast.Stmt][]ast.Stmt {
 	following := map[ast.Stmt][]ast.Stmt{}
 	ast.Inspect(decl, func(node ast.Node) bool {
@@ -150,9 +143,6 @@ func followingStatements(decl ast.Node) map[ast.Stmt][]ast.Stmt {
 	return following
 }
 
-// checkRange fires TS-S02 for a range over a channel or an iterator outside
-// the standard library; every other range target is bounded by its own
-// syntax.
 func (c *checker) checkRange(loop *ast.RangeStmt) {
 	rangeType := c.pass.TypesInfo.TypeOf(loop.X)
 	if rangeType == nil {
@@ -176,8 +166,6 @@ func (c *checker) checkRange(loop *ast.RangeStmt) {
 	}
 }
 
-// standardIterator reports whether expr is a call to a standard library
-// function or method, whose iterators are bounded by what they walk.
 func (c *checker) standardIterator(expr ast.Expr) bool {
 	call, ok := ast.Unparen(expr).(*ast.CallExpr)
 	if !ok {
@@ -200,9 +188,6 @@ func (c *checker) standardIterator(expr ast.Expr) bool {
 	return !strings.Contains(first, ".")
 }
 
-// checkFor classifies a for statement: the event-loop shape (no Cond), a
-// loop a sound counter bounds, a bounded or verified loop, or a TS-S02
-// finding.
 func (c *checker) checkFor(loop *ast.ForStmt) {
 	if loop.Cond == nil {
 		c.checkEventLoop(loop)
@@ -227,11 +212,6 @@ func (c *checker) checkFor(loop *ast.ForStmt) {
 	})
 }
 
-// bounded reports whether loop's condition proves a bound without a sound
-// counter: a variant TS-V01 verified, a wait for a context parameter to be
-// cancelled, or a structural bound. A loop that advances a counter its
-// condition reads has no structural bound, because the counter either bounds
-// it soundly or does not.
 func (c *checker) bounded(loop *ast.ForStmt) bool {
 	if c.verified[loop] {
 		return true
@@ -245,12 +225,6 @@ func (c *checker) bounded(loop *ast.ForStmt) bool {
 	return condBounded(c.pass, loop, loop.Cond, plainContext)
 }
 
-// checkEventLoop handles a for{} with no condition: the TS-S03 shape (a
-// direct select with a stop case), a select missing that case (TS-S03), or
-// no select at all (TS-S02). A select with a default clause is non-blocking —
-// a drain loop, not an event loop waiting on the outside world — so it needs
-// no stop case, matching TS-C05's treatment of the same shape. An event loop
-// with a stop case must leave only through it (TS-S23).
 func (c *checker) checkEventLoop(loop *ast.ForStmt) {
 	sel := directSelect(loop.Body)
 	if sel == nil {
@@ -275,8 +249,6 @@ func (c *checker) checkEventLoop(loop *ast.ForStmt) {
 	c.checkExits(loop)
 }
 
-// selectHasDefault reports whether the select carries a default clause,
-// which makes it non-blocking.
 func selectHasDefault(sel *ast.SelectStmt) bool {
 	for _, clause := range sel.Body.List {
 		if comm, ok := clause.(*ast.CommClause); ok && comm.Comm == nil {
@@ -286,8 +258,6 @@ func selectHasDefault(sel *ast.SelectStmt) bool {
 	return false
 }
 
-// directSelect returns the first SelectStmt among the block's direct
-// statements, or nil if none is present.
 func directSelect(block *ast.BlockStmt) *ast.SelectStmt {
 	for _, stmt := range block.List {
 		if sel, ok := stmt.(*ast.SelectStmt); ok {
@@ -297,9 +267,6 @@ func directSelect(block *ast.BlockStmt) *ast.SelectStmt {
 	return nil
 }
 
-// selectHasStopCase reports whether the select has a case that can stop the
-// loop (see internal/analyzers/internal/stopcase) and whose body leaves it. A
-// case that fires and falls back into the loop stops nothing.
 func (c *checker) selectHasStopCase(loop *ast.ForStmt, sel *ast.SelectStmt) bool {
 	for _, clause := range sel.Body.List {
 		comm, ok := clause.(*ast.CommClause)
@@ -310,9 +277,6 @@ func (c *checker) selectHasStopCase(loop *ast.ForStmt, sel *ast.SelectStmt) bool
 	return false
 }
 
-// polarity records whether an enclosing negation operator has inverted
-// the boolean context a condition is judged in; De Morgan flips the
-// &&/|| rules under negation.
 type polarity bool
 
 const (
@@ -320,8 +284,6 @@ const (
 	negatedContext polarity = true
 )
 
-// counterSign records whether a monotone counter's type is unsigned — the
-// only sign for which a right shift provably reaches zero.
 type counterSign bool
 
 const (
@@ -329,8 +291,6 @@ const (
 	unsignedCounter counterSign = true
 )
 
-// condOp classifies a node of the boolean tree condBounded evaluates: a
-// leaf verdict, a conjunction, or a disjunction.
 type condOp int
 
 const (
@@ -339,29 +299,18 @@ const (
 	condAny
 )
 
-// condNode is one node of the and/or tree built over a loop condition.
 type condNode struct {
 	op       condOp
 	verdict  bool
 	children []*condNode
 }
 
-// condTask pairs one subexpression and its polarity with the tree node its
-// verdict fills.
 type condTask struct {
 	expr ast.Expr
 	p    polarity
 	node *condNode
 }
 
-// condBounded walks the boolean structure of a condition: && is bounded if
-// either operand is bounded (the loop exits when the bounded side goes
-// false); || is bounded only if every operand is bounded (either alone
-// going false still lets the loop run on the other side). Negation flips
-// the two rules by De Morgan — !(A && B) is !A || !B, so under negation
-// the &&-either rule would accept a loop the bounded arm cannot stop. The
-// walk builds an and/or tree with an index-advancing worklist, then
-// evaluates it bottom-up in reverse creation order — no recursion.
 func condBounded(pass *analysis.Pass, loop *ast.ForStmt, expr ast.Expr, p polarity) bool {
 	root := &condNode{}
 	nodes := []*condNode{root}
@@ -384,8 +333,6 @@ func condBounded(pass *analysis.Pass, loop *ast.ForStmt, expr ast.Expr, p polari
 				task.node.verdict = leafBounded(pass, loop, e, task.p)
 				continue
 			}
-			// && needs every operand bounded exactly when negated, ||
-			// exactly when plain — the four cases of the De Morgan flip.
 			task.node.op = condAny
 			if (e.Op == token.LAND) == (task.p == negatedContext) {
 				task.node.op = condAll
@@ -396,15 +343,12 @@ func condBounded(pass *analysis.Pass, loop *ast.ForStmt, expr ast.Expr, p polari
 		}
 	}
 	assert.Ok(i == len(work), "condBounded: worklist reached worklist.NodesMax")
-	// Children always sit after their parents in creation order, so the
-	// reverse pass sees every child's verdict before its parent needs it.
 	for i := len(nodes) - 1; i >= 0; i-- {
 		evalCond(nodes[i])
 	}
 	return root.verdict
 }
 
-// condChild creates one node under parent, registered for evaluation.
 func condChild(parent *condNode, nodes *[]*condNode) *condNode {
 	created := &condNode{}
 	parent.children = append(parent.children, created)
@@ -412,7 +356,6 @@ func condChild(parent *condNode, nodes *[]*condNode) *condNode {
 	return created
 }
 
-// evalCond computes one node's verdict from its already-evaluated children.
 func evalCond(node *condNode) {
 	switch node.op {
 	case condLeaf:
@@ -434,13 +377,6 @@ func evalCond(node *condNode) {
 	}
 }
 
-// leafBounded judges one comparison: the existing constant/len/cap-operand
-// check for <, <=, >, >= (negation-invariant — a negated inequality is
-// another inequality against the same stated bound); the monotone-counter
-// widening for != 0; and the tuple-post-reversal widening for < and <=.
-// The two widenings never apply under negation: !(x != 0) runs while x IS
-// zero, so moving x toward zero keeps the loop alive, and the mirrored
-// tuple argument inverts the same way.
 func leafBounded(
 	pass *analysis.Pass,
 	loop *ast.ForStmt,
@@ -465,16 +401,6 @@ func leafBounded(
 	return false
 }
 
-// monotoneToZero reports whether binary is an "x != 0" comparison whose
-// every assignment to x inside the loop (Post and Body, same frame,
-// matched by object identity so a shadowed redeclaration is a different
-// variable) provably moves x toward zero — a right shift, or a division
-// by a constant greater than one — with at least one such assignment
-// guaranteed to run every iteration: the Post clause, or a direct body
-// statement no continue or goto before it can skip. A bare decrement does
-// not qualify — a negative start would wrap instead of hitting zero — and
-// any wrong-direction or unprovable assignment anywhere in the loop
-// defeats the proof.
 func monotoneToZero(pass *analysis.Pass, loop *ast.ForStmt, binary *ast.BinaryExpr) bool {
 	ident, ok := neqZeroIdent(pass, binary)
 	if !ok {
@@ -484,10 +410,6 @@ func monotoneToZero(pass *analysis.Pass, loop *ast.ForStmt, binary *ast.BinaryEx
 	if !ok {
 		return false
 	}
-	// The proof holds for integer counters only: float division never
-	// moves NaN or Inf, and a signed arithmetic shift converges to -1
-	// from a negative start, never zero — so shifts additionally require
-	// an unsigned counter.
 	basic, ok := target.Type().Underlying().(*types.Basic)
 	if !ok || basic.Info()&types.IsInteger == 0 {
 		return false
@@ -508,13 +430,6 @@ func monotoneToZero(pass *analysis.Pass, loop *ast.ForStmt, binary *ast.BinaryEx
 	return unconditionalAssignment(assignments, loop)
 }
 
-// unconditionalAssignment reports whether at least one collected
-// assignment provably executes on every iteration: the Post clause itself
-// (which Go runs even on continue), or a direct statement of the loop
-// body with no continue or goto anywhere in the statements before it. An
-// assignment nested under an if or switch is never guaranteed, no matter
-// how likely its guard — a round that skips it leaves the counter where
-// it was.
 func unconditionalAssignment(assignments []ast.Node, loop *ast.ForStmt) bool {
 	for _, node := range assignments {
 		if loop.Post == node {
@@ -531,11 +446,6 @@ func unconditionalAssignment(assignments []ast.Node, loop *ast.ForStmt) bool {
 	return false
 }
 
-// skipsBefore reports whether any statement contains a continue or goto —
-// a path that re-enters the condition without reaching what follows.
-// A continue belonging to a nested loop is counted too: distinguishing
-// targets needs label resolution, so the check stays conservative. A
-// FuncLit cannot branch out of the enclosing loop, so it is skipped.
 func skipsBefore(stmts []ast.Stmt) bool {
 	for _, stmt := range stmts {
 		skip := false
@@ -557,8 +467,6 @@ func skipsBefore(stmts []ast.Stmt) bool {
 	return false
 }
 
-// neqZeroIdent reports whether binary compares a plain identifier against
-// a literal or resolved-constant zero, returning that identifier.
 func neqZeroIdent(pass *analysis.Pass, binary *ast.BinaryExpr) (*ast.Ident, bool) {
 	if binary.Op != token.NEQ {
 		return nil, false
@@ -572,8 +480,6 @@ func neqZeroIdent(pass *analysis.Pass, binary *ast.BinaryExpr) (*ast.Ident, bool
 	return nil, false
 }
 
-// isZero reports whether expr is the literal 0 or a resolved constant
-// equal to zero.
 func isZero(pass *analysis.Pass, expr ast.Expr) bool {
 	switch e := expr.(type) {
 	case *ast.BasicLit:
@@ -588,13 +494,6 @@ func isZero(pass *analysis.Pass, expr ast.Expr) bool {
 	return false
 }
 
-// zeroMovingAssignment reports whether node — an assignment or IncDecStmt
-// found by loopAssignments — provably moves its target toward zero: a
-// right shift by a constant of at least one (x >>= k or x = x >> k,
-// unsigned targets only) or a division by a constant greater than one
-// (x /= c or x = x / c). A shift by a variable proves nothing (the amount
-// can be zero), and an IncDecStmt (x++ or x--) never qualifies: a
-// decrement risks wrapping past zero on a negative start.
 func zeroMovingAssignment(pass *analysis.Pass, node ast.Node, sign counterSign) bool {
 	assign, ok := node.(*ast.AssignStmt)
 	if !ok || len(assign.Lhs) != 1 || len(assign.Rhs) != 1 {
@@ -612,11 +511,6 @@ func zeroMovingAssignment(pass *analysis.Pass, node ast.Node, sign counterSign) 
 	return false
 }
 
-// selfShiftOrDivide reports whether assign's single RHS is "lhs >> k" or
-// "lhs / c" with c a constant greater than one, the long forms of
-// x >>= k / x /= c. Taking the whole assignment (rather than separate lhs
-// and rhs expressions) keeps the two ast.Expr values out of the parameter
-// list together.
 func selfShiftOrDivide(pass *analysis.Pass, assign *ast.AssignStmt, sign counterSign) bool {
 	lhsIdent, ok := assign.Lhs[0].(*ast.Ident)
 	if !ok {
@@ -639,9 +533,6 @@ func selfShiftOrDivide(pass *analysis.Pass, assign *ast.AssignStmt, sign counter
 	return false
 }
 
-// isConstAtLeast reports whether expr is a literal or resolved constant
-// integer no smaller than min — the divisor floor is 2 (division by one
-// never moves), the shift-amount floor is 1 (a shift by zero never moves).
 func isConstAtLeast(pass *analysis.Pass, expr ast.Expr, min int64) bool {
 	switch e := expr.(type) {
 	case *ast.BasicLit:
@@ -661,12 +552,6 @@ func isConstAtLeast(pass *analysis.Pass, expr ast.Expr, min int64) bool {
 	}
 }
 
-// tuplePostReversal reports whether binary (i < j or i <= j) is proven by
-// a tuple Post that moves i up and j down by the same constant step,
-// shrinking the gap every round, with neither identifier reassigned
-// anywhere else in the loop body. Integer identifiers only: at large
-// float magnitudes a step of +1 is absorbed (a+1 == a), so a float gap
-// can stop shrinking.
 func tuplePostReversal(pass *analysis.Pass, loop *ast.ForStmt, binary *ast.BinaryExpr) bool {
 	loIdent, ok := binary.X.(*ast.Ident)
 	if !ok || !intrange.IsInteger(pass.TypesInfo.TypeOf(loIdent)) {
@@ -683,10 +568,6 @@ func tuplePostReversal(pass *analysis.Pass, loop *ast.ForStmt, binary *ast.Binar
 	if !postShrinksGap(assign, gapNames{lo: loIdent.Name, hi: hiIdent.Name}) {
 		return false
 	}
-	// The Cond and Post share the for-header scope, so name matching above
-	// is object-safe; body reassignments need object identity to keep a
-	// same-named shadow from spuriously defeating (or ever satisfying) the
-	// no-reassignment requirement.
 	loVar, ok := pass.TypesInfo.Uses[loIdent].(*types.Var)
 	if !ok {
 		return false
@@ -704,15 +585,10 @@ func tuplePostReversal(pass *analysis.Pass, loop *ast.ForStmt, binary *ast.Binar
 	return true
 }
 
-// gapNames names the tuple-post pair a shrinking-gap proof tracks — the low
-// identifier moving up and the high identifier moving down — keeping the
-// two same-typed names out of postShrinksGap's parameter list.
 type gapNames struct {
 	lo, hi string
 }
 
-// postShrinksGap reports whether assign moves names.lo up by a constant and
-// names.hi down by a constant, among its (possibly multi-target) pairs.
 func postShrinksGap(assign *ast.AssignStmt, names gapNames) bool {
 	loMoved, hiMoved := false, false
 	for i, lhs := range assign.Lhs {
@@ -730,8 +606,6 @@ func postShrinksGap(assign *ast.AssignStmt, names gapNames) bool {
 	return loMoved && hiMoved
 }
 
-// stepDirection reports +1 when rhs is "name + positive-const", -1 when
-// rhs is "name - positive-const", and 0 for any other shape.
 func stepDirection(name string, rhs ast.Expr) int {
 	binary, ok := rhs.(*ast.BinaryExpr)
 	if !ok {
@@ -758,8 +632,6 @@ func stepDirection(name string, rhs ast.Expr) int {
 	return 0
 }
 
-// loopAssignments collects every assignment to target in loop's Post and
-// Body, the span the monotone-counter proof scans.
 func loopAssignments(pass *analysis.Pass, target *types.Var, loop *ast.ForStmt) []ast.Node {
 	var found []ast.Node
 	if loop.Post != nil {
@@ -769,16 +641,6 @@ func loopAssignments(pass *analysis.Pass, target *types.Var, loop *ast.ForStmt) 
 	return found
 }
 
-// assignmentsTo collects every AssignStmt, IncDecStmt, or range clause
-// targeting target within node, without descending into a FuncLit: a
-// closure is a frame boundary, so a mutation inside it counts neither for
-// nor against the direction proof, matching deferdistance's treatment of
-// the same shape. Matching is by object
-// identity through TypesInfo.Uses — a := redeclaration defines a new
-// object (a shadow), so its assignments count neither for nor against the
-// outer variable's proof. A range clause counts because "for x = range s"
-// reassigns x — an inner range can reset the counter after every
-// qualifying move.
 func assignmentsTo(pass *analysis.Pass, target *types.Var, node ast.Node) []ast.Node {
 	uses := func(expr ast.Expr) bool {
 		ident, ok := expr.(*ast.Ident)
@@ -813,10 +675,7 @@ func assignmentsTo(pass *analysis.Pass, target *types.Var, node ast.Node) []ast.
 	return found
 }
 
-// isBoundOperand reports whether expr is a literal, a resolved constant, or
-// a len()/cap() call — the shapes TS-S02 accepts as a stated bound.
 func isBoundOperand(pass *analysis.Pass, expr ast.Expr) bool {
-	// Parentheses nest finitely; the cap bounds the unwrap without recursion.
 	for range 64 {
 		wrapped, ok := expr.(*ast.ParenExpr)
 		if !ok {
@@ -840,7 +699,6 @@ func isBoundOperand(pass *analysis.Pass, expr ast.Expr) bool {
 	}
 }
 
-// isLenOrCap reports whether call is a call to the builtin len or cap.
 func isLenOrCap(pass *analysis.Pass, call *ast.CallExpr) bool {
 	ident, ok := call.Fun.(*ast.Ident)
 	if !ok {

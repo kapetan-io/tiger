@@ -16,18 +16,12 @@ import (
 	"github.com/kapetan-io/tiger/internal/finish"
 )
 
-// Fact carries one package's invariant consts and assert-call sites across
-// the facts mechanism, for the finish step to read back.
 type Fact struct {
 	Contribution invariants.Contribution
 }
 
-// AFact marks Fact as a go/analysis fact.
 func (*Fact) AFact() {}
 
-// Analyzer computes each package's contribution to TS-A09. Its own pass
-// never reports: only Finish, run by the tiger CLI after every package has
-// been visited, can tell which invariants no test violates.
 var Analyzer = &analysis.Analyzer{
 	Name:      "invariantnegative",
 	Doc:       "TS-A09: every declared invariant has a test that violates it",
@@ -40,8 +34,6 @@ func run(pass *analysis.Pass) (any, error) {
 	return nil, nil
 }
 
-// Finish reads every package's contribution and reports the invariants no
-// _test.go function violates (TS-A09).
 func Finish(program *finish.Program) ([]analysis.Diagnostic, error) {
 	contributions := make([]invariants.Contribution, 0, len(program.PackageFacts))
 	for _, fact := range program.PackageFacts {

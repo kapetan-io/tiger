@@ -1,22 +1,6 @@
 version: 1
 comments:
   allow:
-    - value: internal/analyzers/boundedloop
-      reason: prose not yet moved into tests; ENG-658 clears it
-    - value: internal/analyzers/chandecl
-      reason: prose not yet moved into tests; ENG-658 clears it
-    - value: internal/analyzers/compoundcond
-      reason: prose not yet moved into tests; ENG-658 clears it
-    - value: internal/analyzers/contracts
-      reason: prose not yet moved into tests; ENG-658 clears it
-    - value: internal/analyzers/declorder
-      reason: prose not yet moved into tests; ENG-658 clears it
-    - value: internal/analyzers/deferdistance
-      reason: prose not yet moved into tests; ENG-658 clears it
-    - value: internal/analyzers/directives
-      reason: prose not yet moved into tests; ENG-658 clears it
-    - value: internal/analyzers/errignore
-      reason: prose not yet moved into tests; ENG-658 clears it
     - value: internal/analyzers/internal/assertpkg
       reason: prose not yet moved into tests; ENG-660 clears it
     - value: internal/analyzers/internal/attach
@@ -41,15 +25,3 @@ comments:
       reason: prose not yet moved into tests; ENG-660 clears it
     - value: internal/analyzers/internal/words
       reason: prose not yet moved into tests; ENG-660 clears it
-    - value: internal/analyzers/invariantnegative
-      reason: prose not yet moved into tests; ENG-658 clears it
-    - value: internal/analyzers/invariantrefs
-      reason: prose not yet moved into tests; ENG-658 clears it
-    - value: internal/analyzers/ioinloop
-      reason: prose not yet moved into tests; ENG-658 clears it
-    - value: internal/analyzers/layers
-      reason: prose not yet moved into tests; ENG-658 clears it
-    - value: internal/analyzers/limitflow
-      reason: prose not yet moved into tests; ENG-658 clears it
-    - value: internal/analyzers/limitrelate
-      reason: prose not yet moved into tests; ENG-658 clears it
