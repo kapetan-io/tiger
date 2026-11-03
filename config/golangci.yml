@@ -30,7 +30,7 @@ linters:
     - gochecknoinits    # TS-S10 no init()
     - gochecknoglobals  # TS-S11 no package-level mutable state
     - depguard          # TS-S12 package bans
-    - forbidigo         # TS-C08, TS-T01, TS-T04 function bans
+    - forbidigo         # TS-C08, TS-T01, TS-T04, TS-C05, TS-I08, TS-S18 function bans
     - exhaustruct       # TS-S15 every struct field named
     - mnd               # TS-S16 no magic numbers
     - gosec             # TS-S19 G115 integer conversion
@@ -162,8 +162,8 @@ linters:
               desc: TS-S12. Reflection moves errors to run time and allocates doing it.
 
     forbidigo:
-      # TS-C08, TS-T01, TS-T04. depguard works on packages, forbidigo works on
-      # identifiers, which is what you need for time.Now and friends.
+      # TS-C08, TS-T01, TS-T04, TS-C05, TS-I08, TS-S18. depguard works on packages,
+      # forbidigo works on identifiers, which is what you need for time.Now and friends.
       analyze-types: true
       forbid:
         - pattern: '^time\.Sleep$'
@@ -173,7 +173,7 @@ linters:
         - pattern: '^time\.After$'
           msg: TS-C05. Leaks a timer until it fires. Use a context or a timer you stop.
         - pattern: '^fmt\.Print.*$'
-          msg: Use the structured logger so output has a level and a destination.
+          msg: TS-I08. Use the structured logger so output has a level and a destination.
         - pattern: '^panic$'
           msg: TS-S18. Use the assert package so there is one crash path.
 
