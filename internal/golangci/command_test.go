@@ -379,8 +379,14 @@ func TestGolangciAuditPassesExtrasBeyondTheBaseline(t *testing.T) {
 	config := readFile(t, path)
 	for _, edit := range [][2]string{
 		{"        - containedctx\n", "        - containedctx\n        - extralinter\n"},
-		{"                - name: exported\n", "                - name: exported\n                - name: extrarule\n"},
-		{"            package-average: 5.0\n", "            package-average: 5\n            extra-key: true\n"},
+		{
+			"                - name: exported\n",
+			"                - name: exported\n                - name: extrarule\n",
+		},
+		{
+			"            package-average: 5.0\n",
+			"            package-average: 5\n            extra-key: true\n",
+		},
 	} {
 		require.Contains(t, config, edit[0])
 		config = strings.Replace(config, edit[0], edit[1], 1)

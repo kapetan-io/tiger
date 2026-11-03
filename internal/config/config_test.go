@@ -11,11 +11,19 @@ import (
 	"github.com/kapetan-io/tiger/internal/config"
 )
 
-func TestLoadMalformedYAMLIsOneLine(t *testing.T) {
+func moduleWithConfig(t *testing.T, yaml string) string {
+	t.Helper()
 	dir := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module example.com/m\n"), 0o600))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(dir, "go.mod"), []byte("module example.com/m\n"), 0o600))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(dir, config.FileName), []byte(yaml), 0o600))
+	return dir
+}
+
+func TestLoadMalformedYAMLIsOneLine(t *testing.T) {
 	// Multi-line parser errors break the one-line finding format (ADR-0009).
-	require.NoError(t, os.WriteFile(filepath.Join(dir, config.FileName), []byte("version: 1\n\tbad: [\n  - x\n"), 0o600))
+	dir := moduleWithConfig(t, "version: 1\n\tbad: [\n  - x\n")
 
 	_, err := config.Load(dir, nil)
 
@@ -31,10 +39,7 @@ func TestDirectoriesRejectsCommandLineValue(t *testing.T) {
 }
 
 func TestInstallNilResetsConfig(t *testing.T) {
-	dir := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module example.com/m\n"), 0o600))
-	require.NoError(t, os.WriteFile(filepath.Join(dir, config.FileName), []byte("version: 1\n"), 0o600))
-	file, err := config.Load(dir, nil)
+	file, err := config.Load(moduleWithConfig(t, "version: 1\n"), nil)
 	require.NoError(t, err)
 	require.NotNil(t, file)
 
