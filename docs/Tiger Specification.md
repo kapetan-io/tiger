@@ -1335,13 +1335,6 @@ Enforce. `godot` (auto).
 Why. It is what `go doc` prints, and the only documentation most callers read.
 Enforce. `revive` exported rule (auto).
 
-**`TS-L08` Always say why.**
-Why. Code says what. A comment repeating the what is noise; one giving the reason gives the reader the
-criteria to evaluate your decision and to change it correctly later. The most important rule here and
-the least mechanizable.
-Enforce. `review`. *(Amended 2026-10-20: no longer applies, ADR-0031. Comments in production code are
-banned rather than judged, and `TS-L12` is dropped. ENG-411 removes this rule and `TS-L13`.)*
-
 **`TS-L09` Every escape-hatch directive carries a reason.**
 Why. An escape without a reason is a rule silently deleted. Applies to `//nolint`,
 `//tiger:batched`, `//tiger:openenum`, and the `//tiger:<rule-id> <reason>` deviation form when
@@ -1379,12 +1372,6 @@ Enforce. `deferdistance` (custom). Blocking on the loop case, advisory on distan
 **`TS-L11` Imports grouped standard, external, internal.**
 Why. Mechanical, so let the machine do it.
 Enforce. `gci` (auto).
-
-**`TS-L13` Commit bodies contain a `Why:` section.**
-Why. A pull request description is not in the repository and is invisible in `git blame`, so the
-reason must be in the commit or it is gone.
-Enforce. CI check on message shape (runtime). *(Amended 2026-10-20: no longer applies, ADR-0031.
-ENG-411 removes it.)*
 
 ## Dependencies and tooling
 
@@ -1662,11 +1649,11 @@ that cannot fill the third column does not go in.
 | TS-L05 | Struct order is fields, nested types, constructor, methods | B0 | Coord |
 | TS-L06 | Comments are sentences | B0 | Coord |
 | TS-L07 | Every exported identifier has a doc comment starting wi... | B3, B0 | Mixed |
-| TS-L08 | Always say why (no longer applies, ADR-0031) | B7, B3 | Sub |
+| TS-L08 | Retired, no mechanical check and comments are banned (ADR-0032) | — | Retired |
 | TS-L09 | Every escape-hatch directive carries a reason | B7, B2 | Sub |
 | TS-L10 | Blank lines group acquisition with its defer, and no de... | B2, B3 | Sub |
 | TS-L11 | Imports grouped standard, external, internal | B0 | Coord |
-| TS-L13 | Commit bodies contain a Why: section (no longer applies, ADR-0031) | B7 | Sub |
+| TS-L13 | Retired, the `Why:` commit section never had a check (ADR-0032) | — | Retired |
 | TS-D01 | The pure standard library, and nothing else, unless the lay... | B8, B6 | Sub |
 | TS-D02 | Dependencies are vendored and pinned, including the too... | B4, B8 | Sub |
 | TS-D03 | Scripts are Go programs, not shell | B4, B0 | Mixed |
@@ -1692,8 +1679,8 @@ that cannot fill the third column does not go in.
 | Benefit | Rules citing it |
 | --- | --- |
 | B2 Short defect distance | 37 |
-| B3 Local reasoning | 36 |
-| B7 Change safety | 26 |
+| B3 Local reasoning | 34 |
+| B7 Change safety | 24 |
 | B0 Uniformity | 22 |
 | B1 Bounded execution | 17 |
 | B4 Determinism | 17 |
@@ -1701,8 +1688,8 @@ that cannot fill the third column does not go in.
 | B5 Defect discovery | 15 |
 | B8 Blast radius | 10 |
 
-Of 143 rule IDs, 122 are live: 100 substantive, 13 substantive in a conventional form, and 9 pure
-convention. The other 21 are retired (18) or deleted (3). Short defect distance and local reasoning
+Of 143 rule IDs, 120 are live: 98 substantive, 13 substantive in a conventional form, and 9 pure
+convention. The other 23 are retired (20) or deleted (3). Short defect distance and local reasoning
 carry the document between them, which is a fair description of what TigerStyle is once the poetry
 is stripped off. B0 is cited by 22 rules, so roughly one rule in six exists for agreement rather
 than correctness. Better to know that number than to pretend it is zero.
@@ -2104,7 +2091,7 @@ one as another rule plus a review judgment, one as another rule's existence prec
 second ID — and their IDs are retired rather than reused, so that a reference to either in an old
 commit still resolves.
 
-Eighteen more were retired, each recorded in an ADR, and none of the IDs is reused:
+Twenty more were retired, each recorded in an ADR, and none of the IDs is reused:
 
 | IDs | Why | ADR |
 | --- | --- | --- |
@@ -2113,6 +2100,7 @@ Eighteen more were retired, each recorded in an ADR, and none of the IDs is reus
 | `TS-F03`, `TS-F04`, `TS-F05`, `TS-F08` | They had no enforcement but the removed `effects` analyzer; `TS-A05` and `TS-C06` are review, and `TS-C02` decides goroutine ownership at the start site | ADR-0026, ADR-0020 |
 | `TS-M02`, `TS-M06`, `TS-M08`, `TS-M11`, `TS-K06`, `TS-C10` | They applied only to code marked `//tiger:hot`, `//tiger:wire`, or `//tiger:owner`, and those verbs are removed | ADR-0028 |
 | `TS-R01` | Proving a refactor preserves behavior rested on computed frames | ADR-0027 |
+| `TS-L08`, `TS-L13` | "Always say why" has no mechanical check, and comments in production code are banned (ADR-0031). The `Why:` commit section never had a check | ADR-0032 |
 
 `TS-X01` keeps its ID as a review maxim; its single-implementation check is removed (ADR-0016). The
 built analyzers behind retired rules are removed in their build tickets; the `restrictions`,
