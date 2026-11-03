@@ -7,10 +7,6 @@ import (
 	"github.com/kapetan-io/tiger/patterns/ledger/inv"
 )
 
-// DecodeHeaderUnchecked is the broken shape: it asserts the size and never the
-// checksum. Every invariant is still asserted in production code (TS-A07) and
-// still violated by a test (TS-A09), so tiger check passes, yet a corrupted
-// frame decodes without complaint.
 func DecodeHeaderUnchecked(target []byte) Header {
 	assert.Invariant(inv.HeaderSize, len(target) == HeaderSizeBytes)
 	return Header{

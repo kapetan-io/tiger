@@ -14,6 +14,15 @@ a `bufio.Scanner` or a database cursor, and treats the limit as a page size. It 
 page can be continued. `ListFromStart` has the same bounded loop and takes no resume point, so every
 call starts at the top and a client paging through the listing reads the first page forever.
 
+`Opener` starts a read of at most `limit` rows that sort after the row named `after`, the way a
+query carries `WHERE key > ? LIMIT ?`. `Page.After` is the row to pass to the next call, and it is
+empty when the stream ended before the page filled. `clampPage` keeps the requested size in
+`pageMin`..`pageMax`, so a zero limit still moves, and the constant `_ = uint(pageMax - pageMin)`
+stops the package compiling if the floor rises above the maximum. `ListPage` restates the clamped
+limit in the loop header, so the loop ends at the limit whatever the stream does. `Scan` is false for
+a read error as well as the end, so `ListPage` returns `lines.Err()` and a failed read does not pass
+as the last page.
+
 ## Bug
 
 Querator's list loops scan whole partitions. Restating the limit in the loop header bounds each

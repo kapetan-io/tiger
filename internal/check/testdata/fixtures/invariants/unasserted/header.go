@@ -10,23 +10,23 @@ import (
 	"github.com/kapetan-io/tiger/unasserted/inv"
 )
 
-// HeaderSizeBytes = 4 checksum + 4 length + 4 sequence.
+
 const HeaderSizeBytes = 12
 
-// Header frames one batch in the ledger's log.
+
 type Header struct {
 	Checksum uint32
 	Length   uint32
 	Sequence uint32
 }
 
-// Length counts the payload bytes a header frames.
+
 type Length uint32
 
-// Sequence orders frames within the log.
+
 type Sequence uint32
 
-// EncodeHeader frames length and sequence into a HeaderSizeBytes buffer.
+
 func EncodeHeader(length Length, sequence Sequence) []byte {
 	target := make([]byte, HeaderSizeBytes)
 	binary.BigEndian.PutUint32(target[4:8], uint32(length))
@@ -37,7 +37,7 @@ func EncodeHeader(length Length, sequence Sequence) []byte {
 	return target
 }
 
-// DecodeHeader reads a Header back out of target, refusing corrupt input.
+
 func DecodeHeader(target []byte) Header {
 	header := Header{
 		Checksum: binary.BigEndian.Uint32(target[0:4]),

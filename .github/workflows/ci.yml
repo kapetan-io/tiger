@@ -315,7 +315,7 @@ jobs:
         working-directory: testdata/plugin-smoke
         run: |
           set +e
-          ../../bin/tiger-gcl run ./... > findings.txt 2>&1
+          ../../bin/tiger-gcl run --max-same-issues=0 ./... > findings.txt 2>&1
           code=$?
           set -e
           cat findings.txt
@@ -327,6 +327,8 @@ jobs:
           ! grep -q "TS-A07" findings.txt
           ! grep -q "TS-A09" findings.txt
           grep -q "outside/outside.go.*TS-N14" findings.txt
+          grep -q "smoke.go.*TS-L14" findings.txt
+          grep -q "outside/outside.go.*TS-L14" findings.txt
           ! grep -q "scoped/scoped.go" findings.txt
       # The plugin installs the module's tiger.layers.yaml: the import of os
       # that ./layered's entry leaves out and ./unlisted's missing entry

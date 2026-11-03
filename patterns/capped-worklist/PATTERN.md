@@ -16,6 +16,16 @@ stays silent while the caller gets a short list that looks complete. `Walk` show
 it returns `ErrWalkTooLarge` when it reaches `nodesMax` with nodes left, and it does not fire when
 the graph has exactly `nodesMax` nodes.
 
+`nodesMax` is small because no real graph is near it, so reaching it means a cycle or an attack, and
+the constant `_ = uint(1<<20 - nodesMax)` stops the package compiling if `nodesMax` outgrows the
+memory a walk may use. `Walk` counts the nodes of a tree, once per parent edge, and a cycle never
+runs out of work, so hitting the cap is an error and never a short count. It checks
+`len(stack)+len(stack[i].Next)` against `nodesMax` before appending, so one node with a huge edge
+list cannot allocate past the cap. A graph of exactly `nodesMax` nodes also ends the loop with
+nothing left to visit, which is why `Walk` tests `i < len(stack)` before it reports the error.
+`ReadRefsTruncated` is the broken shape: an advertisement longer than `limit` returns a short list
+the caller cannot tell from a complete one.
+
 ## Bug
 
 git-server's tag-peel denial of service (ENG-159): a loop capped at a limit stood in for a proof

@@ -203,6 +203,19 @@ func TestPinTargetWithBlockingFindingRefused(t *testing.T) {
 	assert.Equal(t, before, readFile(t, filepath.Join(dir, "mixed.go")))
 }
 
+// TestPinIgnoresProseFindingsOnTheTarget covers pin's refusal rule.
+//
+// Goal: a target whose doc comment is a TS-L14 finding is still pinned,
+// because prose says nothing about the facts pin writes.
+func TestPinIgnoresProseFindingsOnTheTarget(t *testing.T) {
+	dir := copyFixture(t, "showfacts")
+	require.NoError(t, os.Remove(filepath.Join(dir, "tiger.yaml")))
+	got := run(t, "pin", "-C", dir, "Consume", "./...")
+	assert.Equal(t, command.ExitClean, got.code)
+	assert.Empty(t, got.stderr)
+	assert.Equal(t, "facts.go:11: //tiger:variant len(pending)\n", got.stdout)
+}
+
 // TestPinAmbiguousNameWritesNothing covers the ambiguity contract.
 //
 // Goal: a name resolving to more than one function aborts the whole run —

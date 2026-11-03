@@ -1,0 +1,5 @@
+version: 1
+comments:
+  allow:
+    - value: legacy
+      reason: imported from v1; the comments move into tests under PLAT-212

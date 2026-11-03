@@ -5,7 +5,6 @@
 // string is what a failed assertion prints.
 package inv
 
-// ID names one invariant. Pass it to assert.Invariant and assert.Violates.
 type ID string
 
 const (

@@ -1,8 +1,8 @@
 // Package reasonless marks an open type without saying why it is open.
 package reasonless
 
-// Mode is the transfer mode a peer asks for.
-//
+
+
 //tiger:openenum
 type Mode int
 
@@ -11,7 +11,7 @@ const (
 	ModeMove
 )
 
-// Name labels a mode, with a catch-all for modes this build predates.
+
 func Name(mode Mode) string {
 	switch mode {
 	case ModeCopy:

@@ -54,7 +54,7 @@ Tiger builds the report from the code at both revisions, so a reviewer sees each
   `strings.Split` or `fmt.Sprintf`, are not reported.
 
 **Tiger has no warnings**
-Every finding fails the run. `tiger check` honors no comment that suppresses a finding, and it does not read `//nolint`. Holzmann's [tenth rule](https://spinroot.com/gerard/pdf/P10.pdf) makes the same demand of a compiler. It calls for compiling with every warning on and allowing none, because [one new warning among thousands is invisible](https://www.youtube.com/watch?v=GRJtYwneG2Q). A `tiger check` run passes or fails. The only way past a finding is to change the code until it satisfies the rule.
+Every finding fails the run. `tiger check` honors no comment that suppresses a finding, and a `//nolint` comment changes nothing. Production code carries no prose comments at all (TS-L14), so a comment cannot explain a finding away either. Holzmann's [tenth rule](https://spinroot.com/gerard/pdf/P10.pdf) makes the same demand of a compiler. It calls for compiling with every warning on and allowing none, because [one new warning among thousands is invisible](https://www.youtube.com/watch?v=GRJtYwneG2Q). A `tiger check` run passes or fails. The only way past a finding is to change the code until it satisfies the rule.
 
 - **The cheapest path for an agent is the rewrite.** An agent finishing a task takes whichever path reaches a passing run at the lowest cost, and with no warning tier and no suppression comment available, that path is rewriting the code.
 - **Review time goes to intent and behavior.** When a change passes the test suite and `tiger check`, the reviewer can spend the review on what the change does and why.

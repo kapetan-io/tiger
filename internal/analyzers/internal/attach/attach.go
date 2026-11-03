@@ -32,7 +32,7 @@ func Directive(
 			continue
 		}
 		for _, comment := range group.List {
-			if !directive.Is(comment.Text) {
+			if directive.Classify(file, comment) != directive.Tiger {
 				continue
 			}
 			parsed, err := directive.Parse(comment.Text)

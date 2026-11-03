@@ -2,8 +2,8 @@ package loopholes
 
 import "math"
 
-// ShadowSlice shrinks a copy that shadows data, so data never changes. TS-V01
-// matches the shrink by name and accepts it.
+
+
 func ShadowSlice(data []byte) {
 	for len(data) > 0 {
 		data := data
@@ -12,8 +12,8 @@ func ShadowSlice(data []byte) {
 	}
 }
 
-// AliasAppend grows data through a pointer taken before the loop. TS-V01 looks
-// for &data only inside the body.
+
+
 func AliasAppend(data []int) {
 	alias := &data
 	for len(data) > 0 {
@@ -22,8 +22,8 @@ func AliasAppend(data []int) {
 	}
 }
 
-// ClosureGrow grows data through a closure made before the loop. TS-V01 checks
-// only closures written inside the body.
+
+
 func ClosureGrow(data []int) {
 	grow := func() { data = append(data, 1) }
 	for len(data) > 0 {
@@ -32,8 +32,8 @@ func ClosureGrow(data []int) {
 	}
 }
 
-// LabeledContinue skips the shrink with a continue from an inner loop. TS-V01's
-// continue check stops at the inner loop.
+
+
 func LabeledContinue(data []int) {
 outer:
 	for len(data) > 0 {
@@ -44,8 +44,8 @@ outer:
 	}
 }
 
-// Overflow never ends because i wraps past math.MaxInt. TS-V01 verifies n - i;
-// only TS-S02 blocks it, and call 2's change 2 would let it pass.
+
+
 func Overflow() {
 	n := math.MaxInt
 	i := 0

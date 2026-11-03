@@ -426,7 +426,13 @@ func (r *resolved) span() lineSpan {
 	}
 }
 
+// isBlocking reports whether a finding on a target makes pin refuse it. A
+// prose comment on the target (TS-L14) says nothing about the facts pin
+// writes, so it never blocks one.
 func isBlocking(category string) bool {
+	if category == "TS-L14" {
+		return false
+	}
 	entry, known := rules.ByCategory(category)
 	return known && entry.Severity == rules.SeverityBlocking
 }

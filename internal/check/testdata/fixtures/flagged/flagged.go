@@ -3,5 +3,5 @@
 // -participle.allow=preparing.
 package flagged
 
-// Preparing is deliberately named with a trailing participle.
+
 type Preparing struct{}

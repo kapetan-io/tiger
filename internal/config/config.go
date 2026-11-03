@@ -52,6 +52,7 @@ type Key struct {
 // from.
 type File struct {
 	module  module.Path
+	root    string
 	entries map[Key][]Entry
 	nolint  bool
 }
@@ -119,7 +120,7 @@ func Load(dir string, analyzers []*analysis.Analyzer) (*File, error) {
 		return nil, &Error{Key: "version", Problem: fmt.Sprintf(
 			"version %d is not supported — write version: %d", parsed.Version, version)}
 	}
-	loaded := &File{module: modulePath, entries: map[Key][]Entry{}}
+	loaded := &File{module: modulePath, root: dir, entries: map[Key][]Entry{}}
 	forbid, err := parseNolint(&parsed.Nolint)
 	if err != nil {
 		return nil, err
@@ -180,8 +181,15 @@ func (f *File) add(name string, flags map[string][]Entry, analyzers []*analysis.
 			if err := validate(key, entry); err != nil {
 				return err
 			}
+			if directoryFlag(registered.Flags.Lookup(flagName).Value) {
+				rewritten, err := f.directory(key, entry)
+				if err != nil {
+					return err
+				}
+				entry = rewritten
+			}
+			f.entries[key] = append(f.entries[key], entry)
 		}
-		f.entries[key] = append(f.entries[key], flags[flagName]...)
 	}
 	return nil
 }

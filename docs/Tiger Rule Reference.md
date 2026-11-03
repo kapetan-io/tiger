@@ -1361,6 +1361,76 @@ to a package-level function never resolves to an acquisition, so those shapes st
 silent.
 
 
+<!-- rule: TS-L14 -->
+### TS-L14 — no prose comments below the package line of a production file
+
+**Severity:** blocking — a finding fails the run.
+
+A comment in production code drifts from the code, and nothing catches it, yet readers and
+agents trust it. The ban leaves the code, its tests and tiger's directives to carry meaning.
+Below the `package` line of a production file, a comment must be one of these directives or
+it is a finding:
+
+| Survives | Example |
+| -- | -- |
+| Go directives | `//go:generate x`, `//go:embed f`, `//line a.go:10`, `/*line a.go:10*/`, `//export F`, `//extern f` |
+| Tiger directives | `//tiger:batched reason` |
+| `//nolint`, spelled exactly | `//nolint`, `//nolint:errcheck // reason` |
+
+Anything above the `package` line survives (package docs, license headers, build tags). So do
+the comments in `_test.go` files and in generated files (`// Code generated ... DO NOT EDIT.`).
+Every other comment is prose: `//easyjson:json`, `//why:x`, `//lint:ignore SA1000 x`,
+`// nolint`, `/* x */`, a bare `//`, and a trailing comment on the `package` line.
+
+A comment group of any length is one finding, at its first prose line.
+
+Code that fires it, in `store.go`:
+
+```go
+package store
+
+// Open returns the store at path.
+func Open(path string) {}
+```
+
+```
+store.go:3:1: TS-L14: this comment is below the package line of a production file — tiger expects the code, its tests and //tiger: directives to carry meaning here, not prose — move what it says into a test, or delete it
+```
+
+The compliant rewrite moves what the comment said into a test, or deletes it:
+
+```go
+package store
+
+func Open(path string) {}
+```
+
+`tiger check` writes no fix, because `tiger pin` is the only command that writes source
+(ADR-0008).
+
+**Exempt directories:** a team with too many comments to clear on day one lists whole
+directories in `tiger.yaml`, each with a reason. An entry covers its directory's subtree, and
+`.` covers the whole module:
+
+```yaml
+version: 1
+comments:
+  allow:
+    - value: internal/legacy
+      reason: imported from v1; reasons move into tests under PLAT-212
+```
+
+Loading the file fails, and `tiger check` exits 2 with a one-line error, for an entry with no
+reason, an entry with `packages:`, a directory that does not exist or sits inside a nested
+module, and a value written with `...`, `..`, an absolute path or a trailing slash. Passing
+`-comments.allow` on the command line also exits 2. The setting is an exception to ADR-0022,
+because an entry can clear a finding; review of the `tiger.yaml` diff is the guard.
+
+**Known miss:** prose after a `//nolint` survives with it, since the reason belongs to the
+directive. A team that wants none turns on `nolint.forbid`. Prose in a file that uses cgo is
+not checked, because the Go toolchain hands tiger the cgo-generated file, which carries the
+generated-file marker.
+
 ## Memory and IO
 
 <!-- rule: TS-M05 -->

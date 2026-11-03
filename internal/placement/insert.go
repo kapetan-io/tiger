@@ -75,7 +75,7 @@ func needsSeparator(fset *token.FileSet, file *ast.File, line int) bool {
 			continue
 		}
 		last := group.List[len(group.List)-1]
-		return !directive.Is(last.Text)
+		return directive.Classify(file, last) != directive.Tiger
 	}
 	return false
 }

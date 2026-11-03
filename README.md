@@ -143,7 +143,16 @@ ioinloop:
   packages:
     - value: github.com/jackc/pgx/v5
       reason: every call is a network round trip
+comments:
+  allow:
+    - value: internal/legacy
+      reason: imported from v1; reasons move into tests under PLAT-212
 ```
+
+The `comments.allow` entries are directories rather than package scopes: TS-L14 blocks prose
+comments in production code, and an entry exempts a directory's whole subtree (`.` is the
+whole module). It is the one entry that names a place to exempt, a brownfield adoption path
+that review of `tiger.yaml` guards (ADR-0031).
 
 `tiger.budget.yaml` holds what the repository admits it owes: one number per
 package per counted rule. `tiger check` compares counts to numbers;
