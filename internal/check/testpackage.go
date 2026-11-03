@@ -13,13 +13,6 @@ import (
 	"github.com/kapetan-io/tiger/internal/module"
 )
 
-// testPackageCoverage returns the TS-T12 findings for test files the run did
-// not load or report: a file a build constraint leaves out on this platform,
-// and a generated file, whose findings the driver drops. It reads only the
-// package clause of each Go file in the directories of the packages this run
-// analyzed, ignoring build constraints, so the answer is the same on every
-// platform. It is not a finish step, because a finish step sees only the
-// files that were loaded.
 func testPackageCoverage(
 	root string, setup setup, analyzed []string, blocking []driver.Finding,
 ) ([]driver.Finding, error) {
@@ -33,9 +26,6 @@ func testPackageCoverage(
 			reported[filepath.ToSlash(finding.Position.Filename)] = true
 		}
 	}
-	// A package's external test package adds its own _test path but no new
-	// directory, and a directory can end in _test itself, so the paths are
-	// taken as they are.
 	selected := map[string]bool{}
 	for _, pkgPath := range analyzed {
 		if rel, inModule := setup.module.Relative(pkgPath); inModule {
@@ -51,8 +41,6 @@ func testPackageCoverage(
 	return findings, nil
 }
 
-// internalTestFiles returns a finding for each _test.go file in one
-// directory that declares the package under test and is not reported yet.
 func internalTestFiles(root string, names []string, reported map[string]bool) []driver.Finding {
 	type clause struct {
 		name     string
@@ -65,8 +53,6 @@ func internalTestFiles(root string, names []string, reported map[string]bool) []
 		file, err := parser.ParseFile(fset, filepath.Join(root, filepath.FromSlash(name)), nil,
 			parser.PackageClauseOnly)
 		if err != nil {
-			// The loader fails the run on a file it loads; one a build
-			// constraint excludes fails only when built under its tag.
 			continue
 		}
 		position := fset.Position(file.Name.Pos())

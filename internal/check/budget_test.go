@@ -178,6 +178,8 @@ func TestBudgetWriteLowersSlack(t *testing.T) {
 func TestBudgetWriteKeepsOverrunRows(t *testing.T) {
 	dir := budgetTree(t, "internal/cli:\n  TS-D07: 2\ninternal/driver:\n  TS-D07: 1\n"+
 		"internal/store:\n  TS-L09: 3\n")
+	// Overruns are judged against the file as written: a row created or lowered by this run is
+	// not an overrun, an existing row that stays below its count still is, at its original line.
 	got := run(t, "budget", "-C", dir, "--write")
 	assert.Equal(t, command.ExitFindings, got.code)
 	assert.Empty(t, got.stderr)

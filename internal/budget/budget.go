@@ -29,47 +29,33 @@ import (
 	"github.com/kapetan-io/tiger/assert"
 )
 
-// FileName is the budget file's fixed name in the run directory.
 const FileName = "tiger.budget.yaml"
 
-// Key identifies one row: a module-relative package path and the
-// user-facing code of an advisory rule.
 type Key struct {
 	Package string
 	Code    string
 }
 
-// compare orders keys by package then code.
 func (k Key) compare(other Key) int {
 	return cmp.Or(cmp.Compare(k.Package, other.Package), cmp.Compare(k.Code, other.Code))
 }
 
-// row is one budget number with the line it was read from, for positions.
 type row struct {
 	budget int
 	line   int
 }
 
-// File is a loaded, validated budget file.
 type File struct {
 	rows map[Key]row
 }
 
-// Counts is the current count of counted findings per row key, over the
-// analyzed packages only.
 type Counts map[Key]int
 
-// Run names what one analysis covered: the package keys analyzed and the
-// rule codes counted, so Lower can tell a row at 0 from a row outside the
-// run.
 type Run struct {
 	Packages []string
 	Codes    []string
 }
 
-// Overrun is one row whose count exceeds its budget. Line is the row's
-// line in the file, or 0 when the file has no row, in which case NoRow is
-// set.
 type Overrun struct {
 	Key    Key
 	Count  int
@@ -78,13 +64,11 @@ type Overrun struct {
 	NoRow  bool
 }
 
-// nodePair is one key/value pair of a YAML mapping node.
 type nodePair struct {
 	key   *yaml.Node
 	value *yaml.Node
 }
 
-// pairs splits a mapping node's content into key/value pairs.
 func pairs(mapping *yaml.Node) []nodePair {
 	listed := []nodePair{}
 	for i := 0; i < len(mapping.Content)-1; i += 2 {
@@ -93,11 +77,6 @@ func pairs(mapping *yaml.Node) []nodePair {
 	return listed
 }
 
-// Load reads dir's budget file, validating every row against allowed —
-// the set of rule codes registered at advisory severity. An absent file
-// is an empty budget. A row with a package key that is not a
-// module-relative path, a code outside allowed, or a value that is not a
-// non-negative integer is an error naming the row.
 func Load(dir string, allowed map[string]bool) (*File, error) {
 	loaded := &File{rows: map[Key]row{}}
 	raw, err := os.ReadFile(filepath.Join(dir, FileName))
@@ -127,7 +106,6 @@ func Load(dir string, allowed map[string]bool) (*File, error) {
 	return loaded, nil
 }
 
-// addPackage validates and records one package block.
 func (f *File) addPackage(block nodePair, allowed map[string]bool) error {
 	pkg := block.key.Value
 	if !wellFormedPackage(pkg) {
@@ -154,8 +132,6 @@ func (f *File) addPackage(block nodePair, allowed map[string]bool) error {
 	return nil
 }
 
-// wellFormedPackage reports whether key is "." or a relative path with no
-// empty, current, parent, or wildcard segments.
 func wellFormedPackage(key string) bool {
 	if key == "." {
 		return true
@@ -171,8 +147,6 @@ func wellFormedPackage(key string) bool {
 	return true
 }
 
-// Compare returns every key in counts whose count exceeds its budget, a
-// missing row counting as 0, sorted by package then code.
 func (f *File) Compare(counts Counts) []Overrun {
 	overruns := []Overrun{}
 	for _, key := range slices.SortedFunc(maps.Keys(counts), Key.compare) {
@@ -191,11 +165,6 @@ func (f *File) Compare(counts Counts) []Overrun {
 	return overruns
 }
 
-// Lower returns the file Write would store: for every analyzed package and
-// every counted code, min(existing, count) for an existing row and count
-// for a new one, dropping rows at 0 and packages left empty. Packages
-// outside the run keep their rows untouched. Rows that existed keep their
-// line numbers; new rows have none.
 func (f *File) Lower(counts Counts, run Run) *File {
 	lowered := &File{rows: map[Key]row{}}
 	for _, key := range slices.SortedFunc(maps.Keys(f.rows), Key.compare) {
@@ -205,8 +174,6 @@ func (f *File) Lower(counts Counts, run Run) *File {
 		for _, code := range run.Codes {
 			key := Key{Package: pkg, Code: code}
 			next := row{budget: counts[key]}
-			// A row that existed keeps its line, so an overrun that survives
-			// the write is still positioned at the row.
 			if existing, found := f.rows[key]; found {
 				next = row{budget: min(existing.budget, next.budget), line: existing.line}
 			}
@@ -216,7 +183,6 @@ func (f *File) Lower(counts Counts, run Run) *File {
 	return lowered
 }
 
-// put sets one row, deleting it at 0.
 func (f *File) put(key Key, next row) {
 	if next.budget == 0 {
 		delete(f.rows, key)
@@ -225,7 +191,6 @@ func (f *File) put(key Key, next row) {
 	f.rows[key] = next
 }
 
-// Rows returns every row's number by key.
 func (f *File) Rows() map[Key]int {
 	rows := map[Key]int{}
 	for _, key := range slices.SortedFunc(maps.Keys(f.rows), Key.compare) {
@@ -234,9 +199,6 @@ func (f *File) Rows() map[Key]int {
 	return rows
 }
 
-// Encode renders the file's rows as bytes: keys sorted, two-space indent,
-// no comments, trailing newline — byte-deterministic for a given set of
-// rows. No rows encode to an empty file.
 func (f *File) Encode() []byte {
 	if len(f.rows) == 0 {
 		return []byte{}
@@ -265,8 +227,6 @@ func (f *File) Encode() []byte {
 	return out.Bytes()
 }
 
-// Write stores the file in dir atomically: a temp file in the same
-// directory, then a rename, so a crash never leaves a half-written file.
 func (f *File) Write(dir string) error {
 	temp, err := os.CreateTemp(dir, FileName+".*.tmp")
 	if err != nil {
@@ -281,8 +241,6 @@ func (f *File) Write(dir string) error {
 	return nil
 }
 
-// fill writes content to temp with the mode a hand-edited file has, and
-// closes it.
 func fill(temp *os.File, content []byte) error {
 	if _, err := temp.Write(content); err != nil {
 		return errors.Join(err, temp.Close())

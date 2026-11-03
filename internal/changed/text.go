@@ -26,15 +26,10 @@ const (
 		"plus added."
 )
 
-// maxNamed is how many names a footer lists before it counts the rest.
 const maxNamed = 5
 
-// minPrefix is the shortest ref taken for an abbreviated commit hash, git's
-// own minimum abbreviation.
 const minPrefix = 4
 
-// Text renders the report for a terminal. The bytes depend only on the report
-// and the revisions, never on the terminal, the clock or the map order.
 func (r Report) Text(rev revision.Comparison) string {
 	var out strings.Builder
 	fmt.Fprintf(&out, "tiger changed: %s -> %s\n", baseLabel(rev), headLabel(rev))
@@ -73,7 +68,6 @@ func (r Report) countsLine() string {
 	return strings.Join(labels, " · ")
 }
 
-// countPart is one "Label: N" of the counts line.
 type countPart struct {
 	name  string
 	count int
@@ -81,8 +75,6 @@ type countPart struct {
 
 func (c countPart) label() string { return fmt.Sprintf("%s: %d", c.name, c.count) }
 
-// countParts lists the counts line in order: the two call counts always, then
-// each of the other categories only when it is not zero.
 func (r Report) countParts() []countPart {
 	parts := []countPart{{"Calls added", r.added()}, {"Calls removed", r.removed()}}
 	for _, extra := range []countPart{
@@ -135,8 +127,6 @@ func usesText(uses []Use, quote string) string {
 	return strings.Join(parts, "; ")
 }
 
-// footer is the first of the two lines every report ends with: what was
-// compared and what was left out.
 func (s Scope) footer() string {
 	line := fmt.Sprintf("Compared %d types and functions in %d packages; ", s.Owners, s.Packages)
 	if len(s.Generated) == 0 {
@@ -152,7 +142,6 @@ func (s Scope) footer() string {
 	return line + "."
 }
 
-// named joins up to maxNamed names and counts the rest.
 func named(names []string) string {
 	if len(names) <= maxNamed {
 		return strings.Join(names, ", ")
@@ -168,16 +157,11 @@ func baseLabel(rev revision.Comparison) string {
 	return fmt.Sprintf("%s (%s)", base.name, base.note)
 }
 
-// baseName is the base label split into the name a reader recognises and the
-// parenthesised note after it, empty when the name says everything.
 type baseName struct {
 	name string
 	note string
 }
 
-// splitBase names the base by its ref with the tip hash, or by the tip hash
-// alone when the ref is a hash prefix, and notes the merge base's hash when the
-// merge base is not the tip.
 func splitBase(rev revision.Comparison) baseName {
 	tip := revision.Short(rev.BaseTip)
 	prefix := strings.HasPrefix(rev.BaseTip, strings.ToLower(rev.BaseRef))
@@ -193,8 +177,6 @@ func splitBase(rev revision.Comparison) baseName {
 	return baseName{name: tip}
 }
 
-// headLabel names the head side by commit, never by branch, because CI checks
-// out a detached merge commit that has no branch.
 func headLabel(rev revision.Comparison) string {
 	label := revision.Short(rev.Head)
 	if rev.Dirty {

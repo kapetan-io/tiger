@@ -22,18 +22,11 @@ import (
 	"github.com/kapetan-io/tiger/internal/rules"
 )
 
-// Usage is tiger check's entry in the command listing.
 const Usage = `  tiger check [-C dir] [--show-facts] [analyzer flags] [packages]
       run the registered analyzers and compare counted findings to
       tiger.budget.yaml; exit 0 clean, 1 findings, 2 operational failure
 `
 
-// Run is tiger check: install the directory's config, load the named
-// packages, run every registered analyzer and finish step, add TS-X03's
-// whole-module findings (stale entries and unlisted packages the run did not
-// load), print blocking findings ordered by position, compare counted
-// findings to tiger.budget.yaml, and apply the registry's severity to the
-// exit code.
 func Run(args []string, streams command.Streams) int {
 	flags := flag.NewFlagSet("tiger check", flag.ContinueOnError)
 	flags.SetOutput(streams.Stderr)
@@ -109,8 +102,6 @@ func Run(args []string, streams command.Streams) int {
 	return command.ExitClean
 }
 
-// explicitAnalyzerFlag returns the name of the first analyzer flag
-// (<analyzer>.<flag>) the command line set explicitly, or "".
 func explicitAnalyzerFlag(flags *flag.FlagSet) string {
 	set := ""
 	flags.Visit(func(each *flag.Flag) {
@@ -121,19 +112,12 @@ func explicitAnalyzerFlag(flags *flag.FlagSet) string {
 	return set
 }
 
-// partitioned is one run's findings split by kind: blocking findings,
-// computed facts (printed only under --show-facts, never counted), and the
-// advisory ones tallied per package and rule code for the ratchet.
 type partitioned struct {
 	blocking []driver.Finding
 	facts    []driver.Finding
 	counts   budgetCounts
 }
 
-// partition resolves every finding's category through the registry — the
-// facts table first, then the rules table — and splits the findings by
-// kind, ending each rule finding with its pattern pointer. An unregistered
-// category is an error: the run cannot apply a severity it does not know.
 func partition(modulePath module.Path, findings []driver.Finding) (partitioned, error) {
 	sorted := partitioned{counts: newBudgetCounts()}
 	for _, finding := range findings {

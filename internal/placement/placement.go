@@ -16,31 +16,21 @@ import (
 	"github.com/kapetan-io/tiger/internal/directive"
 )
 
-// Pin is one well-formed pin directive bound to a node.
 type Pin struct {
-	// Directive is the parsed pin; its Args parse cleanly under the verb's
-	// grammar, so consumers can re-parse without error handling.
 	Directive directive.Directive
-	// Pos locates the directive comment, for findings that point at the pin.
-	Pos token.Pos
+	Pos       token.Pos
 }
 
-// lineKey addresses the source line a comment group attaches to.
 type lineKey struct {
 	file string
 	line int
 }
 
-// Set holds every collected pin, addressable by the node it binds to.
 type Set struct {
 	fset     *token.FileSet
 	attached map[lineKey][]Pin
 }
 
-// Collect gathers the well-formed pin directives in files. Every directive
-// in a comment group attaches to the line after the group's end — the rule
-// that makes doc-comment pins and free-standing pins above a loop behave
-// identically.
 func Collect(fset *token.FileSet, files []*ast.File) Set {
 	collected := Set{fset: fset, attached: map[lineKey][]Pin{}}
 	for _, file := range files {
@@ -55,7 +45,6 @@ func Collect(fset *token.FileSet, files []*ast.File) Set {
 	return collected
 }
 
-// add appends one comment's pin to key, if it is a well-formed pin.
 func (s Set) add(key lineKey, file *ast.File, comment *ast.Comment) {
 	if directive.Classify(file, comment) != directive.Tiger {
 		return
@@ -74,7 +63,6 @@ func (s Set) add(key lineKey, file *ast.File, comment *ast.Comment) {
 	s.attached[key] = append(s.attached[key], Pin{Directive: parsed, Pos: comment.Pos()})
 }
 
-// At returns the pins with the given verb bound to node, in source order.
 func (s Set) At(node ast.Node, verb string) []Pin {
 	start := s.fset.Position(node.Pos())
 	matched := []Pin{}
