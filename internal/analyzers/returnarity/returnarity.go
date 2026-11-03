@@ -14,7 +14,6 @@ import (
 	"golang.org/x/tools/go/analysis"
 )
 
-// Analyzer enforces TS-E06: at most two results, and the second is an error or a bool.
 var Analyzer = &analysis.Analyzer{
 	Name: "returnarity",
 	Doc:  "TS-E06: at most two results, and the second is an error or a bool.",
@@ -42,8 +41,6 @@ func run(pass *analysis.Pass) (any, error) {
 	return nil, nil
 }
 
-// checkResults reports a TS-E06 finding for a signature with more than two
-// results, or with exactly two whose last is neither error nor bool.
 func checkResults(pass *analysis.Pass, funcType *ast.FuncType) {
 	count := resultCount(funcType.Results)
 	if count > 2 {
@@ -71,8 +68,6 @@ func checkResults(pass *analysis.Pass, funcType *ast.FuncType) {
 	})
 }
 
-// allowedSecond reports whether typ is exactly the predeclared bool or
-// error type.
 func allowedSecond(typ types.Type) bool {
 	if basic, ok := typ.(*types.Basic); ok && basic.Kind() == types.Bool {
 		return true
@@ -80,8 +75,6 @@ func allowedSecond(typ types.Type) bool {
 	return types.Identical(typ, types.Universe.Lookup("error").Type())
 }
 
-// resultCount counts a signature's result values, treating a field with N
-// names as N results and an unnamed field as one.
 func resultCount(list *ast.FieldList) int {
 	if list == nil {
 		return 0

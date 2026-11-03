@@ -13,7 +13,6 @@ import (
 	"github.com/kapetan-io/tiger/internal/config"
 )
 
-// Analyzer enforces TS-N14: exported identifiers do not end in a present participle.
 var Analyzer = newAnalyzer()
 
 var allowFlag string
@@ -30,15 +29,8 @@ func newAnalyzer() *analysis.Analyzer {
 	return built
 }
 
-// minParticiple is the shortest last-token length TS-N14 considers: below
-// this, the built-in noun allowlist (ring, king, wing) would apply anyway.
 const minParticiple = 4
 
-// nounAllowlist is the default set of genuine nouns that happen to end in
-// "-ing". Each entry is a false positive on a blocking rule, fixed in the
-// analyzer per correctness constraint 7. The allowlist matches exact
-// tokens, so compounds like "nothing" must be listed separately from
-// "thing".
 var nounAllowlist = map[string]bool{
 	"string": true, "encoding": true, "logging": true, "padding": true,
 	"warning": true, "ring": true, "thing": true, "spring": true,
@@ -58,9 +50,6 @@ func run(pass *analysis.Pass) (any, error) {
 	return nil, nil
 }
 
-// allowlist unions the -allow flag with the tiger.yaml participle.allow
-// entries that apply to the analyzed package, as a set of lowercase tokens
-// that extend nounAllowlist.
 func allowlist(pass *analysis.Pass) map[string]bool {
 	extra := map[string]bool{}
 	tokens := strings.Split(allowFlag, ",")
@@ -76,9 +65,6 @@ func allowlist(pass *analysis.Pass) map[string]bool {
 	return extra
 }
 
-// checkDecl walks one top-level declaration for the identifiers TS-N14
-// covers: func/method names, type names, const/var names, and struct
-// fields (at any depth inside the declared type).
 func checkDecl(pass *analysis.Pass, decl ast.Decl, allowed map[string]bool) {
 	switch d := decl.(type) {
 	case *ast.FuncDecl:
@@ -90,9 +76,6 @@ func checkDecl(pass *analysis.Pass, decl ast.Decl, allowed map[string]bool) {
 	}
 }
 
-// checkSpec walks one GenDecl spec: a type name plus any struct fields its
-// type declares, or a const/var name plus any struct fields an anonymous
-// struct type declares.
 func checkSpec(pass *analysis.Pass, spec ast.Spec, allowed map[string]bool) {
 	switch s := spec.(type) {
 	case *ast.TypeSpec:
@@ -108,9 +91,6 @@ func checkSpec(pass *analysis.Pass, spec ast.Spec, allowed map[string]bool) {
 	}
 }
 
-// checkFields walks expr for struct field names at any depth, covering
-// both a named struct type and an anonymous struct type embedded in a
-// var or const declaration.
 func checkFields(pass *analysis.Pass, expr ast.Expr, allowed map[string]bool) {
 	ast.Inspect(expr, func(node ast.Node) bool {
 		structType, ok := node.(*ast.StructType)
@@ -126,8 +106,6 @@ func checkFields(pass *analysis.Pass, expr ast.Expr, allowed map[string]bool) {
 	})
 }
 
-// check reports TS-N14 when ident is exported and its last words.Split
-// token is a non-noun participle.
 func check(pass *analysis.Pass, ident *ast.Ident, allowed map[string]bool) {
 	if !ident.IsExported() {
 		return

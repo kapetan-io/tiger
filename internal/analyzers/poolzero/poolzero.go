@@ -60,8 +60,6 @@ const (
 		"would leak to the next user"
 )
 
-// Analyzer enforces TS-M05: every Put is preceded by *b = T{} on the same
-// value on every path.
 var Analyzer = &analysis.Analyzer{
 	Name:     "poolzero",
 	Doc:      "TS-M05: every sync.Pool Put is preceded by *b = T{} on every path.",
@@ -69,25 +67,18 @@ var Analyzer = &analysis.Analyzer{
 	Requires: []*analysis.Analyzer{buildssa.Analyzer},
 }
 
-// putSite is one static call to (*sync.Pool).Put, located within its block
-// so the reset-dominance check can order it against same-block resets.
 type putSite struct {
 	Instr ssa.CallInstruction
-	// At is where the Put takes effect: the call itself, or for a deferred Put
-	// each point where the function runs its defers.
 	At    ssa.Instruction
 	Block *ssa.BasicBlock
 	Arg   ssa.Value
 }
 
-// boxed is the concrete operand and type a *ssa.MakeInterface carries.
 type boxed struct {
 	X    ssa.Value
 	Type types.Type
 }
 
-// reachState carries the must-reach fixpoint's per-block facts for one
-// (value, Put) pair.
 type reachState struct {
 	entry  *ssa.BasicBlock
 	x      ssa.Value
@@ -105,10 +96,6 @@ func run(pass *analysis.Pass) (any, error) {
 	return nil, nil
 }
 
-// checkFunc runs both TS-M05 checks over every sync.Pool Put call site in
-// fn. The buildssa.SrcFuncs list already includes every function literal
-// nested inside fn, at every depth, so no separate AnonFuncs walk is
-// needed.
 func checkFunc(pass *analysis.Pass, fn *ssa.Function) {
 	reported := map[token.Pos]bool{}
 	for _, put := range putSites(fn) {
@@ -128,8 +115,6 @@ func checkFunc(pass *analysis.Pass, fn *ssa.Function) {
 			continue
 		}
 		if !handlesValue(fn, box.X) {
-			// A value taken straight from the pool is never known-clean, so
-			// the interprocedural silence below does not shelter it.
 			if !fromPoolGet(box.X) {
 				continue
 			}
@@ -146,10 +131,6 @@ func checkFunc(pass *analysis.Pass, fn *ssa.Function) {
 	}
 }
 
-// putSites enumerates fn's static (*sync.Pool).Put call sites in block and
-// instruction order. This walks fn.Blocks directly, rather than through the
-// shared ssalib.StaticCalls summary, because the dominance check below
-// needs the instruction and block identity a summary type does not retain.
 func putSites(fn *ssa.Function) []putSite {
 	sites := []putSite{}
 	for _, block := range fn.Blocks {
@@ -179,9 +160,6 @@ func putSites(fn *ssa.Function) []putSite {
 	return sites
 }
 
-// deferredSites returns one site for each point where fn runs its defers. A
-// deferred Put happens there, so a zeroing written after the defer statement
-// still comes first, and a return between them reaches the Put without one.
 func deferredSites(fn *ssa.Function, deferred ssa.CallInstruction, arg ssa.Value) []putSite {
 	after := reachableAfter(deferred)
 	sites := []putSite{}
@@ -206,8 +184,6 @@ func deferredSites(fn *ssa.Function, deferred ssa.CallInstruction, arg ssa.Value
 	return sites
 }
 
-// reachableAfter returns the blocks control can reach after the defer
-// statement runs. A return before the statement runs no defers it registered.
 func reachableAfter(deferred ssa.CallInstruction) map[*ssa.BasicBlock]bool {
 	seen := map[*ssa.BasicBlock]bool{}
 	work := slices.Clone(deferred.Block().Succs)
@@ -222,10 +198,6 @@ func reachableAfter(deferred ssa.CallInstruction) map[*ssa.BasicBlock]bool {
 	return seen
 }
 
-// chaseBox unwraps the *ssa.MakeInterface that boxes a value for an any
-// parameter, returning the concrete operand and its type. A put argument
-// that is not directly a MakeInterface — a value the chase cannot follow —
-// reports false, the known-miss path.
 func chaseBox(v ssa.Value) (boxed, bool) {
 	box, ok := v.(*ssa.MakeInterface)
 	if !ok {
@@ -234,14 +206,6 @@ func chaseBox(v ssa.Value) (boxed, bool) {
 	return boxed{X: box.X, Type: box.X.Type()}, true
 }
 
-// handlesValue reports whether fn zeroes x, or calls a Reset method on it, in
-// any block. A Reset call does not count as a zeroing, but it shows the
-// function means to clean x itself, so the dominance check below judges it.
-// A function that does neither is the interprocedural known-miss: the
-// zeroing may already have happened in the caller, or through an alias this
-// analyzer's identity-exact check cannot follow — either way, firing would
-// risk a false positive on a blocking rule, so this stays silent rather
-// than run the dominance check below.
 func handlesValue(fn *ssa.Function, x ssa.Value) bool {
 	for _, block := range fn.Blocks {
 		for _, instr := range block.Instrs {
@@ -253,12 +217,6 @@ func handlesValue(fn *ssa.Function, x ssa.Value) bool {
 	return false
 }
 
-// mustReach reports whether a reset of x reaches put on every control-flow
-// path from fn's entry block, via a forward dataflow to a bounded fixpoint:
-// IN[entry] is false, IN[b] is the AND of every predecessor's OUT, and
-// OUT[b] is IN[b] OR whether b resets x. Each block's IN/OUT can only flip
-// false to true, never back, so len(fn.Blocks)+2 rounds always reaches a
-// stable point.
 func mustReach(fn *ssa.Function, x ssa.Value, put putSite) bool {
 	state := &reachState{
 		entry:  fn.Blocks[0],
@@ -278,8 +236,6 @@ func mustReach(fn *ssa.Function, x ssa.Value, put putSite) bool {
 	return state.input[put.Block] || state.gen(put.Block)
 }
 
-// step runs one fixpoint round over blocks, reporting whether any input or
-// output value changed.
 func (r *reachState) step(blocks []*ssa.BasicBlock) bool {
 	changed := false
 	for _, block := range blocks {
@@ -297,8 +253,6 @@ func (r *reachState) step(blocks []*ssa.BasicBlock) bool {
 	return changed
 }
 
-// computeInput is false for the entry block and for a block with no
-// predecessors, otherwise the AND of every predecessor's current output.
 func (r *reachState) computeInput(block *ssa.BasicBlock) bool {
 	if block == r.entry {
 		return false
@@ -314,9 +268,6 @@ func (r *reachState) computeInput(block *ssa.BasicBlock) bool {
 	return true
 }
 
-// gen reports whether block resets x, stopping the scan at the Put
-// instruction when block is the Put's own block — a reset placed after the
-// Put in program order does not count.
 func (r *reachState) gen(block *ssa.BasicBlock) bool {
 	var stop ssa.Instruction
 	if block == r.put.Block {
@@ -325,8 +276,6 @@ func (r *reachState) gen(block *ssa.BasicBlock) bool {
 	return blockGen(block, r.x, stop)
 }
 
-// blockGen scans block's instructions in order for a reset of x, stopping
-// before stop when stop is non-nil and present in this block.
 func blockGen(block *ssa.BasicBlock, x ssa.Value, stop ssa.Instruction) bool {
 	for _, instr := range block.Instrs {
 		if instr == stop {
@@ -339,8 +288,6 @@ func blockGen(block *ssa.BasicBlock, x ssa.Value, stop ssa.Instruction) bool {
 	return false
 }
 
-// isZeroing reports whether instr is a store through x of a zero value, the
-// SSA form of *b = T{}.
 func isZeroing(instr ssa.Instruction, x ssa.Value) bool {
 	store, ok := instr.(*ssa.Store)
 	if !ok {
@@ -352,8 +299,6 @@ func isZeroing(instr ssa.Instruction, x ssa.Value) bool {
 	return isZeroed(store.Val)
 }
 
-// isResetCall reports whether instr is a static method call named Reset
-// whose receiver is x.
 func isResetCall(instr ssa.Instruction, x ssa.Value) bool {
 	site, ok := instr.(ssa.CallInstruction)
 	if !ok {
@@ -376,12 +321,6 @@ func isResetCall(instr ssa.Instruction, x ssa.Value) bool {
 	return call.Args[0] == x
 }
 
-// isZeroed recognizes the two canonical zeroing-store forms: the zero
-// constant of any type (the SSA shape of an empty `T{}` assigned through a
-// pointer, a Const with no value), or a load of a freshly zero-Alloc'd local
-// composite. Anything cleverer is not counted as a zeroing — a deliberate
-// strictness this package's corpus documents, since the compliant form
-// (`*b = T{}` before Put) is always available.
 func isZeroed(v ssa.Value) bool {
 	switch operand := v.(type) {
 	case *ssa.Const:
@@ -397,9 +336,6 @@ func isZeroed(v ssa.Value) bool {
 	}
 }
 
-// untouched reports whether the composite literal alloc backs is read only by
-// load and written nowhere, so it still holds the zero value. A literal with a
-// field set, or a local filled in before `*b = t`, is not a zeroing.
 func untouched(alloc *ssa.Alloc, load *ssa.UnOp) bool {
 	if alloc.Comment != "complit" {
 		return false
@@ -415,8 +351,6 @@ func untouched(alloc *ssa.Alloc, load *ssa.UnOp) bool {
 	return true
 }
 
-// zeroFieldAddr reports whether ref addresses a field of the literal that is
-// only ever set to its zero value, as in T{N: 0}.
 func zeroFieldAddr(ref ssa.Instruction) bool {
 	addr, ok := ref.(*ssa.FieldAddr)
 	if !ok {
@@ -434,11 +368,6 @@ func zeroFieldAddr(ref ssa.Instruction) bool {
 	return true
 }
 
-// fromPoolGet reports whether x originates from a (*sync.Pool).Get call,
-// chased through the type assertion and tuple extraction Get's any result
-// forces. A Get-obtained value carries a previous user's contents, so a
-// Put of one with no reset anywhere is the rule's primary failure mode —
-// unlike a parameter, no caller could have cleaned it first.
 func fromPoolGet(x ssa.Value) bool {
 	for range 64 {
 		switch at := x.(type) {

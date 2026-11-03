@@ -13,33 +13,23 @@ import (
 	"github.com/kapetan-io/tiger/internal/worklist"
 )
 
-// orderedSorts sort a slice by the values themselves, so the result is
-// fixed by the multiset of values when equal values can't be told apart.
 var orderedSorts = map[string]bool{
 	"sort.Strings":  true,
 	"sort.Ints":     true,
-	"sort.Float64s": true, // judged, never accepted: floats are not orderedLeaf
+	"sort.Float64s": true,
 	"slices.Sort":   true,
 }
 
-// indexSorts order a slice by a less function over indexes.
 var indexSorts = map[string]bool{
 	"sort.Slice":       true,
 	"sort.SliceStable": true,
 }
 
-// comparatorSorts are accepted only with a full-coverage comparator.
 var comparatorSorts = map[string]bool{
 	"slices.SortFunc":       true,
 	"slices.SortStableFunc": true,
 }
 
-// collectSite judges a map loop that appends into slices declared outside
-// it. It returns nil when no append target's first use after the loop is a
-// sort. Otherwise the site is accepted only when the body is a pure
-// collection (collectShape) and every target's first use is a sort that
-// fixes its order. A target that something else can read under another name
-// (sharedVars) before the sort makes the sort no proof, so such a loop is no collect site.
 func collectSite(
 	pass *analysis.Pass, loop *ast.RangeStmt, carried *carry, facts fileFacts,
 ) *sortSite {
@@ -71,8 +61,6 @@ func collectSite(
 	return site
 }
 
-// appendTargets returns, in source order, every x the body updates by
-// appending to x itself, where x is declared outside loop.
 func appendTargets(pass *analysis.Pass, loop *ast.RangeStmt) []types.Object {
 	var targets []types.Object
 	seen := map[types.Object]bool{}
@@ -105,20 +93,12 @@ func appendTargets(pass *analysis.Pass, loop *ast.RangeStmt) []types.Object {
 	return targets
 }
 
-// indexedPair is the pair of statements `s[i] = e` and `i++` that fill the
-// slice s by position.
 type indexedPair struct {
 	slice, counter types.Object
 	store          *ast.AssignStmt
 	step           *ast.IncDecStmt
 }
 
-// indexedPairs finds the adjacent top-level statement pairs `s[i] = e; i++` in loop's
-// body where s is a slice and i an integer, both declared outside loop, i
-// appears nowhere else in the body, s appears only as the store's target,
-// and e reads neither. Each visit then writes its own slot, so the slice
-// holds the same values whatever the visit order, and only their position
-// varies, exactly as with append.
 func indexedPairs(pass *analysis.Pass, loop *ast.RangeStmt) []indexedPair {
 	var pairs []indexedPair
 	for at, stmt := range loop.Body.List {
@@ -151,9 +131,6 @@ func indexedPairs(pass *analysis.Pass, loop *ast.RangeStmt) []indexedPair {
 	return pairs
 }
 
-// stepAfter returns the `counter++` statement directly after list[at]. Any
-// statement between them could skip the step, and the next visit would then
-// overwrite the slot, so which key survives would depend on visit order.
 func stepAfter(pass *analysis.Pass, list []ast.Stmt, at int, counter types.Object) *ast.IncDecStmt {
 	if at+1 >= len(list) {
 		return nil
@@ -174,7 +151,6 @@ func declaredWithinObj(loop *ast.RangeStmt, obj types.Object) bool {
 	return obj.Pos() >= loop.Body.Pos() && obj.Pos() < loop.Body.End()
 }
 
-// countMentions counts the identifiers in node that refer to obj.
 func countMentions(pass *analysis.Pass, node ast.Node, obj types.Object) int {
 	count := 0
 	ast.Inspect(node, func(n ast.Node) bool {
@@ -186,10 +162,6 @@ func countMentions(pass *analysis.Pass, node ast.Node, obj types.Object) int {
 	return count
 }
 
-// collectShape reports the append targets when loop's body is allowlisted
-// statements plus x = append(x, e) with e pure, and nothing reads state an
-// earlier visit wrote. It returns nil otherwise. A break or return is out,
-// because it makes which entries are collected depend on visit order.
 func collectShape(pass *analysis.Pass, loop *ast.RangeStmt, carried *carry) map[types.Object]bool {
 	if carried != nil && carried.reshapes {
 		return nil
@@ -234,7 +206,6 @@ func collectShape(pass *analysis.Pass, loop *ast.RangeStmt, carried *carry) map[
 	return targets
 }
 
-// pairOf returns the pair that stmt is the store or the step of.
 func pairOf(pairs []indexedPair, stmt ast.Stmt) (indexedPair, bool) {
 	for _, pair := range pairs {
 		if stmt == ast.Stmt(pair.store) || stmt == ast.Stmt(pair.step) {
@@ -244,8 +215,6 @@ func pairOf(pairs []indexedPair, stmt ast.Stmt) (indexedPair, bool) {
 	return indexedPair{}, false
 }
 
-// appendTarget returns x when stmt is `x = append(x, e)` with x declared
-// outside loop and e pure, free of x, and free of carried state.
 func appendTarget(
 	pass *analysis.Pass, loop *ast.RangeStmt, stmt *ast.AssignStmt, carried *carry,
 ) types.Object {
@@ -277,14 +246,11 @@ func appendTarget(
 	return target
 }
 
-// sortCall is a call to a sort function and the qualified name it resolved to.
 type sortCall struct {
 	call *ast.CallExpr
 	name string
 }
 
-// resultMode says whether the slice a sort fixes is one of its function's
-// named results.
 type resultMode bool
 
 const (
@@ -292,10 +258,6 @@ const (
 	namedResult resultMode = true
 )
 
-// firstUseSort finds the first statement after the loop that mentions
-// target. It returns the call when the statement is a call to a function of
-// package sort, or a sort function of package slices, whose first argument
-// mentions target; otherwise nil.
 func firstUseSort(
 	pass *analysis.Pass, after []ast.Stmt, target types.Object, results resultMode,
 ) *sortCall {
@@ -323,10 +285,6 @@ func firstUseSort(
 	return nil
 }
 
-// leavesList reports whether stmt holds a break, continue or goto outside a
-// function literal. Such a jump can skip the sort for the rest of an
-// enclosing loop, which then sees the slice in map order. A bare return
-// counts when the target is a named result, because it hands back the named result unsorted.
 func leavesList(stmt ast.Stmt, results resultMode) bool {
 	found := false
 	ast.Inspect(stmt, func(node ast.Node) bool {
@@ -345,8 +303,6 @@ func leavesList(stmt ast.Stmt, results resultMode) bool {
 	return found
 }
 
-// isSortFunc reports whether fn is in package sort, or is a Sort* function
-// of package slices.
 func isSortFunc(fn *types.Func) bool {
 	switch fn.Pkg().Path() {
 	case "sort":
@@ -357,9 +313,6 @@ func isSortFunc(fn *types.Func) bool {
 	return false
 }
 
-// sortFixesOrder reports whether the sort call leaves target in an order
-// that does not depend on the map's: a plain sort of strings or integers, or
-// a comparator that covers every field of the element.
 func sortFixesOrder(pass *analysis.Pass, sorted *sortCall, target types.Object) bool {
 	if sorted == nil {
 		return false
@@ -380,7 +333,6 @@ func sortFixesOrder(pass *analysis.Pass, sorted *sortCall, target types.Object) 
 	return false
 }
 
-// mentions reports whether node refers to obj anywhere.
 func mentions(pass *analysis.Pass, node ast.Node, obj types.Object) bool {
 	found := false
 	ast.Inspect(node, func(n ast.Node) bool {
@@ -392,7 +344,6 @@ func mentions(pass *analysis.Pass, node ast.Node, obj types.Object) bool {
 	return found
 }
 
-// sliceElem returns the element type of a slice-typed object.
 func sliceElem(obj types.Object) types.Type {
 	s, ok := obj.Type().Underlying().(*types.Slice)
 	if !ok {
@@ -401,15 +352,6 @@ func sliceElem(obj types.Object) types.Type {
 	return s.Elem()
 }
 
-// sharedVars returns, for each variable in file that code other than a plain
-// mention of the name can read, the first position where that becomes
-// possible. A slice variable is aliased once its header is copied (assigned,
-// passed, returned, stored), its address is taken, a function literal
-// captures it, it is sliced, or it starts out as something other than a
-// fresh slice. All of these share the backing array, so a read through the
-// other name before the sort sees the map's order, and the first-use check
-// looks only at mentions of the name. Using the slice as `s = append(s, e)`,
-// `len(s)`, `cap(s)`, `s[i]` or a range operand leaves it unaliased.
 func sharedVars(pass *analysis.Pass, file *ast.File) map[types.Object]token.Pos {
 	shared := map[types.Object]token.Pos{}
 	mark := func(obj types.Object, pos token.Pos) {
@@ -470,9 +412,6 @@ func sharedVars(pass *analysis.Pass, file *ast.File) map[types.Object]token.Pos 
 	return shared
 }
 
-// startOf returns the expression that gives the at-th of count variables its
-// value, or nil when a single multi-value call or receive gives several of
-// them theirs, or when none is given (a plain declaration).
 func startOf(count int, values []ast.Expr, at int) ast.Expr {
 	if len(values) == count {
 		return values[at]
@@ -483,9 +422,6 @@ func startOf(count int, values []ast.Expr, at int) ast.Expr {
 	return nil
 }
 
-// markStaleStart marks the slice variable lhs when rhs is not a fresh slice
-// (make, a literal, nil, or the variable appended to), because it may then
-// share storage with whatever rhs came from.
 func markStaleStart(
 	pass *analysis.Pass, lhs ast.Expr, mark func(types.Object, token.Pos), rhs ast.Expr,
 ) {
@@ -525,7 +461,6 @@ func markStaleStart(
 	mark(obj, ident.Pos())
 }
 
-// freshBase reports whether expr is a make call or the variable obj itself.
 func freshBase(pass *analysis.Pass, expr ast.Expr, obj types.Object) bool {
 	if made, ok := ast.Unparen(expr).(*ast.CallExpr); ok && isBuiltin(pass, made.Fun, "make") {
 		return true
@@ -538,8 +473,6 @@ func isSliceType(t types.Type) bool {
 	return ok
 }
 
-// copiesHeader reports whether the identifier at the top of stack uses the
-// slice obj in a way that can hand its backing array to another name.
 func copiesHeader(pass *analysis.Pass, stack []ast.Node, obj types.Object) bool {
 	if len(stack) < 2 {
 		return false
@@ -569,7 +502,6 @@ func copiesHeader(pass *analysis.Pass, stack []ast.Node, obj types.Object) bool 
 	return true
 }
 
-// appendsToItself reports whether call is the right side of `obj = call`.
 func appendsToItself(
 	pass *analysis.Pass, stack []ast.Node, call *ast.CallExpr, obj types.Object,
 ) bool {
@@ -581,9 +513,6 @@ func appendsToItself(
 		identDecl(pass, assign.Lhs[0]) == obj
 }
 
-// compareElements reports whether less is func(i, j int) bool { return
-// s[i] < s[j] } (or >) over the slice target itself, a total order on string
-// and integer elements.
 func compareElements(pass *analysis.Pass, less ast.Expr, target types.Object) bool {
 	lit, ok := ast.Unparen(less).(*ast.FuncLit)
 	if !ok || lit.Type.Params.NumFields() != 2 || len(lit.Body.List) != 1 {

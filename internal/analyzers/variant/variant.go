@@ -87,12 +87,8 @@ const (
 		"range or counted loop), so the comment says nothing — remove it"
 )
 
-// Verified is the set of loops with a verified variant, synthesized or
-// pinned.
 type Verified map[*ast.ForStmt]bool
 
-// Analyzer enforces TS-V01: every unbounded loop has a synthesized or
-// verified pinned variant.
 var Analyzer = &analysis.Analyzer{
 	Name:       "variant",
 	Doc:        "TS-V01: every loop has a synthesized or verified pinned variant.",
@@ -100,7 +96,6 @@ var Analyzer = &analysis.Analyzer{
 	ResultType: reflect.TypeOf(Verified{}),
 }
 
-// checker holds what judging the loops of one declaration needs.
 type checker struct {
 	pass     *analysis.Pass
 	scope    mutation.Scope
@@ -122,10 +117,6 @@ func run(pass *analysis.Pass) (any, error) {
 	return verified, nil
 }
 
-// inspectDecl walks one top-level declaration's loops, carrying the name
-// the fact message attributes them to: the function declaration's own
-// name, or — for a loop inside a function literal in a value spec — the
-// named entity whose initializer holds it.
 func inspectDecl(check *checker) {
 	switch d := check.scope.Root().(type) {
 	case *ast.FuncDecl:
@@ -147,7 +138,6 @@ func inspectDecl(check *checker) {
 	}
 }
 
-// inspectLoops applies the loop checks to every loop beneath root.
 func (c *checker) inspectLoops(root ast.Node) {
 	ast.Inspect(root, func(node ast.Node) bool {
 		switch loop := node.(type) {
@@ -160,10 +150,6 @@ func (c *checker) inspectLoops(root ast.Node) {
 	})
 }
 
-// checkFor classifies a for statement: out of scope (no Cond, counted, or
-// running until a context parameter is cancelled — a stray pin on any of
-// these is itself a finding), pinned (verify the pin), or unpinned (attempt
-// synthesis).
 func (c *checker) checkFor(loop *ast.ForStmt) {
 	if loop.Cond == nil {
 		c.checkOutOfScopePin(loop)
@@ -185,9 +171,6 @@ func (c *checker) checkFor(loop *ast.ForStmt) {
 	c.checkUnpinned(loop)
 }
 
-// checkOutOfScopePin reports a variant pin bound to a loop that needs no
-// variant: a RangeStmt, a ForStmt with no Cond, a counted ForStmt, or one that
-// runs until a context parameter is cancelled.
 func (c *checker) checkOutOfScopePin(loop ast.Node) {
 	if len(c.set.At(loop, "variant")) == 0 {
 		return
@@ -199,8 +182,6 @@ func (c *checker) checkOutOfScopePin(loop ast.Node) {
 	})
 }
 
-// checkPinned verifies a pinned variant against the loop it binds to,
-// reporting a blocking finding only when verification fails.
 func (c *checker) checkPinned(loop *ast.ForStmt, pin placement.Pin) {
 	parsed, err := directive.ParseVariant(pin.Directive.Args)
 	if err != nil {
@@ -219,8 +200,6 @@ func (c *checker) checkPinned(loop *ast.ForStmt, pin placement.Pin) {
 	})
 }
 
-// checkUnpinned attempts synthesis: success is a reported fact in pin
-// syntax, failure is a blocking finding naming the counter-cap rewrite.
 func (c *checker) checkUnpinned(loop *ast.ForStmt) {
 	candidate, ok := c.synthesize(loop)
 	if ok {
