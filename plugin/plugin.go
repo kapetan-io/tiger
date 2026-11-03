@@ -47,8 +47,6 @@ import (
 	"github.com/kapetan-io/tiger/internal/rules"
 )
 
-// tiger satisfies register.LinterPlugin with the registry's analyzer set and
-// the layer file it installed.
 type tiger struct {
 	layers *layerfile.File
 }
@@ -58,11 +56,7 @@ func init() {
 	register.Plugin("tiger", newPlugin)
 }
 
-// settings is the plugin's own configuration block under
-// linters.settings.custom.tiger.settings.
 type settings struct {
-	// Config is the directory holding tiger.yaml and tiger.layers.yaml; the
-	// working directory when empty.
 	Config string `json:"config"`
 }
 
@@ -88,10 +82,6 @@ func newPlugin(conf any) (register.LinterPlugin, error) {
 	return tiger{layers: layered}, nil
 }
 
-// BuildAnalyzers returns every registered analyzer, with fact diagnostics
-// filtered out (the golangci driver's output policy), plus the layer file's
-// cache key. Finish functions are never consulted: golangci-lint has no
-// end-of-module hook.
 func (t tiger) BuildAnalyzers() ([]*analysis.Analyzer, error) {
 	analyzers := rules.Analyzers()
 	built := make([]*analysis.Analyzer, 0, len(analyzers)+1)
@@ -101,10 +91,6 @@ func (t tiger) BuildAnalyzers() ([]*analysis.Analyzer, error) {
 	return append(built, layerFileKey(t.layers)), nil
 }
 
-// layerFileKey returns an analyzer that reports nothing and whose name
-// carries the layer file's digest. The issue cache of golangci-lint is keyed
-// on the analyzers' names, so this is how an edit to the layer file reaches
-// it.
 func layerFileKey(layers *layerfile.File) *analysis.Analyzer {
 	digest := layers.Digest()
 	const shown = 16
@@ -118,11 +104,6 @@ func layerFileKey(layers *layerfile.File) *analysis.Analyzer {
 	}
 }
 
-// applyOutputPolicy returns a shallow clone whose Run drops fact diagnostics
-// before they reach golangci-lint and ends every rule finding with its
-// pattern pointer, the same two decisions tiger check makes. The clone's
-// Requires still name the original dependency analyzers, so golangci's own
-// resolution and facts plumbing are untouched.
 func applyOutputPolicy(registered *analysis.Analyzer) *analysis.Analyzer {
 	inner := registered.Run
 	clone := *registered
@@ -140,8 +121,6 @@ func applyOutputPolicy(registered *analysis.Analyzer) *analysis.Analyzer {
 	return &clone
 }
 
-// GetLoadMode requests full type information; golangci-lint supplies the
-// syntax and types buildssa needs to construct SSA for the SSA analyzers.
 func (tiger) GetLoadMode() string {
 	return register.LoadModeTypesInfo
 }
