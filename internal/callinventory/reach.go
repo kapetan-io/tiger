@@ -10,13 +10,8 @@ import (
 	"golang.org/x/tools/go/ssa"
 )
 
-// maxWalk bounds the functions one reach question may visit, so a malformed
-// program fails the load instead of looping.
 const maxWalk = 5_000_000
 
-// importReach reports, for every package, whether it is syscall or imports
-// syscall, directly or transitively. Visit runs the post function after a
-// package's imports, so their answers are already recorded.
 func importReach(roots []*packages.Package) map[string]bool {
 	reaches := map[string]bool{}
 	packages.Visit(roots, nil, func(pkg *packages.Package) {
@@ -29,13 +24,7 @@ func importReach(roots []*packages.Package) map[string]bool {
 	return reaches
 }
 
-// bodyReach decides whether an outside free function statically reaches
-// package syscall through its own body, following static calls, referenced
-// functions and closures, but not interface calls.
 type bodyReach struct {
-	// known holds a settled answer per function. A search that finds nothing
-	// settles every function it visited as false, since it expanded all of
-	// them. A search that finds syscall settles only its start as true.
 	known map[*ssa.Function]bool
 }
 
@@ -43,8 +32,6 @@ func newBodyReach() *bodyReach {
 	return &bodyReach{known: map[*ssa.Function]bool{}}
 }
 
-// errWalkTooLarge reports a reach question that visited maxWalk functions
-// with more still queued.
 var errWalkTooLarge = fmt.Errorf("a reach walk visited more than %d functions", maxWalk)
 
 func (b *bodyReach) reaches(start *ssa.Function) (bool, error) {
@@ -88,7 +75,6 @@ func isSyscall(fn *ssa.Function) bool {
 	return path == "syscall" || strings.HasPrefix(path, "internal/syscall")
 }
 
-// referenced lists the functions fn refers to and the closures it defines.
 func referenced(fn *ssa.Function) []*ssa.Function {
 	var list []*ssa.Function
 	for _, block := range fn.Blocks {

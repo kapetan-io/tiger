@@ -11,17 +11,12 @@ import (
 
 const schema = "tiger.changed/v1"
 
-// blindSpotIDs are stable names for what the footer's second line says tiger
-// cannot see, in the order the footer lists them. Tools match on these, so
-// changing one is a breaking change; add one when the footer gains a blind spot.
 var blindSpotIDs = []string{
 	"outside-without-os", "io-writer", "channel-send", "interface-implementation",
 	"same-owner", "same-package-leaf", "same-package-interface", "moved-to-helper",
 	"renamed-type",
 }
 
-// JSON renders the report for tools and agent reviewers. Every site of every
-// call is kept. The bytes depend only on the report and the revisions.
 func (r Report) JSON(rev revision.Comparison) ([]byte, error) {
 	doc := document{
 		Schema: schema,
@@ -93,15 +88,12 @@ type document struct {
 	BlindSpots      []string            `json:"blind_spots"`
 }
 
-// baseDoc names the merge base: Commit is that commit, not the tip of Ref.
 type baseDoc struct {
 	Ref       string `json:"ref"`
 	Commit    string `json:"commit"`
 	MergeBase bool   `json:"merge_base"`
 }
 
-// headDoc has no ref because CI checks out a detached merge commit that has
-// no branch to name. When Dirty is true, head sites refer to the working tree.
 type headDoc struct {
 	Commit string `json:"commit"`
 	Dirty  bool   `json:"dirty"`

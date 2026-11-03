@@ -19,7 +19,6 @@ const usage = `usage:
 	changed.Usage + pin.Usage + `run "tiger <command> -h" for its flags
 `
 
-// Run executes one tiger invocation and returns its exit code.
 func Run(args []string, streams command.Streams) int {
 	if len(args) == 0 {
 		fmt.Fprint(streams.Stderr, usage)

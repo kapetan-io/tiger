@@ -15,7 +15,6 @@ import (
 	"strings"
 )
 
-// CardFile names the card inside each pattern directory.
 const CardFile = "PATTERN.md"
 
 const (
@@ -27,35 +26,22 @@ const (
 
 var ruleCode = regexp.MustCompile(`^TS-[A-Z]+[0-9]+$`)
 
-// File is one Go source file of a pattern, path relative to the pattern.
 type File struct {
 	Path   string
 	Source string
-	// Test is true for _test.go files.
-	Test bool
+	Test   bool
 }
 
-// Pattern is one entry of the collection.
 type Pattern struct {
-	// Name is the directory name, the argument to tiger pattern.
-	Name string
-	// Summary is the card's opening paragraph.
-	Summary string
-	// Rules are the rule codes the pattern backs.
-	Rules []string
-	// Gap is the part of the correct shape those rules cannot check.
-	Gap string
-	// Bug is the real bug that lived in the gap.
-	Bug string
-	// Checklist holds the reviewer's yes-or-no questions.
+	Name      string
+	Summary   string
+	Rules     []string
+	Gap       string
+	Bug       string
 	Checklist []string
-	// Files are the pattern's Go files, sorted by path.
-	Files []File
+	Files     []File
 }
 
-// Load reads every pattern directory under the root of fsys. A directory
-// without a card, or with a malformed card, is an error: a pattern that the
-// binary cannot print must not ship.
 func Load(fsys fs.FS) ([]Pattern, error) {
 	entries, err := fs.ReadDir(fsys, ".")
 	if err != nil {
@@ -75,7 +61,6 @@ func Load(fsys fs.FS) ([]Pattern, error) {
 	return loaded, nil
 }
 
-// Find returns the pattern with the given name.
 func Find(all []Pattern, name string) (Pattern, bool) {
 	for _, each := range all {
 		if each.Name == name {
@@ -85,7 +70,6 @@ func Find(all []Pattern, name string) (Pattern, bool) {
 	return Pattern{}, false
 }
 
-// Behind returns the patterns that back the rule code, in the order of all.
 func Behind(all []Pattern, code string) []Pattern {
 	found := []Pattern{}
 	for _, each := range all {
@@ -140,8 +124,6 @@ func goFiles(fsys fs.FS, name string) ([]File, error) {
 	return files, err
 }
 
-// parseCard splits the card into its title paragraph and its four
-// sections.
 func parseCard(card string) (Pattern, error) {
 	sections := map[string][]string{}
 	current := ""
