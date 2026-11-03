@@ -10,6 +10,7 @@ import (
 	"runtime"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -606,14 +607,21 @@ func TestChangedCountsAnUntrackedFileAsUncommitted(t *testing.T) {
 // Goal: reports with several functions, callees, removals and a rename print
 // the same bytes on every run, whatever order the maps inside the tool visit.
 func TestChangedPrintsIdenticalBytesForSeveralChanges(t *testing.T) {
+	// Every run loads its own packages, so the runs go side by side. The
+	// test body waits for them, which keeps its elapsed time honest.
+	const repeats = 4
+	var group sync.WaitGroup
 	for _, name := range []string{"sibling-owner", "closure", "rename-changed-calls"} {
 		c := fixture(t, name)
 		first := c.changed()
 		require.Equal(t, command.ExitClean, first.code)
-		for range 4 {
-			assert.Equal(t, first.stdout, c.changed().stdout)
+		for range repeats {
+			group.Go(func() {
+				assert.Equal(t, first.stdout, c.changed().stdout)
+			})
 		}
 	}
+	group.Wait()
 }
 
 const spinSource = `package fakedb
