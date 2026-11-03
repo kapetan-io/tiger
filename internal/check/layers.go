@@ -7,22 +7,11 @@ import (
 	"github.com/kapetan-io/tiger/internal/layerfile"
 )
 
-// layerCoverage returns the TS-X03 findings that need the module's package
-// directories: an entry that matches no package directory, and a package
-// with no entry that the layers analyzer did not report. This is not a
-// finish step, because a finish step sees only the packages the run loaded,
-// and these checks also need the directories it skipped: those outside the
-// patterns passed, or built only for another platform.
 func layerCoverage(setup setup, blocking []driver.Finding) []driver.Finding {
 	if setup.layers.Empty() {
 		return nil
 	}
 	coverage := setup.layers.Coverage()
-	// The analyzer's only TS-X03 finding for a package with no entry is the
-	// missing entry, so any TS-X03 finding from such a package means it was
-	// reported already. Unlike the budget key, a `_test` suffix is not
-	// stripped: the analyzer never reports from `_test.go` files, so a path
-	// ending in `_test` is a real directory such as ./e2e_test.
 	reported := map[string]bool{}
 	for _, finding := range blocking {
 		rel, inModule := setup.module.Relative(finding.Package)

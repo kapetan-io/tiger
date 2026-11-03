@@ -124,6 +124,7 @@ func TestPatternRefusesWhatItCannotAnswer(t *testing.T) {
 			want: "at most one pattern name",
 		},
 	} {
+		// A rule with no pattern is an error, so a mistyped code does not look like an empty answer.
 		t.Run(test.name, func(t *testing.T) {
 			got := run(t, test.args...)
 			assert.Equal(t, command.ExitOperational, got.code)

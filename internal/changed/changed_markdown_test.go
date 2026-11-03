@@ -13,7 +13,8 @@ import (
 	"github.com/kapetan-io/tiger/internal/command"
 )
 
-// commentLimit repeats the renderer's cap so a change to it fails here.
+// commentLimit repeats the renderer's cap so a change to it fails here. GitHub
+// rejects a comment over 65,536 characters; the difference is headroom.
 const commentLimit = 60000
 
 // TestChangedMarkdownGoldens covers the exact bytes of the pull request comment.
@@ -198,4 +199,14 @@ func TestChangedMarkdownSuggestsACommandAShellCanRun(t *testing.T) {
 	got := run(t, "changed", "-C", c.dir, "--format", "markdown", "it's`odd")
 	require.Equal(t, command.ExitClean, got.code)
 	assert.Contains(t, got.stdout, "run `` tiger changed 'it'\\''s`odd' `` for every call.\n")
+}
+
+// TestChangedMarkdownWritesPackageSummaryAsHTML covers the collapsed call list.
+//
+// Goal: the summary line of a new package's call list uses <code>, because
+// GitHub does not render markdown inside <summary>.
+func TestChangedMarkdownWritesPackageSummaryAsHTML(t *testing.T) {
+	got := fixture(t, "new-package").changed("--format", "markdown")
+	require.Equal(t, command.ExitClean, got.code)
+	assert.Contains(t, got.stdout, "<summary>Every call from <code>billing</code>, by function (4)</summary>")
 }

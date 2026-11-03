@@ -14,38 +14,23 @@ import (
 	"strings"
 )
 
-// shortLength is how many characters of a commit hash a report prints.
 const shortLength = 7
 
-// Repository is the git checkout holding a run directory.
 type Repository struct {
-	dir string
-	// root is the repository's top directory.
-	root string
-	// prefix is the run directory's path below the root, with a trailing
-	// slash, empty at the root.
+	dir    string
+	root   string
 	prefix string
 }
 
-// Comparison names the two sides of a run.
 type Comparison struct {
-	// BaseRef is the ref the user typed.
-	BaseRef string
-	// BaseTip is the full hash BaseRef points at.
-	BaseTip string
-	// MergeBase is the full hash of the common ancestor of BaseTip and Head.
-	// Base code is read from this commit.
+	BaseRef   string
+	BaseTip   string
 	MergeBase string
-	// Head is the full hash of HEAD. The head code is the working tree, which
-	// may carry uncommitted edits.
-	Head string
-	// Dirty is true when git status prints anything.
-	Dirty bool
-	repo  Repository
+	Head      string
+	Dirty     bool
+	repo      Repository
 }
 
-// Open finds the repository holding dir. Every error is a single line written
-// for someone who has never seen tiger.
 func Open(dir string) (Repository, error) {
 	if info, err := os.Stat(dir); err != nil || !info.IsDir() {
 		return Repository{}, fmt.Errorf("cannot read directory %s", dir)
@@ -70,8 +55,6 @@ func notRepository(err error) error {
 	return errors.New("run it inside a git checkout, because it compares against a git revision")
 }
 
-// Compare finds the merge base of base and HEAD. It never changes the working
-// tree, the index or the stash.
 func (r Repository) Compare(base string) (Comparison, error) {
 	if strings.HasPrefix(base, "-") {
 		return Comparison{}, fmt.Errorf(
@@ -105,13 +88,10 @@ func (r Repository) Compare(base string) (Comparison, error) {
 	}, nil
 }
 
-// commit resolves a ref to a full commit hash. The ref comes after
-// --end-of-options so git never reads it as an option.
 func (r Repository) commit(ref string) (string, error) {
 	return r.git("rev-parse", "--verify", "--end-of-options", ref+"^{commit}")
 }
 
-// Short is the first characters of a commit hash, as a report prints them.
 func Short(hash string) string {
 	if len(hash) > shortLength {
 		return hash[:shortLength]
@@ -119,23 +99,16 @@ func Short(hash string) string {
 	return hash
 }
 
-// git runs one git command in the run directory and returns its trimmed
-// standard output. GIT_OPTIONAL_LOCKS stops git status from refreshing the
-// index on disk.
 func (r Repository) git(args ...string) (string, error) {
 	return r.gitEnv(nil, args...)
 }
 
-// locationVars are the variables that point git at a repository other than the
-// one in the working directory. Git sets them when it runs a hook.
 var locationVars = []string{
 	"GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_OBJECT_DIRECTORY",
 	"GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_COMMON_DIR", "GIT_PREFIX",
 	"GIT_NAMESPACE", "GIT_CEILING_DIRECTORIES", "GIT_DISCOVERY_ACROSS_FILESYSTEM",
 }
 
-// cleanEnviron is the process environment without the repository-location
-// variables, so a run inside a hook reads the -C directory.
 func cleanEnviron() []string {
 	return slices.DeleteFunc(os.Environ(), func(entry string) bool {
 		name, _, _ := strings.Cut(entry, "=")
@@ -143,10 +116,8 @@ func cleanEnviron() []string {
 	})
 }
 
-// environ is extra environment entries for a git command.
 type environ []string
 
-// gitEnv is git with extra environment entries, such as a scratch index file.
 func (r Repository) gitEnv(env environ, args ...string) (string, error) {
 	cmd := exec.Command("git", args...)
 	cmd.Dir = r.dir

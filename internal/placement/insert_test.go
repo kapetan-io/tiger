@@ -125,6 +125,7 @@ func TestInsertAfterProseDocComment(t *testing.T) {
 		Fset: loaded.fset, File: loaded.file, Src: []byte(unpinned), Node: flush,
 		Directives: []directive.Directive{{Verb: "requires", Args: "r != nil"}},
 	})
+	// The bare // separator matches Go's //go: directive convention.
 	assert.Equal(t, "//\n//tiger:requires r != nil\n", insertion.Text)
 
 	trip := roundTrip(t, unpinned, insertion)
