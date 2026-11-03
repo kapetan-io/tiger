@@ -173,7 +173,7 @@ linters:
         - pattern: '^time\.After$'
           msg: TS-C05. Leaks a timer until it fires. Use a context or a timer you stop.
         - pattern: '^fmt\.Print.*$'
-          msg: TS-L08. Use the structured logger so output has a level and a destination.
+          msg: Use the structured logger so output has a level and a destination.
         - pattern: '^panic$'
           msg: TS-S18. Use the assert package so there is one crash path.
 
