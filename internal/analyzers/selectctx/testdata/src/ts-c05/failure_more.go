@@ -51,7 +51,9 @@ func emit(out chan int, value int) {
 	}
 }
 
-// Ticket is fulfilled by a send, so a bare receive waits for a reply.
+// Ticket is fulfilled by a send, so a bare receive waits for a reply. A channel
+// the package only sends on may carry ordinary work or a reply, so a bare
+// receive on it does not count as a shutdown wait.
 type Ticket struct {
 	reply chan int
 }

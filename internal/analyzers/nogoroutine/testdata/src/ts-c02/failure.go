@@ -96,7 +96,9 @@ func (i *Impatient) Start() {
 	i.wg.Go(work) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
 }
 
-// Shutdown waits for the worker only after ctx has expired.
+// Shutdown waits for the worker only after ctx has expired. A ctx.Done() case
+// means the caller gave up, not that the work finished, so its Wait does not
+// count.
 func (i *Impatient) Shutdown(ctx context.Context) error {
 	select {
 	case <-i.done:

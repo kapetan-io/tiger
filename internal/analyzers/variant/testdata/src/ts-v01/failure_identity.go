@@ -137,7 +137,8 @@ func fieldWithCall(h *handler) {
 }
 
 // fieldThroughAlias shrinks the field through the struct and grows it through
-// another name for the same struct.
+// another name for the same struct. A field is declared in no scope, so any
+// function literal that writes it counts.
 func fieldThroughAlias(h *handler) {
 	grow := func() { h.items = append(h.items, 1) }
 	for len(h.items) > 0 { // want `TS-V01: tiger can't prove this loop ends`
