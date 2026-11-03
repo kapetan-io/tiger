@@ -1,8 +1,6 @@
 version: 1
 comments:
   allow:
-    - value: assert
-      reason: prose not yet moved into tests; ENG-663 clears it
     - value: internal/analyzers/boundedloop
       reason: prose not yet moved into tests; ENG-658 clears it
     - value: internal/analyzers/chandecl
@@ -77,5 +75,3 @@ comments:
       reason: prose not yet moved into tests; ENG-662 clears it
     - value: internal/rules/auto
       reason: prose not yet moved into tests; ENG-662 clears it
-    - value: plugin
-      reason: prose not yet moved into tests; ENG-663 clears it
