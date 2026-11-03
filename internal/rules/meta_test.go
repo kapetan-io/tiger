@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"testing/fstest"
 	"unicode/utf8"
@@ -125,6 +126,39 @@ func replay(t *testing.T, analyzer *analysis.Analyzer, dirs []string) []emitted 
 		}
 	}
 	return collected
+}
+
+// replays holds each analyzer's replay so the registry test and the style
+// test, which judge the same corpora, pay for the type-check once.
+var (
+	replaysLock sync.Mutex
+	replays     = map[string]*replayed{}
+)
+
+type replayed struct {
+	once      sync.Once
+	finished  bool
+	collected []emitted
+}
+
+// replayOnce is replay, run at most once per analyzer for the whole package.
+func replayOnce(t *testing.T, analyzer *analysis.Analyzer, dirs []string) []emitted {
+	t.Helper()
+	replaysLock.Lock()
+	cached, found := replays[analyzer.Name]
+	if !found {
+		cached = &replayed{}
+		replays[analyzer.Name] = cached
+	}
+	replaysLock.Unlock()
+	cached.once.Do(func() {
+		cached.collected = replay(t, analyzer, dirs)
+		cached.finished = true
+	})
+	// A replay that failed the first caller's test leaves nothing behind, and
+	// later callers must fail too rather than judge zero diagnostics.
+	require.True(t, cached.finished)
+	return cached.collected
 }
 
 // installLayerFile installs the layer file a corpus directory carries, the
@@ -274,13 +308,14 @@ func TestEveryCorpusDiagnosticResolvesInRegistry(t *testing.T) {
 	}
 	for _, analyzer := range rules.Analyzers() {
 		t.Run(analyzer.Name, func(t *testing.T) {
+			t.Parallel()
 			owned := byAnalyzer[analyzer.Name]
 			require.NotEmpty(t, owned)
 			dirs := make([]string, 0, len(owned))
 			for _, corpus := range owned {
 				dirs = append(dirs, corpus.dir)
 			}
-			replayed := replay(t, analyzer, dirs)
+			replayed := replayOnce(t, analyzer, dirs)
 			for _, diagnostic := range replayed {
 				resolved, known := resolve(diagnostic)
 				require.True(t, known,
@@ -455,11 +490,12 @@ func TestEveryCorpusMessageFollowsTheStyleGuide(t *testing.T) {
 	}
 	for _, analyzer := range rules.Analyzers() {
 		t.Run(analyzer.Name, func(t *testing.T) {
+			t.Parallel()
 			dirs := []string{}
 			for _, corpus := range byAnalyzer[analyzer.Name] {
 				dirs = append(dirs, corpus.dir)
 			}
-			for _, diagnostic := range replay(t, analyzer, dirs) {
+			for _, diagnostic := range replayOnce(t, analyzer, dirs) {
 				resolved, known := resolve(diagnostic)
 				require.True(t, known)
 				checkStyle(t, resolved)
