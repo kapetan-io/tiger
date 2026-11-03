@@ -19,8 +19,6 @@ import (
 	"golang.org/x/tools/go/analysis"
 )
 
-// Analyzer enforces TS-S21: every limit constant participates in a
-// relational assertion.
 var Analyzer = &analysis.Analyzer{
 	Name: "limitrelate",
 	Doc:  "TS-S21: every limit constant participates in a relational assertion",
@@ -44,9 +42,6 @@ func run(pass *analysis.Pass) (any, error) {
 	return nil, nil
 }
 
-// assertionIdentifiers collects every identifier appearing inside a
-// package-level `const _ = ...` expression that contains a conversion to
-// an unsigned integer type.
 func assertionIdentifiers(file *ast.File) map[string]bool {
 	found := map[string]bool{}
 	for _, decl := range file.Decls {
@@ -104,8 +99,6 @@ func collectIdentifiers(expr ast.Expr, found map[string]bool) {
 	})
 }
 
-// limitConstants collects every package-level constant name ending in Max
-// or Min, declared anywhere in file.
 func limitConstants(file *ast.File) []*ast.Ident {
 	var limits []*ast.Ident
 	for _, decl := range file.Decls {

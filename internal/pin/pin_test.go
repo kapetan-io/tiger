@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -151,6 +152,26 @@ func TestPinnedTreeChecksClean(t *testing.T) {
 	assert.Equal(t, command.ExitClean, checked.code)
 	assert.Empty(t, checked.stdout)
 	assert.Empty(t, checked.stderr)
+}
+
+// TestPinTwoTargetsInOneFileNumbersLinesAfterEarlierInsertions covers the
+// per-file splice.
+//
+// Goal: with two targets in one file, the later directive prints the line
+// it lands on after the earlier insertion shifted it, and every original
+// byte survives both splices. Splicing in the wrong order would corrupt one.
+func TestPinTwoTargetsInOneFileNumbersLinesAfterEarlierInsertions(t *testing.T) {
+	dir := copyFixture(t, "showfacts")
+	got := run(t, "pin", "-C", dir, "Consume", "Drain", "./...")
+	assert.Equal(t, command.ExitClean, got.code)
+	assert.Equal(t,
+		"facts.go:11: //tiger:variant len(pending)\nfacts.go:22: //tiger:variant len(pending)\n",
+		got.stdout)
+	written := readFile(t, filepath.Join(dir, "facts.go"))
+	assert.Equal(t, 2, strings.Count(written, "//tiger:variant len(pending)\n"))
+	assert.Contains(t, written,
+		"func Drain(pending []int) int {\n\ttotal := 0\n"+
+			"\t//tiger:variant len(pending)\n\tfor len(pending) > 0 {")
 }
 
 // TestPinUnexportedTargetWritesVariant covers the unexported policy.

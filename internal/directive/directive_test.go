@@ -186,6 +186,9 @@ func TestClassify(t *testing.T) {
 		{name: "SpacedNolint", code: pkg + "// nolint\n", want: directive.Nolint},
 		{name: "TripleSlashNolint", code: pkg + "///nolint\n", want: directive.Nolint},
 		{name: "NolintPrefixOfAWord", code: pkg + "//nolinting\n", want: directive.Prose},
+		// golangci-lint 2.11 does not honor these two, so neither may tiger.
+		{name: "BlockNolintIsNotHonored", code: pkg + "/* nolint */\n", want: directive.Prose},
+		{name: "TabNolintIsNotHonored", code: pkg + "//\tnolint\n", want: directive.Prose},
 		{name: "PlainProse", code: pkg + "// x\n", want: directive.Prose},
 		{name: "BlockProse", code: pkg + "/* x */\n", want: directive.Prose},
 		{name: "BareSlashes", code: pkg + "//\n", want: directive.Prose},
@@ -204,6 +207,29 @@ func TestClassify(t *testing.T) {
 			require.NoError(t, err)
 			require.Len(t, file.Comments, 1)
 			assert.Equal(t, test.want, directive.Classify(file, file.Comments[0].List[0]))
+		})
+	}
+}
+
+// TestSpelled covers the one //nolint form the comment ban lets through.
+//
+// Goal: "// nolint" is still a Nolint class comment but is not Spelled, so
+// only the exact //nolint spelling is exempt from the comment ban.
+func TestSpelled(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		text string
+		want bool
+	}{
+		{name: "Bare", text: "//nolint", want: true},
+		{name: "Colon", text: "//nolint:errcheck", want: true},
+		{name: "Space", text: "//nolint // reason", want: true},
+		{name: "SpaceAfterSlashes", text: "// nolint", want: false},
+		{name: "ExtraSlash", text: "///nolint", want: false},
+		{name: "LongerWord", text: "//nolinting", want: false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			assert.Equal(t, test.want, directive.Spelled(test.text))
 		})
 	}
 }

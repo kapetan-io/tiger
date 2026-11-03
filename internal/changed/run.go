@@ -12,21 +12,14 @@ import (
 	"github.com/kapetan-io/tiger/internal/revision"
 )
 
-// synopsis is the line tiger changed -h prints and its Usage entry opens with.
 const synopsis = "tiger changed [-C dir] [--format text|markdown|json] <base>"
 
-// Usage is tiger changed's entry in the command listing.
 const Usage = "  " + synopsis + `
       print, for each function, the calls it started or stopped making since
       the merge base of <base> and HEAD; flags go before <base>; exit 0 for
       any report, 2 when no report can be produced
 `
 
-// Run is tiger changed: compare the calls each function makes at the
-// merge base of a base ref and HEAD against the calls it makes in the working
-// tree, and print the report. A report exits 0 whatever it holds. When none
-// can be produced it prints one line to stderr and exits 2, with nothing on
-// stdout, so a failed run is never mistaken for an empty report.
 func Run(args []string, streams command.Streams) int {
 	flags := flag.NewFlagSet("tiger changed", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
@@ -82,7 +75,6 @@ func Run(args []string, streams command.Streams) int {
 	return command.ExitClean
 }
 
-// compareRevisions loads the head tree and the base tree and compares them.
 func compareRevisions(dir string, rev revision.Comparison) (report Report, err error) {
 	headLabel := "head (" + revision.Short(rev.Head) + ")"
 	head, err := callinventory.Load(dir)
@@ -114,7 +106,6 @@ func noPackages(inv callinventory.Inventory, label string) error {
 	return fmt.Errorf("no Go packages found at %s", label)
 }
 
-// changedFailure prints the one line a failed run owes the reader.
 func changedFailure(streams command.Streams, err error) int {
 	line := strings.Join(strings.Fields(err.Error()), " ")
 	fmt.Fprintf(streams.Stderr, "tiger changed: %s\n", line)

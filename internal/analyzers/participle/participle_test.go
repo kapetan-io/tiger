@@ -13,7 +13,9 @@ import (
 //
 // Goal: exported identifiers ending in a non-noun participle fire,
 // unexported and noun-allowlisted identifiers stay silent, and the
-// interface-method known miss stays documented and silent.
+// interface-method known miss stays documented and silent. The noun
+// allowlist matches exact tokens, so compounds like "nothing" are listed
+// separately from "thing".
 func TestCorpus(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), participle.Analyzer, "ts-n14")
 }

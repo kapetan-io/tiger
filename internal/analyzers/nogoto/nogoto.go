@@ -13,7 +13,6 @@ import (
 	"golang.org/x/tools/go/analysis"
 )
 
-// Analyzer enforces TS-S09: no goto, no labeled break or continue.
 var Analyzer = &analysis.Analyzer{
 	Name: "nogoto",
 	Doc:  "TS-S09: no goto, no labeled break or continue",
@@ -38,10 +37,6 @@ func run(pass *analysis.Pass) (any, error) {
 	return nil, nil
 }
 
-// report emits the TS-S09 diagnostic for a goto or a labeled branch. The
-// message names what the label actually does: a break whose label marks its
-// only enclosing loop exists to escape a select or switch, not to reach
-// across loops, and its compliant form is the same — extract and return.
 func report(pass *analysis.Pass, branch *ast.BranchStmt, path []ast.Node) {
 	switch {
 	case branch.Tok == token.GOTO:
@@ -73,10 +68,6 @@ func report(pass *analysis.Pass, branch *ast.BranchStmt, path []ast.Node) {
 	}
 }
 
-// escapesSelectOrSwitch decides whether a labeled break targets its only
-// enclosing loop from inside a select or switch — the shape Go forces a
-// label onto because a bare break would leave just the select or switch.
-// It returns the innermost such construct's name when so.
 func escapesSelectOrSwitch(branch *ast.BranchStmt, path []ast.Node) (string, bool) {
 	if branch.Tok != token.BREAK {
 		return "", false

@@ -12,7 +12,9 @@ import (
 //
 // Goal: the failure modes (goto, labeled break, labeled continue) fire and
 // the compliant rewrites (plain loops, extracted functions, unlabeled
-// branches) stay silent.
+// branches) stay silent. A labeled break whose label marks its only enclosing
+// loop exists to escape a select or switch, so its message names that
+// construct; the compliant form is the same: extract the loop and return.
 func TestCorpus(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), nogoto.Analyzer, "ts-s09")
 }

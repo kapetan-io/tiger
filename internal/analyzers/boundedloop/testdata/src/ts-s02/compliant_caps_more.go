@@ -50,3 +50,11 @@ func panicsAtTheCap(done func() bool, limit int) {
 		panic("too slow")
 	}
 }
+
+// panicsAfterTheLoop panics straight after the loop, with no condition, and
+// is trusted to cover the cap.
+func panicsAfterTheLoop(done func() bool, limit int) {
+	for i := 0; i < limit && !done(); i++ {
+	}
+	panic("too slow")
+}

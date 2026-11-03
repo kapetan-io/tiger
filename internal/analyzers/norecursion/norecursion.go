@@ -48,7 +48,6 @@ import (
 const msgRewrite = " is a cycle of calls (recursion) — replace it with a capped worklist loop " +
 	"that returns an error when it stops at max with nodes left"
 
-// Analyzer enforces TS-S01: no cycle in the package's static call graph.
 var Analyzer = &analysis.Analyzer{
 	Name:     "norecursion",
 	Doc:      "TS-S01: no cycle in the package's static call graph.",
@@ -81,11 +80,6 @@ func run(pass *analysis.Pass) (any, error) {
 	return nil, nil
 }
 
-// collectFunctions gathers every function reachable from sourceFuncs by
-// walking AnonFuncs, so a cycle through a statically-called literal has both
-// of its members as graph nodes. The worklist advances by index over a
-// growing slice; a seen set keeps a function that already carries its own
-// anonymous children from being re-queued.
 func collectFunctions(sourceFuncs []*ssa.Function) []*ssa.Function {
 	seen := map[*ssa.Function]bool{}
 	collected := []*ssa.Function{}
@@ -108,8 +102,6 @@ func collectFunctions(sourceFuncs []*ssa.Function) []*ssa.Function {
 	return collected
 }
 
-// isCycle reports whether component is a real cycle: more than one member,
-// or a single member that statically calls itself.
 func isCycle(component []*ssa.Function, callees map[*ssa.Function][]*ssa.Function) bool {
 	if len(component) > 1 {
 		return true
@@ -118,8 +110,6 @@ func isCycle(component []*ssa.Function, callees map[*ssa.Function][]*ssa.Functio
 	return slices.Contains(callees[self], self)
 }
 
-// report fires one TS-S01 finding for component, at the member with the
-// smallest source position, naming every member sorted by name.
 func report(pass *analysis.Pass, component []*ssa.Function) {
 	sorted := sortedByName(component)
 	names := make([]string, 0, len(sorted)+1)
@@ -135,9 +125,6 @@ func report(pass *analysis.Pass, component []*ssa.Function) {
 	})
 }
 
-// sortedByName returns component's members ordered by name, breaking a name
-// collision (two methods sharing an unqualified name) by source position so
-// the order stays deterministic.
 func sortedByName(component []*ssa.Function) []*ssa.Function {
 	sorted := slices.Clone(component)
 	slices.SortFunc(sorted, func(a, b *ssa.Function) int {
@@ -149,8 +136,6 @@ func sortedByName(component []*ssa.Function) []*ssa.Function {
 	return sorted
 }
 
-// firstPos returns the smallest source position among component's members —
-// the cycle's lexically first member, and where the finding is reported.
 func firstPos(component []*ssa.Function) token.Pos {
 	smallest := component[0].Pos()
 	for _, fn := range component[1:] {

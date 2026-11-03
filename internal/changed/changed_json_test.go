@@ -557,3 +557,38 @@ func TestChangedJSONIgnoresLineDirectives(t *testing.T) {
 	assert.Equal(t, "web/web.go", site.File)
 	assert.Equal(t, 7, site.Line)
 }
+
+// TestChangedJSONNamesTheMergeBaseNotTheTip covers base.commit when main moved on.
+//
+// Goal: base.commit is the merge base, not the tip of base.ref, because base
+// code is read from the merge base.
+func TestChangedJSONNamesTheMergeBaseNotTheTip(t *testing.T) {
+	c := fixture(t, "call-added")
+	mergeBase := c.git("rev-parse", "main")
+	c.git("checkout", "-q", "main")
+	c.write("README.md", "main moves on\n")
+	c.commit("main moves")
+	c.git("checkout", "-q", "feature")
+
+	doc := c.report()
+	assert.Equal(t, mergeBase, doc.Base.Commit)
+	assert.NotEqual(t, c.git("rev-parse", "main"), doc.Base.Commit)
+}
+
+// TestChangedJSONListsBlindSpotsByStableID covers the blind_spots names.
+//
+// Goal: tools match on these ids, so renaming or reordering one is a breaking
+// change; a new id is added at the end when the footer gains a blind spot.
+func TestChangedJSONListsBlindSpotsByStableID(t *testing.T) {
+	got := fixture(t, "call-added").changed("--format", "json")
+	require.Equal(t, command.ExitClean, got.code)
+	var doc struct {
+		BlindSpots []string `json:"blind_spots"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(got.stdout), &doc))
+	assert.Equal(t, []string{
+		"outside-without-os", "io-writer", "channel-send", "interface-implementation",
+		"same-owner", "same-package-leaf", "same-package-interface", "moved-to-helper",
+		"renamed-type",
+	}, doc.BlindSpots)
+}

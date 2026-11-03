@@ -48,29 +48,13 @@ import (
 	"github.com/kapetan-io/tiger/internal/finish"
 )
 
-// Severity is a rule's run-level consequence, defined once per rule here and
-// never inside an analyzer (ADR-0002). There are exactly two: a rule either
-// blocks or it is not a rule (ADR-0012). Computed facts — the --show-facts
-// channel tiger pin freezes from — are not rules and carry no severity; they
-// live in the separate Facts table.
 type Severity int
 
 const (
-	// SeverityBlocking findings fail the run: exit code 1.
 	SeverityBlocking Severity = iota
-	// SeverityAdvisory findings are counted per package against
-	// tiger.budget.yaml by the CLI driver: under budget they never print,
-	// and on overrun they print as blocking lines under a TS-D06 line.
-	// Reserved for the standing notices the specification defines
-	// (escapes, skipped tests) and ADR-0006's advisory trial.
 	SeverityAdvisory
 )
 
-// Fact binds one computed-fact category to the analyzer that emits it. A
-// fact is not a rule: it is the current value of something a pin can
-// freeze (a loop variant), printed only under
-// --show-facts, never counted, never a verdict. Its RuleID names the rule
-// whose pin the fact feeds.
 type Fact struct {
 	Category string
 	RuleID   string
@@ -78,41 +62,17 @@ type Fact struct {
 	Title    string
 }
 
-// CustomRule binds one diagnostic category to the rule it enforces, the
-// analyzer that emits it, and its severity. A rule with split severity
-// (TS-L09, TS-L10) registers each half as its own category at its own level.
-// A driver-enforced rule (TS-D06) has no analyzer and no corpus: the CLI
-// produces its lines itself.
 type CustomRule struct {
-	// Category is the analysis.Diagnostic category analyzers tag findings
-	// with; the driver resolves severity through it.
 	Category string
-	// RuleID is the specification rule, TS-*. Every diagnostic message
-	// starts with this ID.
-	RuleID string
-	// Analyzer is the pass that enforces the rule; nil for a rule the
-	// driver enforces.
+	RuleID   string
 	Analyzer *analysis.Analyzer
-	// Severity is the run-level consequence the driver applies.
 	Severity Severity
-	// Title is the rule, one short sentence.
-	Title string
-	// Finish is the whole-program half of a rule whose evidence is spread
-	// across packages (ADR-0010): the driver calls it once after every
-	// package has been visited. Nil for every per-package rule.
-	Finish finish.Func
-	// Counted is the plural noun phrase a TS-D06 line uses for an advisory
-	// rule's findings ("skipped tests"); empty on every other severity.
-	Counted string
-	// Patterns names the patterns/ directories that teach the part of this
-	// rule's correct shape it cannot check (ADR-0025). Every finding from the
-	// category ends with a pointer to them; a meta-test keeps the names and
-	// the pattern cards in step.
+	Title    string
+	Finish   finish.Func
+	Counted  string
 	Patterns []string
 }
 
-// CountedNoun renders the rule's counted noun phrase for n findings:
-// plural, or singular when n is 1.
 func (r CustomRule) CountedNoun(n int) string {
 	if n == 1 {
 		return strings.TrimSuffix(r.Counted, "s")
@@ -120,8 +80,6 @@ func (r CustomRule) CountedNoun(n int) string {
 	return r.Counted
 }
 
-// customRules is the custom half of the rule set: the wave-1 rules, the SSA wave's, then the
-// cross-package wave's. Order groups rules by analyzer.
 var customRules = []CustomRule{
 	{
 		Category: "TS-S09", RuleID: "TS-S09", Analyzer: nogoto.Analyzer,
@@ -338,7 +296,6 @@ var customRules = []CustomRule{
 	},
 }
 
-// facts is the computed-facts channel: one category per pinnable fact.
 var facts = []Fact{
 	{
 		Category: "TS-V01-facts", RuleID: "TS-V01", Analyzer: variant.Analyzer,
@@ -346,15 +303,12 @@ var facts = []Fact{
 	},
 }
 
-// Facts returns every registered fact category.
 func Facts() []Fact {
 	listed := make([]Fact, len(facts))
 	copy(listed, facts)
 	return listed
 }
 
-// ByFact resolves a diagnostic category to its fact entry, when the
-// category is a computed fact rather than a rule.
 func ByFact(category string) (Fact, bool) {
 	for _, fact := range facts {
 		if fact.Category == category {
@@ -364,16 +318,12 @@ func ByFact(category string) (Fact, bool) {
 	return Fact{}, false
 }
 
-// CustomRules returns every registered custom-rule category.
 func CustomRules() []CustomRule {
 	listed := make([]CustomRule, len(customRules))
 	copy(listed, customRules)
 	return listed
 }
 
-// ByCategory resolves a diagnostic category to its rule entry. Every
-// diagnostic an analyzer emits must resolve here or in ByFact (constraint
-// 1).
 func ByCategory(category string) (CustomRule, bool) {
 	for _, rule := range customRules {
 		if rule.Category == category {
@@ -383,9 +333,6 @@ func ByCategory(category string) (CustomRule, bool) {
 	return CustomRule{}, false
 }
 
-// Analyzers returns every registered analyzer once, sorted by name. This is
-// the only path into the tiger binary and the plugin: an analyzer that is
-// not registered here cannot ship.
 func Analyzers() []*analysis.Analyzer {
 	byName := map[string]*analysis.Analyzer{}
 	for _, rule := range customRules {
@@ -402,9 +349,6 @@ func Analyzers() []*analysis.Analyzer {
 	return listed
 }
 
-// Finishers returns every registered finish function paired with its
-// analyzer, one per analyzer, sorted by analyzer name. Only the tiger CLI
-// calls them; the plugin and analysistest see Analyzers() alone.
 func Finishers() []finish.Finisher {
 	byName := map[string]finish.Finisher{}
 	for _, rule := range customRules {
@@ -423,9 +367,6 @@ func Finishers() []finish.Finisher {
 	return listed
 }
 
-// WholeProgram reports whether the named analyzer registers a finish
-// function, so its corpus lives in the module layout the finish step can
-// run over.
 func WholeProgram(analyzerName string) bool {
 	for _, rule := range customRules {
 		if rule.Analyzer != nil && rule.Analyzer.Name == analyzerName && rule.Finish != nil {
@@ -435,9 +376,6 @@ func WholeProgram(analyzerName string) bool {
 	return false
 }
 
-// RuleIDs returns the distinct analyzer-enforced rule IDs, sorted. The
-// corpus meta-test walks these: every rule needs its failure-mode and
-// compliant cases.
 func RuleIDs() []string {
 	seen := map[string]bool{}
 	ids := make([]string, 0, len(customRules))
@@ -451,8 +389,6 @@ func RuleIDs() []string {
 	return ids
 }
 
-// CountedCodes returns the rule codes registered at advisory severity —
-// the codes a budget row may name — mapped to true.
 func CountedCodes() map[string]bool {
 	codes := map[string]bool{}
 	for _, rule := range customRules {
@@ -463,18 +399,10 @@ func CountedCodes() map[string]bool {
 	return codes
 }
 
-// CorpusDir names the analysistest corpus package for a rule: the rule ID
-// lowercased, for example ts-s09.
 func CorpusDir(ruleID string) string {
 	return strings.ToLower(ruleID)
 }
 
-// Pointer returns the clause that ends every finding from the category and
-// sends the reader to the pattern behind it, or "" when no pattern backs the
-// category. A category with several patterns points at the list for its rule
-// code, which keeps the clause short enough for the message length cap. Every
-// driver appends it to the analyzer's message; the analyzers themselves never
-// see it (ADR-0025).
 func Pointer(category string) string {
 	rule, known := ByCategory(category)
 	switch {

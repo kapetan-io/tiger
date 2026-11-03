@@ -8,8 +8,6 @@ import (
 	"github.com/kapetan-io/tiger/internal/callinventory"
 )
 
-// rootNames is the printed names of the packages under the run directory at
-// either revision.
 func rootNames(sides Sides) map[string]bool {
 	names := map[string]bool{}
 	for _, name := range slices.Concat(
@@ -19,10 +17,6 @@ func rootNames(sides Sides) map[string]bool {
 	return names
 }
 
-// qualify prints a module package outside the run directory by its import
-// path when a package under the run directory has the same printed name at
-// either revision. Deciding that per revision would rename an unchanged callee
-// when the other revision adds the colliding package.
 func qualify(inv callinventory.Inventory, roots map[string]bool) callinventory.Inventory {
 	renamed := map[string]string{}
 	for _, name := range slices.Sorted(maps.Keys(inv.Above)) {
@@ -40,7 +34,6 @@ func qualify(inv callinventory.Inventory, roots map[string]bool) callinventory.I
 		if ok {
 			out.Packages[path] = true
 		}
-		// The plain name stays when a package under the run directory owns it.
 		if _, root := inv.Roots[name]; !ok || root {
 			out.Packages[name] = true
 		}
@@ -61,7 +54,6 @@ func qualify(inv callinventory.Inventory, roots map[string]bool) callinventory.I
 	return out
 }
 
-// relabel prints a call's package by import path.
 func relabel(call callinventory.Call, path string) callinventory.Call {
 	old := call.Package
 	call.Callee = path + strings.TrimPrefix(call.Callee, old)
