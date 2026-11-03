@@ -74,7 +74,8 @@ outer:
 // is sent on by Submit and its shutdown channel by Shutdown, so both cases look
 // like stop cases. The request case returns on a flag, skipping the shutdown
 // case that does the cleanup, and only the case that ends in a return counts
-// as the stop case.
+// as the stop case. A channel the package only sends on may carry ordinary
+// work, so a send alone does not make its case the stop case.
 type EarlyExitLoop struct {
 	requests   chan func()
 	shutdownCh chan chan struct{}

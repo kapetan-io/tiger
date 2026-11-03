@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -153,6 +154,26 @@ func TestPinnedTreeChecksClean(t *testing.T) {
 	assert.Empty(t, checked.stderr)
 }
 
+// TestPinTwoTargetsInOneFileNumbersLinesAfterEarlierInsertions covers the
+// per-file splice.
+//
+// Goal: with two targets in one file, the later directive prints the line
+// it lands on after the earlier insertion shifted it, and every original
+// byte survives both splices. Splicing in the wrong order would corrupt one.
+func TestPinTwoTargetsInOneFileNumbersLinesAfterEarlierInsertions(t *testing.T) {
+	dir := copyFixture(t, "showfacts")
+	got := run(t, "pin", "-C", dir, "Consume", "Drain", "./...")
+	assert.Equal(t, command.ExitClean, got.code)
+	assert.Equal(t,
+		"facts.go:11: //tiger:variant len(pending)\nfacts.go:22: //tiger:variant len(pending)\n",
+		got.stdout)
+	written := readFile(t, filepath.Join(dir, "facts.go"))
+	assert.Equal(t, 2, strings.Count(written, "//tiger:variant len(pending)\n"))
+	assert.Contains(t, written,
+		"func Drain(pending []int) int {\n\ttotal := 0\n"+
+			"\t//tiger:variant len(pending)\n\tfor len(pending) > 0 {")
+}
+
 // TestPinUnexportedTargetWritesVariant covers the unexported policy.
 //
 // Goal: an unexported target takes variant pins for the loops in its body,
@@ -201,6 +222,19 @@ func TestPinTargetWithBlockingFindingRefused(t *testing.T) {
 	assert.Contains(t, got.stdout, "refused Panics")
 	assert.Contains(t, got.stdout, "TS-S18")
 	assert.Equal(t, before, readFile(t, filepath.Join(dir, "mixed.go")))
+}
+
+// TestPinIgnoresProseFindingsOnTheTarget covers pin's refusal rule.
+//
+// Goal: a target whose doc comment is a TS-L14 finding is still pinned,
+// because prose says nothing about the facts pin writes.
+func TestPinIgnoresProseFindingsOnTheTarget(t *testing.T) {
+	dir := copyFixture(t, "showfacts")
+	require.NoError(t, os.Remove(filepath.Join(dir, "tiger.yaml")))
+	got := run(t, "pin", "-C", dir, "Consume", "./...")
+	assert.Equal(t, command.ExitClean, got.code)
+	assert.Empty(t, got.stderr)
+	assert.Equal(t, "facts.go:11: //tiger:variant len(pending)\n", got.stdout)
 }
 
 // TestPinAmbiguousNameWritesNothing covers the ambiguity contract.

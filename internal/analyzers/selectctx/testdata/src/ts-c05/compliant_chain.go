@@ -1,6 +1,7 @@
 package fixture
 
-// Chain closes its stop channel through two helpers.
+// Chain closes its stop channel through two helpers. A close on a parameter is
+// credited to the field its callers pass, through any number of helpers.
 type Chain struct {
 	stop   chan struct{}
 	values chan int

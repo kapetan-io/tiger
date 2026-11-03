@@ -22,36 +22,22 @@ import (
 	"github.com/kapetan-io/tiger/internal/worklist"
 )
 
-// ErrConfigExists reports an --init refused because the project already has
-// a configuration: repairing a non-conforming config is guided by
-// verification findings, never by overwriting.
 var ErrConfigExists = errors.New(
 	"a golangci-lint config already exists; run tiger golangci to audit it",
 )
 
-// configNames are the file names probed for a project's configuration, in
-// order.
 var configNames = []string{".golangci.yml", ".golangci.yaml"}
 
-// Finding is one verification gap: the auto rule that stopped being
-// enforced and the config change that restores it.
 type Finding struct {
 	RuleID  string
 	Linter  string
 	Message string
 }
 
-// baseline wraps one expected configuration fragment for comparison against
-// what a project's YAML actually holds.
 type baseline struct {
 	want any
 }
 
-// Verify reads the golangci-lint configuration in dir and checks it against
-// the auto-rule baseline: every required linter enabled, every
-// baseline setting present with its expected value. Extra linters and
-// settings pass. The returned findings are sorted; an unreadable config or
-// a missing module path is an error, not a verdict.
 func Verify(dir string) ([]Finding, error) {
 	document, err := readConfig(dir)
 	if err != nil {
@@ -77,8 +63,6 @@ func Verify(dir string) ([]Finding, error) {
 	return findings, nil
 }
 
-// verifyRule checks one auto rule: its linter is enabled and each baseline
-// setting holds.
 func verifyRule(document map[string]any, rule auto.AutoRule, module string) []Finding {
 	if !enabled(document, rule) {
 		return []Finding{{
@@ -153,9 +137,6 @@ func reasonSuffix(setting auto.Setting) string {
 	return " (" + setting.Reason + ")"
 }
 
-// missingFrom returns the baseline list's elements that got lacks,
-// rendered as text. Elements compare by their rendering, so a project list
-// holding maps cannot panic the comparison.
 func (b baseline) missingFrom(got any) []string {
 	held := map[string]bool{}
 	if listed, ok := got.([]any); ok {
@@ -176,9 +157,6 @@ func (b baseline) missingFrom(got any) []string {
 	return absent
 }
 
-// enabled reports whether the rule's linter is on: named in its section's
-// enable list, or a member of golangci-lint's standard default group when
-// the config keeps default: standard.
 func enabled(document map[string]any, rule auto.AutoRule) bool {
 	names, found := lookup(document, []string{rule.Section, "enable"})
 	if found {
@@ -197,7 +175,6 @@ func enabled(document map[string]any, rule auto.AutoRule) bool {
 	return found && group == "standard"
 }
 
-// lookup walks a parsed YAML document by key path.
 func lookup(document map[string]any, path []string) (any, bool) {
 	var current any = document
 	for _, key := range path {
@@ -213,8 +190,6 @@ func lookup(document map[string]any, path []string) (any, bool) {
 	return current, true
 }
 
-// matchOp classifies a node of the comparison tree matches builds: a leaf
-// verdict, a conjunction, or a disjunction.
 type matchOp int
 
 const (
@@ -223,34 +198,23 @@ const (
 	matchAny
 )
 
-// matchNode is one node of the and/or comparison tree.
 type matchNode struct {
 	op       matchOp
 	verdict  bool
 	children []*matchNode
 }
 
-// matchTask pairs a baseline fragment and a project fragment with the tree
-// node their comparison fills.
 type matchTask struct {
 	want any
 	got  any
 	node *matchNode
 }
 
-// matchState carries the tree build: the task worklist and every created
-// node in creation order, so evaluation can run bottom-up without
-// recursion (children always sit after their parents).
 type matchState struct {
 	work  []matchTask
 	nodes []*matchNode
 }
 
-// matches compares a project's YAML fragment against the baseline. Scalars
-// and scalar lists must match exactly; a list of maps must contain every
-// baseline element (extra elements pass); a map must hold every baseline
-// key (extra keys pass). The comparison builds an and/or tree with an
-// index-advancing worklist, then evaluates it bottom-up — no recursion.
 func (b baseline) matches(got any) bool {
 	root := &matchNode{}
 	tree := &matchState{nodes: []*matchNode{root}}
@@ -266,8 +230,6 @@ func (b baseline) matches(got any) bool {
 	return root.verdict
 }
 
-// expand fills one task's node: a leaf verdict, or a connective whose
-// child tasks land back on the worklist.
 func (s *matchState) expand(i int) {
 	task := s.work[i]
 	switch want := task.want.(type) {
@@ -310,8 +272,6 @@ func (s *matchState) expand(i int) {
 	}
 }
 
-// expandContainment handles a baseline list of maps: every baseline
-// element (AND) must match some project element (OR), in any order.
 func (s *matchState) expandContainment(task matchTask, listed []any) {
 	want, ok := task.want.([]any)
 	if !ok {
@@ -328,8 +288,6 @@ func (s *matchState) expandContainment(task matchTask, listed []any) {
 	}
 }
 
-// containment reports whether a baseline list compares by containment: a
-// non-empty list whose first element is a map.
 func containment(want []any) bool {
 	if len(want) == 0 {
 		return false
@@ -338,7 +296,6 @@ func containment(want []any) bool {
 	return mapped
 }
 
-// child creates one node under parent, registered for evaluation.
 func (s *matchState) child(parent *matchNode) *matchNode {
 	created := &matchNode{}
 	parent.children = append(parent.children, created)
@@ -346,13 +303,10 @@ func (s *matchState) child(parent *matchNode) *matchNode {
 	return created
 }
 
-// push queues one comparison task.
 func (s *matchState) push(task matchTask) {
 	s.work = append(s.work, task)
 }
 
-// evalNode computes one node's verdict from its already-evaluated
-// children: a conjunction of none is true, a disjunction of none false.
 func evalNode(node *matchNode) {
 	switch node.op {
 	case matchLeaf:
@@ -376,8 +330,6 @@ func evalNode(node *matchNode) {
 	}
 }
 
-// scalarEqual compares the baseline scalar against a YAML scalar,
-// normalizing int and float so 5 and 5.0 agree.
 func (b baseline) scalarEqual(got any) bool {
 	if wantNumber, ok := asNumber(b.want); ok {
 		gotNumber, ok := asNumber(got)
@@ -386,7 +338,6 @@ func (b baseline) scalarEqual(got any) bool {
 	return b.want == got
 }
 
-// asNumber widens any YAML numeric to float64 for comparison.
 func asNumber(number any) (float64, bool) {
 	switch typed := number.(type) {
 	case int:
@@ -400,7 +351,6 @@ func asNumber(number any) (float64, bool) {
 	}
 }
 
-// formatWant renders a baseline or observed fragment for a finding message.
 func formatWant(fragment any) string {
 	rendered, err := yaml.Marshal(fragment)
 	if err != nil {
@@ -409,7 +359,6 @@ func formatWant(fragment any) string {
 	return strings.TrimSpace(string(rendered))
 }
 
-// readConfig loads and parses the project's golangci-lint configuration.
 func readConfig(dir string) (map[string]any, error) {
 	path, found := configPath(dir)
 	if !found {
@@ -427,9 +376,6 @@ func readConfig(dir string) (map[string]any, error) {
 	return document, nil
 }
 
-// configPath probes dir for a golangci-lint configuration file. One
-// directory listing answers every candidate name; an unreadable dir means
-// no config, same as a failed per-file probe.
 func configPath(dir string) (string, bool) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -447,7 +393,6 @@ func configPath(dir string) (string, bool) {
 	return "", false
 }
 
-// modulePath reads the module path from dir's go.mod.
 func modulePath(dir string) (string, error) {
 	raw, err := os.ReadFile(filepath.Join(dir, "go.mod"))
 	if err != nil {

@@ -14,17 +14,11 @@ const (
 		"package, or a function in their own package that calls one. " +
 		"Check that each one is intended."
 
-	// The marker is the first line of the comment; CI finds its one sticky comment by it.
 	marker = "<!-- tiger-changed -->"
 
-	// The cap is where the report starts dropping detail. GitHub rejects a
-	// comment over 65,536 characters; the difference is headroom.
 	maxComment = 60000
 )
 
-// Markdown renders the report as a pull request comment. A report that would
-// pass maxComment is cut: first the new packages' call lists, then the main
-// list after its last whole function that fits.
 func (r Report) Markdown(rev revision.Comparison) string {
 	full := r.markdown(rev, view{shown: len(r.Functions)})
 	if tooLong(full) {
@@ -41,9 +35,6 @@ func (r Report) Markdown(rev revision.Comparison) string {
 
 func tooLong(comment string) bool { return utf8.RuneCountInString(comment) > maxComment }
 
-// view says how much of the report a comment shows: how many of the main
-// list's functions, and whether the new packages' call lists are left out
-// for a pointer to the terminal.
 type view struct {
 	shown     int
 	omitCalls bool
@@ -100,8 +91,6 @@ func (r Report) markdown(rev revision.Comparison, show view) string {
 	return out.String()
 }
 
-// countsMarkdown bolds each count that is not zero, so a reader's eye lands
-// on what changed.
 func (r Report) countsMarkdown() string {
 	parts := r.countParts()
 	labels := make([]string, len(parts))
@@ -114,9 +103,6 @@ func (r Report) countsMarkdown() string {
 	return strings.Join(labels, " · ")
 }
 
-// writeNewPackageMarkdown keeps the summary bullets open because they are the
-// wiring a reviewer checks, and collapses the call list under <details>. Summary text uses <code>
-// because GitHub does not render markdown inside <summary>.
 func writeNewPackageMarkdown(out *strings.Builder, pkg NewPackage, show view, base string) {
 	fmt.Fprintf(out, "**New package `%s`** — %d types and functions, %d calls:\n\n",
 		pkg.Name, pkg.Owners, pkg.calls())
@@ -138,8 +124,6 @@ func writeNewPackageMarkdown(out *strings.Builder, pkg NewPackage, show view, ba
 	}
 }
 
-// codeSpan quotes text for markdown. Git accepts backticks in a ref name, so
-// the delimiter is one backtick longer than the longest run inside the text.
 func codeSpan(text string) string {
 	longest, run := 0, 0
 	for _, char := range text {
@@ -157,8 +141,6 @@ func codeSpan(text string) string {
 	return fence + text + fence
 }
 
-// shellWord quotes a ref for a shell, because the report suggests a command to
-// copy and git accepts refs a shell would read as syntax.
 func shellWord(word string) string {
 	const plain = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._/@^~+-:=,"
 	if word != "" && strings.Trim(word, plain) == "" {

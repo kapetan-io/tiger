@@ -7,19 +7,11 @@ import (
 	"github.com/kapetan-io/tiger/internal/command"
 )
 
-// Usage is tiger golangci's entry in the command listing.
 const Usage = `  tiger golangci [-C dir] [--init | --print]
       audit the project golangci-lint config against the auto-rule baseline,
       generate it with --init, or write it to stdout with --print
 `
 
-// Run is tiger golangci: audit the project's golangci-lint config
-// against the auto-rule baseline, generate it with --init, or
-// write the same baseline to stdout with --print for hand merging into an
-// existing config.
-// Exit codes mirror tiger check: 0 conforming, 1 non-conforming,
-// 2 operational — and --init refusal is operational, because exit 1 is
-// reserved for a verification verdict.
 func Run(args []string, streams command.Streams) int {
 	flags := flag.NewFlagSet("tiger golangci", flag.ContinueOnError)
 	flags.SetOutput(streams.Stderr)

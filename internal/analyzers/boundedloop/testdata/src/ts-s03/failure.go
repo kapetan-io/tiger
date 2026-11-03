@@ -83,7 +83,8 @@ func runOnBackground(input <-chan int, output chan<- int) {
 }
 
 // runOnDerivedBackground derives from Background, which is still a context
-// nothing outside the function cancels.
+// nothing outside the function cancels. cancel comes from the same two-result
+// call, so ctx is traced to that call whichever result the local takes.
 func runOnDerivedBackground(input <-chan int, output chan<- int) {
 	ctx, cancel := context.WithCancel(context.TODO())
 	defer cancel()

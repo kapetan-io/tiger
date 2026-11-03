@@ -12,11 +12,6 @@ import (
 
 const goleakPath = `"go.uber.org/goleak"`
 
-// checkHarness reports TS-C03 once, at the first goroutine start, for a
-// package whose non-test files start goroutines when no test file of the
-// package has a TestMain that uses goleak. The package's tests may be in the
-// package itself or in its _test package, so the check reads every _test.go
-// file in the package's directory.
 func checkHarness(pass *analysis.Pass, starts []ast.Node) {
 	var first ast.Node
 	for _, start := range starts {
@@ -36,8 +31,6 @@ func checkHarness(pass *analysis.Pass, starts []ast.Node) {
 	pass.Report(analysis.Diagnostic{Pos: first.Pos(), Category: "TS-C03", Message: msgNoLeakCheck})
 }
 
-// hasLeakCheck reports whether any _test.go file in dir declares a TestMain
-// that calls into goleak.
 func hasLeakCheck(dir string) bool {
 	names, err := filepath.Glob(filepath.Join(dir, "*_test.go"))
 	if err != nil {
@@ -56,8 +49,6 @@ func hasLeakCheck(dir string) bool {
 	return false
 }
 
-// mainUsesGoleak reports whether file imports goleak and its TestMain calls
-// VerifyTestMain on the import.
 func mainUsesGoleak(file *ast.File) bool {
 	local := ""
 	for _, spec := range file.Imports {
@@ -84,9 +75,6 @@ func mainUsesGoleak(file *ast.File) bool {
 	return false
 }
 
-// refers reports whether body calls VerifyTestMain from the package imported
-// as local. Naming an option or any other goleak function checks nothing, and
-// neither does a call inside an `if false` body, which never runs.
 func refers(body *ast.BlockStmt, local string) bool {
 	found := false
 	ast.Inspect(body, func(node ast.Node) bool {

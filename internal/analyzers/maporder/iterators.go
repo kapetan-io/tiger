@@ -12,8 +12,6 @@ const msgIterator = "TS-T02: this iterator yields map entries in a different ord
 	"— pass it straight to slices.Sorted, or to slices.SortedFunc with a comparator that " +
 	"compares every field with cmp.Compare"
 
-// mapIterator returns the element type a maps.Keys or maps.Values call over
-// a map yields (nil for maps.All), and whether call is such an iterator.
 func mapIterator(pass *analysis.Pass, call *ast.CallExpr) (types.Type, bool) {
 	if len(call.Args) != 1 {
 		return nil, false
@@ -37,10 +35,6 @@ func mapIterator(pass *analysis.Pass, call *ast.CallExpr) (types.Type, bool) {
 	return nil, false
 }
 
-// checkIterators fires on every maps.Keys, maps.Values or maps.All over a
-// map whose result reaches anything but a sort that fixes its order, a map
-// (maps.Collect, maps.Insert), or a range statement, which checkRange
-// judges as a map range.
 func checkIterators(pass *analysis.Pass, file *ast.File, facts fileFacts) {
 	var stack []ast.Node
 	ast.Inspect(file, func(node ast.Node) bool {
@@ -53,7 +47,6 @@ func checkIterators(pass *analysis.Pass, file *ast.File, facts fileFacts) {
 		if !ok {
 			return true
 		}
-		// Parentheses change nothing about who consumes the iterator.
 		var use ast.Expr = call
 		var parent ast.Node
 		for _, ancestor := range slices.Backward(stack[:len(stack)-1]) {
@@ -74,8 +67,6 @@ func checkIterators(pass *analysis.Pass, file *ast.File, facts fileFacts) {
 	})
 }
 
-// iteratorFixed reports whether call's only consumer, parent, fixes or
-// discards its order, and records the sort sites it judges.
 func iteratorFixed(pass *analysis.Pass, parent ast.Node, call ast.Expr, elem types.Type) bool {
 	switch p := parent.(type) {
 	case *ast.RangeStmt:
@@ -96,9 +87,6 @@ func iteratorFixed(pass *analysis.Pass, parent ast.Node, call ast.Expr, elem typ
 	return false
 }
 
-// collectedThenSorted reports whether use (the iterator call with its
-// parentheses) is the argument of slices.Collect or slices.AppendSeq assigned
-// to a local slice whose first use afterward is a sort that fixes its order.
 func collectedThenSorted(
 	pass *analysis.Pass, stack []ast.Node, use ast.Expr, facts fileFacts,
 ) bool {
@@ -129,7 +117,6 @@ func collectedThenSorted(
 		if len(collect.Args) != 2 || collect.Args[1] != use {
 			return false
 		}
-		// A fresh slice from make, or the target extended in place.
 		fresh := false
 		if made, ok := ast.Unparen(collect.Args[0]).(*ast.CallExpr); ok {
 			fresh = isBuiltin(pass, made.Fun, "make")

@@ -18,6 +18,17 @@ nothing blocking fires. `Loop` has one exit, `serve`
 returns only from the stop case, and `run` sets `cleaned` before `close(l.done)`. Tiger also cannot
 see whether `Call` selects on `done` while it waits for the reply.
 
+`Loop` is the right shape: its only exit is the stop case, cleanup runs before `done` closes, and
+the context bounds only the caller's wait. Cleanup comes before `close(l.done)` because a caller
+released by `done` may read the cleaned state through `Cleaned`. `ErrClosed` is returned to callers
+once the loop has finished. `Shutdown` bounds only the wait by its context, so a caller whose context
+expired can call it again, and it reports an expired context before the wait so the result never
+depends on whether the loop finished first. `reply` never blocks, because `Reply` has room for one
+result and each request is answered once. In `call`, the buffer can accept work the loop never
+reads, so `done` must end the wait for the reply. `done` can win the select against a reply sent just
+before it closed, so `call` checks `request.Reply` once more before it returns `ErrClosed`.
+`EarlyExitLoop.Shutdown` reports success once `done` closes, cleanup or not.
+
 ## Bug
 
 Querator ENG-160 and ENG-196: a loop skipped cleanup on an early exit, Shutdown let the caller's

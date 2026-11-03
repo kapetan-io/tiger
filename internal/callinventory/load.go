@@ -16,16 +16,11 @@ import (
 	"golang.org/x/tools/go/ssa/ssautil"
 )
 
-// Load records the calls of the Go module that holds dir, for the packages
-// under dir. Test files and generated files are left out. A module package
-// that does not load is named in NotCompared and contributes nothing; Load
-// fails only when the load itself cannot run.
-//
-// The module's packages and its third-party dependencies are read from
-// source, so their function bodies can be walked for a reach to syscall. The
-// standard library is read from compiler export data, which has no bodies;
-// the reach of its functions comes from table, see NewStdReach.
-func Load(dir string, table *StdReach) (Inventory, error) {
+func Load(dir string) (Inventory, error) {
+	return LoadWith(dir, NewStdReach(dir))
+}
+
+func LoadWith(dir string, table *StdReach) (Inventory, error) {
 	run, err := filepath.Abs(dir)
 	if err != nil {
 		return Inventory{}, err
@@ -33,8 +28,6 @@ func Load(dir string, table *StdReach) (Inventory, error) {
 	if run, err = filepath.EvalSymlinks(run); err != nil {
 		return Inventory{}, err
 	}
-	// The first load reads only package metadata: the whole import graph,
-	// standard library included, for a fraction of the cost of type-checking.
 	graph, err := packages.Load(&packages.Config{
 		Mode: packages.NeedName | packages.NeedImports | packages.NeedDeps | packages.NeedModule,
 		Dir:  run,
@@ -55,7 +48,6 @@ func Load(dir string, table *StdReach) (Inventory, error) {
 		}
 		return inv, nil
 	}
-	// Both paths are resolved so a symlinked temp directory still compares equal.
 	moduleDir, err := filepath.EvalSymlinks(module.Dir)
 	if err != nil {
 		return Inventory{}, err
@@ -120,7 +112,6 @@ func Load(dir string, table *StdReach) (Inventory, error) {
 	return inv, nil
 }
 
-// mainModule returns the module that holds the first loaded package.
 func mainModule(roots []*packages.Package) *packages.Module {
 	for _, pkg := range roots {
 		if pkg.Module != nil {
@@ -131,29 +122,20 @@ func mainModule(roots []*packages.Package) *packages.Module {
 }
 
 type loader struct {
-	run    string
-	module string
-	// prefix is the run directory below the module root, empty when they are
-	// the same directory.
-	prefix  string
-	fset    *token.FileSet
-	inv     *Inventory
-	reaches map[string]bool
-	body    *bodyReach
-	// compared is the healthy module packages under the run directory, by import path.
+	run      string
+	module   string
+	prefix   string
+	fset     *token.FileSet
+	inv      *Inventory
+	reaches  map[string]bool
+	body     *bodyReach
 	compared map[string]bool
-	// skipped is the set of generated files, by absolute path.
-	skipped map[string]bool
-	// underRun holds every package loaded by ./..., healthy or not.
+	skipped  map[string]bool
 	underRun map[string]bool
-	// names maps each printed name of a package under the run directory to its
-	// import path, to catch two packages that would print the same.
-	names map[string]string
-	// err is the first failure of a bounded walk, which stops the load.
-	err error
+	names    map[string]string
+	err      error
 }
 
-// pkgRef identifies a package by import path and declared name.
 type pkgRef struct {
 	Path string
 	Name string
@@ -163,8 +145,6 @@ func refOf(pkg *types.Package) pkgRef {
 	return pkgRef{Path: pkg.Path(), Name: pkg.Name()}
 }
 
-// callTarget is what a call names inside a package: a type or function, and
-// the method on it, empty for a free function.
 type callTarget struct {
 	Member string
 	Method string
@@ -174,12 +154,6 @@ func (l *loader) inModule(path string) bool {
 	return path == l.module || strings.HasPrefix(path, l.module+"/")
 }
 
-// outsideSource lists, in byte order, the packages outside the module whose
-// bodies a load reads from source because the reach table does not know
-// them: the third-party dependencies. Packages of the standard library's own internals are left to
-// export data, since nothing outside it can call them, as are packages that
-// did not list; their errors surface through the module packages that import
-// them.
 func (l *loader) outsideSource(graph []*packages.Package, table *StdReach) []string {
 	var paths []string
 	packages.Visit(graph, nil, func(pkg *packages.Package) {
@@ -198,8 +172,6 @@ func (l *loader) outsideSource(graph []*packages.Package, table *StdReach) []str
 	return paths
 }
 
-// classify sorts the loaded packages into compared, not compared and
-// generated, and remembers the first load error.
 func (l *loader) classify(roots []*packages.Package) {
 	var failures []loadFailure
 	for _, pkg := range roots {
@@ -246,7 +218,6 @@ func (l *loader) classify(roots []*packages.Package) {
 	}
 }
 
-// skip leaves a generated file out and names it in the inventory.
 func (l *loader) skip(path string) {
 	l.skipped[path] = true
 	rel, err := filepath.Rel(l.run, path)
@@ -261,10 +232,6 @@ type loadFailure struct {
 	message string
 }
 
-// packageName prints a package the way a reviewer finds it: relative to the
-// run directory when it sits under it, otherwise relative to the module root,
-// outside packages in full. The package at the run directory prints by its
-// package name.
 func (l *loader) packageName(pkg pkgRef) string {
 	if !l.inModule(pkg.Path) {
 		return pkg.Path
@@ -283,15 +250,10 @@ func (l *loader) qualified(pkg *types.Package, member string) string {
 	return l.packageName(refOf(pkg)) + "." + member
 }
 
-// maxClosures bounds the function literals one declared function may hold, so
-// a malformed program fails the load instead of looping.
 const maxClosures = 1_000_000
 
 var errTooManyClosures = fmt.Errorf("a function holds more than %d function literals", maxClosures)
 
-// walk records every function declared in a hand-written file of a compared
-// package, and each package's initializer, which holds the calls of package
-// variable declarations.
 func (l *loader) walk(prog *ssa.Program, roots []*packages.Package) error {
 	for _, pkg := range roots {
 		built := prog.ImportedPackage(pkg.PkgPath)
@@ -325,16 +287,12 @@ func (l *loader) walk(prog *ssa.Program, roots []*packages.Package) error {
 	return nil
 }
 
-// declaration names a declared function: its owner, its header and its method
-// name, which is the function's own name for a free function.
 type declaration struct {
 	Owner  string
 	Header string
 	Method string
 }
 
-// declared names a declared function. SSA calls a second init function init#1; it
-// files under the package's init with the synthesized package initializer.
 func (l *loader) declared(fn *ssa.Function) declaration {
 	pkg := fn.Package().Pkg
 	if recv := fn.Signature.Recv(); recv != nil {
@@ -348,8 +306,6 @@ func (l *loader) declared(fn *ssa.Function) declaration {
 	return declaration{Owner: owner, Header: owner, Method: name}
 }
 
-// function records the calls of a declared function and of the function
-// literals inside it, all filed under the declared function.
 func (l *loader) function(decl *ssa.Function) error {
 	if decl == nil {
 		return nil
@@ -393,8 +349,6 @@ func (l *loader) function(decl *ssa.Function) error {
 	return nil
 }
 
-// site is where an instruction is written, relative to the run directory. It
-// ignores //line directives so the site names a file the reader can open.
 func (l *loader) site(instr ssa.Instruction) Site {
 	pos := l.fset.PositionFor(instr.Pos(), false)
 	rel, err := filepath.Rel(l.run, pos.Filename)
@@ -404,9 +358,6 @@ func (l *loader) site(instr ssa.Instruction) Site {
 	return Site{File: filepath.ToSlash(rel), Line: pos.Line}
 }
 
-// orderedSites puts sites in file and line order and drops repeats, because a
-// site is a file and line: two calls on one line, or one call compiled to
-// several instructions, give a reader the same place to open.
 func orderedSites(sites []Site) []Site {
 	slices.SortFunc(sites, func(a, b Site) int {
 		return cmp.Or(strings.Compare(a.File, b.File), cmp.Compare(a.Line, b.Line))
@@ -424,13 +375,10 @@ func receiver(t types.Type) *types.Named {
 	return nil
 }
 
-// callee names what one call site talks to, or reports false when the call
-// is dynamic, filtered out, or stays inside its own owner.
 func (l *loader) callee(call *ssa.CallCommon, from *types.Package, owner string) (Call, bool) {
 	if call.IsInvoke() {
 		named, ok := types.Unalias(call.Value.Type()).(*types.Named)
 		if !ok {
-			// A type parameter or an interface literal names no interface.
 			return Call{}, false
 		}
 		named = named.Origin()
@@ -470,8 +418,6 @@ func (l *loader) callee(call *ssa.CallCommon, from *types.Package, owner string)
 	return l.other(obj.Pkg(), target), true
 }
 
-// other builds a callee of the first kind: a function, type or interface in
-// another package.
 func (l *loader) other(pkg *types.Package, target callTarget) Call {
 	name := l.qualified(pkg, target.Member)
 	call := Call{
@@ -489,8 +435,6 @@ func (l *loader) other(pkg *types.Package, target callTarget) Call {
 	return call
 }
 
-// sibling builds a callee of the second kind, a function of a different owner
-// in the caller's own package. A call within one owner is no callee at all.
 func (l *loader) sibling(pkg *types.Package, target callTarget, owner string) (Call, bool) {
 	call := l.other(pkg, target)
 	if call.Target == owner {
@@ -500,9 +444,6 @@ func (l *loader) sibling(pkg *types.Package, target callTarget, owner string) (C
 	return call, true
 }
 
-// keep decides whether an outside callee talks to the world. A free function is
-// judged by its own body. A method is judged by whether its package imports
-// syscall, because a static walk cannot follow os.File.Close down to it.
 func (l *loader) keep(callee *ssa.Function, pkg *types.Package) bool {
 	if callee.Signature.Recv() == nil {
 		found, err := l.body.reaches(callee)

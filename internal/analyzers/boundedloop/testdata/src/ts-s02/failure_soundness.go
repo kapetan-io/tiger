@@ -15,7 +15,8 @@ func byteToParameter(n uint8) {
 }
 
 // unsignedByTwo counts an unsigned number down by two toward a parameter, and
-// wraps past zero.
+// wraps past zero. A wide signed type counting down is trusted (countDownStep);
+// an unsigned one reaches its edge at zero, so it is not.
 func unsignedByTwo(n, floor uint) {
 	for i := n; i > floor; i -= 2 { // want `TS-S02: this counter does not bound the loop`
 	}
@@ -33,7 +34,7 @@ labeled:
 func grow(entries map[int]int, key int) { entries[key] = 1 }
 
 // growsThroughHelper inserts into the map whose length is the limit by
-// handing it to a function.
+// handing it to a function; a map handed to a function can grow there.
 func growsThroughHelper(entries map[int]int) {
 	for i := 0; i < len(entries); i++ { // want `TS-S02: this counter does not bound the loop`
 		grow(entries, i+1000)

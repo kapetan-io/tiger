@@ -25,25 +25,18 @@ import (
 	"github.com/kapetan-io/tiger/internal/rules"
 )
 
-// The fact category pin consumes, and the rule whose blocking findings
-// mean an existing pin disagrees with the code.
 const catVariant = "TS-V01-facts"
 
 func pinRule(ruleID string) bool {
 	return ruleID == "TS-V01"
 }
 
-// Usage is tiger pin's entry in the command listing.
 const Usage = `  tiger pin [-C dir] [--dry-run] <Name> [<Name>...] [packages]
       freeze each named function's computed facts into //tiger: pins
       written at their targets; exit 0 written or already satisfied,
       1 refusals, 2 could not proceed
 `
 
-// Run is tiger pin: resolve each named function, collect the facts the
-// same analyzer run reports for it, and freeze them into //tiger:
-// directives written at their targets. Insert-only by construction — the
-// writer this command calls has no other operation.
 func Run(args []string, streams command.Streams) int {
 	flags := flag.NewFlagSet("tiger pin", flag.ContinueOnError)
 	flags.SetOutput(streams.Stderr)
@@ -110,16 +103,11 @@ func Run(args []string, streams command.Streams) int {
 	return command.ExitClean
 }
 
-// invocation is pin's positional arguments, split into function names and
-// package patterns.
 type invocation struct {
 	names    []string
 	patterns []string
 }
 
-// splitArgs separates function names from package patterns: an argument
-// that starts with "." or "/" or contains a "/" is a pattern, everything
-// else — bare names, Store.Flush, (*Store).Flush — is a name.
 func splitArgs(args []string) invocation {
 	given := invocation{}
 	for _, arg := range args {
@@ -133,9 +121,6 @@ func splitArgs(args []string) invocation {
 	return given
 }
 
-// loadForPin parses the packages pin resolves names against and writes
-// into. Syntax only — type checking and analysis stay the driver's job, so
-// there is no second computation path.
 func loadForPin(root string, patterns []string) ([]*packages.Package, error) {
 	config := &packages.Config{
 		Mode: packages.NeedName | packages.NeedFiles | packages.NeedCompiledGoFiles |
@@ -153,9 +138,6 @@ func loadForPin(root string, patterns []string) ([]*packages.Package, error) {
 	return dedupeVariants(loaded), nil
 }
 
-// dedupeVariants mirrors the driver's package dedupe: drop the synthesized
-// test main, and the plain variant of a package when its test-augmented
-// variant is present, so no declaration is seen twice.
 func dedupeVariants(loaded []*packages.Package) []*packages.Package {
 	augmented := map[string]bool{}
 	for _, pkg := range loaded {
@@ -174,15 +156,12 @@ func dedupeVariants(loaded []*packages.Package) []*packages.Package {
 	return kept
 }
 
-// declared is one function or method declaration in the loaded packages.
 type declared struct {
 	pkg  *packages.Package
 	file *ast.File
 	decl *ast.FuncDecl
 }
 
-// declaredFuncs enumerates every function and method the loaded packages
-// declare — the universe a requested name resolves against.
 func declaredFuncs(loaded []*packages.Package) []declared {
 	universe := []declared{}
 	for _, pkg := range loaded {
@@ -199,8 +178,6 @@ func declaredFuncs(loaded []*packages.Package) []declared {
 	return universe
 }
 
-// receiver returns a method's receiver type name and pointer-ness, or ""
-// for a plain function.
 func receiver(decl *ast.FuncDecl) (name string, pointer bool) {
 	if decl.Recv == nil || len(decl.Recv.List) == 0 {
 		return "", false
@@ -223,8 +200,6 @@ func receiver(decl *ast.FuncDecl) (name string, pointer bool) {
 	return ident.Name, pointer
 }
 
-// qualified prints a declaration in the form a caller can retry with:
-// pkgpath.Name, pkgpath.Recv.Name, or pkgpath.(*Recv).Name.
 func qualified(d declared) string {
 	recv, pointer := receiver(d.decl)
 	if recv == "" {
@@ -236,17 +211,11 @@ func qualified(d declared) string {
 	return d.pkg.PkgPath + "." + recv + "." + d.decl.Name.Name
 }
 
-// resolved is one requested name bound to its single declaration.
 type resolved struct {
 	raw string
 	declared
 }
 
-// resolve matches each requested name against the declared universe.
-// Matching is exact: a bare name matches functions and methods by their own
-// name, Store.Flush and (*Store).Flush match only that receiver's method.
-// No match and more-than-one match are both errors that abort the whole
-// run.
 func resolve(names []string, universe []declared) ([]resolved, error) {
 	targets := []resolved{}
 	for _, name := range names {
@@ -282,16 +251,11 @@ func resolve(names []string, universe []declared) ([]resolved, error) {
 	return targets, nil
 }
 
-// requested is one parsed name argument: an optional receiver type and
-// the function or method name.
 type requested struct {
 	recv   string
 	method string
 }
 
-// parseRequested splits one name argument: "(*Store).Flush" and
-// "Store.Flush" name Store's method, a bare "Flush" leaves the receiver
-// empty.
 func parseRequested(arg string) requested {
 	before, after, found := strings.Cut(arg, ".")
 	if !found {
@@ -303,8 +267,6 @@ func parseRequested(arg string) requested {
 	}
 }
 
-// closest names the declared function nearest to a mistyped name, so the
-// error carries what to retry with.
 func closest(name string, universe []declared) string {
 	best, bestDistance := "", 4
 	for _, d := range universe {
@@ -319,14 +281,11 @@ func closest(name string, universe []declared) string {
 	return fmt.Sprintf(" (closest: %s)", best)
 }
 
-// pair is the two names editDistance compares: what the caller spelled
-// and one declared candidate.
 type pair struct {
 	spelled   string
 	candidate string
 }
 
-// editDistance is the Levenshtein distance between a pair's names.
 func editDistance(p pair) int {
 	previous := make([]int, len(p.candidate)+1)
 	for j := range previous {
@@ -347,7 +306,6 @@ func editDistance(p pair) int {
 	return previous[len(p.candidate)]
 }
 
-// write is one node's pending insertion, with the output lines it prints.
 type write struct {
 	target   *resolved
 	absFile  string
@@ -358,22 +316,16 @@ type write struct {
 	printed  []string
 }
 
-// refusal is one target pin declined to write, with the block it prints.
 type refusal struct {
 	target *resolved
 	block  string
 }
 
-// planned is one run's computed work: every insertion, decided before any
-// file is opened for writing (behavioral constraint 7), and every refusal.
 type planned struct {
 	writes  []write
 	refused []refusal
 }
 
-// plan computes the run's work. A fact message that does not yield a
-// parseable directive is an operational error for the whole run — the
-// analyzer-to-pin contract is broken, so every collected fact is suspect.
 func plan(root string, targets []resolved, found []driver.Finding) (planned, error) {
 	rel := relativizer(root)
 	writes := []write{}
@@ -407,9 +359,6 @@ func (r *resolved) position() token.Position {
 	return r.pkg.Fset.Position(r.decl.Pos())
 }
 
-// lineSpan is the inclusive line range a finding must fall in to be "on"
-// a target: the doc comment (a disagreeing pin's finding points at the pin
-// line) through the declaration's end.
 type lineSpan struct {
 	first int
 	last  int
@@ -427,6 +376,9 @@ func (r *resolved) span() lineSpan {
 }
 
 func isBlocking(category string) bool {
+	if category == "TS-L14" {
+		return false
+	}
 	entry, known := rules.ByCategory(category)
 	return known && entry.Severity == rules.SeverityBlocking
 }
@@ -436,8 +388,6 @@ func isFact(category string) bool {
 	return known
 }
 
-// onTarget filters the run's findings to those positioned on target and
-// passing keep.
 func onTarget(
 	target *resolved, relFile string, found []driver.Finding, keep func(string) bool,
 ) []driver.Finding {
@@ -458,9 +408,6 @@ func onTarget(
 	return matched
 }
 
-// refusalBlock renders one refused target: the reason, the blocking
-// findings, and — when the findings mean an existing pin disagrees with
-// the code — the pinned lines and the two exits the specification defines.
 func refusalBlock(target *resolved, relFile string, blocking []driver.Finding) string {
 	pinned := existingPins(target)
 	disagreement := false
@@ -491,7 +438,6 @@ func refusalBlock(target *resolved, relFile string, blocking []driver.Finding) s
 	return block.String()
 }
 
-// existingPins collects the variant pins already on target's loops.
 func existingPins(target *resolved) []directive.Directive {
 	set := placement.Collect(target.pkg.Fset, []*ast.File{target.file})
 	collected := []directive.Directive{}
@@ -506,8 +452,6 @@ func existingPins(target *resolved) []directive.Directive {
 	return collected
 }
 
-// targetWrites turns one target's variant facts into writes, each on its
-// own loop.
 func targetWrites(
 	target *resolved, relFile string, factFindings []driver.Finding,
 ) ([]write, error) {
@@ -542,7 +486,6 @@ func newWrite(target *resolved, relFile string, node ast.Node, dirs []directive.
 	}
 }
 
-// loopAtLine finds the for statement in target's body starting on line.
 func loopAtLine(target *resolved, line int) ast.Node {
 	var found ast.Node
 	ast.Inspect(target.decl, func(node ast.Node) bool {
@@ -555,7 +498,6 @@ func loopAtLine(target *resolved, line int) ast.Node {
 	return found
 }
 
-// sourceFiles reads each file the run writes into, exactly once.
 func sourceFiles(writes []write) (map[string][]byte, error) {
 	files := map[string][]byte{}
 	//tiger:batched the filesystem offers no batch read; each target file is read once
@@ -572,9 +514,6 @@ func sourceFiles(writes []write) (map[string][]byte, error) {
 	return files, nil
 }
 
-// numberLines computes each write's insertion and the final line number of
-// every inserted directive, accounting for lines earlier insertions add to
-// the same file.
 func numberLines(writes []write, sources map[string][]byte) {
 	for i := range writes {
 		w := &writes[i]
@@ -606,8 +545,6 @@ func numberLines(writes []write, sources map[string][]byte) {
 	}
 }
 
-// nodeAtOrigin re-finds the node a write inserts at: the declaration
-// itself, or the loop starting on the recorded line.
 func (w *write) nodeAtOrigin() ast.Node {
 	if w.origLine == w.target.position().Line {
 		return w.target.decl
@@ -615,9 +552,6 @@ func (w *write) nodeAtOrigin() ast.Node {
 	return loopAtLine(w.target, w.origLine)
 }
 
-// apply splices every insertion into its file, descending by offset so no
-// insertion invalidates another's, and replaces each file atomically. A
-// failure names the files already written (behavioral constraint 7).
 func apply(writes []write, sources map[string][]byte, streams command.Streams) error {
 	byFile := map[string][]write{}
 	for _, w := range writes {
@@ -647,8 +581,6 @@ func apply(writes []write, sources map[string][]byte, streams command.Streams) e
 	return nil
 }
 
-// replace writes content to a temporary file beside path and renames it
-// into place, preserving the original mode.
 func replace(path string, content []byte) error {
 	info, err := os.Stat(path)
 	if err != nil {
@@ -671,8 +603,6 @@ func replace(path string, content []byte) error {
 	return os.Rename(name, path)
 }
 
-// report prints, per target in the requested order: the refusal block, then
-// the written lines.
 func report(streams command.Streams, targets []resolved, writes []write, refused []refusal) {
 	for i := range targets {
 		target := &targets[i]
@@ -694,9 +624,6 @@ func report(streams command.Streams, targets []resolved, writes []write, refused
 	}
 }
 
-// relativizer mirrors the driver's finding relativization, bound to one
-// root, so target positions compare against finding positions byte for
-// byte.
 func relativizer(root string) func(string) string {
 	return func(filename string) string {
 		relative, err := filepath.Rel(root, filename)

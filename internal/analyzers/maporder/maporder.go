@@ -64,7 +64,6 @@ const (
 		"changes every run" + msgSortedKeys
 )
 
-// Analyzer enforces TS-T02.
 var Analyzer = &analysis.Analyzer{
 	Name:      "maporder",
 	Doc:       "TS-T02: map iteration order never reaches an output.",
@@ -72,9 +71,6 @@ var Analyzer = &analysis.Analyzer{
 	FactTypes: []analysis.Fact{new(totalFact)},
 }
 
-// sortSite is the verdict on a map loop that collects into a slice sorted
-// afterward. The bodyImpure field is set when the loop body does more than
-// collect, so no sort can make it order-free.
 type sortSite struct {
 	bodyImpure bool
 	accepted   bool
@@ -96,9 +92,6 @@ func run(pass *analysis.Pass) (any, error) {
 	return nil, nil
 }
 
-// statementsAfter maps every statement to the statements that follow it in
-// its enclosing statement list. A labeled statement is keyed by what it
-// labels.
 func statementsAfter(file *ast.File) map[ast.Stmt][]ast.Stmt {
 	after := map[ast.Stmt][]ast.Stmt{}
 	ast.Inspect(file, func(node ast.Node) bool {
@@ -119,7 +112,6 @@ func statementsAfter(file *ast.File) map[ast.Stmt][]ast.Stmt {
 	return after
 }
 
-// unlabel returns the statement a label sits on.
 func unlabel(stmt ast.Stmt) ast.Stmt {
 	for range maxPathDepth {
 		labeled, ok := stmt.(*ast.LabeledStmt)
@@ -131,19 +123,12 @@ func unlabel(stmt ast.Stmt) ast.Stmt {
 	return stmt
 }
 
-// span is a source range.
 type span struct{ pos, end token.Pos }
 
-// fileFacts is what the checks need to know about a file beyond one node.
 type fileFacts struct {
-	// after maps a statement to those following it in its statement list.
-	after map[ast.Stmt][]ast.Stmt
-	// shared maps a variable to where code first reads it other than by name.
-	shared map[types.Object]token.Pos
-	// loops maps a statement to the outermost loop around it in the same
-	// function, if any.
-	loops map[ast.Stmt]span
-	// results holds the named results of every function in the file.
+	after   map[ast.Stmt][]ast.Stmt
+	shared  map[types.Object]token.Pos
+	loops   map[ast.Stmt]span
 	results map[types.Object]bool
 }
 
@@ -195,8 +180,6 @@ func (facts fileFacts) addResults(pass *analysis.Pass, sig *ast.FuncType) {
 	}
 }
 
-// outermostLoop returns the outermost loop in stack that sits in the same
-// function as the node below the top of stack.
 func outermostLoop(stack []ast.Node) (span, bool) {
 	var outer span
 	found := false
@@ -211,11 +194,6 @@ func outermostLoop(stack []ast.Node) (span, bool) {
 	return outer, found
 }
 
-// sortAfter finds the sort that fixes target after at, and reports whether
-// code can read target under another name before that sort ends up in
-// target's hands again. A package-level target always can. Inside a loop, an
-// alias made later in the loop body reads target on the next pass, unless
-// target is declared inside that loop and so starts fresh each pass.
 func (facts fileFacts) sortAfter(
 	pass *analysis.Pass, at ast.Stmt, target types.Object,
 ) (sorted *sortCall, aliased bool) {
@@ -238,8 +216,6 @@ func (facts fileFacts) sortAfter(
 	return sorted, first < limit
 }
 
-// checkRange fires TS-T02 when loop ranges over a map and its body is
-// neither allowlisted nor a collect-then-sort the sort makes order-free.
 func checkRange(pass *analysis.Pass, loop *ast.RangeStmt, facts fileFacts) {
 	if !isMapRange(pass, loop) {
 		return
@@ -259,9 +235,6 @@ func checkRange(pass *analysis.Pass, loop *ast.RangeStmt, facts fileFacts) {
 	})
 }
 
-// isMapRange reports whether loop ranges over a map (through any named type
-// whose underlying type is a map) or over maps.Keys, maps.Values or maps.All
-// of one.
 func isMapRange(pass *analysis.Pass, loop *ast.RangeStmt) bool {
 	if call, ok := ast.Unparen(loop.X).(*ast.CallExpr); ok {
 		if _, ok := mapIterator(pass, call); ok {
@@ -276,8 +249,6 @@ func isMapRange(pass *analysis.Pass, loop *ast.RangeStmt) bool {
 	return mapped
 }
 
-// classifyMessage picks the finding message that best names what loop's
-// body does that lets order escape.
 func classifyMessage(pass *analysis.Pass, loop *ast.RangeStmt, site *sortSite) string {
 	if site != nil && !site.bodyImpure {
 		return msgSortTies
@@ -318,8 +289,6 @@ func classifyMessage(pass *analysis.Pass, loop *ast.RangeStmt, site *sortSite) s
 	return found
 }
 
-// isPlainCall reports whether call invokes anything other than the
-// allowlisted builtins len, cap, min, max, delete, and append.
 func isPlainCall(pass *analysis.Pass, call *ast.CallExpr) bool {
 	for _, name := range []string{"len", "cap", "min", "max", "delete", "append"} {
 		if isBuiltin(pass, call.Fun, name) {
@@ -329,7 +298,6 @@ func isPlainCall(pass *analysis.Pass, call *ast.CallExpr) bool {
 	return true
 }
 
-// isStringType reports whether expr has string type.
 func isStringType(pass *analysis.Pass, expr ast.Expr) bool {
 	exprType := pass.TypesInfo.TypeOf(expr)
 	if exprType == nil {
@@ -339,7 +307,6 @@ func isStringType(pass *analysis.Pass, expr ast.Expr) bool {
 	return ok && basic.Info()&types.IsString != 0
 }
 
-// isBuiltin reports whether fun names the predeclared builtin name.
 func isBuiltin(pass *analysis.Pass, fun ast.Expr, name string) bool {
 	ident, ok := ast.Unparen(fun).(*ast.Ident)
 	if !ok {
@@ -349,20 +316,17 @@ func isBuiltin(pass *analysis.Pass, fun ast.Expr, name string) bool {
 	return ok && builtin.Name() == name
 }
 
-// isFunc reports whether fun names the package-level function qualified,
-// written "pkg.Name".
 func isFunc(pass *analysis.Pass, fun ast.Expr, qualified string) bool {
 	fn := calledFunc(pass, fun)
 	return fn != nil && fn.Pkg() != nil && fn.Pkg().Path()+"."+fn.Name() == qualified
 }
 
-// maxInstantiation bounds how many nested instantiations calledFunc unwraps.
 const maxInstantiation = 8
 
 func calledFunc(pass *analysis.Pass, fun ast.Expr) *types.Func {
 	for range maxInstantiation {
 		switch f := ast.Unparen(fun).(type) {
-		case *ast.IndexExpr: // explicit instantiation
+		case *ast.IndexExpr:
 			fun = f.X
 		case *ast.IndexListExpr:
 			fun = f.X
@@ -385,9 +349,6 @@ func calledFunc(pass *analysis.Pass, fun ast.Expr) *types.Func {
 	return nil
 }
 
-// orderedLeaf reports whether two values of t that compare equal are
-// indistinguishable: integers and strings. Floats are left out because -0
-// and +0 compare equal and print differently.
 func orderedLeaf(t types.Type) bool {
 	if t == nil {
 		return false

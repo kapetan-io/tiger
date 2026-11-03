@@ -21,44 +21,21 @@ import (
 	"golang.org/x/tools/go/ssa/ssautil"
 )
 
-// stdReachDir is the directory inside the module root that holds the reach
-// files. A project may commit it or ignore it; tiger does neither for it.
 const stdReachDir = ".tiger"
 
-// stdReachMagic opens the first line of a reach file.
 const stdReachMagic = "tiger-stdreach/1"
 
-// stdReachEnd is the last line of a complete reach file, so a file cut short
-// reads as stale instead of as a table that knows fewer packages.
 const stdReachEnd = "end"
 
-// StdReach answers, for functions whose bodies a load did not read, whether
-// the body statically reaches syscall. It stands in for the walk bodyReach
-// cannot make over a function loaded from compiler export data.
-//
-// It is read from, or written to, one file per GOOS and GOARCH in
-// <module root>/.tiger/stdreach-<goos>-<goarch>.txt. The first line carries the
-// file's key, "tiger-stdreach/1 <exact Go version> <goos> <goarch>", and every
-// other line is either a package the file knows or, indented, a function or
-// method of the package above it whose body statically reaches syscall, named
-// the way callees are (Func, or Type.Method). A member of a known package that
-// is not listed does not reach syscall.
 type StdReach struct {
-	dir  string
-	once sync.Once
-	err  error
-	// saveErr is why the reach file could not be written, nil when it was
-	// written or did not need to be.
-	saveErr error
-	// packages is every package the table has an answer for.
+	dir      string
+	once     sync.Once
+	err      error
+	saveErr  error
 	packages map[string]bool
-	// reaches holds the members whose bodies reach syscall, keyed by
-	// path.Func or path.Type.Method.
-	reaches map[string]bool
+	reaches  map[string]bool
 }
 
-// toolchain is what a load builds with: the Go version, system and
-// architecture go reports for a directory, and where its module starts.
 type toolchain struct {
 	Version string `json:"GOVERSION"`
 	OS      string `json:"GOOS"`
@@ -70,8 +47,6 @@ func (t toolchain) key() string {
 	return stdReachMagic + " " + t.Version + " " + t.OS + " " + t.Arch
 }
 
-// root is the directory the reach file lives under: the module root, or dir
-// itself when dir is outside a module.
 func (t toolchain) root(dir string) string {
 	if t.Mod == "" || t.Mod == os.DevNull {
 		return dir
@@ -93,25 +68,15 @@ func goToolchain(dir string) (toolchain, error) {
 	return found, nil
 }
 
-// NewStdReach is the reach table for the Go toolchain that builds the module
-// at dir. Nothing is read until a load first needs it, so a run that fails
-// early never pays for it. Once needed, it reads the module's reach file when
-// the file's first line names the exact Go version, GOOS and GOARCH in use.
-// Otherwise it generates the table from source, which type-checks the standard
-// library once and takes a few seconds, then writes the file for the next run.
 func NewStdReach(dir string) *StdReach {
 	return &StdReach{dir: dir}
 }
 
-// ready resolves the table once; every later call returns the first result.
 func (t *StdReach) ready() error {
 	t.once.Do(func() { t.err = t.resolve() })
 	return t.err
 }
 
-// SaveError is why the table could not be written to the project, which makes
-// every run generate it again. It is nil until the table is resolved, and after
-// that when the table was read or written.
 func (t *StdReach) SaveError() error {
 	return t.saveErr
 }
@@ -133,14 +98,10 @@ func (t *StdReach) resolve() error {
 	if err := t.parse(text.String(), chain); err != nil {
 		return err
 	}
-	// The table is already in hand, so a project that cannot be written to
-	// still gets its report; the caller is told why the next run starts cold.
 	t.saveErr = writeFileAtomic(path, text.Bytes())
 	return nil
 }
 
-// writeFileAtomic replaces path in one rename, so a run that reads while
-// another writes sees the old file or the new one, never half of it.
 func writeFileAtomic(path string, data []byte) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
@@ -160,7 +121,6 @@ func writeFileAtomic(path string, data []byte) error {
 	return nil
 }
 
-// parse fills the table from text, whose first line must be the key of chain.
 func (t *StdReach) parse(text string, chain toolchain) error {
 	first, rest, _ := strings.Cut(text, "\n")
 	if first != chain.key() {
@@ -188,13 +148,10 @@ func (t *StdReach) parse(text string, chain toolchain) error {
 	return nil
 }
 
-// knows reports whether the table has an answer for every member of path.
 func (t *StdReach) knows(path string) bool {
 	return t.packages[path]
 }
 
-// member reports whether the function's body reaches syscall. A function of a
-// package the table does not know, or one with no declaration, does not.
 func (t *StdReach) member(fn *ssa.Function) bool {
 	if origin := fn.Origin(); origin != nil {
 		fn = origin
@@ -206,8 +163,6 @@ func (t *StdReach) member(fn *ssa.Function) bool {
 	return t.reaches[memberKey(obj)]
 }
 
-// memberKey is path.Func, or path.Type.Method for a method. Pointer and value
-// receivers share a key.
 func memberKey(obj *types.Func) string {
 	key := obj.Pkg().Path() + "." + obj.Name()
 	if recv := obj.Signature().Recv(); recv != nil {
@@ -218,11 +173,6 @@ func memberKey(obj *types.Func) string {
 	return key
 }
 
-// writeStdReach loads the standard library from source for the toolchain
-// chain names, walks every importable function and method the way a load walks
-// an outside callee, and writes the reach file. Cgo is turned off so the table
-// is the same whichever machine generates it: cgo only adds runtime/cgo, which
-// has no functions to list.
 func writeStdReach(w io.Writer, dir string, chain toolchain) error {
 	pkgs, err := packages.Load(&packages.Config{
 		Mode: packages.LoadAllSyntax,
@@ -268,8 +218,6 @@ func writeStdReach(w io.Writer, dir string, chain toolchain) error {
 	return out.Flush()
 }
 
-// importable reports whether code outside the standard library may import the
-// package: not internal, not vendored, not a command.
 func importable(path string) bool {
 	if strings.HasPrefix(path, "cmd/") || strings.HasPrefix(path, "vendor/") {
 		return false
@@ -278,9 +226,6 @@ func importable(path string) bool {
 		!strings.HasSuffix(path, "/internal")
 }
 
-// exportedMembers lists the functions outside code can call statically: the
-// exported functions, and the exported methods in the method sets of the
-// exported named types, including methods promoted from embedded fields.
 func exportedMembers(prog *ssa.Program, pkg *types.Package) []*ssa.Function {
 	var list []*ssa.Function
 	add := func(obj *types.Func) {

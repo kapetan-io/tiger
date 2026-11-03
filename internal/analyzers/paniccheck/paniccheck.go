@@ -18,7 +18,6 @@ import (
 	"github.com/kapetan-io/tiger/internal/analyzers/internal/assertpkg"
 )
 
-// Analyzer enforces TS-S18: no naked panic outside the assert package.
 var Analyzer = &analysis.Analyzer{
 	Name: "paniccheck",
 	Doc:  "TS-S18: no naked panic outside the assert package",

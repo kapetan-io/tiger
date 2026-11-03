@@ -14,6 +14,14 @@ import (
 // Goal: mixed &&/|| conditions and unsplit compound assertions fire, closed
 // switches missing a proper assert.Unreachable default fire, the compliant
 // rewrites of all three stay silent, and the documented known misses hold.
+// A switch over a //tiger:openenum type still needs a default arm, because
+// the value came off the wire, but any body is compliant there since the
+// catch-all is legitimate. The directive is recognized only in the package
+// that declares the type, so a marker on a type in another package is
+// invisible. Type switches, tagless switches, and switches over plain basic
+// types or open sets stay silent. A condition mixing && and || fires TS-S06
+// even through parens and !, and a nil condition (a for with no condition)
+// is silent.
 func TestCorpus(t *testing.T) {
 	analysistest.Run(
 		t,

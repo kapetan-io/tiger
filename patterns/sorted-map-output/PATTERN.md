@@ -16,6 +16,13 @@ position, so two entries write the same slot and the one visited last wins. `Ren
 sorts the positions and tiger stays silent, because every sort it sees is complete. This is a documented
 known miss of TS-T02: two keys with one value write one slot.
 
+`Node` values are pointers, so a map keyed by `Node` (`Notes`) has no order of its own and nothing
+about it can be sorted. A `Statement` wraps a `Call` and covers the same source span. `Document`
+keeps notes under a sequence number handed out in attach order by `Attach`, and the sequence is the
+sort key: it is unique per note, so no two notes tie. `Render` ranges over the sorted sequence
+numbers, so map order never reaches the output. `RenderByPosition` sorts the positions, but which
+note each position holds was already decided by map order.
+
 ## Bug
 
 Go issues #27013 and #30202: go/ast's `CommentMap.String` printed entries in an order that varied

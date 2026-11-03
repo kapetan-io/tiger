@@ -6,7 +6,7 @@ package ioflagged
 
 import "fixture.example/ioflagged/storage"
 
-// SaveAll writes every item in the batch.
+
 func SaveAll(items []string) error {
 	for _, item := range items {
 		if err := storage.Save(item); err != nil {

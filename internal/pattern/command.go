@@ -9,7 +9,6 @@ import (
 	"github.com/kapetan-io/tiger/patterns"
 )
 
-// Usage is tiger pattern's entry in the command listing.
 const Usage = `  tiger pattern [name] [--checklist] [--rule code]
       print a pattern: the correct shape for what a rule cannot check, with
       its code, tests and reviewer checklist; with no name list every
@@ -17,9 +16,6 @@ const Usage = `  tiger pattern [name] [--checklist] [--rule code]
       2 unknown pattern or rule
 `
 
-// Run is tiger pattern: print a pattern from the collection embedded
-// in the binary, list the patterns behind a rule, or list every pattern.
-// Flags may come before or after the pattern name.
 func Run(args []string, streams command.Streams) int {
 	flags := flag.NewFlagSet("tiger pattern", flag.ContinueOnError)
 	flags.SetOutput(streams.Stderr)
@@ -76,16 +72,12 @@ func Run(args []string, streams command.Streams) int {
 	return command.ExitClean
 }
 
-// printIndex lists every pattern with its summary.
 func printIndex(all []Pattern, streams command.Streams) {
 	for _, each := range all {
 		printSummary(each, streams)
 	}
 }
 
-// printBehind shows each pattern that backs one rule code, as a summary
-// line or as its checklist. A rule with no pattern is an error so a
-// mistyped code does not look like an empty answer.
 func printBehind(
 	all []Pattern,
 	code string,
@@ -115,8 +107,6 @@ func printChecklist(each Pattern, streams command.Streams) {
 	}
 }
 
-// printPattern prints the card, then the code, then the tests, each file
-// under a header naming its path so an agent can copy the shape.
 func printPattern(each Pattern, streams command.Streams) {
 	fmt.Fprintf(streams.Stdout, "# %s\n\n%s\n\nRules: %s\n\nGap: %s\n\nBug: %s\n\nChecklist:\n",
 		each.Name, each.Summary, strings.Join(each.Rules, ", "), each.Gap, each.Bug)

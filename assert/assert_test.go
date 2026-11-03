@@ -40,6 +40,17 @@ func TestPassingAssertionsAreSilent(t *testing.T) {
 	})
 }
 
+// TestPassingOkAllocatesNothing guards the constant-message rule.
+//
+// Goal: Ok with a constant message allocates nothing when it passes. Formatting
+// belongs in a caller-side guard around Fail, because variadic arguments are
+// boxed at the call site before the callee tests the condition.
+func TestPassingOkAllocatesNothing(t *testing.T) {
+	require.Zero(t, testing.AllocsPerRun(100, func() {
+		assert.Ok(true, "constant")
+	}))
+}
+
 // TestFailingAssertionMessages exercises every assertion on inputs that
 // fail.
 //
@@ -86,11 +97,13 @@ func TestFailingAssertionMessages(t *testing.T) {
 			"assertion failed: entry: index 4 out of range [0, 4)",
 		},
 		{
+			// NoError is for errors structurally impossible, such as a bytes.Buffer write.
 			"NoErrorGotOne",
 			func() { assert.NoError(errors.New("disk gone"), "flush") },
 			"assertion failed: flush: disk gone",
 		},
 		{
+			// Unreachable belongs in the default arm of a switch over a closed set.
 			"Unreachable",
 			func() { assert.Unreachable("unknown opcode") },
 			"assertion failed: unreachable: unknown opcode",

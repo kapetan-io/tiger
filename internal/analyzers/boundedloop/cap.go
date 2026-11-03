@@ -19,11 +19,6 @@ const msgCapSilent = "TS-S02: this counter cap ends the loop without saying so, 
 	"result passes as complete — declare the counter before the loop and return an error or " +
 	"assert when it reaches the limit"
 
-// checkCap judges a loop a sound counter bounds. A counter whose limit is
-// all that stops the loop is fine. A counter that stands in for a proof,
-// because the loop has another way out, is a safety cap and must report
-// when it is hit, unless it is a page size over a stream from outside the
-// module.
 func (c *checker) checkCap(loop *ast.ForStmt, terms []counter.Term) {
 	caps := c.capTerms(loop, terms)
 	if len(caps) == 0 || !c.silentWhenHit(loop, caps) {
@@ -36,9 +31,6 @@ func (c *checker) checkCap(loop *ast.ForStmt, terms []counter.Term) {
 	})
 }
 
-// capTerms returns the sound terms that act as safety caps: a limit that is
-// not a len or cap, with another way out of the loop that is not a page
-// size over an outside stream.
 func (c *checker) capTerms(loop *ast.ForStmt, terms []counter.Term) []counter.Term {
 	var caps []counter.Term
 	breaks := loopBreaks(c.pass.TypesInfo, loop)
@@ -61,8 +53,6 @@ func (c *checker) capTerms(loop *ast.ForStmt, terms []counter.Term) []counter.Te
 	return caps
 }
 
-// lengthLimit reports whether limit is a len or cap call, a bound the data
-// itself sets.
 func lengthLimit(info *types.Info, limit ast.Expr) bool {
 	call, ok := ast.Unparen(limit).(*ast.CallExpr)
 	if !ok {
@@ -76,13 +66,8 @@ func lengthLimit(info *types.Info, limit ast.Expr) bool {
 	return ok && lengthBuiltins[builtin.Name()]
 }
 
-// lengthBuiltins are the builtins that read a length the data sets.
 var lengthBuiltins = map[string]bool{"len": true, "cap": true}
 
-// reachedComparisons are the comparisons, written with the counter on the
-// left, that are true when a counter of that direction stops at its limit.
-// An exclusive loop stops with the counter at the limit. An inclusive loop
-// stops one step past it.
 var reachedComparisons = map[bool]map[bool]map[token.Token]bool{
 	false: {
 		false: {token.EQL: true, token.GEQ: true, token.LEQ: true},
@@ -94,8 +79,6 @@ var reachedComparisons = map[bool]map[bool]map[token.Token]bool{
 	},
 }
 
-// steppedComparisons are the comparisons that stay true when a counter
-// stepping by more than 1 jumps past its limit, so equality is not among them.
 var steppedComparisons = map[bool]map[bool]map[token.Token]bool{
 	false: {
 		false: {token.GEQ: true},
@@ -107,8 +90,6 @@ var steppedComparisons = map[bool]map[bool]map[token.Token]bool{
 	},
 }
 
-// reachedBy reports whether a counter stopping at its limit makes the
-// comparison op, written with the counter on the left, true.
 func reachedBy(term counter.Term, op token.Token) bool {
 	if term.Size > 1 {
 		return steppedComparisons[term.Down][term.Inclusive][op]
@@ -116,8 +97,6 @@ func reachedBy(term counter.Term, op token.Token) bool {
 	return reachedComparisons[term.Down][term.Inclusive][op]
 }
 
-// otherExits returns the top-level terms of cond besides term's own
-// comparison.
 func otherExits(cond ast.Expr, term counter.Term) []ast.Expr {
 	var others []ast.Expr
 	for _, conjunct := range condition.Conjuncts(cond) {
@@ -133,8 +112,6 @@ func otherExits(cond ast.Expr, term counter.Term) []ast.Expr {
 	return others
 }
 
-// pageSize reports whether term's limit is a page size: not a constant, and
-// every other exit drains a stream whose type comes from outside the module.
 func (c *checker) pageSize(term counter.Term, others []ast.Expr) bool {
 	if c.pass.TypesInfo.Types[term.Limit].Value != nil {
 		return false
@@ -147,10 +124,6 @@ func (c *checker) pageSize(term counter.Term, others []ast.Expr) bool {
 	return true
 }
 
-// drainsOutsideStream reports whether expr is a call to Next or Scan on a
-// type declared outside the module, such as rows.Next() or scanner.Scan().
-// Other boolean methods, such as a clock check or a pattern match, say
-// nothing about a stream running dry.
 func (c *checker) drainsOutsideStream(expr ast.Expr) bool {
 	call, ok := expr.(*ast.CallExpr)
 	if !ok {
@@ -171,13 +144,8 @@ func (c *checker) drainsOutsideStream(expr ast.Expr) bool {
 	return named != nil && c.scope.External(named.Obj().Pkg())
 }
 
-// streamMethods are the method names that advance a stream and report whether
-// it had another item.
 var streamMethods = map[string]bool{"Next": true, "Scan": true}
 
-// loopBreaks returns the breaks in the loop body that end this loop: an
-// unlabeled break outside any nested loop, switch or select, or a labeled
-// break to a label declared outside the body.
 func loopBreaks(info *types.Info, loop *ast.ForStmt) []*ast.BranchStmt {
 	var found []*ast.BranchStmt
 	ast.Inspect(loop.Body, func(n ast.Node) bool {
@@ -190,10 +158,6 @@ func loopBreaks(info *types.Info, loop *ast.ForStmt) []*ast.BranchStmt {
 	return found
 }
 
-// breaksDrain reports whether every break is the whole body of an if that
-// runs when a stream from outside the module has nothing left, as in
-// "if !scanner.Scan() { break }". Like a header condition, it ends the loop
-// because the stream is empty. A loop with no breaks drains trivially.
 func (c *checker) breaksDrain(loop *ast.ForStmt, breaks []*ast.BranchStmt) bool {
 	drains := 0
 	ast.Inspect(loop.Body, func(n ast.Node) bool {
@@ -206,8 +170,6 @@ func (c *checker) breaksDrain(loop *ast.ForStmt, breaks []*ast.BranchStmt) bool 
 	return drains == len(breaks)
 }
 
-// drainBreak reports whether guard is "if !stream.Next() { break }" or
-// "if stream.Next() { ... } else { break }" for one of the loop's breaks.
 func (c *checker) drainBreak(guard *ast.IfStmt, breaks []*ast.BranchStmt) bool {
 	cond := ast.Unparen(guard.Cond)
 	var exit *ast.BlockStmt
@@ -227,8 +189,6 @@ func (c *checker) drainBreak(guard *ast.IfStmt, breaks []*ast.BranchStmt) bool {
 	return ok && slices.Contains(breaks, branch) && c.drainsOutsideStream(cond)
 }
 
-// endsThisLoop reports whether branch, found somewhere in loop's body,
-// leaves loop itself.
 func endsThisLoop(info *types.Info, loop *ast.ForStmt, branch *ast.BranchStmt) bool {
 	if branch.Label != nil {
 		label := info.ObjectOf(branch.Label)
@@ -237,8 +197,6 @@ func endsThisLoop(info *types.Info, loop *ast.ForStmt, branch *ast.BranchStmt) b
 	return !insideBreakTarget(loop.Body, branch)
 }
 
-// insideBreakTarget reports whether an unlabeled break sits inside a loop,
-// switch or select nested in body, where it ends that statement instead.
 func insideBreakTarget(body *ast.BlockStmt, branch *ast.BranchStmt) bool {
 	inside := false
 	ast.Inspect(body, func(n ast.Node) bool {
@@ -253,14 +211,6 @@ func insideBreakTarget(body *ast.BlockStmt, branch *ast.BranchStmt) bool {
 	return inside
 }
 
-// silentWhenHit reports whether nothing after the loop reports the cap being
-// reached. Three shapes report. One is an if statement that compares the
-// counter with the limit and asserts, panics, or returns an error. Another
-// is an if statement on a variable the loop assigns, which fails when the
-// loop gave up without the result it waited for. The last is an assert or
-// panic statement on its own, which states what the loop was waiting for;
-// tiger can't tell what the assertion is about, so it trusts the author that
-// it covers the cap.
 func (c *checker) silentWhenHit(loop *ast.ForStmt, caps []counter.Term) bool {
 	for _, stmt := range c.following[loop] {
 		switch next := stmt.(type) {
@@ -285,9 +235,6 @@ func (c *checker) silentWhenHit(loop *ast.ForStmt, caps []counter.Term) bool {
 	return true
 }
 
-// readsLoopResult reports whether cond reads a variable the loop body assigns,
-// such as the found flag a search loop sets. The post statement is left out
-// because it writes every counter.
 func (c *checker) readsLoopResult(cond ast.Expr, loop *ast.ForStmt) bool {
 	found := false
 	ast.Inspect(cond, func(n ast.Node) bool {
@@ -303,8 +250,6 @@ func (c *checker) readsLoopResult(cond ast.Expr, loop *ast.ForStmt) bool {
 	return found
 }
 
-// comparesAtLimit reports whether cond holds a comparison of term's counter
-// with its limit that is true once the counter has reached the limit.
 func (c *checker) comparesAtLimit(cond ast.Expr, term counter.Term) bool {
 	found := false
 	ast.Inspect(cond, func(n ast.Node) bool {
@@ -320,9 +265,6 @@ func (c *checker) comparesAtLimit(cond ast.Expr, term counter.Term) bool {
 	return found
 }
 
-// counterOnLeft returns binary's comparison written with term's counter on
-// the left, and reports whether one side names the counter and the other
-// reads like its limit.
 func (c *checker) counterOnLeft(binary *ast.BinaryExpr, term counter.Term) (token.Token, bool) {
 	if ident, ok := ast.Unparen(binary.X).(*ast.Ident); ok {
 		if c.pass.TypesInfo.ObjectOf(ident) == term.Counter && c.readsLikeLimit(binary.Y, term) {
@@ -342,8 +284,6 @@ func (c *checker) counterOnLeft(binary *ast.BinaryExpr, term counter.Term) (toke
 	return condition.Mirror(binary.Op)
 }
 
-// readsLikeLimit reports whether expr is term's limit, written the same way
-// or folded to the same constant.
 func (c *checker) readsLikeLimit(expr ast.Expr, term counter.Term) bool {
 	if types.ExprString(ast.Unparen(expr)) == types.ExprString(ast.Unparen(term.Limit)) {
 		return true
@@ -353,7 +293,6 @@ func (c *checker) readsLikeLimit(expr ast.Expr, term counter.Term) bool {
 	return known != nil && want != nil && known.ExactString() == want.ExactString()
 }
 
-// fails reports whether body asserts, panics, or returns a non-nil error.
 func (c *checker) fails(body *ast.BlockStmt) bool {
 	found := false
 	ast.Inspect(body, func(n ast.Node) bool {
@@ -372,8 +311,6 @@ func (c *checker) fails(body *ast.BlockStmt) bool {
 	return found
 }
 
-// returnsError reports whether stmt returns a value that is not nil in an
-// error position.
 func (c *checker) returnsError(stmt *ast.ReturnStmt) bool {
 	for _, result := range stmt.Results {
 		resultType := c.pass.TypesInfo.TypeOf(result)
@@ -387,15 +324,12 @@ func (c *checker) returnsError(stmt *ast.ReturnStmt) bool {
 	return false
 }
 
-// errorInterface returns the predeclared error interface.
 func errorInterface() *types.Interface {
 	iface, ok := types.Universe.Lookup("error").Type().Underlying().(*types.Interface)
 	assert.Ok(ok, "errorInterface: the universe error type is not an interface")
 	return iface
 }
 
-// assertsOrPanics reports whether call is the panic builtin or a function
-// from tiger's assert package.
 func (c *checker) assertsOrPanics(call *ast.CallExpr) bool {
 	switch fun := ast.Unparen(call.Fun).(type) {
 	case *ast.Ident:

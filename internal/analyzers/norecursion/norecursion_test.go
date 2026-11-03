@@ -14,7 +14,9 @@ import (
 // concrete type, and recursion through a statically-known function literal
 // each fire one TS-S01 finding at the cycle's lexically first member; every
 // iterative rewrite stays silent; the documented known-miss cases (interface
-// dispatch, an unresolved function value) stay silent too.
+// dispatch, an unresolved function value) stay silent too. Two methods that
+// share an unqualified name are ordered by source position so the message
+// stays deterministic; no corpus case collides names, so that is unpinned.
 func TestCorpus(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), norecursion.Analyzer, "ts-s01")
 }

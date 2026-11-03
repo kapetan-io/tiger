@@ -6,7 +6,5 @@ package patterns
 
 import "embed"
 
-// Collection holds every pattern directory, rooted at this package.
-//
 //go:embed *
 var Collection embed.FS

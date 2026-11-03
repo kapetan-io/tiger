@@ -14,44 +14,22 @@ import (
 	"github.com/kapetan-io/tiger/internal/worklist"
 )
 
-// ModuleToken marks the spot in a baseline value where the audited project's
-// module path belongs. Generation and verification both substitute it, so
-// module-dependent settings (the gci prefix) stay checkable.
 const ModuleToken = "${module}"
 
-// SectionLinters and SectionFormatters name the two golangci-lint v2 config
-// sections a baseline entry can require its linter in.
 const (
 	SectionLinters    = "linters"
 	SectionFormatters = "formatters"
 )
 
-// standardLinters is golangci-lint v2's "standard" default group. A linter
-// in this group counts as enabled when the config keeps default: standard.
 var standardLinters = []string{"errcheck", "govet", "ineffassign", "staticcheck", "unused"}
 
-// Setting is one baseline expectation: the value at a path inside the
-// project's golangci-lint configuration. Comparison semantics, per the
-// blueprint: extra settings always pass; a scalar or scalar list must equal
-// the baseline exactly (a stricter value also fails in v1 — direction-aware
-// comparison is future work); a list of maps must contain each baseline
-// element (extra elements pass).
 type Setting struct {
-	// Path walks the YAML document, for example
-	// linters.settings.funlen.lines.
-	Path []string
-	// Want is the baseline expectation: a scalar, []any, or map[string]any.
-	Want any
-	// Contains makes a scalar list pass when it holds every Want element,
-	// extras and any order included, instead of equaling Want exactly.
+	Path     []string
+	Want     any
 	Contains bool
-	// Reason is appended to the finding, for a setting whose name alone
-	// does not tell an adopter what it prevents.
-	Reason string
+	Reason   string
 }
 
-// AutoRule binds one specification rule to the golangci-lint linter and
-// baseline settings that enforce it.
 type AutoRule struct {
 	RuleID   string
 	Linter   string
@@ -60,8 +38,6 @@ type AutoRule struct {
 	Settings []Setting
 }
 
-// autoRules is the auto half of the rule set, in specification order.
-// Baseline values mirror config/golangci.yml, the Stage 0 template.
 var autoRules = []AutoRule{
 	{
 		RuleID: "TS-S04", Linter: "funlen", Section: SectionLinters,
@@ -396,30 +372,21 @@ var autoRules = []AutoRule{
 	},
 }
 
-// AutoRules returns every registered auto rule.
 func AutoRules() []AutoRule {
 	listed := make([]AutoRule, len(autoRules))
 	copy(listed, autoRules)
 	return listed
 }
 
-// StandardLinter reports whether golangci-lint's "standard" default group
-// already enables the linter.
 func StandardLinter(name string) bool {
 	return slices.Contains(standardLinters, name)
 }
 
-// substituteTask pairs one baseline fragment with the slot its replacement
-// lands in.
 type substituteTask struct {
 	want any
 	slot func(any)
 }
 
-// SubstituteModule replaces ModuleToken with the project's module path
-// throughout a baseline value, walking nested fragments with an
-// index-advancing worklist — containers are created up front and their
-// elements filled through slots on later passes.
 func SubstituteModule(want any, module string) any {
 	var substituted any
 	work := []substituteTask{{want: want, slot: func(v any) { substituted = v }}}
@@ -431,7 +398,6 @@ func SubstituteModule(want any, module string) any {
 	return substituted
 }
 
-// substituteOne resolves one task, appending child tasks for nested values.
 func substituteOne(work []substituteTask, i int, module string) []substituteTask {
 	task := work[i]
 	switch typed := task.want.(type) {

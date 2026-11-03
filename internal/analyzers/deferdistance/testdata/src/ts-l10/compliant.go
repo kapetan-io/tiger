@@ -80,3 +80,17 @@ func releaseAfterSetup() error {
 	defer tx.Rollback()
 	return nil
 }
+
+// releaseParameter defers a release of a parameter, acquired by the caller,
+// after unrelated work.
+func releaseParameter(r *resource, prepare func()) {
+	prepare()
+	defer r.Close()
+}
+
+// releasePackageVar defers a release of a package-level var after unrelated
+// work.
+func releasePackageVar(prepare func()) {
+	prepare()
+	defer sharedGate.Unlock()
+}

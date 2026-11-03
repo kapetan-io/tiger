@@ -45,6 +45,12 @@ func writeModuleFiles(t *testing.T, files map[string]string) string {
 	t.Helper()
 	dir := t.TempDir()
 	writeFiles(t, dir, files)
+	_, hasConfig := files["tiger.yaml"]
+	_, hasModule := files["go.mod"]
+	if !hasConfig && hasModule {
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "tiger.yaml"),
+			[]byte("version: 1\n"+allowProse), 0o644))
+	}
 	return dir
 }
 
@@ -797,6 +803,8 @@ func TestLayersDirectoryNamedLikeATestReportsOnce(t *testing.T) {
 		"tiger.layers.yaml": "\"./lib\": []\n",
 	})
 
+	// Unlike the budget key, a _test suffix is not stripped here: the analyzer never reports
+	// from _test.go files, so a path ending in _test is a real directory such as ./e2e_test.
 	got := checkModule(t, dir)
 	assert.Equal(t, command.ExitFindings, got.code)
 	assert.Equal(t, "e2e_test/helpers.go:2:1: TS-X03: package ./e2e_test has no entry in "+

@@ -39,3 +39,16 @@ func forSingleOperatorCompliant(n int, done bool) int {
 	}
 	return total
 }
+
+// conditionlessForCompliant has no loop condition, so there is nothing
+// to mix.
+func conditionlessForCompliant(next func() (int, bool)) int {
+	total := 0
+	for {
+		n, ok := next()
+		if !ok {
+			return total
+		}
+		total += n
+	}
+}

@@ -1,6 +1,9 @@
 package drivertest_test
 
 import (
+	"fmt"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -17,7 +20,7 @@ type recorder struct {
 }
 
 func (r *recorder) Errorf(format string, args ...any) {
-	r.reports = append(r.reports, format)
+	r.reports = append(r.reports, fmt.Sprintf(format, args...))
 }
 
 // packageFact is the probe's package fact.
@@ -87,4 +90,39 @@ func TestRunReportsMismatches(t *testing.T) {
 	require.Len(t, reports.reports, 2)
 	assert.Contains(t, reports.reports[0], "unexpected diagnostic")
 	assert.Contains(t, reports.reports[1], "missing diagnostic")
+}
+
+// TestRunReportsDriverErrorsWithoutFindings covers a run that cannot
+// complete.
+//
+// Goal: a type error is reported through the Reporter and no findings come
+// back, so a caller never mistakes a partial run for a clean one.
+func TestRunReportsDriverErrorsWithoutFindings(t *testing.T) {
+	root := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(root, "go.mod"),
+		[]byte("module fixture.example/broken\n\ngo 1.26\n"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "broken.go"),
+		[]byte("package broken\n\nvar _ int = \"text\"\n"), 0o600))
+
+	reports := &recorder{}
+	findings := drivertest.Run(reports, root, probe())
+	require.Len(t, reports.reports, 1)
+	assert.Empty(t, findings)
+}
+
+// TestRunReportsUnquotedWantPatterns covers a malformed expectation.
+//
+// Goal: a // want comment whose pattern is not a quoted string is reported
+// as a malformed expectation, not silently read as "expects nothing".
+func TestRunReportsUnquotedWantPatterns(t *testing.T) {
+	root := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(root, "go.mod"),
+		[]byte("module fixture.example/unquoted\n\ngo 1.26\n"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "unquoted.go"),
+		[]byte("package unquoted // want probe: finished\n"), 0o600))
+
+	reports := &recorder{}
+	drivertest.Run(reports, root, probe())
+	require.NotEmpty(t, reports.reports)
+	assert.Contains(t, reports.reports[0], "want")
 }

@@ -12,7 +12,9 @@ import (
 //
 // Goal: a struct's method or constructor declared ahead of something it
 // must follow fires TS-L05; correct order, a constructor-less struct, and
-// cross-file placement (a documented known miss) all stay silent.
+// cross-file placement (a documented known miss) all stay silent. A method on
+// a generic receiver, one or several type parameters, still pairs with its
+// type.
 func TestCorpus(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declorder.Analyzer, "ts-l05")
 }

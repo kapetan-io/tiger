@@ -18,48 +18,26 @@ import (
 	"unicode"
 )
 
-// Prefix introduces every tiger directive, with no space after the slashes,
-// following Go's own directive convention (//go:build, //go:generate).
 const Prefix = "//tiger:"
 
-// Kind classifies a verb by lifecycle, per the specification's declaration
-// model. The escape verbs, batched and openenum, are the ones that surface as
-// a standing advisory finding.
 type Kind int
 
 const (
-	// KindPin marks a verb that freezes an analyzer-computed fact into a
-	// blocking contract. Wave 1 validates pin verbs' well-formedness only;
-	// enforcement arrives with the waves that compute the facts.
 	KindPin Kind = iota
-	// KindIntent marks a verb stating something no analyzer can compute;
-	// stated first, enforced after.
 	KindIntent
-	// KindEscape marks a verb loosening one rule at one site, always with a
-	// reason, surfaced as a standing advisory finding on every run.
 	KindEscape
 )
 
-// Directive is one parsed //tiger: comment: a verb from the closed
-// vocabulary and its raw argument text.
-//
-// A Directive is canonical when Args carries no leading or trailing
-// whitespace; Parse always returns canonical directives and Format expects
-// one, which is what makes the round trip exact.
 type Directive struct {
 	Verb string
 	Args string
 }
 
-// Verb describes one entry in the closed vocabulary.
 type Verb struct {
 	Name string
 	Kind Kind
 }
 
-// UnknownVerbError reports a //tiger: comment whose verb is not in the
-// vocabulary. There is deliberately no unknown-verb loophole: a directive
-// that does not parse is a blocking finding (TS-L09), not a comment.
 type UnknownVerbError struct {
 	Verb string
 }
@@ -68,8 +46,6 @@ func (e *UnknownVerbError) Error() string {
 	return "unknown directive verb " + strings.TrimSpace(Prefix+e.Verb)
 }
 
-// MissingReasonError reports an escape directive with no reason. An escape
-// without a reason is a rule silently deleted (TS-L09).
 type MissingReasonError struct {
 	Verb string
 }
@@ -78,11 +54,6 @@ func (e *MissingReasonError) Error() string {
 	return Prefix + e.Verb + " requires a reason"
 }
 
-// MalformedArgsError reports a pin directive whose arguments fail the
-// verb's grammar. The detail names the
-// offending token, so the TS-L09 finding can point at exactly what to fix
-// (invariant 2: a name outside the closed lattice is a parse error, never a
-// silently meaningless string).
 type MalformedArgsError struct {
 	Verb   string
 	Detail string
@@ -92,8 +63,6 @@ func (e *MalformedArgsError) Error() string {
 	return Prefix + e.Verb + ": " + e.Detail
 }
 
-// vocabulary is the closed verb set, in declaration-model order: the
-// escapes, then the pin verbs.
 var vocabulary = []Verb{
 	{Name: "batched", Kind: KindEscape},
 	{Name: "requires", Kind: KindPin},
@@ -102,20 +71,12 @@ var vocabulary = []Verb{
 	{Name: "openenum", Kind: KindEscape},
 }
 
-// Is reports whether a comment's text is a tiger directive. Text with a
-// space after the slashes is prose, not a directive, matching how Go treats
-// its own //go: comments.
-func Is(text string) bool {
+func is(text string) bool {
 	return strings.HasPrefix(text, Prefix)
 }
 
-// Parse reads one //tiger: comment into a Directive.
-//
-// On error the returned Directive still carries whatever verb and argument
-// text was present, so a caller can name the offending verb in a finding.
-// The errors are *UnknownVerbError and *MissingReasonError.
 func Parse(text string) (Directive, error) {
-	if !Is(text) {
+	if !is(text) {
 		return Directive{Verb: "", Args: ""}, errors.New("not a tiger directive: " + text)
 	}
 	rest := text[len(Prefix):]
@@ -142,7 +103,6 @@ func Parse(text string) (Directive, error) {
 	return parsed, nil
 }
 
-// validateArgs applies the per-verb argument grammar to a pin.
 func validateArgs(parsed Directive) error {
 	switch parsed.Verb {
 	case "variant":
@@ -155,8 +115,6 @@ func validateArgs(parsed Directive) error {
 	return nil
 }
 
-// Format prints a directive canonically: the prefix, the verb, and — when
-// arguments are present — a single space and the argument text.
 func Format(d Directive) string {
 	if d.Args == "" {
 		return Prefix + d.Verb
@@ -164,7 +122,6 @@ func Format(d Directive) string {
 	return Prefix + d.Verb + " " + d.Args
 }
 
-// Lookup finds a verb in the closed vocabulary.
 func Lookup(name string) (Verb, bool) {
 	for _, spec := range vocabulary {
 		if spec.Name == name {
@@ -174,7 +131,6 @@ func Lookup(name string) (Verb, bool) {
 	return Verb{Name: "", Kind: KindPin}, false
 }
 
-// Verbs returns the closed vocabulary in its declaration-model order.
 func Verbs() []Verb {
 	listed := make([]Verb, len(vocabulary))
 	copy(listed, vocabulary)

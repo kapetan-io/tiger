@@ -13,21 +13,14 @@ import (
 	"github.com/kapetan-io/tiger/internal/revision"
 )
 
-// synopsis is the line tiger changed -h prints and its Usage entry opens with.
 const synopsis = "tiger changed [-C dir] [--format text|markdown|json] <base>"
 
-// Usage is tiger changed's entry in the command listing.
 const Usage = "  " + synopsis + `
       print, for each function, the calls it started or stopped making since
       the merge base of <base> and HEAD; flags go before <base>; exit 0 for
       any report, 2 when no report can be produced
 `
 
-// Run is tiger changed: compare the calls each function makes at the
-// merge base of a base ref and HEAD against the calls it makes in the working
-// tree, and print the report. A report exits 0 whatever it holds. When none
-// can be produced it prints one line to stderr and exits 2, with nothing on
-// stdout, so a failed run is never mistaken for an empty report.
 func Run(args []string, streams command.Streams) int {
 	flags := flag.NewFlagSet("tiger changed", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
@@ -88,15 +81,13 @@ func Run(args []string, streams command.Streams) int {
 	return command.ExitClean
 }
 
-// compareRevisions loads the head tree and the base tree and compares them.
-// The two loads wait mostly on go list, so they run side by side.
 func compareRevisions(dir string, rev revision.Comparison, table *callinventory.StdReach) (Report, error) {
 	headLabel := "head (" + revision.Short(rev.Head) + ")"
 	var group sync.WaitGroup
 	var base callinventory.Inventory
 	var baseErr error
 	group.Go(func() { base, baseErr = loadBase(rev, table) })
-	head, headErr := callinventory.Load(dir, table)
+	head, headErr := callinventory.LoadWith(dir, table)
 	group.Wait()
 	if headErr != nil {
 		return Report{}, fmt.Errorf("cannot load the Go packages at %s: %w", headLabel, headErr)
@@ -110,8 +101,6 @@ func compareRevisions(dir string, rev revision.Comparison, table *callinventory.
 	return Compare(Sides{Base: base, Head: head}), nil
 }
 
-// loadBase extracts the merge base and loads it; a merge base without a Go
-// tree loads as an empty inventory.
 func loadBase(rev revision.Comparison, table *callinventory.StdReach) (inv callinventory.Inventory, err error) {
 	tree, err := rev.Extract()
 	if err != nil {
@@ -121,7 +110,7 @@ func loadBase(rev revision.Comparison, table *callinventory.StdReach) (inv calli
 	if !tree.Present {
 		return inv, nil
 	}
-	if inv, err = callinventory.Load(tree.Dir, table); err != nil {
+	if inv, err = callinventory.LoadWith(tree.Dir, table); err != nil {
 		return inv, fmt.Errorf("cannot load the Go packages at base (%s): %w",
 			revision.Short(rev.MergeBase), err)
 	}
@@ -135,7 +124,6 @@ func noPackages(inv callinventory.Inventory, label string) error {
 	return fmt.Errorf("no Go packages found at %s", label)
 }
 
-// changedFailure prints the one line a failed run owes the reader.
 func changedFailure(streams command.Streams, err error) int {
 	line := strings.Join(strings.Fields(err.Error()), " ")
 	fmt.Fprintf(streams.Stderr, "tiger changed: %s\n", line)

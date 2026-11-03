@@ -17,7 +17,13 @@ import (
 // bytes.Buffer write all stay silent; an inner loop under an
 // outer-only-annotated directive still fires (the nested-loop exclusion);
 // an unlisted package, a same-package helper call, and IO inside a FuncLit
-// defined in the loop stay silent as documented known misses.
+// defined in the loop stay silent as documented known misses. IO in a for
+// statement's Init stays silent because it runs once per loop, only the
+// body runs per iteration. A method on a map, slice, or basic-typed
+// receiver (http.Header.Set) is an in-memory write, so only struct-backed
+// receivers and package-level functions count as IO. Callees resolve
+// through the type checker, never by name: an interface-typed receiver
+// resolves to the interface's declaring package, not an implementer's.
 func TestCorpus(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), ioinloop.Analyzer, "ts-m10")
 }

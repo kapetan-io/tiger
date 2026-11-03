@@ -5,6 +5,7 @@ package fixture
 
 import (
 	"database/sql"
+	"net"
 	"net/http"
 	"os"
 )
@@ -55,6 +56,17 @@ func readNested(groups [][]string) error {
 			if err != nil {
 				return err
 			}
+		}
+	}
+	return nil
+}
+
+// writeAllConn writes through a net.Conn, an interface: the method resolves
+// to the interface's own declaration in net, whatever value it holds.
+func writeAllConn(conn net.Conn, chunks [][]byte) error {
+	for _, chunk := range chunks {
+		if _, err := conn.Write(chunk); err != nil { // want `TS-M10: this call does IO \(network, disk, or database\) and runs once per loop iteration`
+			return err
 		}
 	}
 	return nil

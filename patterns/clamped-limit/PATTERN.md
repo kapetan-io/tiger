@@ -14,7 +14,14 @@ Tiger checks that a loop limit is a constant, a length, or clamped against a dec
 before it reaches the loop (TS-S02, limit flow). It cannot check that the maximum is small, or
 that every path from the outside value to the loop goes through the clamp. `ListPageHuge` clamps
 against `pageHuge`, about a billion rows, so tiger accepts it, and `TestListPageHugeNeverFinishes`
-shows it still never finishes on a stream with enough rows.
+shows it still never finishes on a stream with enough rows. `pageHuge` is a clamp in form only: the
+loop ends at it, after about a billion rows. The constant `_ = uint(pageHuge - pageMax)` keeps
+`pageHuge` above `pageMax`, so the broken shape stays a real clamp.
+
+`ListPage` clamps the client's `Limit` where the request enters and passes only the clamped value to
+`countRows`. `pageMax` is small enough that a full page finishes in well under a second. `clampPage`
+keeps the page size in 1..`pageMax`, and its floor turns zero and negative requests into one row,
+not an empty or runaway page.
 
 ## Bug
 

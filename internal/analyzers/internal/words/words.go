@@ -7,10 +7,6 @@ package words
 
 import "unicode"
 
-// Split breaks name into its camelCase words, treating an acronym run as
-// one word ("HTTPServer" splits to "HTTP", "Server"; "parseURL" splits to
-// "parse", "URL") and underscores as explicit boundaries. A run of digits
-// sticks to the word that precedes it ("userID2" splits to "user", "ID2").
 func Split(name string) []string {
 	var tokens []string
 	var start int
@@ -26,7 +22,6 @@ func Split(name string) []string {
 	return tokens
 }
 
-// splitCamel breaks one underscore-free segment into camelCase words.
 func splitCamel(segment string) []string {
 	runes := []rune(segment)
 	var tokens []string
@@ -44,11 +39,6 @@ func splitCamel(segment string) []string {
 	return tokens
 }
 
-// boundary reports whether an uppercase rune at index i in runes starts a
-// new word: either the previous rune is not itself uppercase (a lowercase
-// letter or a digit ends its word here), or the previous rune is uppercase
-// and the next one is lowercase (the point an acronym run hands off to a
-// following Capitalized word, as in HTTPServer).
 func boundary(runes []rune, i int) bool {
 	previous := runes[i-1]
 	if !unicode.IsUpper(previous) {

@@ -130,6 +130,7 @@ func TestWriteLeavesNoTempFile(t *testing.T) {
 	dir := t.TempDir()
 	loaded := fixture{dir: dir, rows: "internal/a:\n  TS-D07: 3\n"}.load(t)
 	require.NoError(t, loaded.Write(dir))
+	// Write goes through a temp file and a rename, so a crash never leaves a half-written file.
 	entries, err := os.ReadDir(dir)
 	require.NoError(t, err)
 	require.Len(t, entries, 1)

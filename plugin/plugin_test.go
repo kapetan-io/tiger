@@ -26,7 +26,9 @@ func (quietRun) Errorf(format string, args ...any) {}
 // Goal: the analyzers the plugin hands golangci-lint never emit a fact
 // diagnostic — golangci has no --show-facts channel and keeps one issue
 // per line, so a surfaced fact would crowd a real finding off its line —
-// while blocking diagnostics still fire.
+// while blocking diagnostics still fire. Whole-program rules (TS-A07, TS-A09)
+// decide in a finish step only the CLI runs, so under golangci-lint only their
+// per-package halves run.
 func TestPluginDropsFacts(t *testing.T) {
 	build, err := register.GetPlugin("tiger")
 	require.NoError(t, err)

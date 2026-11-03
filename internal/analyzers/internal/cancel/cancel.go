@@ -14,9 +14,6 @@ import (
 	"github.com/kapetan-io/tiger/internal/analyzers/internal/condition"
 )
 
-// UntilCancelled reports whether a top-level && term of cond is
-// ctx.Err() == nil on one of the parameters, which makes the loop run until the
-// caller cancels.
 func UntilCancelled(info *types.Info, params map[*types.Var]bool, cond ast.Expr) bool {
 	for _, term := range condition.Conjuncts(cond) {
 		binary, ok := term.(*ast.BinaryExpr)
@@ -36,8 +33,6 @@ func UntilCancelled(info *types.Info, params map[*types.Var]bool, cond ast.Expr)
 	return false
 }
 
-// errOnParameter reports whether call is Err() on a parameter of type
-// context.Context.
 func errOnParameter(info *types.Info, params map[*types.Var]bool, call *ast.CallExpr) bool {
 	selector, ok := call.Fun.(*ast.SelectorExpr)
 	if !ok || selector.Sel.Name != "Err" {

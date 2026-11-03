@@ -1,0 +1,5 @@
+version: 1
+comments:
+  allow:
+    - value: .
+      reason: these trees hold the comment shapes the nolint ban judges

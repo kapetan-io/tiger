@@ -32,6 +32,8 @@ func writeModule(t *testing.T, files ...sourceFile) string {
 		}
 		return os.WriteFile(path, []byte(file.content), 0o644)
 	}
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "tiger.yaml"),
+		[]byte("version: 1\n"+allowProse), 0o644))
 	require.NoError(t, write(files[0]))
 	if len(files) > 1 {
 		require.NoError(t, write(files[1]))

@@ -235,3 +235,29 @@ func TestCheckRejectsFinishDiagnosticOutsideTheModule(t *testing.T) {
 		})
 	}
 }
+
+// TestCheckAnalyzerPanicReturnsNoFindings covers behavioral constraint 1:
+// never present partial results as a complete run.
+//
+// Goal: an analyzer pass that panics turns the whole Check into an error
+// naming the analyzer and the package, with no findings returned beside it
+// from the analyzers that did finish.
+func TestCheckAnalyzerPanicReturnsNoFindings(t *testing.T) {
+	panicker := &analysis.Analyzer{
+		Name: "panicker",
+		Doc:  "test double that panics on every package",
+		Run: func(*analysis.Pass) (any, error) {
+			assert.Fail("boom")
+			return nil, nil
+		},
+	}
+
+	findings, err := driver.Check(
+		"testdata/fixtures/probe", []string{"./..."},
+		[]*analysis.Analyzer{newProbe(t, new([]string)), panicker}, nil,
+	)
+
+	require.ErrorContains(t, err, "analyzer panicker panicked on fixture.example/probe/")
+	require.ErrorContains(t, err, "assertion failed: boom")
+	require.Nil(t, findings)
+}

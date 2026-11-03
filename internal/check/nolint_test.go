@@ -37,7 +37,7 @@ func TestNolintBanOffIgnoresNolint(t *testing.T) {
 		{
 			name: "ForbidFalse",
 			config: "version: 1\nnolint:\n  forbid: false\n" +
-				"  reason: the team uses nolint for third-party linters\n",
+				"  reason: the team uses nolint for third-party linters\n" + allowProse,
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -55,7 +55,7 @@ func TestNolintBanOffIgnoresNolint(t *testing.T) {
 // finding reported at the file's package line, whichever spelling it uses.
 func TestNolintBanOnBlocksEveryNolint(t *testing.T) {
 	dir := nolintTree(t, "version: 1\nnolint:\n  forbid: true\n"+
-		"  reason: agents must fix findings, not silence them\n")
+		"  reason: agents must fix findings, not silence them\n"+allowProse)
 	got := run(t, "check", "-C", dir, "./...")
 	assert.Equal(t, command.ExitFindings, got.code)
 	assert.Empty(t, got.stderr)
@@ -160,7 +160,11 @@ func mapFiles(files map[string]string) fstest.MapFS {
 	return entries
 }
 
-const banConfig = "version: 1\nnolint:\n  forbid: true\n  reason: agents must fix findings\n"
+const allowProse = "comments:\n  allow:\n    - value: .\n" +
+	"      reason: these trees hold the comment shapes the nolint ban judges\n"
+
+const banConfig = "version: 1\nnolint:\n  forbid: true\n" +
+	"  reason: agents must fix findings\n" + allowProse
 
 // TestNolintBanSpellings covers which comments count as a //nolint.
 //

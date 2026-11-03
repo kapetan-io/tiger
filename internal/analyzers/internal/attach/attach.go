@@ -16,8 +16,6 @@ import (
 	"github.com/kapetan-io/tiger/internal/directive"
 )
 
-// Directive returns the well-formed //tiger:<verb> directive attached to
-// node, if one is present in file's comments.
 func Directive(
 	fset *token.FileSet,
 	file *ast.File,
@@ -32,7 +30,7 @@ func Directive(
 			continue
 		}
 		for _, comment := range group.List {
-			if !directive.Is(comment.Text) {
+			if directive.Classify(file, comment) != directive.Tiger {
 				continue
 			}
 			parsed, err := directive.Parse(comment.Text)

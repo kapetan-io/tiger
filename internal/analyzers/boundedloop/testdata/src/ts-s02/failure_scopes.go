@@ -3,7 +3,7 @@
 package fixture
 
 // literalRewindsOuterCounter rewinds a counter declared outside the literal
-// the loop sits in.
+// the loop sits in, so the literal that writes it counts.
 func literalRewindsOuterCounter(n int, run func(func())) {
 	i := 0
 	rewind := func() { i = 0 }

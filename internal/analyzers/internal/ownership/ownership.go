@@ -29,15 +29,11 @@ import (
 	"github.com/kapetan-io/tiger/internal/worklist"
 )
 
-// Argument is an expression a call passes for a parameter, with the
-// declaration holding the call.
 type Argument struct {
 	Expr ast.Expr
 	Decl *ast.FuncDecl
 }
 
-// Index is a package's declarations, the references between them, and the
-// arguments its calls pass.
 type Index struct {
 	info    *types.Info
 	fset    *token.FileSet
@@ -50,7 +46,6 @@ type Index struct {
 	reached map[*types.TypeName]map[*ast.FuncDecl]bool
 }
 
-// New indexes the declarations of the package under analysis.
 func New(pass *analysis.Pass) *Index {
 	index := &Index{
 		info:    pass.TypesInfo,
@@ -84,8 +79,6 @@ func New(pass *analysis.Pass) *Index {
 	return index
 }
 
-// collectParameters records every parameter and receiver in file, function
-// literals included.
 func (index *Index) collectParameters(file *ast.File) {
 	ast.Inspect(file, func(node ast.Node) bool {
 		var lists []*ast.FieldList
@@ -111,14 +104,10 @@ func (index *Index) collectParameters(file *ast.File) {
 	})
 }
 
-// IsParameter reports whether v is a parameter or receiver of a function in
-// the package.
 func (index *Index) IsParameter(v *types.Var) bool {
 	return index.params[v]
 }
 
-// DeclOf returns the declaration holding node, or nil for code outside any
-// function, such as a package variable's initializer.
 func (index *Index) DeclOf(node ast.Node) *ast.FuncDecl {
 	for _, fn := range index.decls {
 		if fn.Pos() <= node.Pos() && node.End() <= fn.End() {
@@ -128,21 +117,14 @@ func (index *Index) DeclOf(node ast.Node) *ast.FuncDecl {
 	return nil
 }
 
-// Decls returns the package's function declarations that have a body, in
-// source order.
 func (index *Index) Decls() []*ast.FuncDecl {
 	return index.decls
 }
 
-// DeclFor returns the declaration of a package function or method, or nil for
-// one declared elsewhere.
 func (index *Index) DeclFor(fn *types.Func) *ast.FuncDecl {
 	return index.byFunc[fn.Origin()]
 }
 
-// Object returns the variable an expression names: a plain identifier, or the
-// field or package variable a selector picks. It returns nil for anything
-// else, such as a call result or an element of a slice.
 func (index *Index) Object(expr ast.Expr) *types.Var {
 	expr = ast.Unparen(expr)
 	var ident *ast.Ident
@@ -161,24 +143,15 @@ func (index *Index) Object(expr ast.Expr) *types.Var {
 	return obj.Origin()
 }
 
-// Arguments returns what the package's calls pass for a parameter.
 func (index *Index) Arguments(param *types.Var) []Argument {
 	return index.args[param]
 }
 
-// Link pairs the declaration that acts on an object, by closing it,
-// sending on it, or waiting on it, with the declaration that depends on the
-// action. Either is nil for code outside any function.
 type Link struct {
 	Actor  *ast.FuncDecl
 	Reader *ast.FuncDecl
 }
 
-// Reaches reports whether the actor can act on obj for the reader. A local
-// belongs to the one function that declares it, or to the one initializer
-// outside any function (both nil). A field also counts when the actor and the
-// reader are the same function. An actor outside any function never reaches a
-// field or a package variable.
 func (index *Index) Reaches(obj *types.Var, link Link) bool {
 	switch {
 	case obj.IsField():
@@ -193,8 +166,6 @@ func (index *Index) Reaches(obj *types.Var, link Link) bool {
 	}
 }
 
-// fieldReached reports whether site is a method of the type that owns field,
-// reached from an exported method of that type.
 func (index *Index) fieldReached(field *types.Var, site *ast.FuncDecl) bool {
 	owner := index.receiverType(site)
 	if owner == nil {
@@ -208,7 +179,6 @@ func (index *Index) fieldReached(field *types.Var, site *ast.FuncDecl) bool {
 	return index.reachedFrom(owner)[site]
 }
 
-// receiverType returns the named type fn is a method of, or nil.
 func (index *Index) receiverType(fn *ast.FuncDecl) *types.TypeName {
 	if fn.Recv == nil {
 		return nil
@@ -232,9 +202,6 @@ func (index *Index) receiverType(fn *ast.FuncDecl) *types.TypeName {
 	return named.Origin().Obj()
 }
 
-// reachedFrom returns every declaration reachable from the exported methods
-// of owner, or from every exported function and method when owner is nil.
-// The entry points main and init count as exported.
 func (index *Index) reachedFrom(owner *types.TypeName) map[*ast.FuncDecl]bool {
 	if seen, ok := index.reached[owner]; ok {
 		return seen
@@ -261,8 +228,6 @@ func (index *Index) reachedFrom(owner *types.TypeName) map[*ast.FuncDecl]bool {
 	return seen
 }
 
-// isRoot reports whether fn starts a walk for owner. Code in a _test.go file
-// never does: a close that only a test performs is not the package's.
 func (index *Index) isRoot(fn *ast.FuncDecl, owner *types.TypeName) bool {
 	if strings.HasSuffix(index.fset.PositionFor(fn.Pos(), false).Filename, "_test.go") {
 		return false
@@ -276,8 +241,6 @@ func (index *Index) isRoot(fn *ast.FuncDecl, owner *types.TypeName) bool {
 	return fn.Name.IsExported()
 }
 
-// references lists the package declarations fn names anywhere in its body,
-// as calls or as function values, so a method handed to wg.Go counts.
 func (index *Index) references(fn *ast.FuncDecl) []*ast.FuncDecl {
 	var out []*ast.FuncDecl
 	ast.Inspect(fn.Body, func(node ast.Node) bool {
@@ -297,8 +260,6 @@ func (index *Index) references(fn *ast.FuncDecl) []*ast.FuncDecl {
 	return out
 }
 
-// collectArguments records the arguments fn's calls pass to package
-// functions and to function literals called on the spot.
 func (index *Index) collectArguments(fn *ast.FuncDecl) {
 	ast.Inspect(fn.Body, func(node ast.Node) bool {
 		call, ok := node.(*ast.CallExpr)
@@ -314,8 +275,6 @@ func (index *Index) collectArguments(fn *ast.FuncDecl) {
 	})
 }
 
-// parameters returns the parameter variables of the function a call invokes
-// when it is a package function or a function literal, in order.
 func (index *Index) parameters(call *ast.CallExpr) []*types.Var {
 	var list *ast.FieldList
 	switch callee := ast.Unparen(call.Fun).(type) {
@@ -340,7 +299,6 @@ func (index *Index) parameters(call *ast.CallExpr) []*types.Var {
 	return params
 }
 
-// declaredParams returns the parameter list of a package function, or nil.
 func (index *Index) declaredParams(obj types.Object) *ast.FieldList {
 	fn, ok := obj.(*types.Func)
 	if !ok {
@@ -353,9 +311,6 @@ func (index *Index) declaredParams(obj types.Object) *ast.FieldList {
 	return decl.Type.Params
 }
 
-// Definitions returns the expressions assigned to local in decl, one per
-// assignment or declaration that gives it a value. A value that comes from a
-// multi-value call is the call itself, whichever result local takes.
 func (index *Index) Definitions(local *types.Var, decl *ast.FuncDecl) []ast.Expr {
 	var out []ast.Expr
 	if decl == nil {
@@ -381,13 +336,11 @@ func (index *Index) Definitions(local *types.Var, decl *ast.FuncDecl) []ast.Expr
 	return out
 }
 
-// binding is the two sides of an assignment or declaration.
 type binding struct {
 	targets []ast.Expr
 	values  []ast.Expr
 }
 
-// matching pairs each target naming local with its value.
 func (index *Index) matching(local *types.Var, assigned binding) []ast.Expr {
 	var out []ast.Expr
 	for i, target := range assigned.targets {

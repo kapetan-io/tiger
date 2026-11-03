@@ -5,7 +5,8 @@ package fixture
 
 import "context"
 
-// Session keeps the context its caller gave it.
+// Session keeps the context its caller gave it. A field context is live because
+// its owner decides when to cancel it, unlike one made from Background here.
 type Session struct {
 	ctx context.Context
 }
@@ -139,7 +140,8 @@ func (h *Handshake) Shutdown(ctx context.Context) error {
 	}
 }
 
-// Helped closes its channel through a helper that takes it as a parameter.
+// Helped closes its channel through a helper that takes it as a parameter, so
+// shut(h.stop) credits the field its caller hands it.
 type Helped struct {
 	stop chan struct{}
 }

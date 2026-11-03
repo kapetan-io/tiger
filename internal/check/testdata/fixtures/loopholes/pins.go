@@ -1,11 +1,11 @@
 package loopholes
 
-// Rows is the part of a database cursor the loops use.
+
 type Rows interface {
 	Next() bool
 }
 
-// WrongWay pins a ranking that grows, because i moves away from n.
+
 func WrongWay(n int) int {
 	steps := 0
 	i := 0
@@ -17,8 +17,8 @@ func WrongWay(n int) int {
 	return steps
 }
 
-// ChunksParamMax slices by the length of a part that is empty when max is
-// zero, so the loop can stand still.
+
+
 func ChunksParamMax(data []byte, max int) int {
 	count := 0
 	for len(data) > 0 {
@@ -32,7 +32,7 @@ func ChunksParamMax(data []byte, max int) int {
 	return count
 }
 
-// DrainRefill pins len(pending), but the body appends back into it.
+
 func DrainRefill(pending []string, refill func() []string) int {
 	drained := 0
 	//tiger:variant len(pending)
@@ -44,7 +44,7 @@ func DrainRefill(pending []string, refill func() []string) int {
 	return drained
 }
 
-// DrainSkip pins len(pending), but continue skips the shrink.
+
 func DrainSkip(pending []string, skip func() bool) int {
 	drained := 0
 	//tiger:variant len(pending)
@@ -58,7 +58,7 @@ func DrainSkip(pending []string, skip func() bool) int {
 	return drained
 }
 
-// CountVariant pins a variable nothing in the loop shrinks.
+
 func CountVariant(rows Rows, remaining int) int {
 	count := 0
 	//tiger:variant remaining

@@ -24,31 +24,20 @@ import (
 	"github.com/kapetan-io/tiger/internal/finish"
 )
 
-// Kind names which assert call referenced an invariant.
 type Kind string
 
-// FileClass says which files a call site or a search is confined to.
 type FileClass bool
 
 const (
-	// Production is the non-_test.go half of a package: TS-A07's ground.
 	Production FileClass = false
-	// Tests is the _test.go half: TS-A09's ground.
-	Tests FileClass = true
+	Tests      FileClass = true
 )
 
 const (
-	// KindAssert is an assert.Invariant call: the production-side defense
-	// TS-A07 counts.
-	KindAssert Kind = "assert"
-	// KindViolates is an assert.Violates call: the negative-space proof
-	// TS-A09 counts.
+	KindAssert   Kind = "assert"
 	KindViolates Kind = "violates"
 )
 
-// Const identifies one package-level const of a named string type,
-// declared in a non-test file, by its package path and name — a key that
-// survives the test-variant seam and gob encoding alike.
 type Const struct {
 	Pkg      string
 	Name     string
@@ -56,10 +45,6 @@ type Const struct {
 	TypeName string
 }
 
-// Call is one assert.Invariant or assert.Violates call: the named type of
-// its ID argument (which makes that type's consts invariants), the
-// package-level const it names when the argument is one, the enclosing
-// function, and whether the call sits in a _test.go file.
 type Call struct {
 	Kind      Kind
 	TypePkg   string
@@ -70,13 +55,11 @@ type Call struct {
 	In        FileClass
 }
 
-// Contribution is what one package adds to the module-wide picture.
 type Contribution struct {
 	Consts []Const
 	Calls  []Call
 }
 
-// Collect computes the package's contribution.
 func Collect(pass *analysis.Pass) Contribution {
 	contribution := Contribution{Consts: []Const{}, Calls: []Call{}}
 	for _, file := range pass.Files {
@@ -103,8 +86,6 @@ func Collect(pass *analysis.Pass) Contribution {
 	return contribution
 }
 
-// consts returns the named-string-typed consts one const declaration
-// declares.
 func consts(pass *analysis.Pass, decl *ast.GenDecl) []Const {
 	found := []Const{}
 	for _, spec := range decl.Specs {
@@ -132,18 +113,12 @@ func consts(pass *analysis.Pass, decl *ast.GenDecl) []Const {
 	return found
 }
 
-// site is one top-level declaration to search for assert calls: the
-// function they attribute to (empty outside a function) and the file
-// class they sit in.
 type site struct {
 	node     ast.Node
 	function string
 	class    FileClass
 }
 
-// calls returns every assert.Invariant and assert.Violates call under the
-// site's node, attributed to its function (closures fold into their
-// enclosing declaration).
 func calls(pass *analysis.Pass, at site) []Call {
 	found := []Call{}
 	ast.Inspect(at.node, func(n ast.Node) bool {
@@ -176,8 +151,6 @@ func calls(pass *analysis.Pass, at site) []Call {
 	return found
 }
 
-// assertKind recognizes a call to assert.Invariant or assert.Violates: a
-// selector resolving to a function in tiger's assert package.
 func assertKind(pass *analysis.Pass, call *ast.CallExpr) (Kind, bool) {
 	selector, ok := call.Fun.(*ast.SelectorExpr)
 	if !ok {
@@ -196,9 +169,6 @@ func assertKind(pass *analysis.Pass, call *ast.CallExpr) (Kind, bool) {
 	return "", false
 }
 
-// packageConst resolves expr to the package-level const it names, if it is
-// a bare identifier or a qualified selector for one, seen through any
-// parentheses.
 func packageConst(pass *analysis.Pass, expr ast.Expr) (*types.Const, bool) {
 	var ident *ast.Ident
 	switch typed := ast.Unparen(expr).(type) {
@@ -216,7 +186,6 @@ func packageConst(pass *analysis.Pass, expr ast.Expr) (*types.Const, bool) {
 	return constant, true
 }
 
-// namedString reports whether t is a named type with underlying string.
 func namedString(t types.Type) (*types.Named, bool) {
 	named, ok := types.Unalias(t).(*types.Named)
 	if !ok || named.Obj().Pkg() == nil {
@@ -229,17 +198,11 @@ func namedString(t types.Type) (*types.Named, bool) {
 	return named, true
 }
 
-// Defense is what one rule demands of every invariant: a call of one kind
-// in one file class.
 type Defense struct {
 	Kind Kind
 	In   FileClass
 }
 
-// Undefended returns every invariant const in program that no call
-// matching the demanded defense names — sorted by package path then name,
-// so the caller's output never depends on fact order. Each result carries
-// the const's resolved object, positioned in the loaded module.
 func Undefended(
 	program *finish.Program, contributions []Contribution, demanded Defense,
 ) []*types.Const {
@@ -290,7 +253,6 @@ func Undefended(
 	return resolved
 }
 
-// Qualified names a const the way source does: package name dot name.
 func Qualified(constant *types.Const) string {
 	return constant.Pkg().Name() + "." + constant.Name()
 }
