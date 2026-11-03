@@ -40,16 +40,18 @@ import (
 	"github.com/kapetan-io/tiger/internal/worklist"
 )
 
-// loadMode requests what every analyzer needs, single-package or SSA:
-// NeedDeps extends the dependency graph packages.Load reports (pkg.Imports
-// entries carry full IDs, not stubs) so the driver's own topological sort
-// and buildssa's construction of a package's direct-import SSA packages
-// both have what they need.
+// loadMode requests what every analyzer needs, single-package or SSA. It
+// leaves out NeedDeps on purpose, so packages the patterns matched are
+// type-checked from source and everything they import comes from compiler
+// export data, the mode the golangci-lint plugin already runs in. Type-checking
+// the standard library from source on every run was most of tiger check's
+// time. NeedImports stays: it fills pkg.Imports with an entry per import
+// carrying its ID, which is all packageOrder's topological sort reads, and
+// buildssa builds a direct import's SSA package from types alone.
 const loadMode = packages.NeedName |
 	packages.NeedFiles |
 	packages.NeedCompiledGoFiles |
 	packages.NeedImports |
-	packages.NeedDeps |
 	packages.NeedTypes |
 	packages.NeedTypesInfo |
 	packages.NeedTypesSizes |
