@@ -16,6 +16,14 @@ import (
 // silent; the documented known-misses — a
 // reset and its Put split across a function boundary, and an aliased
 // pooled value — stay silent too.
+//
+// Why those are silent: firing would risk a false positive on a blocking rule.
+// A value taken straight from Get is never known-clean, so it fires even with
+// no reset in the function (getUseAndPutBack). A Reset call is not a zeroing
+// (putAfterResetCall). A deferred Put runs where the function exits, so a
+// return before the zeroing reaches the Put dirty (deferPutReturnsBeforeZero).
+// Only the canonical zeroing stores count; the compliant form is always
+// available.
 func TestCorpus(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), poolzero.Analyzer, "ts-m05")
 }

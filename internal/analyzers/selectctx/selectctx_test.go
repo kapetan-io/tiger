@@ -13,7 +13,7 @@ import (
 // Goal: a blocking select with no shutdown case fires, a blocking send or
 // receive outside any select fires, the compliant rewrites — including a
 // case on a channel the package closes or sends on, and a bare receive
-// from a channel it closes — stay silent, and the known misses (channel
+// from a live ctx.Done() or a channel it closes — stay silent, and the known misses (channel
 // range, a completion wait on a closed channel, and a close in dead code)
 // hold.
 func TestCorpus(t *testing.T) {

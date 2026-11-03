@@ -14,17 +14,13 @@ import (
 	"github.com/kapetan-io/tiger/internal/worklist"
 )
 
-// groupTypes are the types whose Go method starts a goroutine and whose Wait
-// method joins it.
 var groupTypes = map[string]bool{
 	"sync.WaitGroup":                   true,
 	"golang.org/x/sync/errgroup.Group": true,
 }
 
-// startMethods are the group methods that start a goroutine.
 var startMethods = map[string]bool{"Go": true, "TryGo": true}
 
-// owners judges the goroutines a package starts through groups.
 type owners struct {
 	pass      *analysis.Pass
 	index     *ownership.Index
@@ -35,13 +31,10 @@ type owners struct {
 	outside   map[*types.Var]bool
 }
 
-// span is a range of source.
 type span struct {
 	from, to token.Pos
 }
 
-// newOwners finds the select cases that mean a caller gave up waiting, and the
-// groups waited on outside any function.
 func newOwners(pass *analysis.Pass) *owners {
 	stops := stopcase.New(pass)
 	o := &owners{
@@ -64,8 +57,6 @@ func newOwners(pass *analysis.Pass) *owners {
 	return o
 }
 
-// noteExpired records the body of a select case that receives from ctx.Done():
-// the early return of a function whose caller gave up waiting.
 func (o *owners) noteExpired(clause *ast.CommClause) {
 	if clause.Comm == nil || len(clause.Body) == 0 || !o.stops.ContextCase(clause.Comm) {
 		return
@@ -73,8 +64,6 @@ func (o *owners) noteExpired(clause *ast.CommClause) {
 	o.expired = append(o.expired, span{from: clause.Body[0].Pos(), to: clause.End()})
 }
 
-// noteOutside records a Wait on a group made outside any function, such as in
-// a package variable's initializer.
 func (o *owners) noteOutside(sel *ast.SelectorExpr) {
 	if o.index.DeclOf(sel) != nil {
 		return
@@ -84,11 +73,6 @@ func (o *owners) noteOutside(sel *ast.SelectorExpr) {
 	}
 }
 
-// groupMethod returns the group a selector picks a method of, when the method
-// is named by want, or is one of startMethods if want is empty. The group is
-// the variable the selector names, or the embedded field the method is
-// promoted from. It is nil when the code names the group by an expression
-// tiger cannot follow, such as a call result.
 func (o *owners) groupMethod(sel *ast.SelectorExpr, want string) (*types.Var, bool) {
 	fn, ok := o.pass.TypesInfo.Uses[sel.Sel].(*types.Func)
 	if !ok {
@@ -121,14 +105,10 @@ func (o *owners) groupMethod(sel *ast.SelectorExpr, want string) (*types.Var, bo
 	return o.unalias(o.index.Object(sel.X), sel), true
 }
 
-// aliasHopsMax bounds how many local aliases of a group are followed.
 const aliasHopsMax = 8
 
 const _ = uint(worklist.NodesMax - aliasHopsMax)
 
-// unalias follows a local variable assigned once from another variable, such
-// as group := &a.wg, to the variable it names, so a Wait on a.wg is a Wait on
-// group.
 func (o *owners) unalias(group *types.Var, at ast.Node) *types.Var {
 	decl := o.index.DeclOf(at)
 	for range aliasHopsMax {
@@ -155,8 +135,6 @@ func (o *owners) unalias(group *types.Var, at ast.Node) *types.Var {
 	return group
 }
 
-// embeddedField returns the field a promoted method is reached through, or
-// nil when the selector names the group directly.
 func (o *owners) embeddedField(sel *ast.SelectorExpr) *types.Var {
 	selection := o.pass.TypesInfo.Selections[sel]
 	if selection == nil || len(selection.Index()) < 2 {
@@ -182,8 +160,6 @@ func (o *owners) embeddedField(sel *ast.SelectorExpr) *types.Var {
 	return field.Origin()
 }
 
-// checkStart reports TS-C02 when sel starts a goroutine through a group that
-// nothing waits on, and reports whether sel starts a goroutine at all.
 func (o *owners) checkStart(sel *ast.SelectorExpr) bool {
 	group, ok := o.groupMethod(sel, "")
 	if !ok {
@@ -199,10 +175,6 @@ func (o *owners) checkStart(sel *ast.SelectorExpr) bool {
 	return true
 }
 
-// waited reports whether a Wait on group is reached on every success path
-// after a start at sel. A group the code cannot name has no Wait to find. A
-// parameter is the caller's to wait on. A group in a field or a package
-// variable may instead be waited by an exported method that always waits.
 func (o *owners) waited(group *types.Var, sel *ast.SelectorExpr) bool {
 	if group == nil {
 		return false
