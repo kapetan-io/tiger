@@ -19,30 +19,6 @@ comments:
       reason: prose not yet moved into tests; ENG-658 clears it
     - value: internal/analyzers/errignore
       reason: prose not yet moved into tests; ENG-658 clears it
-    - value: internal/analyzers/internal/assertpkg
-      reason: prose not yet moved into tests; ENG-660 clears it
-    - value: internal/analyzers/internal/attach
-      reason: prose not yet moved into tests; ENG-660 clears it
-    - value: internal/analyzers/internal/cancel
-      reason: prose not yet moved into tests; ENG-660 clears it
-    - value: internal/analyzers/internal/condition
-      reason: prose not yet moved into tests; ENG-660 clears it
-    - value: internal/analyzers/internal/counter
-      reason: prose not yet moved into tests; ENG-660 clears it
-    - value: internal/analyzers/internal/intrange
-      reason: prose not yet moved into tests; ENG-660 clears it
-    - value: internal/analyzers/internal/invariants
-      reason: prose not yet moved into tests; ENG-660 clears it
-    - value: internal/analyzers/internal/mutation
-      reason: prose not yet moved into tests; ENG-660 clears it
-    - value: internal/analyzers/internal/ownership
-      reason: prose not yet moved into tests; ENG-660 clears it
-    - value: internal/analyzers/internal/ssalib
-      reason: prose not yet moved into tests; ENG-660 clears it
-    - value: internal/analyzers/internal/stopcase
-      reason: prose not yet moved into tests; ENG-660 clears it
-    - value: internal/analyzers/internal/words
-      reason: prose not yet moved into tests; ENG-660 clears it
     - value: internal/analyzers/invariantnegative
       reason: prose not yet moved into tests; ENG-658 clears it
     - value: internal/analyzers/invariantrefs

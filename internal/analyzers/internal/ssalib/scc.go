@@ -6,14 +6,11 @@ import (
 	"github.com/kapetan-io/tiger/assert"
 )
 
-// walkFrame is one suspended node in the iterative Tarjan walk: the node
-// and how many of its edges have been explored.
 type walkFrame struct {
 	fn   *ssa.Function
 	edge int
 }
 
-// walkState carries the Tarjan bookkeeping across the iterative walk.
 type walkState struct {
 	adjacency  map[*ssa.Function][]*ssa.Function
 	index      map[*ssa.Function]int
@@ -25,11 +22,6 @@ type walkState struct {
 	components [][]*ssa.Function
 }
 
-// Components partitions fns into strongly connected components of the
-// graph callees induces, in reverse topological order: a component's
-// callees complete before the component itself. Edges leaving the node set
-// are ignored. The walk is iterative Tarjan — deterministic in the order
-// of fns and each node's edge list — and never recurses.
 func Components(
 	fns []*ssa.Function,
 	callees func(*ssa.Function) []*ssa.Function,
@@ -55,8 +47,6 @@ func Components(
 		walk.adjacency[fn] = kept
 		edges += len(kept)
 	}
-	// Every node is pushed once and every edge examined once; the bound
-	// converts a bookkeeping bug into a loud failure instead of a hang.
 	steps := 2 + 2*len(fns) + 2*edges
 	for _, root := range fns {
 		if _, seen := walk.index[root]; seen {
@@ -74,7 +64,6 @@ func Components(
 	return walk.components
 }
 
-// push starts visiting a node.
 func (w *walkState) push(fn *ssa.Function) {
 	w.index[fn] = w.counter
 	w.lowlink[fn] = w.counter
@@ -84,8 +73,6 @@ func (w *walkState) push(fn *ssa.Function) {
 	w.frames = append(w.frames, walkFrame{fn: fn})
 }
 
-// advance takes one step: explore the top frame's next edge, or finish the
-// frame when its edges are exhausted.
 func (w *walkState) advance() {
 	top := &w.frames[len(w.frames)-1]
 	if top.edge < len(w.adjacency[top.fn]) {
@@ -111,7 +98,6 @@ func (w *walkState) advance() {
 	}
 }
 
-// pop collects the finished component rooted at fn off the stack.
 func (w *walkState) pop(fn *ssa.Function) {
 	component := []*ssa.Function{}
 	for range w.stack {
