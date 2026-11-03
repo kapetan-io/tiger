@@ -208,5 +208,6 @@ func TestChangedMarkdownSuggestsACommandAShellCanRun(t *testing.T) {
 func TestChangedMarkdownWritesPackageSummaryAsHTML(t *testing.T) {
 	got := fixture(t, "new-package").changed("--format", "markdown")
 	require.Equal(t, command.ExitClean, got.code)
-	assert.Contains(t, got.stdout, "<summary>Every call from <code>billing</code>, by function (4)</summary>")
+	assert.Contains(t, got.stdout,
+		"<summary>Every call from <code>billing</code>, by function (4)</summary>")
 }

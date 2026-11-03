@@ -169,7 +169,9 @@ func TestPinTwoTargetsInOneFileNumbersLinesAfterEarlierInsertions(t *testing.T) 
 		got.stdout)
 	written := readFile(t, filepath.Join(dir, "facts.go"))
 	assert.Equal(t, 2, strings.Count(written, "//tiger:variant len(pending)\n"))
-	assert.Contains(t, written, "func Drain(pending []int) int {\n\ttotal := 0\n\t//tiger:variant len(pending)\n\tfor len(pending) > 0 {")
+	assert.Contains(t, written,
+		"func Drain(pending []int) int {\n\ttotal := 0\n"+
+			"\t//tiger:variant len(pending)\n\tfor len(pending) > 0 {")
 }
 
 // TestPinUnexportedTargetWritesVariant covers the unexported policy.
