@@ -56,7 +56,8 @@ GOARCH, `CGO_ENABLED`, `GOEXPERIMENT`, `GOFLAGS`, `GOFIPS140` and the CPU-level
 variables such as `GOAMD64`, so settings that change the standard library never
 share an answer. When the file is missing, damaged or was
 removed by `go clean -cache`, tiger regenerates it from source, which takes a few
-seconds. Go's own cache trim deletes it after five days without a run. A CI job
+seconds. Go's own cache trim deletes it after five days without a run, except under
+`GOCACHEPROG`, where Go never trims and nothing removes it. A CI job
 that already caches `GOCACHE`, as `actions/setup-go` does, keeps it with no
 extra step. When the reach file cannot be written, the report still prints, and
 stderr says the file could not be saved.

@@ -93,6 +93,7 @@ func whole(t *testing.T, key string) bool {
 func TestChangedKeepsTheReachFileInGoBuildCache(t *testing.T) {
 	key := reachKey(t)
 	entry := reachEntry(t, key)
+	require.NoError(t, os.RemoveAll(entry))
 	c := fixture(t, "call-added")
 	want := c.changed().stdout
 
