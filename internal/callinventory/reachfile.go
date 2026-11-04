@@ -28,13 +28,13 @@ import (
 	"github.com/kapetan-io/tiger/assert"
 )
 
-const stdReachMagic = "tiger-stdreach/2"
+const reachFileMagic = "tiger-reachfile/2"
 
-const stdReachEnd = "end"
+const reachFileEnd = "end"
 
 const markInterval = time.Hour
 
-type StdReach struct {
+type ReachFile struct {
 	dir      string
 	once     sync.Once
 	err      error
@@ -49,17 +49,16 @@ var keyedEnv = []string{
 }
 
 type toolchain struct {
-	Version string
-	OS      string
-	Arch    string
-	Cgo     string
-	Cache   string
-	env     map[string]string
-	tiger   string
+	goos   string
+	goarch string
+	cgo    string
+	cache  string
+	env    map[string]string
+	tiger  string
 }
 
 func (t toolchain) key() string {
-	parts := []string{stdReachMagic, "tiger=" + t.tiger}
+	parts := []string{reachFileMagic, "tiger=" + t.tiger}
 	for _, name := range keyedEnv {
 		parts = append(parts, fmt.Sprintf("%s=%q", name, t.env[name]))
 	}
@@ -67,12 +66,12 @@ func (t toolchain) key() string {
 }
 
 func (t toolchain) entry() (string, error) {
-	if !filepath.IsAbs(t.Cache) {
-		return "", fmt.Errorf("GOCACHE is %q, not an absolute path", t.Cache)
+	if !filepath.IsAbs(t.cache) {
+		return "", fmt.Errorf("GOCACHE is %q, not an absolute path", t.cache)
 	}
 	sum := sha256.Sum256([]byte(t.key()))
 	name := hex.EncodeToString(sum[:])
-	return filepath.Join(t.Cache, name[:2], name+"-d"), nil
+	return filepath.Join(t.cache, name[:2], name+"-d"), nil
 }
 
 func goToolchain(dir string) (toolchain, error) {
@@ -87,8 +86,8 @@ func goToolchain(dir string) (toolchain, error) {
 		return toolchain{}, fmt.Errorf("go env: %w", err)
 	}
 	found := toolchain{
-		Version: env["GOVERSION"], OS: env["GOOS"], Arch: env["GOARCH"], Cgo: env["CGO_ENABLED"],
-		Cache: env["GOCACHE"], env: env,
+		goos: env["GOOS"], goarch: env["GOARCH"], cgo: env["CGO_ENABLED"],
+		cache: env["GOCACHE"], env: env,
 	}
 	if found.tiger, err = executableSum(); err != nil {
 		return toolchain{}, err
@@ -113,20 +112,20 @@ func executableSum() (string, error) {
 	return hex.EncodeToString(hash.Sum(nil)[:8]), nil
 }
 
-func NewStdReach(dir string) *StdReach {
-	return &StdReach{dir: dir}
+func NewReachFile(dir string) *ReachFile {
+	return &ReachFile{dir: dir}
 }
 
-func (t *StdReach) ready() error {
+func (t *ReachFile) ready() error {
 	t.once.Do(func() { t.err = t.resolve() })
 	return t.err
 }
 
-func (t *StdReach) SaveError() error {
+func (t *ReachFile) SaveError() error {
 	return t.saveErr
 }
 
-func (t *StdReach) resolve() error {
+func (t *ReachFile) resolve() error {
 	chain, err := goToolchain(t.dir)
 	if err != nil {
 		return err
@@ -139,7 +138,7 @@ func (t *StdReach) resolve() error {
 		}
 	}
 	var text bytes.Buffer
-	if err := writeStdReach(&text, t.dir, chain); err != nil {
+	if err := writeReachFile(&text, t.dir, chain); err != nil {
 		return err
 	}
 	if err := t.parse(text.String(), chain); err != nil {
@@ -185,14 +184,14 @@ func writeFileAtomic(path string, data []byte) error {
 	return nil
 }
 
-func (t *StdReach) parse(text string, chain toolchain) error {
+func (t *ReachFile) parse(text string, chain toolchain) error {
 	first, rest, _ := strings.Cut(text, "\n")
 	if first != chain.key() {
 		return fmt.Errorf("reach file is for %q, not %q", first, chain.key())
 	}
-	body, complete := strings.CutSuffix(strings.TrimRight(rest, "\n"), "\n"+stdReachEnd)
+	body, complete := strings.CutSuffix(strings.TrimRight(rest, "\n"), "\n"+reachFileEnd)
 	if !complete {
-		return fmt.Errorf("reach file does not end with %q", stdReachEnd)
+		return fmt.Errorf("reach file does not end with %q", reachFileEnd)
 	}
 	t.packages, t.reaches = map[string]bool{}, map[string]bool{}
 	pkg := ""
@@ -236,11 +235,11 @@ func memberName(name string) bool {
 	return true
 }
 
-func (t *StdReach) knows(path string) bool {
+func (t *ReachFile) knows(path string) bool {
 	return t.packages[path]
 }
 
-func (t *StdReach) member(fn *ssa.Function) bool {
+func (t *ReachFile) member(fn *ssa.Function) bool {
 	if origin := fn.Origin(); origin != nil {
 		fn = origin
 	}
@@ -261,12 +260,12 @@ func memberKey(obj *types.Func) string {
 	return key
 }
 
-func writeStdReach(w io.Writer, dir string, chain toolchain) error {
+func writeReachFile(w io.Writer, dir string, chain toolchain) error {
 	pkgs, err := packages.Load(&packages.Config{
 		Mode: packages.LoadAllSyntax,
 		Dir:  dir,
 		Env: append(os.Environ(),
-			"GOOS="+chain.OS, "GOARCH="+chain.Arch, "CGO_ENABLED="+chain.Cgo),
+			"GOOS="+chain.goos, "GOARCH="+chain.goarch, "CGO_ENABLED="+chain.cgo),
 	}, "std")
 	if err != nil {
 		return err
@@ -277,7 +276,7 @@ func writeStdReach(w io.Writer, dir string, chain toolchain) error {
 	prog, _ := ssautil.AllPackages(pkgs, 0)
 	prog.Build()
 	body := newBodyReach(nil)
-	table := map[string][]string{}
+	listed := map[string][]string{}
 	for _, pkg := range pkgs {
 		if !importable(pkg.PkgPath) {
 			continue
@@ -290,22 +289,22 @@ func writeStdReach(w io.Writer, dir string, chain toolchain) error {
 			}
 			if found {
 				obj, isFunc := fn.Object().(*types.Func)
-				assert.Ok(isFunc, "a table member has a declaration")
+				assert.Ok(isFunc, "a reach file member has a declaration")
 				members = append(members, strings.TrimPrefix(memberKey(obj), pkg.PkgPath+"."))
 			}
 		}
 		slices.Sort(members)
-		table[pkg.PkgPath] = slices.Compact(members)
+		listed[pkg.PkgPath] = slices.Compact(members)
 	}
 	out := bufio.NewWriter(w)
 	fmt.Fprintln(out, chain.key())
-	for _, path := range slices.Sorted(maps.Keys(table)) {
+	for _, path := range slices.Sorted(maps.Keys(listed)) {
 		fmt.Fprintln(out, path)
-		for _, member := range table[path] {
+		for _, member := range listed[path] {
 			fmt.Fprintf(out, "\t%s\n", member)
 		}
 	}
-	fmt.Fprintln(out, stdReachEnd)
+	fmt.Fprintln(out, reachFileEnd)
 	return out.Flush()
 }
 

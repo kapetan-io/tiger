@@ -17,10 +17,10 @@ import (
 )
 
 func Load(dir string) (Inventory, error) {
-	return LoadWith(dir, NewStdReach(dir))
+	return LoadWith(dir, NewReachFile(dir))
 }
 
-func LoadWith(dir string, table *StdReach) (Inventory, error) {
+func LoadWith(dir string, file *ReachFile) (Inventory, error) {
 	run, err := filepath.Abs(dir)
 	if err != nil {
 		return Inventory{}, err
@@ -65,16 +65,16 @@ func LoadWith(dir string, table *StdReach) (Inventory, error) {
 		prefix:   filepath.ToSlash(prefix),
 		inv:      &inv,
 		reaches:  importReach(graph),
-		body:     newBodyReach(table),
+		body:     newBodyReach(file),
 		compared: map[string]bool{},
 		skipped:  map[string]bool{},
 		names:    map[string]string{},
 		underRun: map[string]bool{},
 	}
-	if err := table.ready(); err != nil {
+	if err := file.ready(); err != nil {
 		return Inventory{}, fmt.Errorf("standard library reach: %w", err)
 	}
-	patterns := append([]string{"./..."}, load.outsideSource(graph, table)...)
+	patterns := append([]string{"./..."}, load.outsideSource(graph, file)...)
 	loaded, err := packages.Load(&packages.Config{
 		Mode: packages.LoadSyntax | packages.NeedModule,
 		Dir:  run,
@@ -154,11 +154,11 @@ func (l *loader) inModule(path string) bool {
 	return path == l.module || strings.HasPrefix(path, l.module+"/")
 }
 
-func (l *loader) outsideSource(graph []*packages.Package, table *StdReach) []string {
+func (l *loader) outsideSource(graph []*packages.Package, file *ReachFile) []string {
 	var paths []string
 	packages.Visit(graph, nil, func(pkg *packages.Package) {
 		path := pkg.PkgPath
-		if l.inModule(path) || len(pkg.Errors) > 0 || table.knows(path) {
+		if l.inModule(path) || len(pkg.Errors) > 0 || file.knows(path) {
 			return
 		}
 		if pkg.Module == nil {

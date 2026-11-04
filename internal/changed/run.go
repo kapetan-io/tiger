@@ -54,12 +54,12 @@ func Run(args []string, streams command.Streams) int {
 	if err != nil {
 		return changedFailure(streams, err)
 	}
-	table := callinventory.NewStdReach(*chdir)
-	report, err := compareRevisions(*chdir, rev, table)
+	file := callinventory.NewReachFile(*chdir)
+	report, err := compareRevisions(*chdir, rev, file)
 	if err != nil {
 		return changedFailure(streams, err)
 	}
-	if err := table.SaveError(); err != nil {
+	if err := file.SaveError(); err != nil {
 		fmt.Fprintf(streams.Stderr, "tiger changed: cannot save the standard library reach file, "+
 			"so every run rebuilds it: %v\n", err)
 	}
@@ -82,14 +82,14 @@ func Run(args []string, streams command.Streams) int {
 }
 
 func compareRevisions(
-	dir string, rev revision.Comparison, table *callinventory.StdReach,
+	dir string, rev revision.Comparison, file *callinventory.ReachFile,
 ) (Report, error) {
 	headLabel := "head (" + revision.Short(rev.Head) + ")"
 	var group sync.WaitGroup
 	var base callinventory.Inventory
 	var baseErr error
-	group.Go(func() { base, baseErr = loadBase(rev, table) })
-	head, headErr := callinventory.LoadWith(dir, table)
+	group.Go(func() { base, baseErr = loadBase(rev, file) })
+	head, headErr := callinventory.LoadWith(dir, file)
 	group.Wait()
 	if headErr != nil {
 		return Report{}, fmt.Errorf("cannot load the Go packages at %s: %w", headLabel, headErr)
@@ -104,7 +104,7 @@ func compareRevisions(
 }
 
 func loadBase(
-	rev revision.Comparison, table *callinventory.StdReach,
+	rev revision.Comparison, file *callinventory.ReachFile,
 ) (inv callinventory.Inventory, err error) {
 	tree, err := rev.Extract()
 	if err != nil {
@@ -114,7 +114,7 @@ func loadBase(
 	if !tree.Present {
 		return inv, nil
 	}
-	if inv, err = callinventory.LoadWith(tree.Dir, table); err != nil {
+	if inv, err = callinventory.LoadWith(tree.Dir, file); err != nil {
 		return inv, fmt.Errorf("cannot load the Go packages at base (%s): %w",
 			revision.Short(rev.MergeBase), err)
 	}

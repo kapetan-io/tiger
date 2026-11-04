@@ -26,11 +26,11 @@ func importReach(roots []*packages.Package) map[string]bool {
 
 type bodyReach struct {
 	known map[*ssa.Function]bool
-	table *StdReach
+	file  *ReachFile
 }
 
-func newBodyReach(table *StdReach) *bodyReach {
-	return &bodyReach{known: map[*ssa.Function]bool{}, table: table}
+func newBodyReach(file *ReachFile) *bodyReach {
+	return &bodyReach{known: map[*ssa.Function]bool{}, file: file}
 }
 
 var errWalkTooLarge = fmt.Errorf("a reach walk visited more than %d functions", maxWalk)
@@ -51,7 +51,7 @@ func (b *bodyReach) reaches(start *ssa.Function) (bool, error) {
 		if _, settled := b.known[fn]; settled {
 			continue
 		}
-		if len(fn.Blocks) == 0 && b.table != nil && b.table.member(fn) {
+		if len(fn.Blocks) == 0 && b.file != nil && b.file.member(fn) {
 			b.known[start] = true
 			return true, nil
 		}

@@ -2402,4 +2402,4 @@ An unpinned variant is just the current value. Pin it and drift becomes a blocki
 Changes in what a function does are not pinned. `tiger changed <base>` reports the calls a
 branch added and removed instead (ADR-0026, ADR-0030). It keeps the standard library's reach to
 `syscall` in a reach file in Go's build cache, keyed by the tiger binary, Go version, GOOS, GOARCH,
-`CGO_ENABLED`, `GOEXPERIMENT`, `GOFLAGS` and the CPU-level variables, and regenerated from source when it is missing or damaged.
+`CGO_ENABLED`, `GOEXPERIMENT`, `GOFLAGS`, `GOFIPS140` and the CPU-level variables, and regenerated from source when it is missing or damaged.

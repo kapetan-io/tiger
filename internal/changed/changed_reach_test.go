@@ -37,7 +37,7 @@ func reachKey(t *testing.T) string {
 	data, err := os.ReadFile(binary)
 	require.NoError(t, err)
 	sum := sha256.Sum256(data)
-	parts := []string{"tiger-stdreach/2", "tiger=" + hex.EncodeToString(sum[:8])}
+	parts := []string{"tiger-reachfile/2", "tiger=" + hex.EncodeToString(sum[:8])}
 	for _, name := range names {
 		parts = append(parts, fmt.Sprintf("%s=%q", name, env[name]))
 	}
@@ -120,7 +120,7 @@ func TestChangedKeepsTheReachFileInGoBuildCache(t *testing.T) {
 
 	t.Run("anotherKey", func(t *testing.T) {
 		other := strings.Replace(key, " GOEXPERIMENT=\"", " GOEXPERIMENT=\"nobody", 1)
-		require.NoError(t, os.WriteFile(entry, []byte(other+"\nend\n"), 0o644))
+		require.NoError(t, os.WriteFile(entry, []byte(other+"\npackage-nobody-has\nend\n"), 0o644))
 
 		got := c.changed()
 		assert.Equal(t, want, got.stdout)
