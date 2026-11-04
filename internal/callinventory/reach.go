@@ -26,10 +26,11 @@ func importReach(roots []*packages.Package) map[string]bool {
 
 type bodyReach struct {
 	known map[*ssa.Function]bool
+	file  *ReachFile
 }
 
-func newBodyReach() *bodyReach {
-	return &bodyReach{known: map[*ssa.Function]bool{}}
+func newBodyReach(file *ReachFile) *bodyReach {
+	return &bodyReach{known: map[*ssa.Function]bool{}, file: file}
 }
 
 var errWalkTooLarge = fmt.Errorf("a reach walk visited more than %d functions", maxWalk)
@@ -50,6 +51,10 @@ func (b *bodyReach) reaches(start *ssa.Function) (bool, error) {
 		if _, settled := b.known[fn]; settled {
 			continue
 		}
+		if len(fn.Blocks) == 0 && b.file != nil && b.file.member(fn) {
+			b.known[start] = true
+			return true, nil
+		}
 		for _, next := range referenced(fn) {
 			if !seen[next] {
 				seen[next] = true
@@ -67,11 +72,14 @@ func (b *bodyReach) reaches(start *ssa.Function) (bool, error) {
 }
 
 func isSyscall(fn *ssa.Function) bool {
-	pkg := fn.Package()
-	if pkg == nil {
+	var path string
+	if pkg := fn.Package(); pkg != nil {
+		path = pkg.Pkg.Path()
+	} else if obj := fn.Object(); obj != nil && obj.Pkg() != nil {
+		path = obj.Pkg().Path()
+	} else {
 		return false
 	}
-	path := pkg.Pkg.Path()
 	return path == "syscall" || strings.HasPrefix(path, "internal/syscall")
 }
 

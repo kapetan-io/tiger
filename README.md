@@ -49,6 +49,21 @@ and 2 when no report can be produced. Flags go before `<base>`.
 (`tiger.changed/v1`) that also gives every call site as a file and line, tagged
 `base` or `head`, for an agent reviewer. ADR-0030 records the rule.
 
+`tiger changed` answers whether a standard library function reaches package
+`syscall` from a reach file it keeps in Go's build cache (`go env GOCACHE`), never
+in the project. The file is keyed by the tiger binary, the Go version, GOOS,
+GOARCH, `CGO_ENABLED`, `GOEXPERIMENT`, `GOFLAGS`, `GOFIPS140` and the CPU-level
+variables such as `GOAMD64`, so settings that change the standard library never
+share an answer. When the file is missing, damaged or was
+removed by `go clean -cache`, tiger regenerates it from source, which takes a few
+seconds. Go's own cache trim deletes it after five days without a run, except under
+`GOCACHEPROG`, where Go never trims and nothing removes it. A CI job
+that already caches `GOCACHE`, as `actions/setup-go` does, keeps it with no
+extra step. When tiger cannot write the reach file but Go can still build, for
+example because something else sits at its path, the report still prints and
+stderr says the file could not be saved. With `GOCACHE=off` or a read-only cache
+Go cannot build the standard library either, and `tiger changed` exits 2.
+
 ### Posting the report on a pull request
 
 `--format markdown` prints the report as a pull request comment. Its first line is

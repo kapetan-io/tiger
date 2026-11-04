@@ -78,6 +78,15 @@ between the merge base of a base revision and the working tree; it replaces effe
 (ADR-0026 and its amendment, ADR-0030).
 _Avoid_: diff, effect report
 
+**Reach file**:
+The file that lists which standard library functions statically reach package `syscall`. It is an entry
+`<xx>/<sha256 of its key>-d` in Go's build cache, so `go clean -cache` and Go's five-day trim remove it
+(under `GOCACHEPROG` Go never trims, so only `go clean -cache` does). Its
+first line is its key: the tiger binary, Go version, GOOS, GOARCH, `CGO_ENABLED`, `GOEXPERIMENT`, `GOFLAGS`,
+`GOFIPS140` and the CPU-level variables. `tiger changed` reads it instead of type-checking the standard
+library, and regenerates it when it is missing or damaged.
+_Avoid_: reach table, stdreach cache
+
 **Owner**:
 In a `tiger changed` report, the named type that holds a method where a call is written, or the free
 function itself.

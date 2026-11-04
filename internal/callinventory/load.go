@@ -17,6 +17,10 @@ import (
 )
 
 func Load(dir string) (Inventory, error) {
+	return LoadWith(dir, NewReachFile(dir))
+}
+
+func LoadWith(dir string, file *ReachFile) (Inventory, error) {
 	run, err := filepath.Abs(dir)
 	if err != nil {
 		return Inventory{}, err
@@ -24,8 +28,8 @@ func Load(dir string) (Inventory, error) {
 	if run, err = filepath.EvalSymlinks(run); err != nil {
 		return Inventory{}, err
 	}
-	roots, err := packages.Load(&packages.Config{
-		Mode: packages.LoadAllSyntax | packages.NeedModule,
+	graph, err := packages.Load(&packages.Config{
+		Mode: packages.NeedName | packages.NeedImports | packages.NeedDeps | packages.NeedModule,
 		Dir:  run,
 	}, "./...")
 	if err != nil {
@@ -37,9 +41,9 @@ func Load(dir string) (Inventory, error) {
 		Roots:     map[string]string{},
 		Above:     map[string]string{},
 	}
-	module := mainModule(roots)
+	module := mainModule(graph)
 	if module == nil {
-		if len(roots) > 0 {
+		if len(graph) > 0 {
 			return Inventory{}, fmt.Errorf("no Go module found for %s", dir)
 		}
 		return inv, nil
@@ -60,15 +64,32 @@ func Load(dir string) (Inventory, error) {
 		module:   module.Path,
 		prefix:   filepath.ToSlash(prefix),
 		inv:      &inv,
-		reaches:  importReach(roots),
-		body:     newBodyReach(),
+		reaches:  importReach(graph),
+		body:     newBodyReach(file),
 		compared: map[string]bool{},
 		skipped:  map[string]bool{},
 		names:    map[string]string{},
 		underRun: map[string]bool{},
 	}
+	if err := file.ready(); err != nil {
+		return Inventory{}, fmt.Errorf("standard library reach: %w", err)
+	}
+	patterns := append([]string{"./..."}, load.outsideSource(graph, file)...)
+	loaded, err := packages.Load(&packages.Config{
+		Mode: packages.LoadSyntax | packages.NeedModule,
+		Dir:  run,
+	}, patterns...)
+	if err != nil {
+		return Inventory{}, err
+	}
+	var roots []*packages.Package
+	for _, pkg := range loaded {
+		if load.inModule(pkg.PkgPath) {
+			roots = append(roots, pkg)
+		}
+	}
 	load.classify(roots)
-	prog, _ := ssautil.AllPackages(roots, 0)
+	prog, _ := ssautil.Packages(loaded, 0)
 	prog.Build()
 	load.fset = prog.Fset
 	if err := load.walk(prog, roots); err != nil {
@@ -131,6 +152,24 @@ type callTarget struct {
 
 func (l *loader) inModule(path string) bool {
 	return path == l.module || strings.HasPrefix(path, l.module+"/")
+}
+
+func (l *loader) outsideSource(graph []*packages.Package, file *ReachFile) []string {
+	var paths []string
+	packages.Visit(graph, nil, func(pkg *packages.Package) {
+		path := pkg.PkgPath
+		if l.inModule(path) || len(pkg.Errors) > 0 || file.knows(path) {
+			return
+		}
+		if pkg.Module == nil {
+			if !importable(path) {
+				return
+			}
+		}
+		paths = append(paths, path)
+	})
+	slices.Sort(paths)
+	return paths
 }
 
 func (l *loader) classify(roots []*packages.Package) {
