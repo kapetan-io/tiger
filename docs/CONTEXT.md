@@ -79,9 +79,12 @@ between the merge base of a base revision and the working tree; it replaces effe
 _Avoid_: diff, effect report
 
 **Reach file**:
-The per-GOOS/GOARCH file `.tiger/stdreach-<goos>-<goarch>.txt` in the module root that lists which standard
-library functions statically reach package `syscall`. `tiger changed` reads it instead of type-checking the
-standard library, and regenerates it when its first line names another Go version, GOOS, GOARCH or `CGO_ENABLED` setting.
+The file that lists which standard library functions statically reach package `syscall`. It is an entry
+`<xx>/<sha256 of its key>-d` in Go's build cache, so `go clean -cache` and Go's five-day trim remove it. Its
+first line is its key: the tiger binary, Go version, GOOS, GOARCH, `CGO_ENABLED`, `GOEXPERIMENT`, `GOFLAGS`,
+`GOFIPS140` and the CPU-level variables. `tiger changed` reads it instead of type-checking the standard
+library, and regenerates it when it is missing or damaged.
+_Avoid_: reach table, stdreach cache
 
 **Owner**:
 In a `tiger changed` report, the named type that holds a method where a call is written, or the free

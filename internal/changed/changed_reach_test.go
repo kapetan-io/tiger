@@ -1,11 +1,17 @@
 package changed_test
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -13,24 +19,39 @@ import (
 	"github.com/kapetan-io/tiger/internal/command"
 )
 
-// reachKey is the first line a reach file carries for the toolchain the tests
-// run with.
+// reachKey is the first line of the reach file for the toolchain, build tags
+// and binary the tests run with.
 func reachKey(t *testing.T) string {
 	t.Helper()
-	out, err := exec.Command("go", "env", "GOVERSION", "GOOS", "GOARCH", "CGO_ENABLED").Output()
+	names := []string{
+		"GOVERSION", "GOOS", "GOARCH", "CGO_ENABLED", "GOEXPERIMENT", "GOFLAGS", "GOFIPS140",
+		"GOAMD64", "GOARM", "GOARM64", "GO386", "GOMIPS", "GOMIPS64", "GOPPC64", "GORISCV64",
+		"GOWASM",
+	}
+	out, err := exec.Command("go", append([]string{"env", "-json"}, names...)...).Output()
 	require.NoError(t, err)
-	fields := strings.Fields(string(out))
-	return "tiger-stdreach/1 " + strings.Join(fields[:3], " ") + " cgo=" + fields[3]
+	var env map[string]string
+	require.NoError(t, json.Unmarshal(out, &env))
+	binary, err := os.Executable()
+	require.NoError(t, err)
+	data, err := os.ReadFile(binary)
+	require.NoError(t, err)
+	sum := sha256.Sum256(data)
+	parts := []string{"tiger-stdreach/2", "tiger=" + hex.EncodeToString(sum[:8])}
+	for _, name := range names {
+		parts = append(parts, fmt.Sprintf("%s=%q", name, env[name]))
+	}
+	return strings.Join(parts, " ")
 }
 
-// reachPath is where a project keeps the reach file for the toolchain in use,
-// relative to the module root.
-func reachPath(t *testing.T) string {
+// reachEntry is where Go's build cache holds the reach file for a key.
+func reachEntry(t *testing.T, key string) string {
 	t.Helper()
-	out, err := exec.Command("go", "env", "GOOS", "GOARCH").Output()
+	out, err := exec.Command("go", "env", "GOCACHE").Output()
 	require.NoError(t, err)
-	system := strings.Fields(string(out))
-	return filepath.Join(".tiger", "stdreach-"+system[0]+"-"+system[1]+".txt")
+	sum := sha256.Sum256([]byte(key))
+	name := hex.EncodeToString(sum[:])
+	return filepath.Join(strings.TrimSpace(string(out)), name[:2], name+"-d")
 }
 
 // firstLine is the first line of a file.
@@ -42,130 +63,123 @@ func firstLine(t *testing.T, path string) string {
 	return first
 }
 
-// TestChangedKeepsTheStandardLibraryReachInTheProject covers the reach file.
+// changedTogether runs tiger changed twice at once, as two processes sharing
+// one build cache would.
+func changedTogether(c checkout) [2]outcome {
+	var runs [2]outcome
+	var group sync.WaitGroup
+	group.Go(func() { runs[0] = c.changed() })
+	group.Go(func() { runs[1] = c.changed() })
+	group.Wait()
+	return runs
+}
+
+// whole reports whether the cache entry for a key names that key and ends
+// with its trailer.
+func whole(t *testing.T, key string) bool {
+	t.Helper()
+	data, err := os.ReadFile(reachEntry(t, key))
+	require.NoError(t, err)
+	return strings.HasPrefix(string(data), key+"\n") && strings.HasSuffix(string(data), "\nend\n")
+}
+
+// TestChangedKeepsTheReachFileInGoBuildCache covers where the reach file lives.
 //
-// Goal: with no reach file, or one made by another Go version, tiger changed
-// writes the file for the toolchain in use inside the project and prints the
-// same report; a file that matches is read and left untouched.
-func TestChangedKeepsTheStandardLibraryReachInTheProject(t *testing.T) {
-	file := reachPath(t)
+// Goal: tiger changed keeps the reach file as an entry in Go's build cache,
+// never in the project; a missing, cut short or foreign entry is regenerated
+// and the report does not change; a whole entry is read and its use recorded
+// so Go's cache trim keeps it. The subtests share one cache entry, so none
+// runs in parallel.
+func TestChangedKeepsTheReachFileInGoBuildCache(t *testing.T) {
+	key := reachKey(t)
+	entry := reachEntry(t, key)
+	c := fixture(t, "call-added")
+	want := c.changed().stdout
+
+	t.Run("stored", func(t *testing.T) {
+		assert.Equal(t, key, firstLine(t, entry))
+		assert.NoDirExists(t, filepath.Join(c.dir, ".tiger"))
+	})
 
 	t.Run("missing", func(t *testing.T) {
-		t.Parallel()
-		c := fixture(t, "call-added")
-		want := c.changed().stdout
-		require.NoError(t, os.RemoveAll(filepath.Join(c.dir, ".tiger")))
+		require.NoError(t, os.Remove(entry))
 
 		got := c.changed()
 		assert.Equal(t, want, got.stdout)
-		assert.Equal(t, reachKey(t), firstLine(t, filepath.Join(c.dir, file)))
+		assert.True(t, whole(t, key))
 	})
 
-	t.Run("anotherVersion", func(t *testing.T) {
-		t.Parallel()
-		c := fixture(t, "call-added")
-		want := c.changed().stdout
-		key := strings.Fields(reachKey(t))
-		key[1] = "go1.0"
-		c.write(repoPath(filepath.ToSlash(file)), strings.Join(key, " ")+"\npackage-nobody-has\n")
+	t.Run("cutShort", func(t *testing.T) {
+		require.NoError(t, os.WriteFile(entry, []byte(key+"\npackage-nobody-has\n"), 0o644))
 
 		got := c.changed()
 		assert.Equal(t, want, got.stdout)
-		assert.Equal(t, reachKey(t), firstLine(t, filepath.Join(c.dir, file)))
+		assert.True(t, whole(t, key))
 	})
 
-	t.Run("anotherCgoSetting", func(t *testing.T) {
-		t.Parallel()
-		c := fixture(t, "call-added")
-		want := c.changed().stdout
-		key := reachKey(t)
-		other := strings.TrimSuffix(key, "1") + "1"
-		if strings.HasSuffix(key, "=1") {
-			other = strings.TrimSuffix(key, "1") + "0"
-		}
-		c.write(repoPath(filepath.ToSlash(file)), other+"\nend\n")
+	t.Run("anotherKey", func(t *testing.T) {
+		other := strings.Replace(key, " GOEXPERIMENT=\"", " GOEXPERIMENT=\"nobody", 1)
+		require.NoError(t, os.WriteFile(entry, []byte(other+"\nend\n"), 0o644))
 
 		got := c.changed()
 		assert.Equal(t, want, got.stdout)
-		assert.Equal(t, key, firstLine(t, filepath.Join(c.dir, file)))
+		assert.True(t, whole(t, key))
 	})
 
-	t.Run("conflictMarkers", func(t *testing.T) {
-		t.Parallel()
-		c := fixture(t, "call-added")
-		want := c.changed().stdout
-		body := reachKey(t) + "\n<<<<<<< HEAD\n=======\n>>>>>>> feature\nend\n"
-		c.write(repoPath(filepath.ToSlash(file)), body)
-
-		got := c.changed()
-		assert.Equal(t, want, got.stdout)
-		data, err := os.ReadFile(filepath.Join(c.dir, file))
+	t.Run("matching", func(t *testing.T) {
+		before, err := os.Stat(entry)
 		require.NoError(t, err)
-		assert.NotContains(t, string(data), "<<<<<<<")
+
+		got := c.changed()
+		assert.Equal(t, command.ExitClean, got.code)
+		after, err := os.Stat(entry)
+		require.NoError(t, err)
+		assert.Equal(t, before.ModTime(), after.ModTime())
 	})
 
-	t.Run("moduleRoot", func(t *testing.T) {
-		t.Parallel()
-		c := fixture(t, "call-added")
-		require.NoError(t, os.RemoveAll(filepath.Join(c.dir, ".tiger")))
+	t.Run("marksUse", func(t *testing.T) {
+		old := time.Now().Add(-6 * 24 * time.Hour)
+		require.NoError(t, os.Chtimes(entry, old, old))
 
-		got := run(t, "changed", "-C", filepath.Join(c.dir, "web"), "main")
-		assert.Equal(t, command.ExitClean, got.code)
-		assert.Equal(t, reachKey(t), firstLine(t, filepath.Join(c.dir, file)))
-		assert.NoFileExists(t, filepath.Join(c.dir, "web", ".tiger"))
+		got := c.changed()
+		assert.Equal(t, want, got.stdout)
+		info, err := os.Stat(entry)
+		require.NoError(t, err)
+		assert.WithinDuration(t, time.Now(), info.ModTime(), time.Hour)
+	})
+
+	t.Run("concurrent", func(t *testing.T) {
+		require.NoError(t, os.Remove(entry))
+
+		runs := changedTogether(c)
+		assert.Equal(t, want, runs[0].stdout)
+		assert.Equal(t, want, runs[1].stdout)
+		assert.True(t, whole(t, key))
+		temps, err := filepath.Glob(strings.TrimSuffix(entry, "-d") + "-*-d")
+		require.NoError(t, err)
+		assert.Empty(t, temps)
 	})
 
 	t.Run("unwritable", func(t *testing.T) {
-		t.Parallel()
-		c := fixture(t, "call-added")
-		want := c.changed().stdout
-		path := filepath.Join(c.dir, file)
-		require.NoError(t, os.Remove(path))
-		require.NoError(t, os.Mkdir(path, 0o755))
+		require.NoError(t, os.Remove(entry))
+		require.NoError(t, os.Mkdir(entry, 0o755))
+		require.NoError(t, os.WriteFile(filepath.Join(entry, "keep"), nil, 0o644))
+		t.Cleanup(func() { require.NoError(t, os.RemoveAll(entry)) })
 
 		got := c.changed()
 		assert.Equal(t, command.ExitClean, got.code)
 		assert.Equal(t, want, got.stdout)
 		assert.Contains(t, got.stderr, "cannot save the standard library reach file")
 	})
-
-	t.Run("matching", func(t *testing.T) {
-		t.Parallel()
-		c := fixture(t, "call-added")
-		path := filepath.Join(c.dir, file)
-		before, err := os.Stat(path)
-		require.NoError(t, err)
-
-		got := c.changed()
-		assert.Equal(t, command.ExitClean, got.code)
-		after, err := os.Stat(path)
-		require.NoError(t, err)
-		assert.Equal(t, before.ModTime(), after.ModTime())
-	})
-}
-
-// TestChangedIgnoresItsOwnReachFileWhenCountingChanges covers head naming.
-//
-// Goal: a reach file the project neither commits nor ignores does not make the
-// head dirty, so the first and the second run print the same report.
-func TestChangedIgnoresItsOwnReachFileWhenCountingChanges(t *testing.T) {
-	c := fixture(t, "call-added")
-	// An empty exclude file is a project that has not decided about .tiger.
-	c.write(".git/info/exclude", "")
-	first := c.report()
-	second := c.report()
-	assert.Equal(t, false, first.Head["dirty"])
-	assert.Equal(t, first.Head, second.Head)
 }
 
 // TestChangedCountsChangesOutsideTheDirectoryItRunsIn covers head naming.
 //
 // Goal: with -C pointing below the repository root, an uncommitted edit
-// elsewhere in the repository still marks the head dirty, and the reach file
-// the run wrote does not.
+// elsewhere in the repository still marks the head dirty, and the run itself
+// leaves nothing in the project that would.
 func TestChangedCountsChangesOutsideTheDirectoryItRunsIn(t *testing.T) {
 	c := fixture(t, "call-added")
-	c.write(".git/info/exclude", "")
 	clean := run(t, "changed", "-C", filepath.Join(c.dir, "web"), "--format", "json", "main")
 	require.Equal(t, command.ExitClean, clean.code)
 	assert.Contains(t, clean.stdout, `"dirty": false`)
@@ -176,57 +190,37 @@ func TestChangedCountsChangesOutsideTheDirectoryItRunsIn(t *testing.T) {
 	assert.Contains(t, dirty.stdout, `"dirty": true`)
 }
 
-// TestChangedLeavesNoTemporaryFileInTheProject covers the reach file write.
+// TestChangedKeysTheReachFileByBuildSettings covers the reach file's key.
 //
-// Goal: after a run, .tiger holds the reach file and nothing else, and a
-// stray stdreach-*.txt left by a killed run does not make the head dirty.
-func TestChangedLeavesNoTemporaryFileInTheProject(t *testing.T) {
-	c := fixture(t, "call-added")
-	c.write(".git/info/exclude", "")
-	require.NoError(t, os.RemoveAll(filepath.Join(c.dir, ".tiger")))
-	c.write(".tiger/stdreach-4242.txt", "left by a killed run\n")
-
-	first := c.report()
-	assert.Equal(t, false, first.Head["dirty"])
-	entries, err := os.ReadDir(filepath.Join(c.dir, ".tiger"))
-	require.NoError(t, err)
-	assert.Len(t, entries, 2)
-}
-
-// TestChangedReadsAReachFileTheProjectCommitted covers committing the file.
-//
-// Goal: a project that commits its reach file gets the same report on every
-// run, with a clean head and the file left as committed.
-func TestChangedReadsAReachFileTheProjectCommitted(t *testing.T) {
-	c := fixture(t, "call-added")
-	c.write(".git/info/exclude", "")
-	c.git("add", "-f", ".tiger")
-	c.commit("commit the reach file")
-	before, err := os.Stat(filepath.Join(c.dir, reachPath(t)))
-	require.NoError(t, err)
-
-	first := c.report()
-	second := c.report()
-	assert.Equal(t, false, first.Head["dirty"])
-	assert.Equal(t, first.Head, second.Head)
-	after, err := os.Stat(filepath.Join(c.dir, reachPath(t)))
-	require.NoError(t, err)
-	assert.Equal(t, before.ModTime(), after.ModTime())
-}
-
-// TestChangedRegeneratesAReachFileThatWasCutShort covers a damaged file.
-//
-// Goal: a reach file with the right first line but missing its end is read as
-// stale and rewritten whole, and the report matches the one from a whole file.
-func TestChangedRegeneratesAReachFileThatWasCutShort(t *testing.T) {
+// Goal: a build tag or cgo setting that changes which standard library files
+// compile selects another cache entry, so a run never reads the answer made
+// for other settings and leaves that entry as it was.
+func TestChangedKeysTheReachFileByBuildSettings(t *testing.T) {
 	c := fixture(t, "call-added")
 	want := c.changed().stdout
-	seeded := filepath.Join(c.dir, ".tiger", reachFile.name)
-	c.write(repoPath(".tiger/"+reachFile.name), firstLine(t, seeded)+"\npackage-nobody-has\n")
-
-	got := c.changed()
-	assert.Equal(t, want, got.stdout)
-	data, err := os.ReadFile(filepath.Join(c.dir, ".tiger", reachFile.name))
+	plain := reachEntry(t, reachKey(t))
+	before, err := os.ReadFile(plain)
 	require.NoError(t, err)
-	assert.True(t, strings.HasSuffix(string(data), "\nend\n"))
+
+	for _, test := range []struct {
+		name, env, value, inKey string
+	}{
+		{name: "netgoTag", env: "GOFLAGS", value: "-tags=netgo", inKey: `GOFLAGS="-tags=netgo"`},
+		{name: "cgoOff", env: "CGO_ENABLED", value: "0", inKey: `CGO_ENABLED="0"`},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Setenv(test.env, test.value)
+			key := reachKey(t)
+			entry := reachEntry(t, key)
+			require.NotEqual(t, plain, entry)
+
+			got := c.changed()
+			assert.Equal(t, want, got.stdout)
+			assert.Contains(t, key, test.inKey)
+			assert.True(t, whole(t, key))
+			after, err := os.ReadFile(plain)
+			require.NoError(t, err)
+			assert.Equal(t, before, after)
+		})
+	}
 }

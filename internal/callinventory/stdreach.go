@@ -3,6 +3,8 @@ package callinventory
 import (
 	"bufio"
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -16,6 +18,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"time"
 	"unicode"
 
 	"golang.org/x/tools/go/packages"
@@ -25,11 +28,11 @@ import (
 	"github.com/kapetan-io/tiger/assert"
 )
 
-const stdReachDir = ".tiger"
-
-const stdReachMagic = "tiger-stdreach/1"
+const stdReachMagic = "tiger-stdreach/2"
 
 const stdReachEnd = "end"
+
+const markInterval = time.Hour
 
 type StdReach struct {
 	dir      string
@@ -40,37 +43,74 @@ type StdReach struct {
 	reaches  map[string]bool
 }
 
+var keyedEnv = []string{
+	"GOVERSION", "GOOS", "GOARCH", "CGO_ENABLED", "GOEXPERIMENT", "GOFLAGS", "GOFIPS140",
+	"GOAMD64", "GOARM", "GOARM64", "GO386", "GOMIPS", "GOMIPS64", "GOPPC64", "GORISCV64", "GOWASM",
+}
+
 type toolchain struct {
-	Version string `json:"GOVERSION"`
-	OS      string `json:"GOOS"`
-	Arch    string `json:"GOARCH"`
-	Cgo     string `json:"CGO_ENABLED"`
-	Mod     string `json:"GOMOD"`
+	Version string
+	OS      string
+	Arch    string
+	Cgo     string
+	Cache   string
+	env     map[string]string
+	tiger   string
 }
 
 func (t toolchain) key() string {
-	return stdReachMagic + " " + t.Version + " " + t.OS + " " + t.Arch + " cgo=" + t.Cgo
+	parts := []string{stdReachMagic, "tiger=" + t.tiger}
+	for _, name := range keyedEnv {
+		parts = append(parts, fmt.Sprintf("%s=%q", name, t.env[name]))
+	}
+	return strings.Join(parts, " ")
 }
 
-func (t toolchain) root(dir string) string {
-	if t.Mod == "" || t.Mod == os.DevNull {
-		return dir
+func (t toolchain) entry() (string, error) {
+	if !filepath.IsAbs(t.Cache) {
+		return "", fmt.Errorf("GOCACHE is %q, not an absolute path", t.Cache)
 	}
-	return filepath.Dir(t.Mod)
+	sum := sha256.Sum256([]byte(t.key()))
+	name := hex.EncodeToString(sum[:])
+	return filepath.Join(t.Cache, name[:2], name+"-d"), nil
 }
 
 func goToolchain(dir string) (toolchain, error) {
-	cmd := exec.Command("go", "env", "-json", "GOVERSION", "GOOS", "GOARCH", "CGO_ENABLED", "GOMOD")
+	cmd := exec.Command("go", append([]string{"env", "-json", "GOCACHE"}, keyedEnv...)...)
 	cmd.Dir = dir
 	out, err := cmd.Output()
 	if err != nil {
 		return toolchain{}, fmt.Errorf("go env: %w", err)
 	}
-	var found toolchain
-	if err := json.Unmarshal(out, &found); err != nil {
+	var env map[string]string
+	if err := json.Unmarshal(out, &env); err != nil {
 		return toolchain{}, fmt.Errorf("go env: %w", err)
 	}
+	found := toolchain{
+		Version: env["GOVERSION"], OS: env["GOOS"], Arch: env["GOARCH"], Cgo: env["CGO_ENABLED"],
+		Cache: env["GOCACHE"], env: env,
+	}
+	if found.tiger, err = executableSum(); err != nil {
+		return toolchain{}, err
+	}
 	return found, nil
+}
+
+func executableSum() (string, error) {
+	path, err := os.Executable()
+	if err != nil {
+		return "", err
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	hash := sha256.New()
+	_, err = io.Copy(hash, file)
+	if err = errors.Join(err, file.Close()); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(hash.Sum(nil)[:8]), nil
 }
 
 func NewStdReach(dir string) *StdReach {
@@ -87,36 +127,55 @@ func (t *StdReach) SaveError() error {
 }
 
 func (t *StdReach) resolve() error {
-	dir := t.dir
-	chain, err := goToolchain(dir)
+	chain, err := goToolchain(t.dir)
 	if err != nil {
 		return err
 	}
-	path := filepath.Join(chain.root(dir), stdReachDir, "stdreach-"+chain.OS+"-"+chain.Arch+".txt")
-	if data, err := os.ReadFile(path); err == nil && t.parse(string(data), chain) == nil {
-		return nil
+	path, pathErr := chain.entry()
+	if pathErr == nil {
+		if data, err := os.ReadFile(path); err == nil && t.parse(string(data), chain) == nil {
+			markUsed(path)
+			return nil
+		}
 	}
 	var text bytes.Buffer
-	if err := writeStdReach(&text, dir, chain); err != nil {
+	if err := writeStdReach(&text, t.dir, chain); err != nil {
 		return err
 	}
 	if err := t.parse(text.String(), chain); err != nil {
 		return err
 	}
-	t.saveErr = writeFileAtomic(path, text.Bytes())
+	t.saveErr = pathErr
+	if pathErr == nil {
+		t.saveErr = writeFileAtomic(path, text.Bytes())
+	}
 	return nil
 }
 
+func markUsed(path string) {
+	if info, err := os.Stat(path); err == nil {
+		if now := time.Now(); now.Sub(info.ModTime()) >= markInterval {
+			if err := os.Chtimes(path, now, now); err != nil {
+				return
+			}
+		}
+	}
+}
+
 func writeFileAtomic(path string, data []byte) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0o777); err != nil {
 		return err
 	}
-	temp, err := os.CreateTemp(filepath.Dir(path), "stdreach-*.txt")
+	pattern := strings.TrimSuffix(filepath.Base(path), "-d") + "-*-d"
+	temp, err := os.CreateTemp(filepath.Dir(path), pattern)
 	if err != nil {
 		return err
 	}
 	_, err = temp.Write(data)
 	err = errors.Join(err, temp.Close())
+	if err == nil {
+		err = os.Chmod(temp.Name(), 0o644)
+	}
 	if err == nil {
 		err = os.Rename(temp.Name(), path)
 	}

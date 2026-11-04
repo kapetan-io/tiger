@@ -50,12 +50,16 @@ and 2 when no report can be produced. Flags go before `<base>`.
 `base` or `head`, for an agent reviewer. ADR-0030 records the rule.
 
 `tiger changed` answers whether a standard library function reaches package
-`syscall` from `.tiger/stdreach-<goos>-<goarch>.txt` in the module root. The
-file's first line names the exact Go version, GOOS, GOARCH and `CGO_ENABLED`
-setting it was made for. When the file is missing or names another toolchain,
-tiger regenerates it from source, which takes a few seconds, and writes it back.
-Commit the file to share it, or ignore `.tiger/`; tiger does neither for you, and
-an uncommitted reach file never counts as an uncommitted change in the head label.
+`syscall` from a reach file it keeps in Go's build cache (`go env GOCACHE`), never
+in the project. The file is keyed by the tiger binary, the Go version, GOOS,
+GOARCH, `CGO_ENABLED`, `GOEXPERIMENT`, `GOFLAGS`, `GOFIPS140` and the CPU-level
+variables such as `GOAMD64`, so settings that change the standard library never
+share an answer. When the file is missing, damaged or was
+removed by `go clean -cache`, tiger regenerates it from source, which takes a few
+seconds. Go's own cache trim deletes it after five days without a run. A CI job
+that already caches `GOCACHE`, as `actions/setup-go` does, keeps it with no
+extra step. When the reach file cannot be written, the report still prints, and
+stderr says the file could not be saved.
 
 ### Posting the report on a pull request
 

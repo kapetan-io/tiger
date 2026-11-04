@@ -3,7 +3,6 @@ package callinventory_test
 import (
 	"maps"
 	"os"
-	"path/filepath"
 	"slices"
 	"testing"
 	"testing/fstest"
@@ -22,9 +21,6 @@ func writeModule(t *testing.T, files map[string]string) string {
 	}
 	dir := t.TempDir()
 	require.NoError(t, os.CopyFS(dir, module))
-	require.NoError(t, os.Mkdir(filepath.Join(dir, ".tiger"), 0o755))
-	seed := filepath.Join(dir, ".tiger", reachFile.name)
-	require.NoError(t, os.WriteFile(seed, reachFile.data, 0o644))
 	return dir
 }
 
