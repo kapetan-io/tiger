@@ -59,7 +59,13 @@ removed by `go clean -cache`, tiger regenerates it from source, which takes a fe
 seconds. Go's own cache trim deletes it after five days without a run, except under
 `GOCACHEPROG`, where Go never trims and nothing removes it. A CI job
 that already caches `GOCACHE`, as `actions/setup-go` does, keeps it with no
-extra step. When tiger cannot write the reach file but Go can still build, for
+extra step. A cache restored from a run that used a different tiger build
+misses, because the key names the binary, and tiger regenerates the file. When
+the base and head `go.mod` files select different Go toolchains (a `toolchain`
+line or `GOTOOLCHAIN`), each tree reads the reach file for its own toolchain, and
+the first run with such a pair makes two. No CI runner covers Windows, so whether
+tiger can replace the reach file while another run holds it open is untested there.
+When tiger cannot write the reach file but Go can still build, for
 example because something else sits at its path, the report still prints and
 stderr says the file could not be saved. With `GOCACHE=off` or a read-only cache
 Go cannot build the standard library either, and `tiger changed` exits 2.
