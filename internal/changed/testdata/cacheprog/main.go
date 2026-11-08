@@ -7,6 +7,7 @@ import (
 	"bufio"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -61,11 +62,11 @@ func main() {
 				}
 			}
 			path := filepath.Join(dir, "o-"+base64.RawURLEncoding.EncodeToString(req.OutputID))
-			if err := os.WriteFile(path, body, 0o644); err != nil {
+			if err := writeAtomic(path, body); err != nil {
 				os.Exit(1)
 			}
 			index := base64.StdEncoding.EncodeToString(req.OutputID) + " " + strconv.Itoa(len(body))
-			if err := os.WriteFile(actionPath(dir, req.ActionID), []byte(index), 0o644); err != nil {
+			if err := writeAtomic(actionPath(dir, req.ActionID), []byte(index)); err != nil {
 				os.Exit(1)
 			}
 			if err := out.Encode(response{ID: req.ID, DiskPath: path}); err != nil {
@@ -95,4 +96,18 @@ func lookup(dir string, req request) response {
 	}
 	path := filepath.Join(dir, "o-"+base64.RawURLEncoding.EncodeToString(output))
 	return response{ID: req.ID, OutputID: output, Size: length, DiskPath: path}
+}
+
+// writeAtomic keeps a reader in another cache program process, which shares
+// this directory, from seeing half a file.
+func writeAtomic(path string, data []byte) error {
+	temp, err := os.CreateTemp(filepath.Dir(path), "tmp-")
+	if err != nil {
+		return err
+	}
+	_, err = temp.Write(data)
+	if err = errors.Join(err, temp.Close()); err != nil {
+		return errors.Join(err, os.Remove(temp.Name()))
+	}
+	return os.Rename(temp.Name(), path)
 }
