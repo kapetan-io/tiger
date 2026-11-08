@@ -85,8 +85,10 @@ func TestChangedReachFileSurvivesGoTrimOnlyWhileUsed(t *testing.T) {
 	require.FileExists(t, entry)
 
 	module := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(module, "go.mod"), []byte("module example.com/trim\n\ngo 1.25.0\n"), 0o644))
-	require.NoError(t, os.WriteFile(filepath.Join(module, "trim.go"), []byte("package trim\n"), 0o644))
+	goMod := []byte("module example.com/trim\n\ngo 1.25.0\n")
+	require.NoError(t, os.WriteFile(filepath.Join(module, "go.mod"), goMod, 0o644))
+	source := []byte("package trim\n")
+	require.NoError(t, os.WriteFile(filepath.Join(module, "trim.go"), source, 0o644))
 	goBuild := func() {
 		t.Helper()
 		// Go trims at most once a day, so a stale trim.txt lets this build do it.

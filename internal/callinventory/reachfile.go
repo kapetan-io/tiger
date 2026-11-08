@@ -81,7 +81,8 @@ func goToolchain(dir string) (toolchain, error) {
 	cmd.Dir = dir
 	out, err := cmd.Output()
 	if exit := new(exec.ExitError); errors.As(err, &exit) {
-		return toolchain{}, fmt.Errorf("go env: %w: %s", err, strings.TrimSpace(string(exit.Stderr)))
+		reason := strings.TrimSpace(string(exit.Stderr))
+		return toolchain{}, fmt.Errorf("go env: %w: %s", err, reason)
 	}
 	if err != nil {
 		return toolchain{}, fmt.Errorf("go env: %w", err)
