@@ -84,7 +84,8 @@ The file that lists which standard library functions statically reach package `s
 (under `GOCACHEPROG` Go never trims, so only `go clean -cache` does). Its
 first line is its key: the tiger binary, Go version, GOOS, GOARCH, `CGO_ENABLED`, `GOEXPERIMENT`, `GOFLAGS`,
 `GOFIPS140` and the CPU-level variables. `tiger changed` reads it instead of type-checking the standard
-library, and regenerates it when it is missing or damaged.
+library, and regenerates it when it is missing or damaged. When the base and head select different
+Go toolchains, the base tree uses a reach file of its own.
 _Avoid_: reach table, stdreach cache
 
 **Owner**:

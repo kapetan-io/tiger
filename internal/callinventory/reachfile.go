@@ -39,6 +39,8 @@ type ReachFile struct {
 	once     sync.Once
 	err      error
 	saveErr  error
+	mu       sync.Mutex
+	others   []*ReachFile
 	packages map[string]bool
 	reaches  map[string]bool
 }
@@ -78,6 +80,10 @@ func goToolchain(dir string) (toolchain, error) {
 	cmd := exec.Command("go", append([]string{"env", "-json", "GOCACHE"}, keyedEnv...)...)
 	cmd.Dir = dir
 	out, err := cmd.Output()
+	if exit := new(exec.ExitError); errors.As(err, &exit) {
+		reason := strings.TrimSpace(string(exit.Stderr))
+		return toolchain{}, fmt.Errorf("go env: %w: %s", err, reason)
+	}
 	if err != nil {
 		return toolchain{}, fmt.Errorf("go env: %w", err)
 	}
@@ -95,7 +101,9 @@ func goToolchain(dir string) (toolchain, error) {
 	return found, nil
 }
 
-func executableSum() (string, error) {
+var executableSum = sync.OnceValues(hashExecutable)
+
+func hashExecutable() (string, error) {
 	path, err := os.Executable()
 	if err != nil {
 		return "", err
@@ -122,7 +130,32 @@ func (t *ReachFile) ready() error {
 }
 
 func (t *ReachFile) SaveError() error {
-	return t.saveErr
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	errs := []error{t.saveErr}
+	for _, other := range t.others {
+		errs = append(errs, other.saveErr)
+	}
+	return errors.Join(errs...)
+}
+
+func (t *ReachFile) For(dir string) (*ReachFile, error) {
+	mine, err := goToolchain(t.dir)
+	if err != nil {
+		return nil, err
+	}
+	theirs, err := goToolchain(dir)
+	if err != nil {
+		return nil, err
+	}
+	if mine.key() == theirs.key() {
+		return t, nil
+	}
+	other := NewReachFile(dir)
+	t.mu.Lock()
+	t.others = append(t.others, other)
+	t.mu.Unlock()
+	return other, nil
 }
 
 func (t *ReachFile) resolve() error {

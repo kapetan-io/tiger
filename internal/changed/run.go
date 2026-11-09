@@ -114,7 +114,11 @@ func loadBase(
 	if !tree.Present {
 		return inv, nil
 	}
-	if inv, err = callinventory.LoadWith(tree.Dir, file); err != nil {
+	treeFile, err := file.For(tree.Dir)
+	if err == nil {
+		inv, err = callinventory.LoadWith(tree.Dir, treeFile)
+	}
+	if err != nil {
 		return inv, fmt.Errorf("cannot load the Go packages at base (%s): %w",
 			revision.Short(rev.MergeBase), err)
 	}
