@@ -1,339 +1,116 @@
 # Tiger Go
 
-Tiger is a static analyzer for Go, built for code that AI agents write. It holds
-that code to the restrictions NASA's
+A static analyzer that holds Go written by AI agents to the rules NASA wrote for flight software.
+
+Let agents write the code and let tiger hold the line. Tiger enforces the restrictions NASA's
 [Power of Ten](https://spinroot.com/gerard/pdf/P10.pdf) and TigerBeetle's
-[TigerStyle](https://github.com/tigerbeetle/tigerbeetle/blob/main/docs/TIGER_STYLE.md)
-put on flight and database software, so the result is testable and free of
-whole classes of production bugs. Every loop has a bound, every goroutine has an
-owner, and every clock, random source, and IO call is passed in, so any function
-can be tested in isolation. A run either passes or fails. `tiger check` has no
-warnings and honors no suppression comment, so code that fails the check is
-rewritten until it passes. The analysis is deterministic static analysis and never a language
-model, with no network. **The specification lives in the source and a machine
-checks the code against it.**
+[TigerStyle](https://github.com/tigerbeetle/tigerbeetle/blob/main/docs/TIGER_STYLE.md) put on
+flight and database software. Every loop has a bound, every goroutine has an owner that waits
+for it, and code takes the clock as an input instead of reading it. Whole classes of production
+bugs can't be written, code tests in isolation, and your review goes to what the change does
+instead of how it's built.
 
-## Documentation
+## At a glance
 
-- [Tiger Explainer](docs/Tiger%20Explainer.md) — start here: what tiger is
-  for and why, the concepts (injected nondeterminism, invariants, patterns,
-  `tiger changed`, budgets, directives), and the real bugs its rules caught in
-  trials.
-- [Tiger Rule Reference](docs/Tiger%20Rule%20Reference.md) — one entry per
-  enforced rule: what it requires and why, a firing example, the compliant
-  rewrite, severity, and directive interactions. A doc meta-test in
-  `internal/rules` keeps it in lockstep with the registry.
-- [Tiger Specification](docs/Tiger%20Specification.md) — the normative
-  document (Parts I–V, IDs `TS-*`) that governs everything in this
-  repository.
+**What tiger enforces**
 
-## The tiger tool
+- Loops that provably end, or stop at a cap that reports when it is hit
+- Goroutines started through a group that waits for them, and waits that can be cancelled
+- Switches over an enum that handle every value
+- No direct calls to the clock, through golangci-lint
+- With a layer file, randomness and IO packages only where the file allows them
+- Named invariants, asserted in code and violated on purpose in a test
+- A checked-in import graph that says which package may use which
+- Size and complexity limits, through golangci-lint's own linters
+
+**Where it runs**
+
+- [`tiger check`](docs/Tiger%20User%20Guide.md#commands), the pass-or-fail gate in CI
+- [`tiger changed`](docs/Tiger%20User%20Guide.md#posting-the-report-on-a-pull-request), a report on each pull request
+- [The golangci-lint plugin](docs/Tiger%20User%20Guide.md#running-under-golangci-lint), for your editor
+
+## What you get
+
+### Agents can't argue their way past it
+
+`tiger check` passes or fails. It has no warnings and never honors `//nolint`. Its only escapes
+are two directives that must carry a reason and count against a per-package budget. Under golangci-lint, the plugin included, `//nolint` works as it
+does for any linter, which is why CI gates on `tiger check`. An agent heading for a green run
+takes the cheapest path there, and with tiger the cheapest path is rewriting the code until it
+follows the rule.
+
+### It finds real bugs
+
+In trials on two real codebases, tiger's checks found a git server that allocated 352 MB for a
+12-byte push, list endpoints that accepted any page size up to 2^31−1, storage backends that
+silently dropped an action because a switch had no default case, queue waits that could never be
+cancelled, and a daemon whose `Shutdown` returned before its HTTP goroutines had exited.
+
+### Code you can test in isolation
+
+The golangci-lint config tiger generates bans direct calls to `time.Now`, `time.Sleep` and
+`time.After`, and with a layer file a
+package imports randomness and IO packages only when its entry names them. Code built that way
+takes its clock, random source and store as inputs. A test that controls them gets the same run
+every time, so failures reproduce, timing tests stop flaking, and an agent debugging a
+production issue works from a rerun instead of a guess.
+
+### Reviewers see the architecture change first
+
+Run `tiger changed main` and tiger lists, for each function, the calls into other packages it
+started or stopped making since `main`. When an agent adds a database call inside an HTTP
+handler, the handler shows up in the report with the new call, and the reviewer knows before
+opening the diff. In CI the report is one pull request comment that updates on every push.
+
+### The right shape for what no rule can check
+
+Some bugs live where no analyzer can see, such as whether every caller waiting on a loop also
+watches for shutdown. For those, tiger ships patterns: small runnable packages showing the
+correct shape beside the broken one, with tests proving both and a checklist for the reviewer.
+A finding from a rule a pattern backs ends with a pointer to it, and `tiger pattern
+shutdown-loop` prints one.
+
+### The same verdict every time
+
+Tiger is deterministic static analysis. No language model sits in the verdict and tiger calls no
+outside service, so the same code gets the same answer on your laptop and in CI.
+
+## Try it
 
 ```
-tiger check ./...               # run the registered custom-rule analyzers
-tiger check --show-facts ./...  # also print computed facts in pin syntax
-tiger budget ./...              # report packages over their budget rows
-tiger budget --write ./...      # lower tiger.budget.yaml to the current counts
-tiger golangci                  # audit .golangci.yml against the auto-rule baseline
-tiger golangci --init           # generate the baseline config for a new project
-tiger golangci --print          # write the baseline to stdout for hand merging
-tiger changed main              # calls each function started or stopped making since main
-tiger changed --format markdown main   # the same report as a pull request comment
+go install github.com/kapetan-io/tiger/cmd/tiger@latest
+tiger check ./...
+tiger changed main
 ```
 
-`tiger changed <base>` compares the merge base of `<base>` and HEAD with the
-working tree and prints, for each function, the calls it added and removed in
-other packages (or in functions of its own package that call another package), then what the report could not see. It exits 0 for any report
-and 2 when no report can be produced. Flags go before `<base>`.
-`tiger changed --format json <base>` prints the same report as one JSON object
-(`tiger.changed/v1`) that also gives every call site as a file and line, tagged
-`base` or `head`, for an agent reviewer. ADR-0030 records the rule.
+A first run on an existing codebase reports a lot. Tiger keeps no list of old findings to ignore,
+so a codebase adopts it by fixing what it reports.
 
-`tiger changed` answers whether a standard library function reaches package
-`syscall` from a reach file it keeps in Go's build cache (`go env GOCACHE`), never
-in the project. The file is keyed by the tiger binary, the Go version, GOOS,
-GOARCH, `CGO_ENABLED`, `GOEXPERIMENT`, `GOFLAGS`, `GOFIPS140` and the CPU-level
-variables such as `GOAMD64`, so settings that change the standard library never
-share an answer. When the file is missing, damaged or was
-removed by `go clean -cache`, tiger regenerates it from source, which takes a few
-seconds. Go's own cache trim deletes it after five days without a run, except under
-`GOCACHEPROG`, where Go never trims and nothing removes it. A CI job
-that already caches `GOCACHE`, as `actions/setup-go` does, keeps it with no
-extra step. A cache restored from a run that used a different tiger build
-misses, because the key names the binary, and tiger regenerates the file. When
-the base and head `go.mod` files select different Go toolchains (a `toolchain`
-line or `GOTOOLCHAIN`), each tree reads the reach file for its own toolchain, and
-the first run with such a pair makes two. No CI runner covers Windows, so whether
-tiger can replace the reach file while another run holds it open is untested there.
-When tiger cannot write the reach file but Go can still build, for
-example because something else sits at its path, the report still prints and
-stderr says the file could not be saved. With `GOCACHE=off` or a read-only cache
-Go cannot build the standard library either, and `tiger changed` exits 2.
+## Docs
 
-### Posting the report on a pull request
+- [Tiger Explainer](docs/Tiger%20Explainer.md) is the place to start: what tiger is for and why,
+  its concepts, and the real bugs its rules caught in trials.
+- [Tiger User Guide](docs/Tiger%20User%20Guide.md) covers every command, the files a repository
+  commits for tiger, the pull request workflow and the golangci-lint plugin's settings.
+- [Tiger Rule Reference](docs/Tiger%20Rule%20Reference.md) has one entry per rule: what it
+  requires and why, an example that fires, and the compliant rewrite.
+- [Tiger Specification](docs/Tiger%20Specification.md) is the full standard, every rule with its
+  reasoning, that the analyzers are built to.
+- [Assert Adoption Playbook](docs/Assert%20Adoption%20Playbook.md) is the sequence for adding an
+  `assert` package to a codebase that has none, which TS-S18 and TS-S08 need and the
+  invariant rules build on.
+- [Tiger Source Layout](docs/Tiger%20Source%20Layout.md) maps each package of this repository,
+  for anyone changing tiger itself.
+- [docs/CONTEXT.md](docs/CONTEXT.md) defines the terms the code, tests and docs use.
+- [docs/adr/](docs/adr/) holds the architecture decisions, one numbered file each.
 
-`--format markdown` prints the report as a pull request comment. Its first line is
-`<!-- tiger-changed -->`, the marker the workflow below uses to find its one comment and update it
-on every push, so a pull request never collects a stack of them. The comment stays under GitHub's
-65,536-character limit: past 60,000 characters it drops each new package's call list, then cuts the
-main list after its last whole function and says how many calls it left out. Tiger never talks to
-GitHub; the workflow posts.
+## Development
 
-```yaml
-name: tiger-changed
-on: pull_request
+Tiger checks itself. CI runs `go vet ./...`, `go test ./...`, golangci-lint and
+`tiger check ./...` over this repository, and every pattern must pass `tiger check` with zero
+findings.
 
-permissions:
-  contents: read
-  pull-requests: write
-
-# One run per pull request at a time. Without this, two quick pushes can both find
-# no comment and post two, or an older run can finish last and overwrite the newer report.
-concurrency:
-  group: tiger-changed-${{ github.event.number }}
-  cancel-in-progress: true
-
-jobs:
-  changed:
-    runs-on: ubuntu-latest
-    steps:
-      # Check out the pull request's own head commit, not the default merge commit
-      # (refs/pull/N/merge). The comment's heading names this commit, and the merge base must
-      # be the fork point that "Files changed" compares against. fetch-depth 0
-      # keeps the history tiger needs to find it; without it tiger exits 2.
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.head.sha }}
-          fetch-depth: 0
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-      - run: go install github.com/kapetan-io/tiger/cmd/tiger@<version>   # a released tag, as in "Running under golangci-lint" below
-      - name: post the report as one sticky comment
-        env:
-          GH_TOKEN: ${{ github.token }}
-          BASE_REF: ${{ github.base_ref }}
-        # The report goes outside the checkout: a new file in it would make tiger
-        # label the head "+ uncommitted changes".
-        run: |
-          tiger changed --format markdown "origin/$BASE_REF" > "$RUNNER_TEMP/changed.md"
-          tiger changed "origin/$BASE_REF" >> "$GITHUB_STEP_SUMMARY"
-          id=$(gh api repos/${{ github.repository }}/issues/${{ github.event.number }}/comments --paginate \
-            --jq '.[] | select(.body | startswith("<!-- tiger-changed -->")) | .id' | head -1)
-          if [ -n "$id" ]; then
-            gh api -X PATCH repos/${{ github.repository }}/issues/comments/$id -F body=@"$RUNNER_TEMP/changed.md"
-          else
-            gh api repos/${{ github.repository }}/issues/${{ github.event.number }}/comments -F body=@"$RUNNER_TEMP/changed.md"
-          fi
 ```
-
-Every run posts, an empty report included, because a comment that says what tiger compared and what
-it cannot see is the evidence that it ran on this head. If tiger exits 2 the step fails before
-anything is posted. Pull requests from forks get a read-only token, so this job cannot comment on them.
-
-Exit codes: 0 clean, 1 findings, 2 operational failure (a package that fails
-to load is never reported as clean). A rule either blocks or it is not a rule
-(ADR-0012): blocking findings fail the run; the only other findings are the
-standing advisory notices the specification names — every escape directive
-and every skipped test — which are counted per package against
-`tiger.budget.yaml`: under budget they print nothing, and a package over its
-row (or with no row) fails the run with a `TS-D06` line followed by the
-counted findings. A synthesized loop variant is a computed fact, not a rule:
-it prints only under `--show-facts`, in exact, freeze-ready pin syntax, and is
-what `tiger pin` freezes. Output is
-deterministic and position-sorted; CI runs the check twice and diffs the
-bytes, with and without the facts channel.
-
-### The committed files
-
-`tiger.yaml` holds the facts a repository tells the analyzers: every entry
-is a value, a reason, and an optional package scope, reviewed like code. An
-entry widens what an analyzer detects or corrects a dictionary; no entry
-names a function, file, or site to exempt (ADR-0003/0005). When the file
-exists, setting the same analyzer flag on the command line is an error —
-the committed file is the reviewed source.
-
-```yaml
-version: 1
-participle:
-  allow:
-    - value: binding
-      reason: RoleBinding is an association record, not an action
-      packages: [internal/auth/...]
-ioinloop:
-  packages:
-    - value: github.com/jackc/pgx/v5
-      reason: every call is a network round trip
-comments:
-  allow:
-    - value: internal/legacy
-      reason: imported from v1; reasons move into tests under PLAT-212
+go test ./...
+go run ./cmd/tiger check ./...
 ```
-
-The `comments.allow` entries are directories rather than package scopes: TS-L14 blocks prose
-comments in production code, and an entry exempts a directory's whole subtree (`.` is the
-whole module). It is the one entry that names a place to exempt, a brownfield adoption path
-that review of `tiger.yaml` guards (ADR-0031).
-
-`tiger.budget.yaml` holds what the repository admits it owes: one number per
-package per counted rule. `tiger check` compares counts to numbers;
-`tiger budget --write` creates missing rows and lowers existing ones to the
-current counts, deleting rows that reach 0, and never raises a number
-(ADR-0011). A raise is a hand edit in a pull request. The first run after
-adoption fails on every package carrying an escape or a skipped test until
-`tiger budget --write` records the counts once.
-
-```yaml
-internal/pin:
-  TS-L09: 1
-internal/store:
-  TS-D07: 3
-```
-
-`tiger.layers.yaml`, optional, declares the import graph (TS-X03): every
-package gets one entry listing what it may import beyond the pure standard
-library, and `tiger check` fails an import its entry doesn't list, a package
-with no entry, and an entry that matches no package directory.
-`config/tiger.layers.yaml` is the template; without the file, imports are not
-checked.
-
-```yaml
-"./internal/store":
-  - database
-  - ./internal/types
-  - github.com/jackc/pgx/v5
-"./internal/types": []
-"./service":
-  - ./internal/store
-```
-
-Two engines enforce the rules:
-
-- **Auto rules** are enforced by off-the-shelf golangci-lint linters.
-  `tiger golangci` audits that a project's config actually enforces the
-  baseline; `--init` generates it from the rule registry.
-- **Custom rules** are enforced by the analyzers in `internal/analyzers/`.
-  The wave-1 set covers every rule computable from a single package's AST
-  and types (`nogoto`, `paniccheck`, `boundedloop`, `compoundcond`,
-  `nogoroutine`, `selectctx`, `chandecl`, `errignore`, `returnarity`,
-  `directives`, `skipcheck`, `tablename`, `testpackage`,
-  `limitrelate`, `sametypeparams`, `participle`, `deferdistance`); the SSA
-  wave adds the analyzers that check what code does rather than how it is
-  written (`norecursion`, `maporder`, `poolzero`, `variant`, `contracts`); the
-  cross-package wave adds the rules whose evidence spans the module
-  (`invariantrefs`, `invariantnegative`). The
-  specification's analyzer table shows what is built and what is decided. Analyzers are driver-agnostic
-  `go/analysis` passes; severity and exit codes live in the driver, per
-  ADR-0002. TS-A07 and TS-A09 are whole-program rules: their finding is decided in a finish step the tiger driver
-  runs once after every package has been visited (ADR-0010). Only
-  `tiger check` reports them; under the golangci-lint plugin their
-  per-package halves still run and export facts, and those codes are simply
-  absent.
-
-Directives share the `//tiger:<verb>` namespace, owned by the grammar package
-(`internal/directive`): an unknown verb is a blocking error, never a silently
-meaningless comment. Tiger admits two escape hatches.
-`//tiger:batched <reason>` waives only the rule against IO inside a loop
-(TS-M10, ADR-0014). `//tiger:openenum <reason>` claims a type's values are open
-to growth, which tiger cannot check. Each is counted against its package's
-budget on every run, so the debt it carries is a number in
-`tiger.budget.yaml`'s diff (ADR-0003, ADR-0011). There is deliberately no
-`//tiger:bounded` and no dismissal directive. Tiger has no package-level
-declarations (ADR-0024), and the `hot`, `wire`, and `owner` verbs do not exist
-(ADR-0028).
-
-## What is here
-
-| Path | What it is |
-| --- | --- |
-| `cmd/tiger/` | The CLI: a thin `main` over a testable run function. |
-| `internal/pattern/` | Reads the embedded patterns: the card sections, the Go files, lookup by name and by rule. |
-| `internal/rules/` | The rule registry — the single source of the rule set. The binary's analyzer set, the finish functions, the corpus meta-tests, severity and the computed-facts table are all derived from it. |
-| `internal/rules/auto/` | The auto rules, each bound to its golangci-lint linter and baseline settings. The `tiger golangci` audit and the `--init` generator are derived from them. |
-| `internal/golangci/` | `tiger golangci`: audits a project's golangci-lint config against the auto-rule baseline, and generates that baseline with `--init` or `--print`. |
-| `internal/analyzers/` | The 29 analyzers, one package per analyzer, each with its corpus (failure-mode fires, compliant rewrite silent, known misses marked): an `analysistest` corpus for a per-package rule, a small module under `testdata/module/` run through the tiger driver for a whole-program rule. The shared internals live under `internal/analyzers/internal/`: `words` (identifier tokenization), `ssalib` (shared `go/ssa` call-graph walks used by `norecursion`), `assertpkg` (recognizes tiger's assert package by import path), and `invariants` (invariant const and assert-call collection). |
-| `internal/analyzers/layers/` | TS-X03 (and TS-D01): judges every non-test import against the package's `tiger.layers.yaml` entry, exactly, and reports a package with no entry. Its corpus installs its own layer file. |
-| `internal/layerfile/` | `tiger.layers.yaml`: loading and validation, the process-wide install the drivers do and the analyzer queries, the exact import judgment, the coverage comparison `tiger check` uses to report entries that match no package directory, and the wording of every TS-X03 message (ADR-0029). |
-| `internal/config/` | `tiger.yaml`: loading and validation, and the process-wide install the drivers do and the analyzers query. |
-| `internal/module/` | The Go module a run sits in: the module path from `go.mod`, module-relative package paths, the package directories and nested modules, and the Go files. |
-| `internal/command/` | A subcommand's contract with the shell: its output streams, the exit codes, and the shape of `-h` output. |
-| `internal/check/` | The check run behind `tiger check` and `tiger budget`: run setup, the driver call, the severity partition, the TS-X03 and TS-T12 coverage findings, the ratchet, and output. |
-| `internal/pin/` | `tiger pin`: freezes computed facts into pins. |
-| `internal/placement/` | Placement: collecting `//tiger:` directives and the one insertion writer (ADR-0008). |
-| `internal/changed/` | `tiger changed`: the report of what a revision range changes. |
-| `internal/ci/` | Tests of tiger's own CI workflow. It holds no non-test code. |
-| `internal/directive/` | The `//tiger:` grammar: closed verb vocabulary, per-verb pin argument grammars (variant expressions and contract predicates), canonical printing, and the round-trip contract `Parse(Format(d)) == d`. |
-| `plugin/` + `.custom-gcl.yml` | The golangci-lint module plugin: the same analyzers under `golangci-lint run`, minus the finish step — TS-A07, TS-A09 and TS-X03's directory checks (stale layer entries, packages the run did not load) are `tiger check`-only. See "Running under golangci-lint" below. |
-| `assert/` | The always-on assertion package, including `Invariant`/`Violates` generic over `~string`. Zero dependencies. Import it as `github.com/kapetan-io/tiger/assert`; tiger recognizes it by that import path only. |
-| `patterns/` | The patterns collection (ADR-0025): for each gap a rule cannot check, runnable code showing the right shape beside the broken one that passes `tiger check`, a `PATTERN.md` card, and a reviewer checklist. The binary embeds it: `tiger pattern <name>`. `patterns/ledger/` is the invariant vocabulary pattern: an `inv` package declaring IDs (TS-A07), a symmetric encode/decode pair asserting them, and a violation test per invariant (TS-A09). |
-| `config/golangci.yml` | The Stage 0 golangci-lint v2 template with rule-ID comments. `tiger golangci --init` generates the machine-audited baseline from the registry. |
-| `config/tiger.layers.yaml` | The layer file template (TS-X03): copy it next to `go.mod` and give every package an entry listing what it may import beyond the pure standard library. |
-
-This repository dogfoods itself: CI runs Stage 0 golangci-lint plus
-`tiger check ./...` over the tree against the committed `tiger.budget.yaml`,
-green.
-
-## Running under golangci-lint
-
-The plugin registers every analyzer as the custom linter `tiger`; build it
-with `golangci-lint custom` next to `.custom-gcl.yml`. Two settings are
-required in the project's `.golangci.yml`, and one habit:
-
-- `issues.uniq-by-line: false`. golangci-lint keeps one issue per line by
-  default, so a second finding on the same line — a `TS-N07` and a `TS-N08`
-  on one signature — is dropped silently. Tiger's findings are all
-  actionable; none may be hidden by another.
-- `linters.settings.custom.tiger.settings.config`, optionally, to name the
-  directory holding `tiger.yaml` and `tiger.layers.yaml`. By default the
-  plugin reads them from the working directory, which is the module root
-  under golangci-lint. A load error fails the plugin's construction with the
-  same one-line message `tiger check` prints.
-- Run `golangci-lint cache clean` after rebuilding the plugin. The issue
-  cache key is the sorted analyzer names, salted with the golangci-lint
-  version string, the `linters.settings` block and `go.mod`. It does not
-  include the plugin binary, so a rebuilt plugin keeps serving the previous
-  build's results until the cache is cleared. It does not include
-  `tiger.layers.yaml` either, which is why the plugin adds an analyzer named
-  `layerfile_<digest>`: an edited layer file changes the key. `tiger.yaml`
-  has the same gap and nothing closes it yet, so clear the cache after
-  editing it.
-
-The plugin diverges from the CLI in one way: budgets are CLI-only. The
-plugin API has no end-of-run hook to aggregate counts across packages and
-no warning tier, so it reports every counted finding (escape directive,
-skipped test) as an issue. A repository that carries any budgeted debt needs
-`tiger check` for the verdict.
-
-TS-X03's directory checks are CLI-only for a similar reason: an entry in
-`tiger.layers.yaml` that matches no package directory, and a package with no
-entry that the run did not load, need the module's directories, which the
-plugin never sees. Its import and missing-entry findings for the packages it
-loads still fire.
-
-Findings from a rule that a pattern backs end with ``— see `tiger pattern <name>` ``, under the plugin as under
-`tiger check`. The pattern text lives in the `tiger` binary, so a project that runs only the plugin still
-installs `tiger` (`go install github.com/kapetan-io/tiger/cmd/tiger@<version>   # a released tag, as in "Running under golangci-lint" below`, the same version as the
-plugin) for its agents to run `tiger pattern`. CI publishes both binaries together as the
-`tiger-and-plugin` artifact.
-
-## The acceptance contract
-
-There are no effort estimates. Implementation is AI-driven; the binding
-constraint is functional acceptance, and every analyzer defines its own before
-it merges:
-
-- **An `analysistest` corpus per rule it enforces.** The rule's failure-mode
-  example (from the spec's "Why") must fire the diagnostic; the compliant
-  rewrite must stay silent. The corpus is the rule's functional requirement,
-  executable — and a registry meta-test proves no registered analyzer lacks
-  one.
-- **Report output is byte-identical to pin syntax.** The grammar package owns
-  both directions; every fact `--show-facts` prints is `directive.Format`
-  output the grammar parses back to the same structure, so freezing a fact
-  into a pin is a paste.
-- **No silent scope cuts.** If an analyzer covers less than its spec rows
-  claim, the corpus contains a case documenting the known miss, marked as
-  such.
-
-An analyzer without its corpus does not merge, no matter how plausible its
-implementation looks.

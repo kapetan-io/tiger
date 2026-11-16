@@ -1775,10 +1775,13 @@ declaration mechanically.
 binding constraint is functional acceptance, which every analyzer defines before it merges. Per
 rule it enforces: an `analysistest` corpus in which the rule's failure-mode example (from its Why)
 fires the diagnostic and the compliant rewrite stays silent — the functional requirement,
-executable. For pin-enforcing analyzers, a test asserting report output is byte-identical to pin
-syntax. And no silent scope cuts: where coverage is narrower than the rule claims (heuristic,
-advisory, partial predicate language), the corpus contains the known miss, marked as such. An
-analyzer without its corpus does not merge, no matter how plausible its implementation looks.
+executable, and a registry meta-test proves no registered rule lacks its corpus. For pin-enforcing
+analyzers, a test asserting report output is byte-identical to pin syntax. The `directive` package
+owns both directions: every fact `--show-facts` prints is `directive.Format` output that the
+grammar parses back to the same structure, so freezing a fact into a pin is a paste. And no
+silent scope cuts: where coverage is narrower than the rule claims (heuristic, advisory, partial
+predicate language), the corpus contains the known miss, marked as such. An analyzer without
+its corpus does not merge, no matter how plausible its implementation looks.
 
 Status is what exists today: **built**, **built; changes decided** (the analyzer exists and an ADR
 changes what it checks), or **not built**.
