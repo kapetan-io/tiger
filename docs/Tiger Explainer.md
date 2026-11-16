@@ -441,7 +441,7 @@ Where tiger can't synthesize one, tiger asks for it directly, as a `//tiger:vari
 
 When no variant exists, the way out is a counter used as a cap. A cap may stop without asserting only when its limit is not a constant and every other way out of the loop drains a stream whose type is declared outside the module, such as `rows.Next()` or `scanner.Scan()`. There the limit is a page size, and reaching it means the page is full. Any other exit, an internal condition or a `break`, makes the counter a safety cap, so the loop must assert or return an error when the counter reaches its limit. A safety cap that stopped silently on a cycle would return a truncated result as though it were complete.
 
-Every loop limit is also checked at its source. Tiger traces the limit backward through parameters, struct fields, and return values, and every value written into it must be a constant, a length, another bounded limit, or a value clamped against a declared maximum, such as `min(config.Spins, spinsMax)`. This check already found three bugs that no rule in tiger today reports.
+Every loop limit is also checked at its source. Tiger traces the limit backward through parameters, struct fields, and return values, and every value written into it must be a constant, a length, another bounded limit, or a value clamped against a declared maximum, such as `min(config.Spins, spinsMax)`. A prototype of this check found three bugs in trials, and the check now ships as part of TS-S02, as a blocking rule.
 
 - git-server allocated 352 MB for a 12-byte push whose pack header claimed 4 million objects
 - six of querator's seven list endpoints accepted any page size up to 2^31−1 from the request
