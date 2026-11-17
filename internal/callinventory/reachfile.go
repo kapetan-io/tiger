@@ -78,9 +78,12 @@ func (t toolchain) entry() (string, error) {
 }
 
 func goToolchain(dir string) (toolchain, error) {
-	cmd := exec.Command("go", append([]string{"env", "-json", "GOCACHE", "GOROOT"}, keyedEnv...)...)
+	args := append([]string{"env", "-json", "GOCACHE", "GOROOT"}, keyedEnv...)
+	goOnPath.RLock()
+	cmd := exec.Command("go", args...)
 	cmd.Dir = dir
 	out, err := cmd.Output()
+	goOnPath.RUnlock()
 	if exit := new(exec.ExitError); errors.As(err, &exit) {
 		reason := strings.TrimSpace(string(exit.Stderr))
 		return toolchain{}, fmt.Errorf("go env: %w: %s", err, reason)
