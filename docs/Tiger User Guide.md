@@ -14,6 +14,10 @@ go install github.com/kapetan-io/tiger/cmd/tiger@latest
 Tiger has no released tags yet, so `@latest` installs the newest commit on `main`. Pin a commit
 (`@<commit sha>`) when a CI job must not change under you.
 
+Tiger reads the export data that the `go` command writes, so install a current Tiger when you upgrade Go.
+A Tiger that predates this note fails every package load under Go 1.27.2 and later with `export data version 5 is
+greater than maximum supported version 4`.
+
 ## Commands
 
 `tiger -h` lists every command, and `tiger <command> -h` lists a command's flags, except
