@@ -300,7 +300,9 @@ func (t toolchain) loadEnv() []string {
 
 var goOnPath sync.RWMutex
 
-func loadWithGo(goroot string, config *packages.Config, patterns ...string) ([]*packages.Package, error) {
+func loadWithGo(
+	goroot string, config *packages.Config, patterns ...string,
+) (found []*packages.Package, err error) {
 	if goroot == "" {
 		goOnPath.RLock()
 		defer goOnPath.RUnlock()
@@ -309,10 +311,11 @@ func loadWithGo(goroot string, config *packages.Config, patterns ...string) ([]*
 	goOnPath.Lock()
 	defer goOnPath.Unlock()
 	path := os.Getenv("PATH")
-	if err := os.Setenv("PATH", filepath.Join(goroot, "bin")+string(os.PathListSeparator)+path); err != nil {
+	selected := filepath.Join(goroot, "bin") + string(os.PathListSeparator) + path
+	if err := os.Setenv("PATH", selected); err != nil {
 		return nil, err
 	}
-	defer os.Setenv("PATH", path)
+	defer func() { err = errors.Join(err, os.Setenv("PATH", path)) }()
 	config.Env = append(config.Env, "GOTOOLCHAIN=local")
 	return packages.Load(config, patterns...)
 }
