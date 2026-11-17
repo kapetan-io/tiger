@@ -55,6 +55,7 @@ type toolchain struct {
 	goarch string
 	cgo    string
 	cache  string
+	goroot string
 	env    map[string]string
 	tiger  string
 }
@@ -77,7 +78,7 @@ func (t toolchain) entry() (string, error) {
 }
 
 func goToolchain(dir string) (toolchain, error) {
-	cmd := exec.Command("go", append([]string{"env", "-json", "GOCACHE"}, keyedEnv...)...)
+	cmd := exec.Command("go", append([]string{"env", "-json", "GOCACHE", "GOROOT"}, keyedEnv...)...)
 	cmd.Dir = dir
 	out, err := cmd.Output()
 	if exit := new(exec.ExitError); errors.As(err, &exit) {
@@ -93,7 +94,7 @@ func goToolchain(dir string) (toolchain, error) {
 	}
 	found := toolchain{
 		goos: env["GOOS"], goarch: env["GOARCH"], cgo: env["CGO_ENABLED"],
-		cache: env["GOCACHE"], env: env,
+		cache: env["GOCACHE"], goroot: env["GOROOT"], env: env,
 	}
 	if found.tiger, err = executableSum(); err != nil {
 		return toolchain{}, err
@@ -293,12 +294,34 @@ func memberKey(obj *types.Func) string {
 	return key
 }
 
+func (t toolchain) loadEnv() []string {
+	return append(os.Environ(), "GOOS="+t.goos, "GOARCH="+t.goarch, "CGO_ENABLED="+t.cgo)
+}
+
+var goOnPath sync.RWMutex
+
+func loadWithGo(goroot string, config *packages.Config, patterns ...string) ([]*packages.Package, error) {
+	if goroot == "" {
+		goOnPath.RLock()
+		defer goOnPath.RUnlock()
+		return packages.Load(config, patterns...)
+	}
+	goOnPath.Lock()
+	defer goOnPath.Unlock()
+	path := os.Getenv("PATH")
+	if err := os.Setenv("PATH", filepath.Join(goroot, "bin")+string(os.PathListSeparator)+path); err != nil {
+		return nil, err
+	}
+	defer os.Setenv("PATH", path)
+	config.Env = append(config.Env, "GOTOOLCHAIN=local")
+	return packages.Load(config, patterns...)
+}
+
 func writeReachFile(w io.Writer, dir string, chain toolchain) error {
-	pkgs, err := packages.Load(&packages.Config{
+	pkgs, err := loadWithGo(chain.goroot, &packages.Config{
 		Mode: packages.LoadAllSyntax,
 		Dir:  dir,
-		Env: append(os.Environ(),
-			"GOOS="+chain.goos, "GOARCH="+chain.goarch, "CGO_ENABLED="+chain.cgo),
+		Env:  chain.loadEnv(),
 	}, "std")
 	if err != nil {
 		return err
