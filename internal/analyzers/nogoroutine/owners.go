@@ -264,6 +264,9 @@ func (o *owners) isStartOn(node ast.Node, group *types.Var, decl *ast.FuncDecl) 
 	if !ok {
 		return false
 	}
+	if started == nil {
+		started = o.index.Object(addressed(start.X))
+	}
 	if started == nil && len(call.Args) > 0 {
 		started = o.index.Object(addressed(call.Args[0]))
 	}

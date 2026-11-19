@@ -248,5 +248,10 @@ func (o *owners) unsetResult(fn function, ident *ast.Ident) bool {
 	if result.Pos() < named.Pos() || named.End() < result.Pos() {
 		return false
 	}
-	return len(o.index.Definitions(result, fn.decl)) == 0
+	for _, source := range o.index.Definitions(result, fn.decl) {
+		if !o.pass.TypesInfo.Types[source].IsNil() {
+			return false
+		}
+	}
+	return true
 }

@@ -169,6 +169,16 @@ func TestWaitInConvertedOwnGoroutine(t *testing.T) {
 	}))
 }
 
+// TestWaitInAddressedOwnGoroutine waits from a goroutine of the same group
+// started through the group's address.
+func TestWaitInAddressedOwnGoroutine(t *testing.T) {
+	var wg sync.WaitGroup
+	(&wg).Go(func() { // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+		wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+		wg.Wait()
+	})
+}
+
 // failingGoroutine starts in a goroutine literal whose only exit returns a
 // non-nil error, so the literal has no success path to Wait on.
 func failingGoroutine() error {
@@ -291,6 +301,34 @@ func TestNamedErrorUnsetBeforeWaitInLiteral(t *testing.T) {
 		return nil
 	}
 	_ = run()
+}
+
+// TestNamedErrorNilBeforeWaitInLiteral sets its named error result to nil
+// before returning it, so the path is a success.
+func TestNamedErrorNilBeforeWaitInLiteral(t *testing.T) {
+	run := func() (err error) {
+		var wg sync.WaitGroup
+		wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+		if testing.Short() {
+			err = nil
+			return err
+		}
+		wg.Wait()
+		return nil
+	}
+	_ = run()
+}
+
+// namedErrorNilBeforeWait is the same path in a declaration.
+func namedErrorNilBeforeWait() (err error) {
+	var wg sync.WaitGroup
+	wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+	if testing.Short() {
+		err = nil
+		return err
+	}
+	wg.Wait()
+	return nil
 }
 
 type subtestNoWait struct {
