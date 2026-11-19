@@ -826,10 +826,14 @@ unwaited, so Shutdown could return before its HTTP goroutines exited.
 
 A bare `go` statement is always a finding, and there is no list of functions allowed to
 use one. For a group held in a local variable, `Wait` must be reached in the same
-function. For a group held in a struct field, it must be reached in an exported method of
-the owning type, or in a method such a method calls. The `Wait` must follow the start on
-every success path. A `Wait` after a `return`, on one branch only, in a function literal
-nobody calls, or inside the goroutine it waits for does not count. A path that returns a
+function. A function literal is a function: a start inside a literal is waited when the
+`Wait` follows it in that literal or in a function around it, whoever calls the literal.
+A start inside a literal that runs after that outer `Wait` (a parallel subtest, or a
+literal saved and called later) is not caught. For a group held in a struct field, it
+must be reached in an exported method of the owning type, or in a method such a method
+calls. The `Wait` must follow the start on every success path. A `Wait` after a
+`return`, on one branch only, in a different function literal that is not called where it
+is written, or inside the goroutine it waits for does not count. A path that returns a
 non-nil error is not a success path, so a `Shutdown` that returns its flush error before it
 waits is accepted. A `Wait` that only runs in the
 branch where the caller's context expired does not count. That branch is a `Shutdown`

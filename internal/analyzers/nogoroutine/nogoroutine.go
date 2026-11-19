@@ -4,11 +4,15 @@
 //
 // TS-C02. A bare go statement is always a finding. A goroutine starts through
 // errgroup.Group.Go or sync.WaitGroup.Go, and then the group's Wait must be
-// reached (see internal/analyzers/internal/ownership): in the same function
-// for a group the function holds, or in an exported method of the owning type
-// (or a method one reaches) for a group held in a struct field. A Wait that
-// sits in a select case receiving from ctx.Done() is the early return of a
-// Shutdown whose caller gave up, so it is not the success path and does not
+// reached (see internal/analyzers/internal/ownership). For a group the
+// function holds, the Wait must follow the start in that function. A function
+// literal, such as a t.Run body, counts as a function, and so does any
+// function around it, whoever calls the literal. A literal passed to Go or
+// TryGo on the same group is that group's goroutine, so neither it nor any
+// literal inside it counts. For a group held in a struct field, the Wait goes
+// in an exported method of the owning type (or a method one reaches). A Wait
+// that sits in a select case receiving from ctx.Done() is the early return of
+// a Shutdown whose caller gave up, so it is not the success path and does not
 // count. A group received as a parameter is the caller's to wait on, which
 // this check does not follow. There is no allowlist of supervisor functions,
 // because a function listed there would have every go statement inside it

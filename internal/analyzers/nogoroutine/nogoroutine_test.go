@@ -27,6 +27,16 @@ import (
 // (tryGoWaited); a return of a non-nil error is the failure path, so it
 // needs no Wait; a path ending in panic never returns and needs none either,
 // though no corpus case covers panic.
+//
+// Goal, TS-C02: a function literal is a function. A start inside a literal is
+// waited when a Wait follows it on every success path of that literal, or of
+// any literal or declaration around it, whoever calls the literal
+// (compliant_literal_test.go). The goroutine literal of the same group, and
+// any literal inside it, is not a place to Wait, because a Wait there waits on
+// itself (failure_literal_test.go). A literal that runs after the outer Wait,
+// such as a parallel subtest or a saved literal called later, and a literal
+// inside a function that returns only a non-nil error, are documented gaps
+// (knownmiss_literal_test.go).
 func TestCorpus(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), nogoroutine.Analyzer,
 		"ts-c02", "ts-c03", "ts-c03eg", "ts-c03go", "ts-c03ignore", "ts-c03ok",
