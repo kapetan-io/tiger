@@ -28,7 +28,7 @@ func LoadWith(dir string, file *ReachFile) (Inventory, error) {
 	if run, err = filepath.EvalSymlinks(run); err != nil {
 		return Inventory{}, err
 	}
-	graph, err := packages.Load(&packages.Config{
+	graph, err := loadWithGo("", &packages.Config{
 		Mode: packages.NeedName | packages.NeedImports | packages.NeedDeps | packages.NeedModule,
 		Dir:  run,
 	}, "./...")
@@ -75,7 +75,7 @@ func LoadWith(dir string, file *ReachFile) (Inventory, error) {
 		return Inventory{}, fmt.Errorf("standard library reach: %w", err)
 	}
 	patterns := append([]string{"./..."}, load.outsideSource(graph, file)...)
-	loaded, err := packages.Load(&packages.Config{
+	loaded, err := loadWithGo("", &packages.Config{
 		Mode: packages.LoadSyntax | packages.NeedModule,
 		Dir:  run,
 	}, patterns...)

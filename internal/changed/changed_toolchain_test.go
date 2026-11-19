@@ -111,3 +111,38 @@ func TestChangedSaysWhyTheBaseToolchainFails(t *testing.T) {
 	assert.Equal(t, command.ExitOperational, got.code)
 	assert.Contains(t, got.stderr, "go.mod requires go >= 1.99.0")
 }
+
+// TestChangedReadsAStandardLibraryNewerThanTheGoOnPath covers a go command that
+// hands its work to a newer Go through GOTOOLCHAIN.
+//
+// Goal: the report is printed when the go on PATH is older than the toolchain
+// Go switches to. The binary is built by that newer toolchain, because a
+// binary cannot read a standard library newer than the Go that built it, and it
+// runs as a subprocess so the go on PATH is the older one.
+func TestChangedReadsAStandardLibraryNewerThanTheGoOnPath(t *testing.T) {
+	const newer = "go1.27.3"
+	t.Setenv("GOTOOLCHAIN", newer)
+	root, err := filepath.Abs("../..")
+	require.NoError(t, err)
+	binary := filepath.Join(t.TempDir(), "tiger")
+	build := exec.Command("go", "build", "-o", binary, "./cmd/tiger")
+	build.Dir = root
+	out, err := build.CombinedOutput()
+	require.NoError(t, err, string(out))
+	c := newCheckout(t)
+	c.write("go.mod", toolchainModule("1.25.0"))
+	c.write("shop.go", "package shop\n\nfunc Save() {}\n")
+	c.commit("base")
+	c.git("checkout", "-q", "-b", "feature")
+	c.write("shop.go", "package shop\n\nimport \"os\"\n\nfunc Save() { _ = os.Getpid() }\n")
+	c.commit("head")
+	cache := t.TempDir()
+
+	run := exec.Command(binary, "changed", "main")
+	run.Dir = c.dir
+	run.Env = append(os.Environ(), "GOCACHE="+cache)
+	out, err = run.CombinedOutput()
+
+	require.NoError(t, err, string(out))
+	assert.Contains(t, string(out), "Compared")
+}
