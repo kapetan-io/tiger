@@ -5,6 +5,7 @@ import (
 	"go/ast"
 	"go/token"
 	"go/types"
+	"slices"
 
 	"golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/cfg"
@@ -26,7 +27,7 @@ type owners struct {
 	index     *ownership.Index
 	stops     *stopcase.Finder
 	expired   []span
-	graphs    map[*ast.FuncDecl]*cfg.CFG
+	graphs    map[*ast.BlockStmt]*cfg.CFG
 	summaries map[*types.Var]waiters
 	outside   map[*types.Var]bool
 }
@@ -39,7 +40,7 @@ func newOwners(pass *analysis.Pass) *owners {
 	stops := stopcase.New(pass)
 	o := &owners{
 		pass: pass, index: stops.Index(), stops: stops,
-		graphs:    map[*ast.FuncDecl]*cfg.CFG{},
+		graphs:    map[*ast.BlockStmt]*cfg.CFG{},
 		summaries: map[*types.Var]waiters{},
 		outside:   map[*types.Var]bool{},
 	}
@@ -182,22 +183,108 @@ func (o *owners) waited(group *types.Var, sel *ast.SelectorExpr) bool {
 	if o.index.IsParameter(group) {
 		return true
 	}
-	start := o.index.DeclOf(sel)
-	if start == nil {
+	decl := o.index.DeclOf(sel)
+	if decl == nil {
 		return o.outside[group]
 	}
 	always := o.summary(group)
 	query := flowQuery{group: group, start: sel, anyPath: sel.Sel.Name == "TryGo"}
-	if !o.uncovered(start, query, always) {
+	for _, literal := range o.literalsAround(decl, group, sel) {
+		if unwaited, exits := o.uncovered(literal, query, always); exits && !unwaited {
+			return true
+		}
+	}
+	if unwaited, _ := o.uncovered(functionOf(decl), query, always); !unwaited {
 		return true
 	}
 	if !group.IsField() && group.Parent() != group.Pkg().Scope() {
 		return false
 	}
-	for _, decl := range o.index.Decls() {
-		if always[decl] && o.index.Reaches(group, ownership.Link{Actor: decl, Reader: start}) {
+	for _, actor := range o.index.Decls() {
+		if always[actor] && o.index.Reaches(group, ownership.Link{Actor: actor, Reader: decl}) {
 			return true
 		}
 	}
 	return false
+}
+
+func (o *owners) literalsAround(
+	decl *ast.FuncDecl, group *types.Var, sel *ast.SelectorExpr,
+) []function {
+	var path []ast.Node
+	ast.Inspect(decl.Body, func(node ast.Node) bool {
+		if node == nil || node.Pos() > sel.Pos() || sel.End() > node.End() {
+			return false
+		}
+		path = append(path, node)
+		return true
+	})
+	var around []function
+	for i, node := range slices.Backward(path) {
+		literal, ok := node.(*ast.FuncLit)
+		if !ok {
+			continue
+		}
+		var parent ast.Node
+		for _, outer := range slices.Backward(path[:i]) {
+			if !o.wraps(outer) {
+				parent = outer
+				break
+			}
+		}
+		if o.isStartOn(parent, group, decl) {
+			around = nil
+			continue
+		}
+		around = append(around, function{decl: decl, typ: literal.Type, body: literal.Body})
+	}
+	return around
+}
+
+func (o *owners) wraps(node ast.Node) bool {
+	switch outer := node.(type) {
+	case *ast.ParenExpr:
+		return true
+	case *ast.CallExpr:
+		return o.pass.TypesInfo.Types[outer.Fun].IsType()
+	}
+	return false
+}
+
+func (o *owners) isStartOn(node ast.Node, group *types.Var, decl *ast.FuncDecl) bool {
+	call, ok := node.(*ast.CallExpr)
+	if !ok {
+		return false
+	}
+	start, ok := ast.Unparen(call.Fun).(*ast.SelectorExpr)
+	if !ok {
+		return false
+	}
+	started, ok := o.groupMethod(start, "")
+	if !ok {
+		return false
+	}
+	if started == nil {
+		started = o.index.Object(addressed(start.X))
+	}
+	if started == nil && len(call.Args) > 0 {
+		started = o.index.Object(addressed(call.Args[0]))
+	}
+	if started == nil || started == group {
+		return started != nil
+	}
+	for _, source := range o.index.Definitions(started, decl) {
+		if o.index.Object(addressed(source)) == group {
+			return true
+		}
+	}
+	return false
+}
+
+func addressed(expr ast.Expr) ast.Expr {
+	expr = ast.Unparen(expr)
+	if address, ok := expr.(*ast.UnaryExpr); ok && address.Op == token.AND {
+		return address.X
+	}
+	return expr
 }

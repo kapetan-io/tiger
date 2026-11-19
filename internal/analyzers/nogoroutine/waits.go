@@ -31,6 +31,16 @@ type stateKey struct {
 
 type waiters map[*ast.FuncDecl]bool
 
+type function struct {
+	decl *ast.FuncDecl
+	typ  *ast.FuncType
+	body *ast.BlockStmt
+}
+
+func functionOf(decl *ast.FuncDecl) function {
+	return function{decl: decl, typ: decl.Type, body: decl.Body}
+}
+
 func (o *owners) summary(group *types.Var) waiters {
 	if known, ok := o.summaries[group]; ok {
 		return known
@@ -41,7 +51,11 @@ func (o *owners) summary(group *types.Var) waiters {
 	for round := 0; round <= len(decls); round++ {
 		changed := false
 		for _, decl := range decls {
-			if !always[decl] && !o.uncovered(decl, flowQuery{group: group}, always) {
+			if always[decl] {
+				continue
+			}
+			unwaited, _ := o.uncovered(functionOf(decl), flowQuery{group: group}, always)
+			if !unwaited {
 				always[decl] = true
 				changed = true
 			}
@@ -56,10 +70,10 @@ func (o *owners) summary(group *types.Var) waiters {
 	return always
 }
 
-func (o *owners) uncovered(decl *ast.FuncDecl, query flowQuery, always waiters) bool {
-	graph := o.graph(decl)
+func (o *owners) uncovered(fn function, query flowQuery, always waiters) (unwaited, exits bool) {
+	graph := o.graph(fn.body)
 	if len(graph.Blocks) == 0 {
-		return false
+		return false, false
 	}
 	seen := map[stateKey]bool{}
 	work := []flowState{{block: graph.Blocks[0], passed: query.start == nil}}
@@ -73,15 +87,18 @@ func (o *owners) uncovered(decl *ast.FuncDecl, query flowQuery, always waiters) 
 		seen[key] = true
 		state = o.walk(state, query, always)
 		if query.anyPath && state.passed && state.covered {
-			return false
+			return false, true
 		}
 		if len(state.block.Succs) == 0 {
 			if state.block.Kind == cfg.KindSelectAfterCase {
 				continue
 			}
-			unwaited := state.passed && !state.covered && !query.anyPath
-			if unwaited && o.successExit(decl, state.block) {
-				return true
+			if !state.passed || !o.successExit(fn, state.block) {
+				continue
+			}
+			exits = true
+			if !state.covered && !query.anyPath {
+				return true, true
 			}
 			continue
 		}
@@ -92,7 +109,7 @@ func (o *owners) uncovered(decl *ast.FuncDecl, query flowQuery, always waiters) 
 		}
 	}
 	assert.Ok(i == len(work), "uncovered: worklist reached worklist.NodesMax")
-	return query.anyPath
+	return query.anyPath, exits
 }
 
 func (o *owners) walk(state flowState, query flowQuery, always waiters) flowState {
@@ -181,12 +198,12 @@ func (o *owners) helperWaits(call *ast.CallExpr, always waiters) bool {
 	return decl != nil && always[decl]
 }
 
-func (o *owners) graph(decl *ast.FuncDecl) *cfg.CFG {
-	if built, ok := o.graphs[decl]; ok {
+func (o *owners) graph(body *ast.BlockStmt) *cfg.CFG {
+	if built, ok := o.graphs[body]; ok {
 		return built
 	}
-	built := cfg.New(decl.Body, o.mayReturn)
-	o.graphs[decl] = built
+	built := cfg.New(body, o.mayReturn)
+	o.graphs[body] = built
 	return built
 }
 
@@ -199,15 +216,15 @@ func (o *owners) mayReturn(call *ast.CallExpr) bool {
 	return !builtin
 }
 
-func (o *owners) successExit(decl *ast.FuncDecl, block *cfg.Block) bool {
+func (o *owners) successExit(fn function, block *cfg.Block) bool {
 	if len(block.Nodes) == 0 {
 		return true
 	}
 	ret, ok := block.Nodes[len(block.Nodes)-1].(*ast.ReturnStmt)
-	if !ok || len(ret.Results) == 0 || decl.Type.Results == nil {
+	if !ok || len(ret.Results) == 0 || fn.typ.Results == nil {
 		return true
 	}
-	last := decl.Type.Results.List[len(decl.Type.Results.List)-1]
+	last := fn.typ.Results.List[len(fn.typ.Results.List)-1]
 	if !types.Identical(o.pass.TypesInfo.TypeOf(last.Type), types.Universe.Lookup("error").Type()) {
 		return true
 	}
@@ -219,17 +236,22 @@ func (o *owners) successExit(decl *ast.FuncDecl, block *cfg.Block) bool {
 	if !isIdent {
 		return false
 	}
-	return ident.Name == "nil" || o.unsetResult(decl, ident)
+	return ident.Name == "nil" || o.unsetResult(fn, ident)
 }
 
-func (o *owners) unsetResult(decl *ast.FuncDecl, ident *ast.Ident) bool {
+func (o *owners) unsetResult(fn function, ident *ast.Ident) bool {
 	result := o.index.Object(ident)
-	if result == nil || decl.Type.Results == nil {
+	if result == nil || fn.typ.Results == nil {
 		return false
 	}
-	named := decl.Type.Results
+	named := fn.typ.Results
 	if result.Pos() < named.Pos() || named.End() < result.Pos() {
 		return false
 	}
-	return len(o.index.Definitions(result, decl)) == 0
+	for _, source := range o.index.Definitions(result, fn.decl) {
+		if !o.pass.TypesInfo.Types[source].IsNil() {
+			return false
+		}
+	}
+	return true
 }

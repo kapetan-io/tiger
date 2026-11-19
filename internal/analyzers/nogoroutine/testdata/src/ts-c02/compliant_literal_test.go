@@ -1,0 +1,247 @@
+// Function literals count as functions: a Wait that follows the Go in the
+// literal around it, or in a function around that, waits for it, whoever
+// calls the literal.
+package fixture
+
+import (
+	"context"
+	"errors"
+	"sync"
+	"testing"
+	"testing/synctest"
+
+	"golang.org/x/sync/errgroup"
+)
+
+var errStop = errors.New("stop")
+
+func ignore(func()) {}
+
+func TestLoopInSubtest(t *testing.T) {
+	t.Run("x", func(t *testing.T) {
+		var wg sync.WaitGroup
+		for i := 0; i < 3; i++ {
+			wg.Go(func() { _ = i })
+		}
+		wg.Wait()
+	})
+}
+
+func TestWaitInSubtest(t *testing.T) {
+	t.Run("x", func(t *testing.T) {
+		var wg sync.WaitGroup
+		wg.Go(func() {})
+		wg.Wait()
+	})
+}
+
+func TestDeferredWaitInSubtest(t *testing.T) {
+	t.Run("x", func(t *testing.T) {
+		var wg sync.WaitGroup
+		defer wg.Wait()
+		wg.Go(func() {})
+	})
+}
+
+func TestDeferredWaitAfterGoInSubtest(t *testing.T) {
+	t.Run("x", func(t *testing.T) {
+		var wg sync.WaitGroup
+		wg.Go(func() {})
+		defer wg.Wait()
+	})
+}
+
+func TestWaitInSynctest(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		var wg sync.WaitGroup
+		wg.Go(func() {})
+		wg.Wait()
+	})
+}
+
+// TestOuterGroupInSubtest declares the group in the test function and both
+// starts and waits on it inside the subtest.
+func TestOuterGroupInSubtest(t *testing.T) {
+	var wg sync.WaitGroup
+	t.Run("x", func(t *testing.T) {
+		wg.Go(func() {})
+		wg.Wait()
+	})
+}
+
+// TestWaitAfterSubtest starts inside the subtest and waits after it returns.
+func TestWaitAfterSubtest(t *testing.T) {
+	var wg sync.WaitGroup
+	t.Run("x", func(t *testing.T) {
+		wg.Go(func() {})
+	})
+	wg.Wait()
+}
+
+// TestWaitInEnclosingLiteral starts in an inner literal and waits in the
+// literal around it, after the inner one runs.
+func TestWaitInEnclosingLiteral(t *testing.T) {
+	t.Run("x", func(t *testing.T) {
+		var wg sync.WaitGroup
+		t.Run("y", func(t *testing.T) {
+			wg.Go(func() {})
+		})
+		wg.Wait()
+	})
+}
+
+// TestParallelSubtestWaits waits in its own literal; compare
+// TestParallelSubtestOnTestGroup in knownmiss_literal_test.go.
+func TestParallelSubtestWaits(t *testing.T) {
+	t.Run("x", func(t *testing.T) {
+		t.Parallel()
+		var wg sync.WaitGroup
+		wg.Go(func() {})
+		wg.Wait()
+	})
+}
+
+// TestGroupInsideGoroutine waits on a second group inside a goroutine of the
+// first, and the first is waited by the test.
+func TestGroupInsideGoroutine(t *testing.T) {
+	var g errgroup.Group
+	g.Go(func() error {
+		var wg sync.WaitGroup
+		wg.Go(func() {})
+		wg.Wait()
+		return nil
+	})
+	_ = g.Wait()
+}
+
+// TestWaitAroundOwnGoroutine starts from inside a goroutine of the group and
+// waits after that goroutine starts, so the Wait covers both.
+func TestWaitAroundOwnGoroutine(t *testing.T) {
+	t.Run("x", func(t *testing.T) {
+		var wg sync.WaitGroup
+		wg.Go(func() {
+			wg.Go(func() {})
+		})
+		wg.Wait()
+	})
+}
+
+func TestSavedAndCalled(t *testing.T) {
+	run := func() {
+		var wg sync.WaitGroup
+		wg.Go(func() {})
+		wg.Wait()
+	}
+	run()
+}
+
+func TestSavedAndCalledOuterGroup(t *testing.T) {
+	var wg sync.WaitGroup
+	run := func() {
+		wg.Go(func() {})
+		wg.Wait()
+	}
+	run()
+}
+
+// TestSavedNeverCalled waits after the Go in the same literal, so the start
+// is waited however the literal is called, or if it never is.
+func TestSavedNeverCalled(t *testing.T) {
+	var wg sync.WaitGroup
+	run := func() {
+		wg.Go(func() {})
+		wg.Wait()
+	}
+	_ = run
+}
+
+func TestPassedAndNotCalled(t *testing.T) {
+	ignore(func() {
+		var wg sync.WaitGroup
+		wg.Go(func() {})
+		wg.Wait()
+	})
+}
+
+// TestErrorBeforeWaitInLiteral returns a non-nil error before the Wait, which
+// is the failure path and needs no Wait.
+func TestErrorBeforeWaitInLiteral(t *testing.T) {
+	run := func() error {
+		var wg sync.WaitGroup
+		wg.Go(func() {})
+		if testing.Short() {
+			return errStop
+		}
+		wg.Wait()
+		return nil
+	}
+	_ = run()
+}
+
+// TestNamedErrorSetBeforeWaitInLiteral returns its named error result after
+// setting it, which is the failure path and needs no Wait.
+func TestNamedErrorSetBeforeWaitInLiteral(t *testing.T) {
+	run := func() (err error) {
+		var wg sync.WaitGroup
+		wg.Go(func() {})
+		if testing.Short() {
+			err = errStop
+			return err
+		}
+		wg.Wait()
+		return nil
+	}
+	_ = run()
+}
+
+type subtestHolder struct {
+	wg sync.WaitGroup
+}
+
+// runAll starts and waits on a field group inside a subtest of an unexported
+// method.
+func (h *subtestHolder) runAll(t *testing.T) {
+	t.Run("x", func(t *testing.T) {
+		h.wg.Go(func() {})
+		h.wg.Wait()
+	})
+}
+
+func TestTryGoInSubtest(t *testing.T) {
+	t.Run("x", func(t *testing.T) {
+		var g errgroup.Group
+		if !g.TryGo(func() error { return nil }) {
+			return
+		}
+		_ = g.Wait()
+	})
+}
+
+func TestDeferredLiteralWaitInSubtest(t *testing.T) {
+	t.Run("x", func(t *testing.T) {
+		var wg sync.WaitGroup
+		defer func() { wg.Wait() }()
+		wg.Go(func() {})
+	})
+}
+
+// TestSelectThenWaitInSubtest waits after a select in the subtest, on every
+// path.
+func TestSelectThenWaitInSubtest(t *testing.T) {
+	t.Run("x", func(t *testing.T) {
+		ctx := context.Background()
+		var wg sync.WaitGroup
+		wg.Go(func() {})
+		select {
+		case <-ctx.Done():
+		default:
+		}
+		wg.Wait()
+	})
+}
+
+var runPackageLiteral = func() {
+	var wg sync.WaitGroup
+	wg.Go(func() {})
+	wg.Wait()
+}

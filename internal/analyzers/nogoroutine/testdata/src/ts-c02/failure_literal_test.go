@@ -1,0 +1,383 @@
+// TS-C02 findings inside function literals: no Wait follows the Go on every
+// success path of the literal or a function around it, or the Wait runs
+// inside the group's own goroutine.
+package fixture
+
+import (
+	"context"
+	"sync"
+	"testing"
+
+	"golang.org/x/sync/errgroup"
+)
+
+func wrap(f func()) func() { return f }
+
+func TestNoWaitInSubtest(t *testing.T) {
+	t.Run("x", func(t *testing.T) {
+		var wg sync.WaitGroup
+		wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+	})
+}
+
+func TestNestedSubtestNoWait(t *testing.T) {
+	t.Run("x", func(t *testing.T) {
+		var wg sync.WaitGroup
+		t.Run("y", func(t *testing.T) {
+			wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+		})
+	})
+}
+
+func TestWaitBeforeGoInSubtest(t *testing.T) {
+	t.Run("x", func(t *testing.T) {
+		var wg sync.WaitGroup
+		wg.Wait()
+		wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+	})
+}
+
+func TestWaitBeforeSubtest(t *testing.T) {
+	var wg sync.WaitGroup
+	wg.Wait()
+	t.Run("x", func(t *testing.T) {
+		wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+	})
+}
+
+func TestWaitOnOneBranchInSubtest(t *testing.T) {
+	t.Run("x", func(t *testing.T) {
+		var wg sync.WaitGroup
+		wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+		if testing.Short() {
+			return
+		}
+		wg.Wait()
+	})
+}
+
+func TestSavedWaitOnOneBranch(t *testing.T) {
+	run := func() {
+		var wg sync.WaitGroup
+		wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+		if testing.Short() {
+			wg.Wait()
+		}
+	}
+	run()
+}
+
+func TestReturnNilBeforeWaitInLiteral(t *testing.T) {
+	run := func() error {
+		var wg sync.WaitGroup
+		wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+		if testing.Short() {
+			return nil
+		}
+		wg.Wait()
+		return nil
+	}
+	_ = run()
+}
+
+// TestWaitInUncalledLiteral starts in the subtest and waits only in a
+// different literal that is not called where it is written.
+func TestWaitInUncalledLiteral(t *testing.T) {
+	t.Run("x", func(t *testing.T) {
+		var wg sync.WaitGroup
+		wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+		wait := func() { wg.Wait() }
+		_ = wait
+	})
+}
+
+func TestSavedNeverCalledNoWait(t *testing.T) {
+	run := func() {
+		var wg sync.WaitGroup
+		wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+	}
+	_ = run
+}
+
+func TestPassedAlongNoWait(t *testing.T) {
+	ignore(func() {
+		var wg sync.WaitGroup
+		wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+	})
+}
+
+// TestWaitOnlyInLaterSubtest is an expected false positive (ENG-803): t.Run
+// runs its literal before returning, so the Wait runs, but the check counts
+// only a Wait in the literal holding the Go or a function around it.
+func TestWaitOnlyInLaterSubtest(t *testing.T) {
+	var wg sync.WaitGroup
+	wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+	t.Run("x", func(t *testing.T) {
+		wg.Wait()
+	})
+}
+
+// TestWaitOnlyInCleanup waits only in t.Cleanup, which runs after the test
+// body returns, so the goroutine outlives the body.
+func TestWaitOnlyInCleanup(t *testing.T) {
+	var wg sync.WaitGroup
+	wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+	t.Cleanup(func() {
+		wg.Wait()
+	})
+}
+
+// TestWaitInsideOwnGoroutine waits from inside a goroutine of the same group,
+// so the Wait waits on itself and never returns.
+func TestWaitInsideOwnGoroutine(t *testing.T) {
+	var wg sync.WaitGroup
+	wg.Go(func() { // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+		wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+		wg.Wait()
+	})
+}
+
+// TestWaitNestedInOwnGoroutine waits from a subtest that runs inside a
+// goroutine of the same group.
+func TestWaitNestedInOwnGoroutine(t *testing.T) {
+	var wg sync.WaitGroup
+	wg.Go(func() { // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+		t.Run("x", func(t *testing.T) {
+			wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+			wg.Wait()
+		})
+	})
+}
+
+// TestWaitInParenthesizedOwnGoroutine waits from a goroutine of the same
+// group whose literal sits in parentheses.
+func TestWaitInParenthesizedOwnGoroutine(t *testing.T) {
+	var wg sync.WaitGroup
+	wg.Go((func() { // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+		wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+		wg.Wait()
+	}))
+}
+
+// TestWaitInConvertedOwnGoroutine waits from a goroutine of the same group
+// whose literal is converted to func() first.
+func TestWaitInConvertedOwnGoroutine(t *testing.T) {
+	var wg sync.WaitGroup
+	wg.Go((func())(func() { // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+		wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+		wg.Wait()
+	}))
+}
+
+// TestWaitInAddressedOwnGoroutine waits from a goroutine of the same group
+// started through the group's address.
+func TestWaitInAddressedOwnGoroutine(t *testing.T) {
+	var wg sync.WaitGroup
+	(&wg).Go(func() { // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+		wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+		wg.Wait()
+	})
+}
+
+// failingGoroutine starts in a goroutine literal whose only exit returns a
+// non-nil error, so the literal has no success path to Wait on.
+func failingGoroutine() error {
+	var g errgroup.Group
+	g.Go(func() error {
+		var wg sync.WaitGroup
+		wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+		return errStop
+	})
+	return g.Wait()
+}
+
+// foreverGoroutine starts in a goroutine literal that never returns, so the
+// literal has no success path to Wait on.
+func foreverGoroutine(ch <-chan int) {
+	var outer sync.WaitGroup
+	outer.Go(func() {
+		var inner sync.WaitGroup
+		inner.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+		for {
+			<-ch
+		}
+	})
+	outer.Wait()
+}
+
+// TestWaitInAliasedOwnGoroutine starts its goroutine through a pointer that
+// may hold the group, so a Wait inside it may wait on itself.
+func TestWaitInAliasedOwnGoroutine(t *testing.T) {
+	var wg, other sync.WaitGroup
+	p := &wg
+	if testing.Short() {
+		p = &other
+	}
+	p.Go(func() {
+		wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+		wg.Wait()
+	})
+	p.Wait()
+}
+
+// TestWaitInMethodExpressionOwnGoroutine starts its goroutine through a
+// method expression on the group.
+func TestWaitInMethodExpressionOwnGoroutine(t *testing.T) {
+	var wg sync.WaitGroup
+	(*sync.WaitGroup).Go(&wg, func() { // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+		wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+		wg.Wait()
+	})
+}
+
+// TestSelfWaitThroughMethodValue waits on the group from inside its own
+// goroutine.
+//
+// known-miss: the literal reaches wg.Go through a method value, so the check
+// does not see it runs as the group's goroutine, and the inner Go passes
+// (ENG-804).
+func TestSelfWaitThroughMethodValue(t *testing.T) {
+	var wg sync.WaitGroup
+	start := wg.Go // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+	start(func() {
+		wg.Go(func() {})
+		wg.Wait()
+	})
+}
+
+// TestTryGoWaitsOnItself waits on the group from inside the goroutine TryGo
+// starts on it.
+func TestTryGoWaitsOnItself(t *testing.T) {
+	var g errgroup.Group
+	g.TryGo(func() error { // want `TS-C02: this TryGo call starts a goroutine, but no Wait on the group is reached`
+		g.Go(func() error { return nil }) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+		return g.Wait()
+	})
+}
+
+func TestBareGoAroundWaitedGroup(t *testing.T) {
+	go func() { // want `TS-C02: this go statement starts a goroutine nobody owns`
+		var wg sync.WaitGroup
+		wg.Go(func() {})
+		wg.Wait()
+	}()
+}
+
+// TestSelfWaitThroughVariable waits on the group from inside its own
+// goroutine.
+//
+// known-miss: the literal reaches wg.Go through a variable, so the check does
+// not see it runs as the group's goroutine, and the inner Go passes (ENG-804).
+func TestSelfWaitThroughVariable(t *testing.T) {
+	var wg sync.WaitGroup
+	body := func() {
+		wg.Go(func() {})
+		wg.Wait()
+	}
+	wg.Go(body) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+}
+
+// TestSelfWaitThroughWrap waits on the group from inside its own goroutine.
+//
+// known-miss: the literal reaches wg.Go through a call, so the check does not
+// see it runs as the group's goroutine, and the inner Go passes (ENG-804).
+func TestSelfWaitThroughWrap(t *testing.T) {
+	var wg sync.WaitGroup
+	wg.Go(wrap(func() { // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+		wg.Go(func() {})
+		wg.Wait()
+	}))
+}
+
+// TestNamedErrorUnsetBeforeWaitInLiteral returns its named error result
+// before setting it, so the result is nil and the path is a success.
+func TestNamedErrorUnsetBeforeWaitInLiteral(t *testing.T) {
+	run := func() (err error) {
+		var wg sync.WaitGroup
+		wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+		if testing.Short() {
+			return err
+		}
+		wg.Wait()
+		return nil
+	}
+	_ = run()
+}
+
+// TestNamedErrorNilBeforeWaitInLiteral sets its named error result to nil
+// before returning it, so the path is a success.
+func TestNamedErrorNilBeforeWaitInLiteral(t *testing.T) {
+	run := func() (err error) {
+		var wg sync.WaitGroup
+		wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+		if testing.Short() {
+			err = nil
+			return err
+		}
+		wg.Wait()
+		return nil
+	}
+	_ = run()
+}
+
+// namedErrorNilBeforeWait is the same path in a declaration.
+func namedErrorNilBeforeWait() (err error) {
+	var wg sync.WaitGroup
+	wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+	if testing.Short() {
+		err = nil
+		return err
+	}
+	wg.Wait()
+	return nil
+}
+
+type subtestNoWait struct {
+	wg sync.WaitGroup
+}
+
+func (h *subtestNoWait) runAll(t *testing.T) {
+	t.Run("x", func(t *testing.T) {
+		h.wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+	})
+}
+
+func TestTryGoNoWaitInSubtest(t *testing.T) {
+	t.Run("x", func(t *testing.T) {
+		var g errgroup.Group
+		g.TryGo(func() error { return nil }) // want `TS-C02: this TryGo call starts a goroutine, but no Wait on the group is reached`
+	})
+}
+
+// TestExpiredWaitInSubtest waits only after ctx has expired.
+func TestExpiredWaitInSubtest(t *testing.T) {
+	t.Run("x", func(t *testing.T) {
+		ctx := context.Background()
+		done := make(chan struct{})
+		var wg sync.WaitGroup
+		wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+		select {
+		case <-done:
+			return
+		case <-ctx.Done():
+			wg.Wait()
+		}
+	})
+}
+
+// TestGoStatementInSubtest starts on the group from a bare goroutine, which
+// the go statement finding reports.
+func TestGoStatementInSubtest(t *testing.T) {
+	t.Run("x", func(t *testing.T) {
+		var wg sync.WaitGroup
+		go func() { // want `TS-C02: this go statement starts a goroutine nobody owns`
+			wg.Go(func() {})
+		}()
+		wg.Wait()
+	})
+}
+
+var runPackageLiteralNoWait = func() {
+	var wg sync.WaitGroup
+	wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+}
