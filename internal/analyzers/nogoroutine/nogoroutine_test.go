@@ -33,10 +33,11 @@ import (
 // any literal or declaration around it, whoever calls the literal
 // (compliant_literal_test.go). The goroutine literal of the same group, and
 // any literal inside it, is not a place to Wait, because a Wait there waits on
-// itself (failure_literal_test.go). A literal that runs after the outer Wait,
-// such as a parallel subtest or a saved literal called later, and a literal
-// inside a function that returns only a non-nil error, are documented gaps
-// (knownmiss_literal_test.go).
+// itself (failure_literal_test.go). A literal that runs after the outer Wait
+// or alongside it (a parallel subtest, a saved literal called later, a
+// deferred or t.Cleanup literal, another group's goroutine), a t.Fatal that
+// skips the Wait, and a literal inside a function that returns only a non-nil
+// error are documented gaps (knownmiss_literal_test.go).
 func TestCorpus(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), nogoroutine.Analyzer,
 		"ts-c02", "ts-c03", "ts-c03eg", "ts-c03go", "ts-c03ignore", "ts-c03ok",

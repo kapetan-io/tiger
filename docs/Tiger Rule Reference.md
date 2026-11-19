@@ -828,8 +828,10 @@ A bare `go` statement is always a finding, and there is no list of functions all
 use one. For a group held in a local variable, `Wait` must be reached in the same
 function. A function literal is a function: a start inside a literal is waited when the
 `Wait` follows it in that literal or in a function around it, whoever calls the literal.
-A start inside a literal that runs after that outer `Wait` (a parallel subtest, or a
-literal saved and called later) is not caught. For a group held in a struct field, it
+A start inside a literal that runs after that outer `Wait` or alongside it is not
+caught: a parallel subtest, a literal saved and called later, a deferred or `t.Cleanup`
+literal, or a goroutine of another group. A `t.Fatal` or `t.FailNow` between the start
+and the `Wait` skips the `Wait`, and is not caught either. For a group held in a struct field, it
 must be reached in an exported method of the owning type, or in a method such a method
 calls. The `Wait` must follow the start on every success path. A `Wait` after a
 `return`, on one branch only, in a different function literal that is not called where it

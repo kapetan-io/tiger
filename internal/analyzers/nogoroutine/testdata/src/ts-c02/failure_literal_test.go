@@ -106,9 +106,9 @@ func TestPassedAlongNoWait(t *testing.T) {
 	})
 }
 
-// TestWaitOnlyInLaterSubtest is an expected false positive: t.Run runs its
-// literal before returning, so the Wait runs, but the check counts only a Wait
-// in the literal holding the Go or a function around it.
+// TestWaitOnlyInLaterSubtest is an expected false positive (ENG-803): t.Run
+// runs its literal before returning, so the Wait runs, but the check counts
+// only a Wait in the literal holding the Go or a function around it.
 func TestWaitOnlyInLaterSubtest(t *testing.T) {
 	var wg sync.WaitGroup
 	wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
@@ -234,7 +234,8 @@ func TestWaitInMethodExpressionOwnGoroutine(t *testing.T) {
 // goroutine.
 //
 // known-miss: the literal reaches wg.Go through a method value, so the check
-// does not see it runs as the group's goroutine, and the inner Go passes.
+// does not see it runs as the group's goroutine, and the inner Go passes
+// (ENG-804).
 func TestSelfWaitThroughMethodValue(t *testing.T) {
 	var wg sync.WaitGroup
 	start := wg.Go // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
@@ -266,7 +267,7 @@ func TestBareGoAroundWaitedGroup(t *testing.T) {
 // goroutine.
 //
 // known-miss: the literal reaches wg.Go through a variable, so the check does
-// not see it runs as the group's goroutine, and the inner Go passes.
+// not see it runs as the group's goroutine, and the inner Go passes (ENG-804).
 func TestSelfWaitThroughVariable(t *testing.T) {
 	var wg sync.WaitGroup
 	body := func() {
@@ -279,7 +280,7 @@ func TestSelfWaitThroughVariable(t *testing.T) {
 // TestSelfWaitThroughWrap waits on the group from inside its own goroutine.
 //
 // known-miss: the literal reaches wg.Go through a call, so the check does not
-// see it runs as the group's goroutine, and the inner Go passes.
+// see it runs as the group's goroutine, and the inner Go passes (ENG-804).
 func TestSelfWaitThroughWrap(t *testing.T) {
 	var wg sync.WaitGroup
 	wg.Go(wrap(func() { // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
