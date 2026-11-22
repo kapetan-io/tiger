@@ -32,8 +32,8 @@ only at runtime with goleak missed querator's unwaited daemon in 50 of 50 runs, 
 goroutine exits a moment after `Shutdown`, before goleak looks.
 
 Five shutdown designs were then built on querator's main and run against querator's shutdown race test, in which `Shutdown` hangs
-until its context expires because the request loop exits on a shutdown flag without receiving the
-shutdown request, and
+until its context expires because a request loop that is mid-request exits on the shutdown flag
+without receiving the shutdown request, and
 five edge cases: the caller's ctx expiring while the loop is busy, a retry after that, two concurrent
 `Shutdown` calls, a pause queued before shutdown, and a cold request queued before shutdown. Only the
 `net/http` shape, with every waiter also selecting on `done`, passed all of them. Strict, exact-shape
@@ -48,7 +48,7 @@ docs say not to store a context in a struct.
 
 None of the static designs catch the four querator bugs the edge tests found: an abandoned shutdown
 when the caller's ctx expires, a second `Shutdown` returning early, a panic on a queued cold request,
-and a cold request never answered. Only running the shutdown paths does. They are filed against querator.
+and a cold request never answered. Only running the shutdown paths does.
 
 ## Decision
 

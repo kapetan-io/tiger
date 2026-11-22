@@ -18,7 +18,7 @@ the cheapest path to green an agent can find. The argument holds for blocking fi
 baseline gives an agent a command that turns any regression green.
 
 The golangci-lint configuration tiger ships tells adopters to run with `--new-from-rev=origin/main`, which is a baseline
-by another route. An experiment that runs the plugin and `tiger check` over a two-commit repository shows what that filter does to tiger's findings. With
+by another route. Tiger's newfromrev experiment, which runs the plugin and `tiger check` over a two-commit repository, shows what that filter does to tiger's findings. With
 `--new-from-rev=HEAD~1` the plugin drops the finding on the line the branch didn't touch and prints
 nothing about it. With `--new-from-rev=HEAD` a repository with two blocking findings passes. Run
 through a symlinked path, it drops every finding, including the new one. `tiger check` reads no git
