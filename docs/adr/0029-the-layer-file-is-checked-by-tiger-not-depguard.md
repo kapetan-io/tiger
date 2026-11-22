@@ -58,7 +58,7 @@ GOROOT that `go env GOROOT` reports in the run directory, the toolchain the driv
 with, so a dotless third-party module brought in by `replace` or `go.work` is named like any other
 module. The GOROOT built into the tiger binary is only a fallback, because a `-trimpath` build or a
 removed toolchain leaves it wrong. A package with no entry is a finding at its package clause. A
-nested module, a directory below the root with its own Go module (the kind a Go workspace joins), is not
+nested module, a directory below the root with a Go module file of its own, the kind a Go workspace joins, is not
 part of this module: its packages need no entry, because they carry their own module file and layer
 file, and a package here that imports one names its module path.
 

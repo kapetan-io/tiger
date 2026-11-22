@@ -27,8 +27,7 @@ t.Cleanup(func() { _ = client.Close(context.Background()) })
 
 The fix is always the same comment, something like `// best-effort cleanup`. The rule checks only
 that a comment exists, never what it says. A fixture shows `// x` satisfies it, and
-an experiment that runs `//nolint` fixtures under `tiger check` and the golangci-lint plugin
-shows a bare `//nolint` does too. So the 47 comments document nothing and teach
+an experiment under `tiger check` shows a bare `//nolint` does too. So the 47 comments document nothing and teach
 agents that any comment clears the rule.
 
 The rule's one real bug in the trials was elsewhere: a hash-format validation error discarded, which

@@ -45,8 +45,9 @@ Every pattern meets all five requirements:
 4. The messages of those rules point to it.
 5. It gives reviewers a short checklist of yes-or-no questions for the parts tiger can't check.
 
-Each pattern is a package of its own in tiger's root module, one directory per pattern. The patterns
-replace the examples, with the ledger example and eight seed patterns as the first entries.
+Each pattern is a package of its own in tiger's root module, in its own directory under one shared
+patterns directory. That directory replaces the earlier examples directory, with the ledger example
+and eight seed patterns as the first entries.
 The `tiger` binary embeds them: `tiger pattern <name>` prints a pattern's card, code and tests,
 `tiger pattern --rule <code>` lists the patterns behind a rule, and `--checklist` prints only the
 reviewer questions. Each rule's registry entry names its patterns, and the driver appends
