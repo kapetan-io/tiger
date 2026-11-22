@@ -5,6 +5,10 @@ Date: 2026-10-14
 ## Status
 
 Accepted
+Amends ADR 0010
+Amends ADR 0024
+
+## Related decisions
 
 Amends [ADR-0024](0024-packages-declare-no-restrictions.md), whose consequences describe the
 layer file as not built and layering as enforced only by hand-written depguard rules.
@@ -54,8 +58,8 @@ GOROOT that `go env GOROOT` reports in the run directory, the toolchain the driv
 with, so a dotless third-party module brought in by `replace` or `go.work` is named like any other
 module. The GOROOT built into the tiger binary is only a fallback, because a `-trimpath` build or a
 removed toolchain leaves it wrong. A package with no entry is a finding at its package clause. A
-nested module, a directory below the root with a `go.mod` of its own (as `go.work` joins), is not
-part of this module: its packages need no entry, because they carry their own `go.mod` and layer
+nested module, a directory below the root with a Go module file of its own (as a Go workspace joins), is not
+part of this module: its packages need no entry, because they carry their own module file and layer
 file, and a package here that imports one names its module path.
 
 The drivers load `tiger.layers.yaml` from the run directory and install it, and the analyzer only
@@ -68,13 +72,12 @@ reports them.
 
 TS-D01 folds into TS-X03: it is no longer an auto rule, and the `internal-domain` depguard block
 leaves the golangci-lint template. depguard stays enabled for TS-S12's bans. TS-X03's analyzer
-enforces TS-D01, and no finding prints TS-D01: every finding is a TS-X03 finding. This supersedes
-ENG-328's wording about a TS-D01 category.
+enforces TS-D01, and no finding prints TS-D01: every finding is a TS-X03 finding.
 
 ## Consequences
 
-- Every case above is judged correctly. `TestLayersModulePathsMatchExactly` in
-  `internal/check/layers_test.go` reproduces cases 1, 2, 3, 5 and 6, with the
+- Every case above is judged correctly. `TestLayersModulePathsMatchExactly`
+  reproduces cases 1, 2, 3, 5 and 6, with the
   `go.opentelemetry.io` names standing in for case 4's `go.mongodb.org`, and
   `TestLayersKeysAreCaseSensitive` reproduces case 8. Case 7 is not tested: Go import paths can't
   hold `[` or `{`, and macOS can't hold a Windows path; tiger never builds a glob from a path.
@@ -88,10 +91,10 @@ ENG-328's wording about a TS-D01 category.
 - `tiger golangci` no longer generates or audits layer rules, so the layer file and the
   golangci-lint config cannot drift apart.
 - golangci-lint's issue cache key is the sorted analyzer names, salted with the golangci-lint
-  version string, the `linters.settings` block and `go.mod`. It includes neither the plugin binary
+  version string, the `linters.settings` block and the module file. It includes neither the plugin binary
   nor `tiger.layers.yaml`, so an edited layer file could replay stale results. The plugin therefore
   adds an analyzer, `layerfile_<digest>`, that reports nothing and whose name carries the layer
-  file's digest; an edit changes the cache key. `tiger.yaml` has the same gap, and this decision
+  file's digest; an edit changes the cache key. The config file has the same gap, and this decision
   does not close it.
 - Known limits: an import in a file built for another OS or behind a build tag is checked only on a
   platform that builds it. The eight subtrees are not all of the standard library's IO:
@@ -107,5 +110,5 @@ ENG-328's wording about a TS-D01 category.
   only Go files carry `//go:build ignore` is not a package and needs no entry; an entry for one is
   reported as matching no package. A layer file with no keys is the same as no file. Each limit in
   how tiger decides, every one here but
-  the list of subtrees and cgo, has a test that pins it, in `internal/check/layers_test.go` or, for
-  the plugin's `.test` case, `plugin/plugin_test.go`.
+  the list of subtrees and cgo, has a test that pins it, in the layer check's tests or, for
+  the plugin's `.test` case, the plugin's tests.

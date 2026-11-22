@@ -5,6 +5,9 @@ Date: 2026-08-26
 ## Status
 
 Accepted
+Amended by ADR 0026
+
+## Related decisions
 
 Amended by [ADR-0026](0026-tiger-changed-replaces-effect-and-frame-pins.md): effect and frame
 directives are removed, so the writer now places variant directives only.

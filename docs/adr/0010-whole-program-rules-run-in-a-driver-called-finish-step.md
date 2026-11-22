@@ -5,6 +5,10 @@ Date: 2026-08-28
 ## Status
 
 Accepted
+Amended by ADR 0016
+Amended by ADR 0029
+
+## Related decisions
 
 Amended by [ADR-0016](0016-remove-the-single-implementation-interface-rule.md), which removes
 TS-X01. The finish step stands for TS-A07 and TS-A09.

@@ -1,0 +1,18 @@
+name: adr-check
+
+# Fails a pull request whose ADRs cite a ticket, a file or directory in the repo, or the
+# repo's history, or whose Status is outside the allowed forms. The check runs from
+# dispatch's shared workflow; its header lists the rules.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  adr:
+    uses: kapetan-io/dispatch/.github/workflows/adr-check.yml@main
+    with:
+      ticket-keys: ENG

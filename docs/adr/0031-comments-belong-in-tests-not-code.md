@@ -5,6 +5,11 @@ Date: 2026-10-20
 ## Status
 
 Accepted
+Amends ADR 0017
+Amends ADR 0022
+Amends ADR 0023
+
+## Related decisions
 
 Supersedes the "comment exists" clause of [ADR-0017](0017-a-dropped-error-in-cleanup-needs-no-comment.md),
 the sentence of [ADR-0023](0023-banning-nolint-is-an-adopter-opt-in.md) that says TS-E02 accepts a
@@ -45,7 +50,7 @@ comments.
 **Production code carries no prose.** Below the `package` clause of a production Go file, only a
 closed set of directives survives: `//go:`, `//tiger:`, `//nolint`, `//line `, `//export ` and
 `//extern `. Anything above the `package` clause survives. Test files, generated files and
-directories listed in `tiger.yaml` under `comments.allow`, each with a reason, are exempt. Any other
+directories listed in the config file under `comments.allow`, each with a reason, are exempt. Any other
 `//word:word` form, such as `//easyjson:json`, is prose. `// nolint` and `///nolint` are banned as
 prose in production files, not as nolint, so ADR-0023's opt-in `nolint.forbid` is unchanged. The ban
 is on by default, and later tickets build it. It ships no automatic fix, because `tiger pin` is the
@@ -65,7 +70,7 @@ a limit as an expression of its named inputs. TS-L12 is dropped from the Specifi
 built. TS-L08 and TS-L13 are marked as no longer applying and a separate ticket removes them.
 
 **`comments.allow` is an exception to ADR-0022.** It is a brownfield adoption path that can grow, and
-an agent can clear a finding by adding an entry. Review of the `tiger.yaml` diff is the guard until a
+an agent can clear a finding by adding an entry. Review of the config file's diff is the guard until a
 better way to close the gap exists. ADR-0022 stays the goal.
 
 ## Consequences

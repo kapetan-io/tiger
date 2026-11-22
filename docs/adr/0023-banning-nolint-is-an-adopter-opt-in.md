@@ -5,6 +5,9 @@ Date: 2026-10-12
 ## Status
 
 Accepted
+Superseded in part by ADR 0031
+
+## Related decisions
 
 Superseded in part by [ADR-0031](0031-comments-belong-in-tests-not-code.md): TS-E02 no longer accepts a
 bare `//nolint`, or any comment. The `nolint.forbid` opt-in stands.
@@ -18,9 +21,9 @@ TS-L09. The explainer said tiger "flags any `//nolint` as a finding". The code d
 Under `tiger check`, `//nolint` is not read at all, so it silences nothing by itself. It does
 satisfy a rule that only asks for a comment: `_ = os.Remove(path) //nolint` clears TS-E02, which
 `// x` also does. Under the golangci-lint plugin, `//nolint:tiger` silences any tiger rule
-on that line with no advisory and no count (ENG-178, item 2). `experiments/nolint` shows two more
+on that line with no advisory and no count. An experiment shows two more
 routes under the plugin: a file-wide `//nolint:tiger` in the package doc comment drops even a
-finding at the `package` line, and an `exclusions` rule in `.golangci.yml` drops findings without
+finding at the `package` line, and an `exclusions` rule in golangci-lint's configuration drops findings without
 touching the code.
 
 The proposal was to make every `//nolint` on a tiger rule a blocking finding, and to count
@@ -29,7 +32,7 @@ choice about how the adopter's team works, not something tiger can decide for th
 
 ## Decision
 
-Tiger does not ban `//nolint` by default. A `tiger.yaml` entry turns the ban on:
+Tiger does not ban `//nolint` by default. An entry in the config file turns the ban on:
 
 ```yaml
 nolint:

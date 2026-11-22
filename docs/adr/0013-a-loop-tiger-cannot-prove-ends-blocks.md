@@ -78,8 +78,8 @@ an error on a cycle. Every one of the 20 loops that pass while never ending, the
   both in git-server's Myers diff: one needs an assert, and one clears by moving the search into its
   own function.
 - The limit trace already found three bugs in the trial code that no rule reported: a pack header
-  that allocated 352 MB for a 12-byte push (ENG-193), list endpoints accepting any page size up to
-  2³¹−1 (ENG-194), and a create-queue loop with no partition limit (ENG-195).
+  that allocated 352 MB for a 12-byte push, list endpoints accepting any page size up to
+  2³¹−1, and a create-queue loop with no partition limit.
 - TS-S02 trusts TS-V01's proofs, so a hole in TS-V01 now clears both rules at once. That is why the
   soundness fixes ship first and every hole stays a test case.
 - Three misses are recorded, each with a test: a limit passed through a function value or interface

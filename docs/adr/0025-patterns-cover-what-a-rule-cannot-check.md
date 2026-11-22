@@ -13,7 +13,7 @@ Tiger can check how the loop goroutine starts, that its only exit is its stop ca
 stop case is a real context or a channel the package closes. It cannot check that the loop runs
 cleanup before it closes `done`, that `Shutdown` lets the caller's context bound only its wait, or
 that every caller waiting on the loop's reply also selects on `done`. Querator's shutdown bugs
-(ENG-160, ENG-196) lived in exactly those parts. An agent fixing a TS-S03 finding improvises a
+lived in exactly those parts. An agent fixing a TS-S03 finding improvises a
 shutdown loop, and querator shows what improvised shutdown loops look like.
 
 `examples/ledger` is already a worked pattern of this kind, and the specification's "How review
@@ -22,7 +22,7 @@ deliberate part of tiger.
 
 A deliberation weighed three ways to deliver a pattern: packages in the repository only, packages
 plus the `tiger` binary, and packages plus a generated agent skill. Adopters don't have tiger's
-source: querator does not depend on the tiger module at all, and copies `assert/` in. The binary is
+source: querator does not depend on the tiger module at all, and copies tiger's `assert` package in. The binary is
 the only delivery where the pattern an agent reads is guaranteed to match the rules that flagged
 the code, and drift between the two is how a pattern collection goes stale.
 
@@ -45,15 +45,17 @@ Every pattern meets all five requirements:
 4. The messages of those rules point to it.
 5. It gives reviewers a short checklist of yes-or-no questions for the parts tiger can't check.
 
-Patterns live under `patterns/<name>/` in tiger's root module. `examples/` is renamed `patterns/`,
-with `examples/ledger` and eight seed patterns as the first entries.
+Each pattern is a package of its own in tiger's root module, in a directory named for the pattern
+under one directory of patterns. That directory replaces the examples directory, with the ledger
+example and eight seed patterns as the first entries.
 The `tiger` binary embeds them: `tiger pattern <name>` prints a pattern's card, code and tests,
 `tiger pattern --rule <code>` lists the patterns behind a rule, and `--checklist` prints only the
 reviewer questions. Each rule's registry entry names its patterns, and the driver appends
 `see \`tiger pattern <name>\`` to every finding from that rule. The analyzers do not change.
 Releases ship the `tiger` binary alongside the golangci plugin.
 
-The entry condition and the five requirements are recorded in the repository's `CLAUDE.md`.
+The entry condition and the five requirements are recorded in the instructions the repository gives
+its coding agents.
 
 ## Consequences
 
