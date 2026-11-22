@@ -114,7 +114,7 @@ report and 2 when no report can be produced, and flags go before `<base>`.
   `go test` checks. Moving a test to another file in the same directory with the same body is not
   a change, even into or out of the external test package (`package cart_test`), because
   `go test` runs both together. A test is matched by its directory, so a branch that renames the
-  module reports its tests under the new path.
+  module reports a modified test under the new path and a deleted one under the path it had.
 - A change to a file's `//go:build` line alone, which changes where its tests run, is not reported.
 - Tests added since the merge base are never listed, so a branch that only adds tests reports
   nothing.
@@ -139,8 +139,10 @@ one field:
 ```
 
 `change` is `modified` or `deleted`. `file` is relative to the directory tiger ran in. It names
-the file at head for a modified test and the file at the merge base for a deleted one. When build
-constraints give a test more than one definition, `file` names the one that changed. `package` is
+the file at head for a modified test and the file at the merge base for a deleted one. When one name
+has more than one definition in a directory, through build constraints or in both the package and
+its external test package, each definition is matched to an identical one on the other side, and
+`file` names the definition that changed or was deleted. `package` is
 the import path of the test's directory, also for a test in the external test package.
 
 ## Posting the report on a pull request

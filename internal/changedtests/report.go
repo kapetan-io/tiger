@@ -34,20 +34,24 @@ type sides struct {
 func changedTests(both sides) Report {
 	report := Report{BaseTests: len(both.base), BasePackages: both.base.packages()}
 	for _, name := range slices.SortedFunc(maps.Keys(both.base), testName.order) {
-		was := both.base[name]
-		now, ok := both.head[name]
-		if !ok {
-			report.Changed = append(report.Changed, changedTest(name, was[0], Deleted))
-			continue
-		}
-		if def, changed := now.changedFrom(was); changed {
-			report.Changed = append(report.Changed, changedTest(name, def, Modified))
-		} else if def, changed := was.changedFrom(now); changed {
-			report.Changed = append(report.Changed, changedTest(name, def, Modified))
-		}
+		report.Changed = append(report.Changed, changesTo(name, both)...)
 	}
 	slices.SortStableFunc(report.Changed, ChangedTest.order)
 	return report
+}
+
+func changesTo(name testName, both sides) []ChangedTest {
+	gone := both.base[name].without(both.head[name])
+	edited := both.head[name].without(both.base[name])
+	var changes []ChangedTest
+	for i, def := range gone {
+		if i < len(edited) {
+			changes = append(changes, changedTest(name, edited[i], Modified))
+		} else {
+			changes = append(changes, changedTest(name, def, Deleted))
+		}
+	}
+	return changes
 }
 
 func (n testName) order(other testName) int {

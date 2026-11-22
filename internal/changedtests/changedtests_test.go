@@ -556,3 +556,20 @@ func TestChangedTestsReportsAnEditedExampleOutput(t *testing.T) {
 		Function: "ExampleTotal", Change: "modified",
 	}}, c.report().Tests)
 }
+
+// Goal: a package and its external test package may both declare TestTotal.
+// Deleting one while the other stays reports a deletion at the deleted
+// one's file, not a modification.
+func TestChangedTestsReportsOneOfTwoSameNamedTestsDeleted(t *testing.T) {
+	c := newCheckout(t)
+	c.write("cart/cart_test.go", cartTest)
+	c.write("cart/external_test.go", "package cart_test\n\nimport \"testing\"\n\n"+
+		"func TestTotal(t *testing.T) { t.Log(\"outside\") }\n")
+	c.branch()
+	c.remove("cart/external_test.go")
+
+	assert.Equal(t, []test{{
+		Package: "example.com/shop/cart", File: "cart/external_test.go",
+		Function: "TestTotal", Change: "deleted",
+	}}, c.report().Tests)
+}

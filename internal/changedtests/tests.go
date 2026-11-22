@@ -134,14 +134,18 @@ func tokenText(src []byte) string {
 	return out.String()
 }
 
-func (d definitions) changedFrom(other definitions) (definition, bool) {
-	index := slices.IndexFunc(d, func(def definition) bool {
-		return !slices.ContainsFunc(other, def.sameTokens)
-	})
-	if index < 0 {
-		return definition{}, false
+func (d definitions) without(other definitions) definitions {
+	left := slices.Clone(other)
+	var unmatched definitions
+	for _, def := range d {
+		index := slices.IndexFunc(left, def.sameTokens)
+		if index < 0 {
+			unmatched = append(unmatched, def)
+			continue
+		}
+		left = slices.Delete(left, index, index+1)
 	}
-	return d[index], true
+	return unmatched
 }
 
 func (d definition) sameTokens(other definition) bool {
