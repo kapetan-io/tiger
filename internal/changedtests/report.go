@@ -32,7 +32,7 @@ type sides struct {
 }
 
 func changedTests(both sides) Report {
-	report := Report{BaseTests: len(both.base), BasePackages: both.base.packages()}
+	report := Report{BaseTests: both.base.count(), BasePackages: both.base.packages()}
 	for _, name := range slices.SortedFunc(maps.Keys(both.base), testName.order) {
 		report.Changed = append(report.Changed, changesTo(name, both)...)
 	}

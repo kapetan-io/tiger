@@ -178,7 +178,7 @@ func TestChangedTestsTextReport(t *testing.T) {
 		"Modified: 1 · Deleted: 0\n\n"+
 		"example.com/shop/cart\n"+
 		"  modified  TestTotal  cart/cart_test.go\n\n"+
-		"Compared 2 test functions in 1 packages at the merge base.\n"+
+		"Compared 2 test functions in 1 package at the merge base.\n"+
 		"Counted only top-level Test, Benchmark, Fuzz and Example functions in "+
 		"_test.go files. Tests added since the merge base, test methods on suite "+
 		"types, helpers and testdata are not listed, and an edit to comments or "+
@@ -638,4 +638,44 @@ func TestChangedTestsNamesTheFileOfEachBuildTagDefinition(t *testing.T) {
 			assert.Equal(t, test.wants, got)
 		})
 	}
+}
+
+// Goal: switching an Example from "// Output:" to "// Unordered output:"
+// with the same lines is a change, because go test then ignores line order.
+func TestChangedTestsReportsAnExampleSwitchedToUnorderedOutput(t *testing.T) {
+	const example = "package cart_test\n\nimport \"fmt\"\n\n" +
+		"func ExampleTotal() {\n\tfmt.Println(3)\n\t// Output: 3\n}\n"
+	c := newCheckout(t)
+	c.write("cart/example_test.go", example)
+	c.branch()
+	c.write("cart/example_test.go",
+		strings.Replace(example, "// Output: 3", "// Unordered output: 3", 1))
+
+	assert.Equal(t, []test{{
+		Package: "example.com/shop/cart", File: "cart/example_test.go",
+		Function: "ExampleTotal", Change: "modified",
+	}}, c.report().Tests)
+}
+
+// Goal: go test's naming rule decides what is a test. After the prefix comes
+// nothing, or anything but a lowercase letter: Test_snake, Test2 and
+// Example_suffix are tests, and Testing, Benchmarking and Examples are not.
+func TestChangedTestsFollowsTheGoTestNameRule(t *testing.T) {
+	c := newCheckout(t)
+	c.write("cart/names_test.go", "package cart\n\nimport \"testing\"\n\n"+
+		"func Test(t *testing.T) {}\n\n"+
+		"func Test_snake(t *testing.T) {}\n\n"+
+		"func Test2(t *testing.T) {}\n\n"+
+		"func Example_suffix() {}\n\n"+
+		"func Testing(t *testing.T) {}\n\n"+
+		"func Benchmarking(b *testing.B) {}\n\n"+
+		"func Examples() {}\n")
+	c.branch()
+	c.remove("cart/names_test.go")
+
+	var names []string
+	for _, got := range c.report().Tests {
+		names = append(names, got.Function)
+	}
+	assert.Equal(t, []string{"Example_suffix", "Test", "Test2", "Test_snake"}, names)
 }

@@ -115,11 +115,22 @@ report and 2 when no report can be produced, and flags go before `<base>`.
   a change, even into or out of the external test package (`package cart_test`), because
   `go test` runs both together. A test is matched by its directory, so a branch that renames the
   module reports a modified test under the new path and a deleted one under the path it had.
-- A change to a file's `//go:build` line alone, which changes where its tests run, is not reported.
 - Tests added since the merge base are never listed, so a branch that only adds tests reports
   nothing.
 - It reads the test files without type-checking them, and a test file that does not parse at
   either revision exits 2 rather than reporting the tests inside it as deleted.
+
+What it does not report:
+
+- Tests in a nested module, a directory below the run directory with its own `go.mod`. They are
+  skipped without a word, the same way `go test ./...` skips them. Run it once per module with
+  `-C`, as in `tiger changed-tests -C sub main`, to cover them.
+- A change to a file's `//go:build` line alone, which changes where its tests run.
+- Two build-tagged copies of one test whose bodies are swapped, say `TestOS` in `a_test.go`
+  (`linux`) and `b_test.go` (`!linux`). Each body still matches a copy on the other side.
+- A test the branch moves into a gitignored `_test.go` file reads as unchanged in a local run,
+  because the working tree still has it; CI's checkout does not, so CI reports it deleted.
+- Any test when the merge base has no `go.mod`, the same as `tiger changed`.
 
 `tiger changed-tests --format json <base>` prints one JSON object (`tiger.changed-tests/v1`).
 Its `changes_existing_tests` field is true when the list is not empty, so a script can decide from

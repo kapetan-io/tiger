@@ -179,6 +179,14 @@ func (m matching) next(matches match) matching {
 	return out
 }
 
+func (t testFunctions) count() int {
+	n := 0
+	for _, name := range slices.SortedFunc(maps.Keys(t), testName.order) {
+		n += len(t[name])
+	}
+	return n
+}
+
 func (t testFunctions) packages() int {
 	seen := map[string]bool{}
 	for _, name := range slices.SortedFunc(maps.Keys(t), testName.order) {

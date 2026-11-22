@@ -31,8 +31,8 @@ func (r Report) Text(rev revision.Comparison) string {
 		r.writeList(&out)
 		out.WriteString("\n")
 	}
-	fmt.Fprintf(&out, "Compared %d test functions in %d packages at the merge base.\n",
-		r.BaseTests, r.BasePackages)
+	fmt.Fprintf(&out, "Compared %s in %s at the merge base.\n",
+		counted(r.BaseTests, "test function"), counted(r.BasePackages, "package"))
 	out.WriteString(scope + "\n")
 	return out.String()
 }
@@ -58,4 +58,11 @@ func writePackage(out *strings.Builder, tests []ChangedTest) {
 		fmt.Fprintf(out, "  %-*s  %-*s  %s\n",
 			changeWidth, test.Change, nameWidth, test.Function, test.File)
 	}
+}
+
+func counted(n int, noun string) string {
+	if n == 1 {
+		return "1 " + noun
+	}
+	return fmt.Sprintf("%d %ss", n, noun)
 }
