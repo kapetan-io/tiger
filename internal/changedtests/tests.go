@@ -134,22 +134,49 @@ func tokenText(src []byte) string {
 	return out.String()
 }
 
-func (d definitions) without(other definitions) definitions {
-	left := slices.Clone(other)
-	var unmatched definitions
-	for _, def := range d {
-		index := slices.IndexFunc(left, def.sameTokens)
-		if index < 0 {
-			unmatched = append(unmatched, def)
-			continue
-		}
-		left = slices.Delete(left, index, index+1)
-	}
-	return unmatched
+type candidate struct {
+	base definition
+	head definition
 }
 
-func (d definition) sameTokens(other definition) bool {
-	return d.tokenText == other.tokenText
+type match func(candidate) bool
+
+func sameFileAndTokens(c candidate) bool {
+	return c.base.file == c.head.file && c.base.tokenText == c.head.tokenText
+}
+
+func sameTokens(c candidate) bool {
+	return c.base.tokenText == c.head.tokenText
+}
+
+func sameFile(c candidate) bool {
+	return c.base.file == c.head.file
+}
+
+func anyDefinition(candidate) bool {
+	return true
+}
+
+type matching struct {
+	matchedHead definitions
+	base        definitions
+	head        definitions
+}
+
+func (m matching) next(matches match) matching {
+	out := matching{head: slices.Clone(m.head)}
+	for _, base := range m.base {
+		index := slices.IndexFunc(out.head, func(head definition) bool {
+			return matches(candidate{base: base, head: head})
+		})
+		if index < 0 {
+			out.base = append(out.base, base)
+			continue
+		}
+		out.matchedHead = append(out.matchedHead, out.head[index])
+		out.head = slices.Delete(out.head, index, index+1)
+	}
+	return out
 }
 
 func (t testFunctions) packages() int {

@@ -3,6 +3,8 @@ package changedtests_test
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -572,4 +574,68 @@ func TestChangedTestsReportsOneOfTwoSameNamedTestsDeleted(t *testing.T) {
 		Package: "example.com/shop/cart", File: "cart/external_test.go",
 		Function: "TestTotal", Change: "deleted",
 	}}, c.report().Tests)
+}
+
+// tagged is a _test.go file declaring TestX under a build tag, with a body
+// that differs by the value it assigns.
+func tagged(tag string, value int) string {
+	return fmt.Sprintf("//go:build %s\n\npackage cart\n\nimport \"testing\"\n\n"+
+		"func TestX(t *testing.T) { _ = %d }\n", tag, value)
+}
+
+// Goal: when a test has one definition per build tag, the report names the
+// file each change happened in: a deleted file, an edited file, never a
+// file that is unchanged or newly added.
+func TestChangedTestsNamesTheFileOfEachBuildTagDefinition(t *testing.T) {
+	for _, test := range []struct {
+		name  string
+		base  map[repoPath]string
+		head  map[repoPath]string
+		wants []string
+	}{
+		{
+			name: "DeletedTwinOfAnIdenticalDefinition",
+			base: map[repoPath]string{
+				"cart/a_test.go": tagged("linux", 1), "cart/b_test.go": tagged("!linux", 1),
+			},
+			head:  map[repoPath]string{"cart/a_test.go": ""},
+			wants: []string{"deleted cart/a_test.go"},
+		},
+		{
+			name: "EditNextToANewDefinition",
+			base: map[repoPath]string{"cart/b_test.go": tagged("linux", 2)},
+			head: map[repoPath]string{
+				"cart/a_test.go": tagged("!linux", 9), "cart/b_test.go": tagged("linux", 3),
+			},
+			wants: []string{"modified cart/b_test.go"},
+		},
+		{
+			name: "OneDeletedOneEdited",
+			base: map[repoPath]string{
+				"cart/a_test.go": tagged("linux", 1), "cart/b_test.go": tagged("!linux", 2),
+			},
+			head:  map[repoPath]string{"cart/a_test.go": "", "cart/b_test.go": tagged("!linux", 3)},
+			wants: []string{"deleted cart/a_test.go", "modified cart/b_test.go"},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			c := newCheckout(t)
+			for _, name := range slices.Sorted(maps.Keys(test.base)) {
+				c.write(name, test.base[name])
+			}
+			c.branch()
+			for _, name := range slices.Sorted(maps.Keys(test.head)) {
+				if test.head[name] == "" {
+					c.remove(name)
+					continue
+				}
+				c.write(name, test.head[name])
+			}
+			var got []string
+			for _, row := range c.report().Tests {
+				got = append(got, row.Change+" "+row.File)
+			}
+			assert.Equal(t, test.wants, got)
+		})
+	}
 }

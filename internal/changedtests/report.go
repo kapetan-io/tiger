@@ -36,20 +36,22 @@ func changedTests(both sides) Report {
 	for _, name := range slices.SortedFunc(maps.Keys(both.base), testName.order) {
 		report.Changed = append(report.Changed, changesTo(name, both)...)
 	}
-	slices.SortStableFunc(report.Changed, ChangedTest.order)
+	slices.SortFunc(report.Changed, ChangedTest.order)
 	return report
 }
 
 func changesTo(name testName, both sides) []ChangedTest {
-	gone := both.base[name].without(both.head[name])
-	edited := both.head[name].without(both.base[name])
+	unchanged := matching{base: both.base[name], head: both.head[name]}.
+		next(sameFileAndTokens).
+		next(sameTokens)
+	edited := unchanged.next(sameFile)
+	moved := edited.next(anyDefinition)
 	var changes []ChangedTest
-	for i, def := range gone {
-		if i < len(edited) {
-			changes = append(changes, changedTest(name, edited[i], Modified))
-		} else {
-			changes = append(changes, changedTest(name, def, Deleted))
-		}
+	for _, def := range slices.Concat(edited.matchedHead, moved.matchedHead) {
+		changes = append(changes, changedTest(name, def, Modified))
+	}
+	for _, def := range moved.base {
+		changes = append(changes, changedTest(name, def, Deleted))
 	}
 	return changes
 }
@@ -59,7 +61,8 @@ func (n testName) order(other testName) int {
 }
 
 func (c ChangedTest) order(other ChangedTest) int {
-	return cmp.Or(cmp.Compare(c.Package, other.Package), cmp.Compare(c.Function, other.Function))
+	return cmp.Or(cmp.Compare(c.Package, other.Package), cmp.Compare(c.Function, other.Function),
+		cmp.Compare(c.File, other.File), cmp.Compare(c.Change, other.Change))
 }
 
 func changedTest(name testName, def definition, change Change) ChangedTest {
