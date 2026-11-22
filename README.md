@@ -27,6 +27,7 @@ instead of how it's built.
 
 - [`tiger check`](docs/Tiger%20User%20Guide.md#commands), the pass-or-fail gate in CI
 - [`tiger changed`](docs/Tiger%20User%20Guide.md#posting-the-report-on-a-pull-request), a report on each pull request
+- [`tiger changed-tests`](docs/Tiger%20User%20Guide.md#tiger-changed-tests), the existing tests a branch modifies or deletes
 - [The golangci-lint plugin](docs/Tiger%20User%20Guide.md#running-under-golangci-lint), for your editor
 
 ## What you get

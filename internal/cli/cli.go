@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	"github.com/kapetan-io/tiger/internal/changed"
+	"github.com/kapetan-io/tiger/internal/changedtests"
 	"github.com/kapetan-io/tiger/internal/check"
 	"github.com/kapetan-io/tiger/internal/command"
 	"github.com/kapetan-io/tiger/internal/golangci"
@@ -16,7 +17,7 @@ import (
 
 const usage = `usage:
 ` + check.Usage + check.BudgetUsage + golangci.Usage + pattern.Usage +
-	changed.Usage + pin.Usage + `run "tiger <command> -h" for its flags
+	changed.Usage + changedtests.Usage + pin.Usage + `run "tiger <command> -h" for its flags
 `
 
 func Run(args []string, streams command.Streams) int {
@@ -35,6 +36,8 @@ func Run(args []string, streams command.Streams) int {
 		return pattern.Run(args[1:], streams)
 	case "changed":
 		return changed.Run(args[1:], streams)
+	case "changed-tests":
+		return changedtests.Run(args[1:], streams)
 	case "pin":
 		return pin.Run(args[1:], streams)
 	case "help", "-h", "--help":

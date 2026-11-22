@@ -42,10 +42,10 @@ type view struct {
 
 func (r Report) markdown(rev revision.Comparison, show view) string {
 	var out strings.Builder
-	base := splitBase(rev)
-	fmt.Fprintf(&out, "%s\n#### tiger changed: %s", marker, codeSpan(base.name))
-	if base.note != "" {
-		fmt.Fprintf(&out, " (%s)", base.note)
+	base := rev.BaseName()
+	fmt.Fprintf(&out, "%s\n#### tiger changed: %s", marker, codeSpan(base.Name))
+	if base.Note != "" {
+		fmt.Fprintf(&out, " (%s)", base.Note)
 	}
 	out.WriteString(" → `" + revision.Short(rev.Head) + "`")
 	if rev.Dirty {

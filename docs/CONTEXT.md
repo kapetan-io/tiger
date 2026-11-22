@@ -78,6 +78,18 @@ between the merge base of a base revision and the working tree; it replaces effe
 (ADR-0026 and its amendment, ADR-0030).
 _Avoid_: diff, effect report
 
+**`tiger changed-tests`**:
+The report, not a rule, that lists each **changed test**, with its package and file, between the
+merge base of a base revision and the working tree. It reads `_test.go` files without type-checking,
+and it is separate from `tiger changed`, whose report skips every test file.
+_Avoid_: test diff
+
+**Changed test**:
+A top-level `Test`, `Benchmark`, `Fuzz` or `Example` function in a `_test.go` file that existed at
+the merge base and that the working tree modifies or deletes. The User Guide's
+`tiger changed-tests` section gives the rules for what counts as modified.
+_Avoid_: broken test, edited test
+
 **Reach file**:
 The file that lists which standard library functions statically reach package `syscall`. It is an entry
 `<xx>/<sha256 of its key>-d` in Go's build cache, so `go clean -cache` and Go's five-day trim remove it

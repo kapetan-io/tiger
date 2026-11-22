@@ -28,11 +28,9 @@ const (
 
 const maxNamed = 5
 
-const minPrefix = 4
-
 func (r Report) Text(rev revision.Comparison) string {
 	var out strings.Builder
-	fmt.Fprintf(&out, "tiger changed: %s -> %s\n", baseLabel(rev), headLabel(rev))
+	fmt.Fprintf(&out, "tiger changed: %s -> %s\n", rev.BaseLabel(), rev.HeadLabel())
 	out.WriteString(purposeText + "\n\n")
 	out.WriteString(r.countsLine() + "\n\n")
 	switch {
@@ -147,40 +145,4 @@ func named(names []string) string {
 		return strings.Join(names, ", ")
 	}
 	return fmt.Sprintf("%s and %d more", strings.Join(names[:maxNamed], ", "), len(names)-maxNamed)
-}
-
-func baseLabel(rev revision.Comparison) string {
-	base := splitBase(rev)
-	if base.note == "" {
-		return base.name
-	}
-	return fmt.Sprintf("%s (%s)", base.name, base.note)
-}
-
-type baseName struct {
-	name string
-	note string
-}
-
-func splitBase(rev revision.Comparison) baseName {
-	tip := revision.Short(rev.BaseTip)
-	prefix := strings.HasPrefix(rev.BaseTip, strings.ToLower(rev.BaseRef))
-	byName := len(rev.BaseRef) < minPrefix || !prefix
-	switch {
-	case rev.MergeBase != rev.BaseTip && byName:
-		return baseName{rev.BaseRef, "merge base " + revision.Short(rev.MergeBase)}
-	case rev.MergeBase != rev.BaseTip:
-		return baseName{tip, "merge base " + revision.Short(rev.MergeBase)}
-	case byName:
-		return baseName{rev.BaseRef, tip}
-	}
-	return baseName{name: tip}
-}
-
-func headLabel(rev revision.Comparison) string {
-	label := revision.Short(rev.Head)
-	if rev.Dirty {
-		label += " + uncommitted changes"
-	}
-	return label
 }

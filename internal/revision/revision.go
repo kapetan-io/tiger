@@ -1,5 +1,6 @@
-// Package revision resolves the two sides of a tiger changed run, the merge
-// base of a base ref and HEAD against the working tree, and writes the base
+// Package revision resolves the two sides of a tiger changed or tiger
+// changed-tests run, the merge base of a base ref and HEAD against the
+// working tree, labels each side for a report's title, and writes the base
 // tree into a temporary directory. It is the only package that runs git, so
 // tiger check stays free of git (ADR-0022).
 package revision
