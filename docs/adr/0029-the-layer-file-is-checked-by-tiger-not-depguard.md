@@ -72,7 +72,8 @@ reports them.
 
 TS-D01 folds into TS-X03: it is no longer an auto rule, and the `internal-domain` depguard block
 leaves the golangci-lint template. depguard stays enabled for TS-S12's bans. TS-X03's analyzer
-enforces TS-D01, and no finding prints TS-D01: every finding is a TS-X03 finding.
+enforces TS-D01, and no finding prints TS-D01: every finding is a TS-X03 finding. This supersedes
+the earlier wording that gave these findings a TS-D01 category.
 
 ## Consequences
 

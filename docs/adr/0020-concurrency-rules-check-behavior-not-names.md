@@ -48,7 +48,8 @@ docs say not to store a context in a struct.
 
 None of the static designs catch the four querator bugs the edge tests found: an abandoned shutdown
 when the caller's ctx expires, a second `Shutdown` returning early, a panic on a queued cold request,
-and a cold request never answered. Only running the shutdown paths does.
+and a cold request never answered. Only running the shutdown paths does. They are filed together as one
+querator bug.
 
 ## Decision
 
@@ -87,5 +88,5 @@ above.
   goroutine that exits just after `Shutdown`, so the static checks stay.
 - Whether every waiter also selects on `done` is beyond any of these rules. The shutdown-loop
   pattern covers it.
-- Each fixture above becomes
-  an analyzer test case, and both codebases are rerun.
+- This revives earlier work on making the concurrency rules check behavior, not names. Each
+  fixture above becomes an analyzer test case, and both codebases are rerun.

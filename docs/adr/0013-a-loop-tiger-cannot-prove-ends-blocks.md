@@ -77,7 +77,8 @@ an error on a cycle. Every one of the 20 loops that pass while never ending, the
 - A safety cap is a visible failure, not a silent truncation. On the trial code this fires twice,
   both in git-server's Myers diff: one needs an assert, and one clears by moving the search into its
   own function.
-- The limit trace already found three bugs in the trial code that no rule reported: a pack header
+- The limit trace already found three bugs in the trial code that no rule reported, each filed as its own
+  bug: a pack header
   that allocated 352 MB for a 12-byte push, list endpoints accepting any page size up to
   2³¹−1, and a create-queue loop with no partition limit.
 - TS-S02 trusts TS-V01's proofs, so a hole in TS-V01 now clears both rules at once. That is why the

@@ -92,7 +92,7 @@ tests exercise.
 - The specification's TS-T02 line and Part V analyzer table, and the explainer, change to describe
   the allowlist, the closed escape, and the five misses.
 
-## Amendment
+## Amendment: tighten map order and close its alias leak
 
 The follow-up named in the last Consequences bullet shipped. The decision above stands, with these
 changes to what the rule accepts and refuses:
