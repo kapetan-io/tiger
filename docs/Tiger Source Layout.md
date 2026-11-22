@@ -50,8 +50,9 @@ driver runs once after every package has been visited (ADR-0010).
 | `internal/placement/` | Placement: collecting `//tiger:` directives and the one insertion writer (ADR-0008). |
 | `internal/directive/` | The `//tiger:` grammar: closed verb vocabulary, per-verb pin argument grammars (variant expressions and contract predicates), canonical printing, and the round-trip contract `Parse(Format(d)) == d`. |
 | `internal/changed/` | `tiger changed`: the report of what a revision range changes, in text, markdown and JSON. |
+| `internal/changedtests/` | `tiger changed-tests`: the existing test functions a revision range modifies or deletes, in text and JSON. |
 | `internal/callinventory/` | For one checkout of a module, which function makes which calls into other packages, and the reach file that says which standard library functions reach `syscall`. |
-| `internal/revision/` | The two sides of a `tiger changed` run: the merge base of a base ref and HEAD, against the working tree. It is the only package that runs git, so `tiger check` stays free of git (ADR-0022). |
+| `internal/revision/` | The two sides of a `tiger changed` or `tiger changed-tests` run: the merge base of a base ref and HEAD, against the working tree. It is the only package that runs git, so `tiger check` stays free of git (ADR-0022). |
 | `internal/pattern/` | Reads the embedded patterns: the card sections, the Go files, lookup by name and by rule. |
 | `internal/ci/` | Tests of tiger's own CI workflow. It holds no non-test code. |
 | `plugin/` + `.custom-gcl.yml` | The golangci-lint module plugin: the same analyzers under `golangci-lint run`, minus what needs the whole module. The [User Guide](Tiger%20User%20Guide.md#running-under-golangci-lint) lists what it skips and the settings it needs. |

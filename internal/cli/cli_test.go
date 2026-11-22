@@ -62,6 +62,19 @@ func TestChangedIsListedAndDispatched(t *testing.T) {
 		"as in: tiger changed [-C dir] <base>\n", got.stderr)
 }
 
+// Goal: the command listing carries tiger changed-tests's entry, and the
+// name reaches that command.
+func TestChangedTestsIsListedAndDispatched(t *testing.T) {
+	bare := run(t)
+	assert.Contains(t, bare.stderr, "tiger changed-tests [-C dir] [--format text|json] <base>")
+
+	got := run(t, "changed-tests")
+	assert.Equal(t, command.ExitOperational, got.code)
+	assert.Empty(t, got.stdout)
+	assert.Equal(t, "tiger changed-tests: expected a base revision, "+
+		"as in: tiger changed-tests [-C dir] <base>\n", got.stderr)
+}
+
 // TestPatternHelpNamesTheCommand reads the usage text.
 //
 // Goal: tiger help documents tiger pattern with its two flags.

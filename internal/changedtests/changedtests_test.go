@@ -1,0 +1,374 @@
+package changedtests_test
+
+import (
+	"bytes"
+	"encoding/json"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"slices"
+	"strings"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/kapetan-io/tiger/internal/cli"
+	"github.com/kapetan-io/tiger/internal/command"
+)
+
+type outcome struct {
+	code   int
+	stdout string
+	stderr string
+}
+
+func run(t *testing.T, args ...string) outcome {
+	t.Helper()
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	code := cli.Run(args, command.Streams{Stdout: stdout, Stderr: stderr})
+	return outcome{code: code, stdout: stdout.String(), stderr: stderr.String()}
+}
+
+// checkout is a real git repository in a temporary directory, with pinned
+// authors and dates so commit hashes are the same on every machine.
+type checkout struct {
+	t   *testing.T
+	dir string
+}
+
+func newCheckout(t *testing.T) checkout {
+	t.Helper()
+	dir, err := filepath.EvalSymlinks(t.TempDir())
+	require.NoError(t, err)
+	c := checkout{t: t, dir: dir}
+	c.git("init", "-q", "-b", "main")
+	c.write("go.mod", "module example.com/shop\n\ngo 1.26\n")
+	return c
+}
+
+func (c checkout) git(args ...string) string {
+	c.t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = c.dir
+	cmd.Env = append(slices.DeleteFunc(os.Environ(), func(entry string) bool {
+		return strings.HasPrefix(entry, "GIT_")
+	}),
+		"GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_NOSYSTEM=1",
+		"GIT_AUTHOR_NAME=test", "GIT_AUTHOR_EMAIL=test@example.com",
+		"GIT_COMMITTER_NAME=test", "GIT_COMMITTER_EMAIL=test@example.com",
+		"GIT_AUTHOR_DATE=2026-01-01T00:00:00Z", "GIT_COMMITTER_DATE=2026-01-01T00:00:00Z",
+	)
+	out, err := cmd.CombinedOutput()
+	require.NoError(c.t, err, string(out))
+	return strings.TrimSpace(string(out))
+}
+
+// repoPath is a slash path inside the checkout.
+type repoPath string
+
+func (c checkout) write(name repoPath, content string) {
+	c.t.Helper()
+	path := filepath.Join(c.dir, filepath.FromSlash(string(name)))
+	require.NoError(c.t, os.MkdirAll(filepath.Dir(path), 0o755))
+	require.NoError(c.t, os.WriteFile(path, []byte(content), 0o644))
+}
+
+func (c checkout) remove(name repoPath) {
+	c.t.Helper()
+	require.NoError(c.t, os.Remove(filepath.Join(c.dir, filepath.FromSlash(string(name)))))
+}
+
+func (c checkout) commit(message string) {
+	c.t.Helper()
+	c.git("add", "-A")
+	c.git("commit", "-q", "-m", message)
+}
+
+// branch commits the base on main and moves to a feature branch, so every
+// later write is the change under report.
+func (c checkout) branch() {
+	c.t.Helper()
+	c.commit("base")
+	c.git("checkout", "-q", "-b", "feature")
+}
+
+type report struct {
+	Schema               string `json:"schema"`
+	ChangesExistingTests bool   `json:"changes_existing_tests"`
+	Tests                []test `json:"tests"`
+}
+
+type test struct {
+	Package  string `json:"package"`
+	File     string `json:"file"`
+	Function string `json:"function"`
+	Change   string `json:"change"`
+}
+
+func (c checkout) report() report {
+	c.t.Helper()
+	got := run(c.t, "changed-tests", "-C", c.dir, "--format", "json", "main")
+	require.Equal(c.t, command.ExitClean, got.code, got.stderr)
+	var doc report
+	require.NoError(c.t, json.Unmarshal([]byte(got.stdout), &doc), got.stdout)
+	return doc
+}
+
+const cartTest = `package cart
+
+import "testing"
+
+func TestTotal(t *testing.T) {
+	if 1+1 != 2 {
+		t.Fatal("bad")
+	}
+}
+
+func TestEmpty(t *testing.T) {}
+`
+
+// Goal: a branch that edits one existing test and deletes another reports
+// both, with package and file, and the field CI reads is true.
+func TestChangedTestsReportsModifiedAndDeletedTests(t *testing.T) {
+	c := newCheckout(t)
+	c.write("cart/cart_test.go", cartTest)
+	c.branch()
+	c.write("cart/cart_test.go", strings.Replace(
+		strings.Replace(cartTest, "1+1 != 2", "1+2 != 3", 1),
+		"func TestEmpty(t *testing.T) {}\n", "", 1))
+
+	doc := c.report()
+
+	assert.Equal(t, "tiger.changed-tests/v1", doc.Schema)
+	assert.True(t, doc.ChangesExistingTests)
+	assert.Equal(t, []test{
+		{Package: "example.com/shop/cart", File: "cart/cart_test.go",
+			Function: "TestEmpty", Change: "deleted"},
+		{Package: "example.com/shop/cart", File: "cart/cart_test.go",
+			Function: "TestTotal", Change: "modified"},
+	}, doc.Tests)
+}
+
+// Goal: the text report is byte-for-byte what an agent parses: title, counts,
+// one line per test under its package, then what was compared.
+func TestChangedTestsTextReport(t *testing.T) {
+	c := newCheckout(t)
+	c.write("cart/cart_test.go", cartTest)
+	c.branch()
+	c.write("cart/cart_test.go", strings.Replace(cartTest, "1+1 != 2", "1+2 != 3", 1))
+	c.commit("edit")
+	head := c.git("rev-parse", "--short=7", "HEAD")
+	base := c.git("rev-parse", "--short=7", "main")
+
+	got := run(t, "changed-tests", "-C", c.dir, "main")
+
+	assert.Equal(t, command.ExitClean, got.code)
+	assert.Empty(t, got.stderr)
+	assert.Equal(t, "tiger changed-tests: main ("+base+") -> "+head+"\n"+
+		"Test functions that existed at the merge base and that this change modifies "+
+		"or deletes. Each one guarded behavior that may now be different. "+
+		"Check that each change is intended.\n\n"+
+		"Modified: 1 · Deleted: 0\n\n"+
+		"example.com/shop/cart\n"+
+		"  modified  TestTotal  cart/cart_test.go\n\n"+
+		"Compared 2 test functions in 1 packages at the merge base.\n"+
+		"Counted only top-level Test, Benchmark, Fuzz and Example functions in "+
+		"_test.go files. Tests added since the merge base, test methods on suite "+
+		"types, helpers and testdata are not listed, and an edit to comments or "+
+		"spacing alone is not a change.\n",
+		got.stdout)
+}
+
+// Goal: a branch that only adds tests, in an existing file and in a new
+// package, reports no changed existing tests.
+func TestChangedTestsIgnoresAddedTests(t *testing.T) {
+	c := newCheckout(t)
+	c.write("cart/cart_test.go", cartTest)
+	c.branch()
+	c.write("cart/cart_test.go", cartTest+"\nfunc TestNew(t *testing.T) {}\n")
+	c.write("pay/pay_test.go", "package pay\n\nimport \"testing\"\n\n"+
+		"func TestPay(t *testing.T) {}\n")
+
+	doc := c.report()
+
+	assert.False(t, doc.ChangesExistingTests)
+	assert.Empty(t, doc.Tests)
+	assert.NotNil(t, doc.Tests, "tests is an empty list, not null")
+}
+
+// Goal: an edit to comments or layout alone does not count as a change.
+func TestChangedTestsIgnoresCommentAndSpacingEdits(t *testing.T) {
+	c := newCheckout(t)
+	c.write("cart/cart_test.go", cartTest)
+	c.branch()
+	c.write("cart/cart_test.go", `package cart
+
+import "testing"
+
+// TestTotal now has a doc comment.
+func TestTotal(t *testing.T) {
+	// a new comment inside the body
+
+	if 1+1 != 2 { t.Fatal("bad") } /* trailing */
+}
+
+func TestEmpty(t *testing.T) {
+}
+`)
+
+	assert.Empty(t, c.report().Tests)
+}
+
+// Goal: a test moved to another _test.go file of the same package with the
+// same body is not a change; moved and edited is reported at its new file.
+func TestChangedTestsFollowsATestMovedBetweenFiles(t *testing.T) {
+	c := newCheckout(t)
+	c.write("cart/cart_test.go", cartTest)
+	c.branch()
+	c.remove("cart/cart_test.go")
+	c.write("cart/total_test.go", "package cart\n\nimport \"testing\"\n\n"+
+		"func TestTotal(t *testing.T) {\n\tif 1+1 != 2 {\n\t\tt.Fatal(\"bad\")\n\t}\n}\n")
+	c.write("cart/empty_test.go", "package cart\n\nimport \"testing\"\n\n"+
+		"func TestEmpty(t *testing.T) { t.Log(\"edited\") }\n")
+
+	assert.Equal(t, []test{{Package: "example.com/shop/cart", File: "cart/empty_test.go",
+		Function: "TestEmpty", Change: "modified"}}, c.report().Tests)
+}
+
+// Goal: a changed signature counts, and the external test package is named
+// with its _test suffix, the way go test names it.
+func TestChangedTestsReportsASignatureChangeInAnExternalTestPackage(t *testing.T) {
+	c := newCheckout(t)
+	c.write("cart/fuzz_test.go", "package cart_test\n\nimport \"testing\"\n\n"+
+		"func FuzzTotal(f *testing.F) {}\n")
+	c.branch()
+	c.write("cart/fuzz_test.go", "package cart_test\n\nimport \"testing\"\n\n"+
+		"func FuzzTotal(t *testing.T) {}\n")
+
+	assert.Equal(t, []test{{Package: "example.com/shop/cart_test", File: "cart/fuzz_test.go",
+		Function: "FuzzTotal", Change: "modified"}}, c.report().Tests)
+}
+
+// Goal: only top-level Test, Benchmark, Fuzz and Example functions count.
+// Helpers, suite methods, look-alike names and testdata files are not
+// reported however they change.
+func TestChangedTestsCountsOnlyTestFunctions(t *testing.T) {
+	c := newCheckout(t)
+	before := `package cart
+
+import "testing"
+
+type suite struct{}
+
+func (suite) TestMethod(t *testing.T) {}
+
+func helper() int { return 1 }
+
+func Testify() {}
+
+func BenchmarkTotal(b *testing.B) {}
+
+func Example() {}
+
+func ExampleCart_total() {}
+`
+	c.write("cart/cart_test.go", before)
+	c.write("cart/testdata/fixture_test.go", "package fixture\n\nfunc TestFixture() {}\n")
+	c.write("cart/plain.go", "package cart\n\nfunc TestLike() {}\n")
+	c.branch()
+	c.write("cart/cart_test.go", "package cart\n")
+	c.write("cart/testdata/fixture_test.go", "package fixture\n")
+	c.write("cart/plain.go", "package cart\n")
+
+	var names []string
+	for _, got := range c.report().Tests {
+		names = append(names, got.Function+" "+got.Change)
+	}
+	assert.Equal(t, []string{
+		"BenchmarkTotal deleted", "Example deleted", "ExampleCart_total deleted",
+	}, names)
+}
+
+// Goal: the comparison runs from the merge base to the working tree, so a
+// test changed on main after the branch point is not reported and an
+// uncommitted edit is.
+func TestChangedTestsComparesTheMergeBaseWithTheWorkingTree(t *testing.T) {
+	c := newCheckout(t)
+	c.write("cart/cart_test.go", cartTest)
+	c.branch()
+	c.git("checkout", "-q", "main")
+	c.write("cart/cart_test.go", strings.Replace(cartTest, "1+1 != 2", "2+2 != 4", 1))
+	c.commit("main moves on")
+	c.git("checkout", "-q", "feature")
+	c.write("cart/cart_test.go", strings.Replace(cartTest,
+		"func TestEmpty(t *testing.T) {}", "func TestEmpty(t *testing.T) { t.Skip() }", 1))
+
+	assert.Equal(t, []test{{Package: "example.com/shop/cart", File: "cart/cart_test.go",
+		Function: "TestEmpty", Change: "modified"}}, c.report().Tests)
+}
+
+// Goal: a run from a subdirectory of the module reports only the tests
+// under it, with files relative to it, as tiger changed does.
+func TestChangedTestsReadsFromTheRunDirectory(t *testing.T) {
+	c := newCheckout(t)
+	c.write("cart/cart_test.go", cartTest)
+	c.write("pay/pay_test.go", "package pay\n\nimport \"testing\"\n\nfunc TestPay(t *testing.T) {}\n")
+	c.branch()
+	c.remove("cart/cart_test.go")
+	c.remove("pay/pay_test.go")
+
+	got := run(t, "changed-tests", "-C", filepath.Join(c.dir, "pay"), "--format", "json", "main")
+
+	require.Equal(t, command.ExitClean, got.code, got.stderr)
+	var doc report
+	require.NoError(t, json.Unmarshal([]byte(got.stdout), &doc))
+	assert.Equal(t, []test{{Package: "example.com/shop/pay", File: "pay_test.go",
+		Function: "TestPay", Change: "deleted"}}, doc.Tests)
+}
+
+// Goal: exit 2 with a reason on stderr when no report can be produced.
+func TestChangedTestsExitsTwoWhenNoReportCanBeProduced(t *testing.T) {
+	c := newCheckout(t)
+	c.write("cart/cart_test.go", cartTest)
+	c.branch()
+	for _, tc := range []struct {
+		name   string
+		args   []string
+		stderr string
+	}{
+		{"NoBase", []string{"-C", c.dir},
+			"tiger changed-tests: expected a base revision, " +
+				"as in: tiger changed-tests [-C dir] <base>\n"},
+		{"UnknownBase", []string{"-C", c.dir, "nope"},
+			"tiger changed-tests: cannot find revision nope\n"},
+		{"UnknownFormat", []string{"-C", c.dir, "--format", "markdown", "main"},
+			"tiger changed-tests: unknown format \"markdown\"; the formats are: text, json\n"},
+		{"NotARepository", []string{"-C", t.TempDir(), "main"},
+			"tiger changed-tests: run it inside a git checkout, " +
+				"because it compares against a git revision\n"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := run(t, append([]string{"changed-tests"}, tc.args...)...)
+			assert.Equal(t, command.ExitOperational, got.code)
+			assert.Empty(t, got.stdout)
+			assert.Equal(t, tc.stderr, got.stderr)
+		})
+	}
+}
+
+// Goal: a test file that does not parse at head produces no report, so a
+// test inside it is never mistaken for deleted.
+func TestChangedTestsExitsTwoWhenATestFileDoesNotParse(t *testing.T) {
+	c := newCheckout(t)
+	c.write("cart/cart_test.go", cartTest)
+	c.branch()
+	c.write("cart/cart_test.go", "package cart\n\nfunc TestTotal( {\n")
+
+	got := run(t, "changed-tests", "-C", c.dir, "main")
+
+	assert.Equal(t, command.ExitOperational, got.code)
+	assert.Empty(t, got.stdout)
+	assert.Contains(t, got.stderr, "tiger changed-tests: cannot read the tests at head (")
+	assert.Contains(t, got.stderr, "cannot parse cart/cart_test.go")
+}

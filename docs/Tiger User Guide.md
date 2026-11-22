@@ -21,7 +21,7 @@ greater than maximum supported version 4`.
 ## Commands
 
 `tiger -h` lists every command, and `tiger <command> -h` lists a command's flags, except
-`tiger changed -h`, which prints only its usage line.
+`tiger changed -h` and `tiger changed-tests -h`, which print only their usage line.
 
 ```
 tiger check ./...               # run the registered custom-rule analyzers
@@ -38,6 +38,8 @@ tiger pin Drain ./...           # freeze a function's computed facts into //tige
 tiger pin --dry-run Drain ./... # print what tiger pin would write, write nothing
 tiger changed main              # calls each function started or stopped making since main
 tiger changed --format markdown main   # the same report as a pull request comment
+tiger changed-tests main        # existing tests this branch modifies or deletes
+tiger changed-tests --format json main # the same list for a script, such as a PR labeler
 ```
 
 Every command but `tiger pattern` takes `-C dir` to run as if started in `dir`.
@@ -96,6 +98,45 @@ the standard library never share an answer.
   else sits at its path, the report still prints and stderr says the file could not be saved.
 - With `GOCACHE=off` or a read-only cache Go cannot build the standard library either, and
   `tiger changed` exits 2.
+
+### `tiger changed-tests`
+
+`tiger changed-tests <base>` compares the merge base of `<base>` and HEAD with the working tree
+and lists each test function that existed at the merge base and is modified or deleted now, with
+its package and file. A pull request that changes an existing test has probably changed the
+behavior that test guarded, so those are the tests a reviewer reads first. It exits 0 for any
+report and 2 when no report can be produced, and flags go before `<base>`.
+
+- Only top-level `Test`, `Benchmark`, `Fuzz` and `Example` functions in `_test.go` files count.
+  Test methods on suite types, helpers and testdata are not reported.
+- A test counts as modified when its signature or body differs in its Go tokens. An edit to
+  comments or spacing alone is not a change, and neither is moving a test to another file of the
+  same package with the same body.
+- Tests added since the merge base are never listed, so a branch that only adds tests reports
+  nothing.
+- It reads the test files without type-checking them, and a test file that does not parse at
+  either revision exits 2 rather than reporting the tests inside it as deleted.
+
+`tiger changed-tests --format json <base>` prints one JSON object (`tiger.changed-tests/v1`).
+Its `changes_existing_tests` field is true when the list is not empty, so a script can decide from
+one field:
+
+```json
+{
+  "schema": "tiger.changed-tests/v1",
+  "base": {"ref": "main", "commit": "<merge base sha>", "merge_base": true},
+  "head": {"commit": "<head sha>", "dirty": false},
+  "changes_existing_tests": true,
+  "tests": [
+    {"package": "example.com/shop/cart", "file": "cart/cart_test.go",
+     "function": "TestTotal", "change": "modified"}
+  ]
+}
+```
+
+`change` is `modified` or `deleted`. `file` is relative to the directory tiger ran in, and names
+the file at head for a modified test and the file at the merge base for a deleted one. An
+external test package (`package cart_test`) is named with its `_test` suffix.
 
 ## Posting the report on a pull request
 

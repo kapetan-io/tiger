@@ -1865,6 +1865,11 @@ because the `io` package never reaches the operating system; moving a call into 
 function reads as one edge removed and one added; and a renamed type reads as all its edges removed
 and re-added. `tiger changed` ships this report as text, markdown or json (ENG-203).
 
+`tiger changed` skips every test file. `tiger changed-tests <base>` is the separate report for
+those: each top-level `Test`, `Benchmark`, `Fuzz` or `Example` function that existed at the merge
+base and whose tokens differ, or that is gone, in the working tree (ENG-859). The User Guide
+describes its output.
+
 ## Patterns
 
 Tiger has two parts: blocking rules for what it can check exactly, and a collection of patterns for
