@@ -102,16 +102,20 @@ the standard library never share an answer.
 ### `tiger changed-tests`
 
 `tiger changed-tests <base>` compares the merge base of `<base>` and HEAD with the working tree
-and lists each test function that existed at the merge base and is modified or deleted now, with
-its package and file. A pull request that changes an existing test has probably changed the
+and lists each test function that existed at the merge base and that the working tree modifies or
+deletes, with its package and file. A pull request that changes an existing test has probably changed the
 behavior that test guarded, so those are the tests a reviewer reads first. It exits 0 for any
 report and 2 when no report can be produced, and flags go before `<base>`.
 
 - Only top-level `Test`, `Benchmark`, `Fuzz` and `Example` functions in `_test.go` files count.
   Test methods on suite types, helpers and testdata are not reported.
 - A test counts as modified when its signature or body differs in its Go tokens. An edit to
-  comments or spacing alone is not a change, and neither is moving a test to another file of the
-  same package with the same body.
+  comments or spacing alone is not a change, except an Example's `// Output:` comment, which
+  `go test` checks. Moving a test to another file in the same directory with the same body is not
+  a change, even into or out of the external test package (`package cart_test`), because
+  `go test` runs both together. A test is matched by its directory, so a branch that renames the
+  module reports its tests under the new path.
+- A change to a file's `//go:build` line alone, which changes where its tests run, is not reported.
 - Tests added since the merge base are never listed, so a branch that only adds tests reports
   nothing.
 - It reads the test files without type-checking them, and a test file that does not parse at
@@ -134,9 +138,10 @@ one field:
 }
 ```
 
-`change` is `modified` or `deleted`. `file` is relative to the directory tiger ran in, and names
-the file at head for a modified test and the file at the merge base for a deleted one. An
-external test package (`package cart_test`) is named with its `_test` suffix.
+`change` is `modified` or `deleted`. `file` is relative to the directory tiger ran in. It names
+the file at head for a modified test and the file at the merge base for a deleted one. When build
+constraints give a test more than one definition, `file` names the one that changed. `package` is
+the import path of the test's directory, also for a test in the external test package.
 
 ## Posting the report on a pull request
 

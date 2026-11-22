@@ -82,10 +82,10 @@ func compareRevisions(dir string, rev revision.Comparison) (Report, error) {
 	if err != nil {
 		return Report{}, err
 	}
-	return compare(Sides{Base: base, Head: head}), nil
+	return changedTests(sides{base: base, head: head}), nil
 }
 
-func readBase(rev revision.Comparison) (tests Tests, err error) {
+func readBase(rev revision.Comparison) (tests testFunctions, err error) {
 	tree, err := rev.Extract()
 	if err != nil {
 		return tests, err

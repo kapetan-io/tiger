@@ -87,8 +87,9 @@ _Avoid_: test diff
 **Changed test**:
 A top-level `Test`, `Benchmark`, `Fuzz` or `Example` function in a `_test.go` file that existed at
 the merge base and that the working tree modifies or deletes. A test counts as modified when its
-signature or body differs in its Go tokens, so an edit to comments or spacing alone, or a move to
-another file of the same package, is not a change. Test methods on suite types, helpers and
+signature or body differs in its Go tokens, or when an Example's `// Output:` comment differs, so
+an edit to other comments or spacing alone, or a move to another file in the same directory, is not
+a change. Test methods on suite types, helpers and
 testdata are not counted. A test added since the merge base is never a changed test.
 _Avoid_: broken test, edited test
 

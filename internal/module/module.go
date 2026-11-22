@@ -1,6 +1,7 @@
 // Package module owns the facts about the Go module a run sits in: its path
-// from go.mod, module-relative package paths, the directory layout and the
-// Go files, from one walk of its tree. It does not read tiger.yaml.
+// from go.mod, the import path of a directory inside it, module-relative
+// package paths, the directory layout and the Go files, from one walk of its
+// tree. It does not read tiger.yaml.
 package module
 
 import (
@@ -166,4 +167,37 @@ func neverBuilt(file string) bool {
 		}
 	}
 	return false
+}
+
+func PathOf(dir string) (Path, error) {
+	resolved, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		return "", fmt.Errorf("reading module path: %w", err)
+	}
+	abs, err := filepath.Abs(resolved)
+	if err != nil {
+		return "", fmt.Errorf("reading module path: %w", err)
+	}
+	dirs := []string{abs}
+	for range strings.Count(abs, string(filepath.Separator)) {
+		dirs = append(dirs, filepath.Dir(dirs[len(dirs)-1]))
+	}
+	found := slices.IndexFunc(dirs, hasGoMod)
+	if found < 0 {
+		return "", fmt.Errorf("no go.mod in %s or any directory above it", abs)
+	}
+	root, err := ReadPath(dirs[found])
+	if err != nil {
+		return "", err
+	}
+	rel, err := filepath.Rel(dirs[found], abs)
+	if err != nil {
+		return "", err
+	}
+	return Path(path.Join(string(root), filepath.ToSlash(rel))), nil
+}
+
+func hasGoMod(dir string) bool {
+	info, err := os.Stat(filepath.Join(dir, "go.mod"))
+	return err == nil && !info.IsDir()
 }

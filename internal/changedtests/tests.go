@@ -3,6 +3,7 @@ package changedtests
 import (
 	"fmt"
 	"go/ast"
+	"go/doc"
 	"go/parser"
 	"go/scanner"
 	"go/token"
@@ -18,24 +19,25 @@ import (
 	"github.com/kapetan-io/tiger/internal/module"
 )
 
-type Tests map[TestName]Definitions
+type testFunctions map[testName]definitions
 
-type TestName struct {
-	Package  string
-	Function string
+type testName struct {
+	dir      string
+	function string
 }
 
-type Definitions []Definition
+type definitions []definition
 
-type Definition struct {
-	File   string
-	Tokens string
+type definition struct {
+	pkg       string
+	file      string
+	tokenText string
 }
 
 var testPrefixes = []string{"Test", "Benchmark", "Fuzz", "Example"}
 
-func readTests(dir string) (Tests, error) {
-	pkgPath, err := modulePath(dir)
+func readTests(dir string) (testFunctions, error) {
+	modulePath, err := module.PathOf(dir)
 	if err != nil {
 		return nil, err
 	}
@@ -43,14 +45,14 @@ func readTests(dir string) (Tests, error) {
 	if err != nil {
 		return nil, err
 	}
-	tests := Tests{}
+	tests := testFunctions{}
 	for _, pkgDir := range slices.Sorted(maps.Keys(files)) {
+		pkg := path.Join(string(modulePath), pkgDir)
 		for _, rel := range files[pkgDir] {
 			if !strings.HasSuffix(rel, "_test.go") {
 				continue
 			}
-			err := tests.read(sourceFile{dir: dir, rel: rel}, path.Join(string(pkgPath), pkgDir))
-			if err != nil {
+			if err := tests.read(testFile{dir: dir, rel: rel}, pkg); err != nil {
 				return nil, err
 			}
 		}
@@ -58,52 +60,26 @@ func readTests(dir string) (Tests, error) {
 	return tests, nil
 }
 
-func hasGoMod(dir string) bool {
-	_, err := os.Stat(filepath.Join(dir, "go.mod"))
-	return err == nil
-}
-
-func modulePath(dir string) (module.Path, error) {
-	abs, err := filepath.Abs(dir)
-	if err != nil {
-		return "", err
-	}
-	dirs := []string{abs}
-	for range strings.Count(abs, string(filepath.Separator)) {
-		dirs = append(dirs, filepath.Dir(dirs[len(dirs)-1]))
-	}
-	found := slices.IndexFunc(dirs, hasGoMod)
-	if found < 0 {
-		return "", fmt.Errorf("no go.mod in %s or any directory above it", abs)
-	}
-	root, err := module.ReadPath(dirs[found])
-	if err != nil {
-		return "", err
-	}
-	rel, err := filepath.Rel(dirs[found], abs)
-	if err != nil {
-		return "", err
-	}
-	return module.Path(path.Join(string(root), filepath.ToSlash(rel))), nil
-}
-
-type sourceFile struct {
+type testFile struct {
 	dir string
 	rel string
 }
 
-func (t Tests) read(file sourceFile, pkg string) error {
+func (t testFunctions) read(file testFile, pkg string) error {
 	src, err := os.ReadFile(filepath.Join(file.dir, filepath.FromSlash(file.rel)))
 	if err != nil {
 		return err
 	}
 	fset := token.NewFileSet()
-	parsed, err := parser.ParseFile(fset, file.rel, src, parser.SkipObjectResolution)
+	parsed, err := parser.ParseFile(fset, file.rel, src,
+		parser.SkipObjectResolution|parser.ParseComments)
 	if err != nil {
 		return fmt.Errorf("cannot parse %w", err)
 	}
-	if strings.HasSuffix(parsed.Name.Name, "_test") {
-		pkg += "_test"
+	outputs := map[string]string{}
+	for _, example := range doc.Examples(parsed) {
+		outputs["Example"+example.Name] = fmt.Sprintf("output %t %q",
+			example.Unordered, example.Output)
 	}
 	for _, decl := range parsed.Decls {
 		fn, ok := decl.(*ast.FuncDecl)
@@ -111,8 +87,12 @@ func (t Tests) read(file sourceFile, pkg string) error {
 			continue
 		}
 		body := src[fset.Position(fn.Pos()).Offset:fset.Position(fn.End()).Offset]
-		name := TestName{Package: pkg, Function: fn.Name.Name}
-		t[name] = append(t[name], Definition{File: file.rel, Tokens: tokens(body)})
+		name := testName{dir: path.Dir(file.rel), function: fn.Name.Name}
+		t[name] = append(t[name], definition{
+			pkg:       pkg,
+			file:      file.rel,
+			tokenText: tokenText(body) + outputs[fn.Name.Name],
+		})
 	}
 	return nil
 }
@@ -129,48 +109,51 @@ func isTestName(name string) bool {
 	return false
 }
 
-func tokens(src []byte) string {
+func tokenText(src []byte) string {
 	fset := token.NewFileSet()
 	var scan scanner.Scanner
 	scan.Init(fset.AddFile("", -1, len(src)), src, nil, 0)
 	var out strings.Builder
-	pending := ""
-	for range len(src) + 2 {
+	separator := ""
+	maxTokens := len(src) + 2
+	for range maxTokens {
 		_, tok, lit := scan.Scan()
 		if tok == token.EOF {
 			break
 		}
 		if tok == token.SEMICOLON || tok == token.COMMA {
-			pending = tok.String() + "\n"
+			separator = tok.String() + "\n"
 			continue
 		}
 		if tok != token.RBRACE && tok != token.RPAREN && tok != token.RBRACK {
-			out.WriteString(pending)
+			out.WriteString(separator)
 		}
-		pending = ""
+		separator = ""
 		out.WriteString(tok.String() + " " + lit + "\n")
 	}
 	return out.String()
 }
 
-func (d Definitions) same(other Definitions) bool {
-	return slices.Equal(d.sortedTokens(), other.sortedTokens())
+func (d definitions) changedFrom(other definitions) (definition, bool) {
+	index := slices.IndexFunc(d, func(def definition) bool {
+		return !slices.ContainsFunc(other, def.sameTokens)
+	})
+	if index < 0 {
+		return definition{}, false
+	}
+	return d[index], true
 }
 
-func (d Definitions) sortedTokens() []string {
-	out := make([]string, len(d))
-	for i, def := range d {
-		out[i] = def.Tokens
-	}
-	slices.Sort(out)
-	return out
+func (d definition) sameTokens(other definition) bool {
+	return d.tokenText == other.tokenText
 }
 
-func (t Tests) packages() int {
-	var names []string
-	for name := range t {
-		names = append(names, name.Package)
+func (t testFunctions) packages() int {
+	seen := map[string]bool{}
+	for _, name := range slices.SortedFunc(maps.Keys(t), testName.order) {
+		for _, def := range t[name] {
+			seen[def.pkg] = true
+		}
 	}
-	slices.Sort(names)
-	return len(slices.Compact(names))
+	return len(seen)
 }
