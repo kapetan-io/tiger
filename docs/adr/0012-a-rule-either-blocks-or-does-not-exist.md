@@ -47,7 +47,7 @@ drop the claim.
 
 Advisory stays exactly as the specification defines it — the accounting channel ADR-0006 and
 TS-D06 need — and is not a home for rules that would otherwise be warnings. Ratchet-counted
-accounting belongs to the budget ratchet of [ADR-0011](0011-budgets-are-lowered-by-the-tool-and-raised-only-by-hand.md).
+accounting is the ratchet's job ([ADR-0011](0011-budgets-are-lowered-by-the-tool-and-raised-only-by-hand.md)).
 
 ## Consequences
 

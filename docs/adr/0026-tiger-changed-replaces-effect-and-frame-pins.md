@@ -70,7 +70,7 @@ functions it calls now that it did not call at the base revision.
 
 The report is for review, human or agent. It is not a rule, so ADR-0012 does not apply to it.
 `//tiger:variant` stays. `//tiger:requires` and `//tiger:ensures` are not part of this decision.
-A separate design settles the output format.
+The Tiger User Guide's `tiger changed` section documents the output format.
 
 ## Consequences
 

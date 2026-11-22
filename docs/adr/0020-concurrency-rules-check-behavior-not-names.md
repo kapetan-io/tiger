@@ -31,7 +31,7 @@ but rejects querator's request-carrying `shutdownCh` and the best shutdown desig
 only at runtime with goleak missed querator's unwaited daemon in 50 of 50 runs, because the
 goroutine exits a moment after `Shutdown`, before goleak looks.
 
-Five shutdown designs were then built on querator's main and run against querator's logical shutdown race test and
+Five shutdown designs were then built on querator's main and run against querator's shutdown race test and
 five edge cases: the caller's ctx expiring while the loop is busy, a retry after that, two concurrent
 `Shutdown` calls, a pause queued before shutdown, and a cold request queued before shutdown. Only the
 `net/http` shape, with every waiter also selecting on `done`, passed all of them. Strict, exact-shape
@@ -46,7 +46,7 @@ docs say not to store a context in a struct.
 
 None of the static designs catch the four querator bugs the edge tests found: an abandoned shutdown
 when the caller's ctx expires, a second `Shutdown` returning early, a panic on a queued cold request,
-and a cold request never answered. Only running the shutdown paths does. They are tracked as querator bugs.
+and a cold request never answered. Only running the shutdown paths does.
 
 ## Decision
 
@@ -78,7 +78,7 @@ above.
   `wg.Go` with no `Wait` no longer passes TS-C02.
 - Correct shutdown code, including querator's best design, passes. The shape every message points to
   is the one Go's own `net/http` uses.
-- The one-exit rule flags the shape behind querator's logical shutdown race. It also flags the correct handshake design, which
+- The one-exit rule flags the shape behind querator's shutdown race. It also flags the correct handshake design, which
   pushes agents toward closing a stop channel; its message names the `net/http` shape as the fix.
 - TS-S03 and TS-C05 still miss a `close` in dead code and a `Wait` in a method nobody calls. The
   goleak harness and the shutdown edge tests are the runtime backstop, and goleak alone misses a

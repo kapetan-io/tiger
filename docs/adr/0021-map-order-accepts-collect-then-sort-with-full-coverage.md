@@ -112,7 +112,7 @@ changes to what the rule accepts and refuses:
 - Parentheses around an iterator call and a label on the map loop change nothing.
 
 A scan of the 685 module-cache modules that load in both builds, comparing against the rule as it
-stood before it accepted sorted map keys, finds 91 sites that fire only now. A read of each found 33 real leaks, 54
+stood before this ADR's decision, finds 91 sites that fire only now. A read of each found 33 real leaks, 54
 false findings and 4 it could not decide. The false findings need a proof about the data and are
 recorded as known false findings in the rule reference. A comparator held in a variable and
 `sort.Sort` would clear none of them, so neither was added.

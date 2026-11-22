@@ -68,7 +68,7 @@ pass so the scan can be cancelled.
 ## Consequences
 
 - A loop's bound is in code tiger checks, not in a reason it takes on trust. TS-V01 and TS-S02
-  no longer disagree, because no waiver is left for TS-V01 to disagree with.
+  now agree on every loop, because no waiver is left for them to differ over.
 - Tiger keeps bounding how many times a loop runs, not only how much it returns. A filtered list
   can return `ErrScanLimit` on a sparse table, and callers have to handle it.
 - The five whole-partition scans in querator stop hiding behind "the table size is the bound" and

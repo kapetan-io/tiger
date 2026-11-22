@@ -1,8 +1,9 @@
 name: adr-check
 
-# Fails a pull request whose ADRs cite a ticket, a file or directory in the repo, or the
-# repo's history, or whose Status is outside the allowed forms. The check runs from
-# dispatch's shared workflow; its header lists the rules.
+# Fails a pull request, or a push to main, whose ADRs cite a ticket (ticket-keys names the
+# Linear team whose ids are refused), a file or directory in the repo, or the repo's history,
+# or whose Status is outside the allowed forms. The check runs from dispatch's shared
+# adr-check workflow, whose header lists every rule.
 on:
   push:
     branches: [main]

@@ -16,7 +16,7 @@ that every caller waiting on the loop's reply also selects on `done`. Querator's
 lived in exactly those parts. An agent fixing a TS-S03 finding improvises a
 shutdown loop, and querator shows what improvised shutdown loops look like.
 
-`examples/ledger` is already a worked pattern of this kind, and the specification's "How review
+The ledger example is already a worked pattern of this kind, and the specification's "How review
 divides" section already assigns some questions to reviewers. This ADR makes that a
 deliberate part of tiger.
 
@@ -45,9 +45,8 @@ Every pattern meets all five requirements:
 4. The messages of those rules point to it.
 5. It gives reviewers a short checklist of yes-or-no questions for the parts tiger can't check.
 
-Each pattern is a package of its own in tiger's root module, in a directory named for the pattern
-under one directory of patterns. That directory replaces the examples directory, with the ledger
-example and eight seed patterns as the first entries.
+Each pattern is a package of its own in tiger's root module, one directory per pattern. The patterns
+replace the examples, with the ledger example and eight seed patterns as the first entries.
 The `tiger` binary embeds them: `tiger pattern <name>` prints a pattern's card, code and tests,
 `tiger pattern --rule <code>` lists the patterns behind a rule, and `--checklist` prints only the
 reviewer questions. Each rule's registry entry names its patterns, and the driver appends
