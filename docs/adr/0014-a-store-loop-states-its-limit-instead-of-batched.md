@@ -5,7 +5,7 @@ Date: 2026-10-12
 ## Status
 
 Accepted
-Amends ADR 0004
+Supersedes in part ADR 0004
 
 ## Related decisions
 
