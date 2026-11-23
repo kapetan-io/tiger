@@ -6,8 +6,8 @@ import (
 	"testing"
 )
 
-// ModuleHasNoRequirements covers the shipping surface: a project that requires
-// this package must not inherit a requirement on any other module.
+// TestModuleHasNoRequirements fails if assert/go.mod gains a requirement. A
+// project that requires this package must not inherit any other module.
 func TestModuleHasNoRequirements(t *testing.T) {
 	out, err := exec.Command("go", "list", "-m", "all").Output()
 	if err != nil {

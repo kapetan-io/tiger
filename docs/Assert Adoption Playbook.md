@@ -15,7 +15,8 @@ independently mergeable — nothing here requires a big-bang rewrite.
 
 ### 1. Introduce the `assert` package
 
-Per the spec ("The prerequisite: an assert package"): the companion `assert.go` is the whole
+Projects that would rather not write it can `go get github.com/kapetan-io/tiger/assert`, which
+requires nothing beyond itself. Per the spec ("The prerequisite: an assert package"): the companion `assert.go` is the whole
 package, about a hundred lines, no dependencies, **enabled in production**. That last part is not
 negotiable — an assertion compiled out only ever protected the test suite, which defeats the point.
 Two implementation traps to build in from the start, not retrofit later: no formatted variant (Go

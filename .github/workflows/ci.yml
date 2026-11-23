@@ -114,8 +114,9 @@ jobs:
           restore-keys: go-test-
       - run: go vet ./...
       - run: go test ./...
-      # assert/ is its own module, so ./... above skips it. Its go.mod
-      # requires nothing, and its test fails if that changes.
+      # assert/ is a nested module, so ./... skips it. These steps test its
+      # working copy; the root compiles against the pseudo-version in go.mod
+      # (docs/Tiger Source Layout.md, "Changing assert").
       - name: assert module
         working-directory: assert
         run: |
@@ -218,6 +219,7 @@ jobs:
           echo "code=$?" >> "$GITHUB_OUTPUT"
           set -e
           cat report.txt
+      # ./... at the root skips the nested assert module, so check it apart.
       - name: tiger check on the assert module
         run: ./bin/tiger check -C assert ./...
       - name: report summarizer matches its golden

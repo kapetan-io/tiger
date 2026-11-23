@@ -13,8 +13,9 @@
 // package by that import path alone, so a copy under another path is
 // treated as an ordinary package.
 //
-// The package is its own module and requires nothing, so a project that
-// requires it takes on no analyzer dependencies.
+// The package is its own module (assert/go.mod) and requires nothing, so a
+// project that requires it does not inherit Tiger's own dependencies such as
+// golang.org/x/tools.
 package assert
 
 import (

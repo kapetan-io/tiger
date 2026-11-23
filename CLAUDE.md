@@ -39,5 +39,7 @@ finding from that rule ends with a pointer to the pattern, so a rule violation l
 the correct shape. When you add or change a rule that a pattern backs, keep the pointer and the
 pattern in step; a meta-test fails if either names something that does not exist.
 
+`assert/` is its own module, so editing it follows "Changing assert" in `docs/Tiger Source Layout.md`.
+
 Patterns are not reusable runtime packages. A package that encodes a shape is not added in place of
 a pattern; following the pattern is the goal.

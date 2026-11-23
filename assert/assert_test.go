@@ -175,7 +175,8 @@ func TestViolatesReRaisesForeignPanics(t *testing.T) {
 	})
 }
 
-// The assert module requires nothing, so its tests cannot use testify.
+// notPanics and panicsWithValue stand in for testify's require.NotPanics and
+// require.PanicsWithValue, because assert/go.mod requires nothing.
 func notPanics(t *testing.T, fn func()) {
 	t.Helper()
 	defer func() {

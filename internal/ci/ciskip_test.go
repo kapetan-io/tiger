@@ -175,6 +175,7 @@ func TestCIChangesJobSkipsJobsAPullRequestCannotAffect(t *testing.T) {
 		{name: "goSource", file: "internal/x/x.go", want: runsOnly(ciJobs...)},
 		{name: "goMod", file: "go.mod", want: runsOnly(ciJobs...)},
 		{name: "goSum", file: "go.sum", want: runsOnly(ciJobs...)},
+		{name: "assertGoMod", file: "assert/go.mod", want: runsOnly(ciJobs...)},
 		{name: "patternsTree", file: "patterns/ledger/README.md", want: runsOnly(ciJobs...)},
 		{name: "workflow", file: ".github/workflows/ci.yml", want: runsOnly(ciJobs...)},
 		{name: "docs", file: "docs/adr/0001.md", want: runsOnly("test")},

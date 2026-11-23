@@ -56,7 +56,7 @@ driver runs once after every package has been visited (ADR-0010).
 | `internal/pattern/` | Reads the embedded patterns: the card sections, the Go files, lookup by name and by rule. |
 | `internal/ci/` | Tests of tiger's own CI workflow. It holds no non-test code. |
 | `plugin/` + `.custom-gcl.yml` | The golangci-lint module plugin: the same analyzers under `golangci-lint run`, minus what needs the whole module. The [User Guide](Tiger%20User%20Guide.md#running-under-golangci-lint) lists what it skips and the settings it needs. |
-| `assert/` | The always-on assertion package, including `Invariant`/`Violates` generic over `~string`. It is its own module (`assert/go.mod`) with no requirements, so a project that requires it inherits nothing, not even `golang.org/x/tools`. Import it as `github.com/kapetan-io/tiger/assert`. Tiger recognizes it by that import path only. The root module requires it at a pseudo-version, with no `replace` (`go install ...@version` refuses a module that has one), so a change under `assert/` reaches the analyzers only after the root `go.mod` is bumped to a commit that carries it. `go test ./...` at the root skips it, so CI runs its tests inside `assert/`. |
+| `assert/` | The always-on assertion package, including `Invariant`/`Violates` generic over `~string`. It is its own module (`assert/go.mod`) with no requirements, so a project that requires it inherits nothing, not even `golang.org/x/tools`. Import it as `github.com/kapetan-io/tiger/assert`. Tiger recognizes it by that import path only. See "Changing assert" below. |
 | `patterns/` | The patterns collection (ADR-0025): for each gap a rule cannot check, runnable code showing the right shape beside the broken one that passes `tiger check`, a `PATTERN.md` card, and a reviewer checklist. The binary embeds it: `tiger pattern <name>`. `patterns/ledger/` is the invariant vocabulary pattern: an `inv` package declaring IDs (TS-A07), a symmetric encode/decode pair asserting them, and a violation test per invariant (TS-A09). |
 | `config/golangci.yml` | The Stage 0 golangci-lint v2 template with rule-ID comments. `tiger golangci --init` generates the machine-audited baseline from the registry. |
 | `config/tiger.layers.yaml` | The layer file template (TS-X03): copy it next to `go.mod` and give every package an entry listing what it may import beyond the pure standard library. |
@@ -68,3 +68,19 @@ positives, per the specification's adoption ladder) and `tiger check ./...` over
 repository against the committed `tiger.budget.yaml`, and every pattern must pass `tiger check`
 with zero findings. A doc meta-test in `internal/rules` keeps the
 [Rule Reference](Tiger%20Rule%20Reference.md) in lockstep with the registry.
+
+## Changing assert
+
+`assert/` is a nested module, so `./...` at the root skips it. CI runs `go vet`, `go test -race`
+and `tiger check -C assert ./...` inside it, and `TestModuleHasNoRequirements` fails if its `go.mod`
+gains a requirement.
+
+The root module requires it at a pseudo-version with no `replace`, because `go install ...@version`
+refuses a module that has one. Root code and analyzer tests therefore compile against that pinned
+commit, not your working copy. To ship a change under `assert/`, merge it, then at the root run
+`go get github.com/kapetan-io/tiger/assert@<commit on main>` and `go mod tidy`, and commit `go.mod`
+and `go.sum`. The commit must stay reachable on main, so this repository merges with merge commits.
+
+A project still on a Tiger version that holds `assert/` in its root module gets `ambiguous import`
+once it requires the `assert` module. It upgrades `github.com/kapetan-io/tiger` first, to a version
+whose root `go.mod` requires the `assert` module.
