@@ -14,6 +14,21 @@ go install github.com/kapetan-io/tiger/cmd/tiger@latest
 Tiger has no released tags yet, so `@latest` installs the newest commit on `main`. Pin a commit
 (`@<commit sha>`) when a CI job must not change under you.
 
+To call Tiger's `assert` package, require it on its own. It is a separate module that needs nothing
+else, so it adds no dependency on `golang.org/x/tools` to your `go.mod`:
+
+```
+go get github.com/kapetan-io/tiger/assert@<commit sha>
+```
+
+A project that already requires `github.com/kapetan-io/tiger` from before `assert` was split out gets
+`ambiguous import` from that command. If it uses only `assert`, it drops the root module instead:
+
+```
+go get github.com/kapetan-io/tiger@none github.com/kapetan-io/tiger/assert@<commit sha>
+go mod tidy
+```
+
 Tiger reads the export data that the `go` command writes, so install a current Tiger when you upgrade Go.
 A Tiger that predates this note fails every package load under Go 1.27.2 and later with `export data version 5 is
 greater than maximum supported version 4`.

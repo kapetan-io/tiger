@@ -114,14 +114,26 @@ jobs:
           restore-keys: go-test-
       - run: go vet ./...
       - run: go test ./...
-      # assert/ is a nested module, so ./... skips it. These steps test its
-      # working copy; the root compiles against the pseudo-version in go.mod
-      # (docs/Tiger Source Layout.md, "Changing assert").
+      # ./... skips the nested assert module (docs/Tiger Source Layout.md,
+      # "Changing assert").
       - name: assert module
         working-directory: assert
         run: |
           go vet ./...
           go test -race -count=1 ./...
+      # The root compiles against the pinned assert, so a pin that differs from
+      # the tree means every check above ran against older code. A pull request
+      # that edits assert/ is exempt, because its pin can only follow the merge.
+      - name: pinned assert matches assert/
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if [ "$EVENT" = pull_request ] && git diff --name-only "$BASE" HEAD | grep -q '^assert/'; then
+            echo "this pull request edits assert/; bump the pin after it merges"
+            exit 0
+          fi
+          diff -r "$(go list -m -f '{{.Dir}}' github.com/kapetan-io/tiger/assert)" assert
       - uses: actions/cache/save@v4
         with:
           path: |
@@ -189,6 +201,10 @@ jobs:
       - if: steps.golangci.outputs.cache-hit != 'true'
         run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@${{ env.GOLANGCI_LINT_VERSION }}
       - run: golangci-lint run ./...
+      # ./... skips the nested assert module.
+      - name: golangci-lint in assert
+        working-directory: assert
+        run: golangci-lint run ./...
 
   # The tiger repository dogfoods itself: the custom rules run over the tree
   # against the committed tiger.budget.yaml, the built binary is published as

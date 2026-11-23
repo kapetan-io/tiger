@@ -71,16 +71,24 @@ with zero findings. A doc meta-test in `internal/rules` keeps the
 
 ## Changing assert
 
-`assert/` is a nested module, so `./...` at the root skips it. CI runs `go vet`, `go test -race`
-and `tiger check -C assert ./...` inside it, and `TestModuleHasNoRequirements` fails if its `go.mod`
-gains a requirement.
+`assert/` is a nested module, so `./...` at the root skips it, and CI repeats its vet, tests, lint
+and `tiger check` inside it.
 
 The root module requires it at a pseudo-version with no `replace`, because `go install ...@version`
 refuses a module that has one. Root code and analyzer tests therefore compile against that pinned
 commit, not your working copy. To ship a change under `assert/`, merge it, then at the root run
 `go get github.com/kapetan-io/tiger/assert@<commit on main>` and `go mod tidy`, and commit `go.mod`
 and `go.sum`. The commit must stay reachable on main, so this repository merges with merge commits.
+A CI step fails when the pinned tree differs from `assert/`, except on a pull request that edits
+`assert/`.
 
 A project still on a Tiger version that holds `assert/` in its root module gets `ambiguous import`
-once it requires the `assert` module. It upgrades `github.com/kapetan-io/tiger` first, to a version
-whose root `go.mod` requires the `assert` module.
+once it requires the `assert` module. If it uses only `assert`, it drops the root module:
+
+```
+go get github.com/kapetan-io/tiger@none github.com/kapetan-io/tiger/assert@<version>
+go mod tidy
+```
+
+If it also uses the root module, it upgrades `github.com/kapetan-io/tiger` first, to a version whose
+root `go.mod` requires the `assert` module.
