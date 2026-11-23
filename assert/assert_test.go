@@ -4,8 +4,6 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/stretchr/testify/require"
-
 	"github.com/kapetan-io/tiger/assert"
 )
 
@@ -23,7 +21,7 @@ const (
 //
 // Goal: a passing assertion is silent and allocates nothing observable.
 func TestPassingAssertionsAreSilent(t *testing.T) {
-	require.NotPanics(t, func() {
+	notPanics(t, func() {
 		assert.Ok(true, "unused")
 		assert.Implies(false, false, "vacuous when antecedent is false")
 		assert.Implies(false, true, "vacuous when antecedent is false")
@@ -46,9 +44,11 @@ func TestPassingAssertionsAreSilent(t *testing.T) {
 // belongs in a caller-side guard around Fail, because variadic arguments are
 // boxed at the call site before the callee tests the condition.
 func TestPassingOkAllocatesNothing(t *testing.T) {
-	require.Zero(t, testing.AllocsPerRun(100, func() {
+	if got := testing.AllocsPerRun(100, func() {
 		assert.Ok(true, "constant")
-	}))
+	}); got != 0 {
+		t.Fatalf("allocs = %v, want 0", got)
+	}
 }
 
 // TestFailingAssertionMessages exercises every assertion on inputs that
@@ -120,7 +120,7 @@ func TestFailingAssertionMessages(t *testing.T) {
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			require.PanicsWithValue(t, test.want, test.fn)
+			panicsWithValue(t, test.want, test.fn)
 		})
 	}
 }
@@ -129,7 +129,7 @@ func TestFailingAssertionMessages(t *testing.T) {
 //
 // Goal: Violates is silent when fn fails exactly the named invariant.
 func TestViolatesDetectsTheNamedViolation(t *testing.T) {
-	require.NotPanics(t, func() {
+	notPanics(t, func() {
 		assert.Violates(HeaderSize, func() {
 			assert.Invariant(HeaderSize, false)
 		})
@@ -140,7 +140,7 @@ func TestViolatesDetectsTheNamedViolation(t *testing.T) {
 //
 // Goal: an invariant no code violates is itself an assertion failure.
 func TestViolatesFailsWhenNothingIsViolated(t *testing.T) {
-	require.PanicsWithValue(t,
+	panicsWithValue(t,
 		"assertion failed: invariant header-size was not violated",
 		func() {
 			assert.Violates(HeaderSize, func() {})
@@ -152,7 +152,7 @@ func TestViolatesFailsWhenNothingIsViolated(t *testing.T) {
 // Goal: a different invariant's failure passes through untouched.
 func TestViolatesReRaisesOtherInvariants(t *testing.T) {
 	// A different invariant's failure is not ours to swallow.
-	require.PanicsWithValue(t,
+	panicsWithValue(t,
 		"assertion failed: invariant violated: header-checksum",
 		func() {
 			assert.Violates(HeaderSize, func() {
@@ -165,12 +165,33 @@ func TestViolatesReRaisesOtherInvariants(t *testing.T) {
 //
 // Goal: panics that are not the named invariant pass through untouched.
 func TestViolatesReRaisesForeignPanics(t *testing.T) {
-	require.PanicsWithValue(t, "unrelated failure", func() {
+	panicsWithValue(t, "unrelated failure", func() {
 		assert.Violates(HeaderSize, func() { panic("unrelated failure") })
 	})
 
 	// Non-string panic values pass through untouched.
-	require.PanicsWithValue(t, 42, func() {
+	panicsWithValue(t, 42, func() {
 		assert.Violates(HeaderSize, func() { panic(42) })
 	})
+}
+
+// The assert module requires nothing, so its tests cannot use testify.
+func notPanics(t *testing.T, fn func()) {
+	t.Helper()
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("unexpected panic: %v", r)
+		}
+	}()
+	fn()
+}
+
+func panicsWithValue(t *testing.T, want any, fn func()) {
+	t.Helper()
+	defer func() {
+		if got := recover(); got != want {
+			t.Fatalf("panic = %v, want %v", got, want)
+		}
+	}()
+	fn()
 }
