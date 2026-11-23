@@ -305,9 +305,9 @@ jobs:
   # whole-program rules TS-A07 and TS-A09: the plugin runs no
   # finish step (ADR-0010). The fixture fires both under `tiger
   # check`, which a CLI test asserts, so the silence here is meaningful.
-  # The plugin also installs the module's tiger.yaml: a participle.allow
-  # entry scoped to ./scoped silences TS-N14 there and leaves the same
-  # identifier firing in ./outside.
+  # The plugin also installs the module's tiger.yaml: a comments.allow
+  # entry for ./scoped silences TS-L14 there and leaves the same
+  # comments firing in ./outside.
   plugin-smoke:
     needs: changes
     if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.plugin-smoke == 'true') }}
@@ -340,7 +340,6 @@ jobs:
           ! grep -q "TS-V01" findings.txt
           ! grep -q "TS-A07" findings.txt
           ! grep -q "TS-A09" findings.txt
-          grep -q "outside/outside.go.*TS-N14" findings.txt
           grep -q "smoke.go.*TS-L14" findings.txt
           grep -q "outside/outside.go.*TS-L14" findings.txt
           ! grep -q "scoped/scoped.go" findings.txt

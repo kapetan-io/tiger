@@ -36,7 +36,6 @@ import (
 	"github.com/kapetan-io/tiger/internal/analyzers/nogoto"
 	"github.com/kapetan-io/tiger/internal/analyzers/norecursion"
 	"github.com/kapetan-io/tiger/internal/analyzers/paniccheck"
-	"github.com/kapetan-io/tiger/internal/analyzers/participle"
 	"github.com/kapetan-io/tiger/internal/analyzers/poolzero"
 	"github.com/kapetan-io/tiger/internal/analyzers/returnarity"
 	"github.com/kapetan-io/tiger/internal/analyzers/sametypeparams"
@@ -219,11 +218,6 @@ var customRules = []CustomRule{
 		Category: "TS-N08", RuleID: "TS-N08", Analyzer: sametypeparams.Analyzer,
 		Severity: SeverityBlocking,
 		Title:    "no bool parameters; use a named type",
-	},
-	{
-		Category: "TS-N14", RuleID: "TS-N14", Analyzer: participle.Analyzer,
-		Severity: SeverityBlocking,
-		Title:    "exported identifiers do not end in a present participle",
 	},
 	{
 		Category: "TS-L10", RuleID: "TS-L10", Analyzer: deferdistance.Analyzer,

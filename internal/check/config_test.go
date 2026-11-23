@@ -23,28 +23,32 @@ func configTree(t *testing.T, entries string) string {
 
 // TestConfigScopedEntryAppliesToItsPackages covers acceptance criterion 12.
 //
-// Goal: a participle.allow entry scoped to the internal/auth subtree
-// silences TS-N14 on KeySigning there and the same identifier still fires
-// in internal/api.
+// Goal: an ioinloop.packages entry scoped to the internal/api subtree makes
+// the per-item storage call a TS-M10 finding there, and the same call in
+// internal/auth stays silent.
 func TestConfigScopedEntryAppliesToItsPackages(t *testing.T) {
 	got := run(t, "check", "-C", filepath.Join("testdata", "fixtures", "config", "scoped"), "./...")
 	assert.Equal(t, command.ExitFindings, got.code)
 	assert.Empty(t, got.stderr)
-	assert.Contains(t, got.stdout, "internal/api/api.go:6:6: TS-N14: \"KeySigning\"")
+	assert.Contains(t, got.stdout, "internal/api/api.go:9:13: TS-M10")
 	assert.NotContains(t, got.stdout, "internal/auth")
 	assert.Contains(t, got.stdout, "tiger: 1 blocking\n")
 }
 
 // TestConfigUnscopedEntryAppliesToTheModule covers acceptance criterion 13.
 //
-// Goal: an entry with no packages silences the identifier in every package.
+// Goal: an entry with no packages makes the storage call a finding in every
+// package.
 func TestConfigUnscopedEntryAppliesToTheModule(t *testing.T) {
-	dir := configTree(t, "version: 1\nparticiple:\n  allow:\n    - value: signing\n"+
-		"      reason: KeySigning is a credential record\n")
+	dir := configTree(t, "version: 1\nioinloop:\n  packages:\n"+
+		"    - value: fixture.example/scoped/storage\n"+
+		"      reason: every Save is a network round trip\n")
 	got := run(t, "check", "-C", dir, "./...")
-	assert.Equal(t, command.ExitClean, got.code)
-	assert.Empty(t, got.stdout)
+	assert.Equal(t, command.ExitFindings, got.code)
 	assert.Empty(t, got.stderr)
+	assert.Contains(t, got.stdout, "internal/api/api.go:9:13: TS-M10")
+	assert.Contains(t, got.stdout, "internal/auth/auth.go:9:13: TS-M10")
+	assert.Contains(t, got.stdout, "tiger: 2 blocking\n")
 }
 
 // TestConfigRejectsInvalidEntries covers acceptance criteria 14 and 15 and
@@ -61,15 +65,17 @@ func TestConfigRejectsInvalidEntries(t *testing.T) {
 	}{
 		{
 			name: "MissingReason",
-			entries: "version: 1\nparticiple:\n  allow:\n    - value: signing\n" +
+			entries: "version: 1\nioinloop:\n  packages:\n" +
+				"    - value: fixture.example/scoped/storage\n" +
 				"      packages: [internal/auth/...]\n",
-			wantErrs: []string{"participle", "allow", "signing", "reason"},
+			wantErrs: []string{"ioinloop", "packages", "fixture.example/scoped/storage", "reason"},
 		},
 		{
 			name: "EmptyReason",
-			entries: "version: 1\nparticiple:\n  allow:\n    - value: signing\n" +
+			entries: "version: 1\nioinloop:\n  packages:\n" +
+				"    - value: fixture.example/scoped/storage\n" +
 				"      reason: \"\"\n",
-			wantErrs: []string{"participle", "allow", "signing", "reason"},
+			wantErrs: []string{"ioinloop", "packages", "fixture.example/scoped/storage", "reason"},
 		},
 		{
 			name:     "UnknownAnalyzer",
@@ -77,20 +83,27 @@ func TestConfigRejectsInvalidEntries(t *testing.T) {
 			wantErrs: []string{"frobnicate"},
 		},
 		{
+			name: "RemovedAnalyzer",
+			entries: "version: 1\nparticiple:\n  allow:\n    - value: draining\n" +
+				"      reason: a partition state\n",
+			wantErrs: []string{"participle"},
+		},
+		{
 			name:     "UnknownKey",
-			entries:  "version: 1\nparticiple:\n  frob:\n    - value: x\n      reason: y\n",
-			wantErrs: []string{"participle", "frob"},
+			entries:  "version: 1\nioinloop:\n  frob:\n    - value: x\n      reason: y\n",
+			wantErrs: []string{"ioinloop", "frob"},
 		},
 		{
 			name:     "EmptyValue",
-			entries:  "version: 1\nparticiple:\n  allow:\n    - value: \"\"\n      reason: y\n",
-			wantErrs: []string{"participle", "allow", "value"},
+			entries:  "version: 1\nioinloop:\n  packages:\n    - value: \"\"\n      reason: y\n",
+			wantErrs: []string{"ioinloop", "packages", "value"},
 		},
 		{
 			name: "MalformedPattern",
-			entries: "version: 1\nparticiple:\n  allow:\n    - value: signing\n" +
+			entries: "version: 1\nioinloop:\n  packages:\n" +
+				"    - value: fixture.example/scoped/storage\n" +
 				"      reason: y\n      packages: [../escape]\n",
-			wantErrs: []string{"participle", "allow", "../escape"},
+			wantErrs: []string{"ioinloop", "packages", "../escape"},
 		},
 		{
 			name:     "UnknownVersion",
@@ -123,10 +136,10 @@ func TestConfigRejectsInvalidEntries(t *testing.T) {
 // exits 2 naming the flag, before any analysis runs.
 func TestConfigRejectsFlagOverride(t *testing.T) {
 	got := run(t, "check", "-C", filepath.Join("testdata", "fixtures", "config", "scoped"),
-		"-participle.allow=x", "./...")
+		"-ioinloop.packages=x", "./...")
 	assert.Equal(t, command.ExitOperational, got.code)
 	assert.Empty(t, got.stdout)
-	assert.Equal(t, "tiger check: -participle.allow is set on the command line but "+
+	assert.Equal(t, "tiger check: -ioinloop.packages is set on the command line but "+
 		"tiger.yaml is the reviewed source — move the value into tiger.yaml\n", got.stderr)
 }
 
