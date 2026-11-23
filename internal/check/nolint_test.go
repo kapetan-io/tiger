@@ -250,7 +250,9 @@ func TestNolintBanSkipsGeneratedFiles(t *testing.T) {
 // and the nolint block comes after or before the analyzer block alike.
 func TestNolintBlockLoadsAlongsideAnalyzerBlocks(t *testing.T) {
 	source := "package tree\n\nimport \"fixture.example/tree/storage\"\n\nvar x = 1 //nolint\n\n" +
-		"func SaveAll(items []string) error {\n\tfor _, item := range items {\n\t\tif err := storage.Save(item); err != nil {\n\t\t\treturn err\n\t\t}\n\t}\n\treturn nil\n}\n"
+		"func SaveAll(items []string) error {\n\tfor _, item := range items {\n" +
+		"\t\tif err := storage.Save(item); err != nil {\n\t\t\treturn err\n\t\t}\n\t}\n" +
+		"\treturn nil\n}\n"
 	store := "package storage\n\nfunc Save(item string) error { return nil }\n"
 	analyzer := "ioinloop:\n  packages:\n    - value: fixture.example/tree/storage\n" +
 		"      reason: every call is a network round trip\n"

@@ -65,13 +65,15 @@ func TestConfigRejectsInvalidEntries(t *testing.T) {
 	}{
 		{
 			name: "MissingReason",
-			entries: "version: 1\nioinloop:\n  packages:\n    - value: fixture.example/scoped/storage\n" +
+			entries: "version: 1\nioinloop:\n  packages:\n" +
+				"    - value: fixture.example/scoped/storage\n" +
 				"      packages: [internal/auth/...]\n",
 			wantErrs: []string{"ioinloop", "packages", "fixture.example/scoped/storage", "reason"},
 		},
 		{
 			name: "EmptyReason",
-			entries: "version: 1\nioinloop:\n  packages:\n    - value: fixture.example/scoped/storage\n" +
+			entries: "version: 1\nioinloop:\n  packages:\n" +
+				"    - value: fixture.example/scoped/storage\n" +
 				"      reason: \"\"\n",
 			wantErrs: []string{"ioinloop", "packages", "fixture.example/scoped/storage", "reason"},
 		},
@@ -81,8 +83,9 @@ func TestConfigRejectsInvalidEntries(t *testing.T) {
 			wantErrs: []string{"frobnicate"},
 		},
 		{
-			name:     "RemovedAnalyzer",
-			entries:  "version: 1\nparticiple:\n  allow:\n    - value: draining\n      reason: a partition state\n",
+			name: "RemovedAnalyzer",
+			entries: "version: 1\nparticiple:\n  allow:\n    - value: draining\n" +
+				"      reason: a partition state\n",
 			wantErrs: []string{"participle"},
 		},
 		{
@@ -97,7 +100,8 @@ func TestConfigRejectsInvalidEntries(t *testing.T) {
 		},
 		{
 			name: "MalformedPattern",
-			entries: "version: 1\nioinloop:\n  packages:\n    - value: fixture.example/scoped/storage\n" +
+			entries: "version: 1\nioinloop:\n  packages:\n" +
+				"    - value: fixture.example/scoped/storage\n" +
 				"      reason: y\n      packages: [../escape]\n",
 			wantErrs: []string{"ioinloop", "packages", "../escape"},
 		},
