@@ -40,7 +40,7 @@ jobs:
           # piece is one anchored alternative, joined with | below. Go source
           # and module files, the embedded patterns/ tree and this workflow
           # feed every job.
-          every='\.go$|^go\.(mod|sum)$|^patterns/|^\.github/workflows/ci\.yml$'
+          every='\.go$|^(assert/)?go\.(mod|sum)$|^patterns/|^\.github/workflows/ci\.yml$'
           fixtures='(^|/)testdata/'
           golangci='^\.golangci\.yml$|^\.custom-gcl\.yml$'
           tiger='^tiger\.'
@@ -114,6 +114,26 @@ jobs:
           restore-keys: go-test-
       - run: go vet ./...
       - run: go test ./...
+      # ./... skips the nested assert module (docs/Tiger Source Layout.md,
+      # "Changing assert").
+      - name: assert module
+        working-directory: assert
+        run: |
+          go vet ./...
+          go test -race -count=1 ./...
+      # The root compiles against the pinned assert, so a pin that differs from
+      # the tree means every check above ran against older code. A pull request
+      # that edits assert/ is exempt, because its pin can only follow the merge.
+      - name: pinned assert matches assert/
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if [ "$EVENT" = pull_request ] && git diff --name-only "$BASE" HEAD | grep -q '^assert/'; then
+            echo "this pull request edits assert/; bump the pin after it merges"
+            exit 0
+          fi
+          diff -r "$(go list -m -f '{{.Dir}}' github.com/kapetan-io/tiger/assert)" assert
       - uses: actions/cache/save@v4
         with:
           path: |
@@ -134,6 +154,9 @@ jobs:
         with:
           go-version: '1.27'
       - run: go test ./...
+      - name: assert module
+        working-directory: assert
+        run: go test -count=1 ./...
 
   # ADR-0025: a pattern is only worth shipping while it stays true. Every
   # pattern passes tiger check with zero findings and its tests under -race.
@@ -178,6 +201,10 @@ jobs:
       - if: steps.golangci.outputs.cache-hit != 'true'
         run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@${{ env.GOLANGCI_LINT_VERSION }}
       - run: golangci-lint run ./...
+      # ./... skips the nested assert module.
+      - name: golangci-lint in assert
+        working-directory: assert
+        run: golangci-lint run ./...
 
   # The tiger repository dogfoods itself: the custom rules run over the tree
   # against the committed tiger.budget.yaml, the built binary is published as
@@ -208,6 +235,9 @@ jobs:
           echo "code=$?" >> "$GITHUB_OUTPUT"
           set -e
           cat report.txt
+      # ./... at the root skips the nested assert module, so check it apart.
+      - name: tiger check on the assert module
+        run: ./bin/tiger check -C assert ./...
       - name: report summarizer matches its golden
         run: |
           awk -f .github/report.awk .github/testdata/report.txt > got.md
