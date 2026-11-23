@@ -14,16 +14,17 @@ be a thing, not an activity: `Pipeline` composes into `pipelineMax`, and `Prepar
 
 A suffix cannot tell an activity from a state or an ordinary noun. In trials on two real Go codebases,
 nearly every finding was a state or a noun, such as `Draining`, a state the codebase's own glossary
-defines, and `Keyring`. The rule's only remedy, renaming to a noun, breaks a name the domain already uses, and its
-only escape is a growing list of exempt words.
+defines, and `Keyring`. Its remedy, renaming to a noun, breaks a name the domain already uses, and its escape is a
+growing list of exempt words.
 
 ## Decision
 
-We will remove TS-N14 and never reuse its ID. TS-N09, "Prefer nouns to participles", stays as a maxim
+We will remove TS-N14 end to end and never reuse its ID. TS-N09, "Prefer nouns to participles", stays as a maxim
 enforced by review.
 
 ## Consequences
 
 - No agent is pushed to rename a domain state, and no project keeps a config entry to silence the rule.
+- A config that still has an entry for the removed rule fails the run.
 - A name that is a true activity is no longer reported by the tool, so only review can catch it.
 - A future rule that judges a name by its suffix has the same blind spot.
