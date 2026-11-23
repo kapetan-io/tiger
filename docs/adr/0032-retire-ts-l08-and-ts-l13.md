@@ -26,7 +26,7 @@ Both rules are removed under [ADR-0012](0012-a-rule-either-blocks-or-does-not-ex
 Specification's "Layout and comments" section and every reference to them. Their traceability rows
 stay as Retired rows, and their IDs are listed under "Retiring a rule" and are never reused.
 
-The `fmt.Print` ban in `config/golangci.yml` cited TS-L08. No rule covers structured logging, so the
+The `fmt.Print` ban in the golangci-lint configuration tiger ships cited TS-L08. No rule covers structured logging, so the
 ban stays and its message drops the ID.
 
 ## Consequences

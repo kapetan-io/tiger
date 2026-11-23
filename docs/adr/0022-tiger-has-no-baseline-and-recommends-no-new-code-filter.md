@@ -17,8 +17,8 @@ ADR-0011 refused the same mechanism for advisory findings, because a file that r
 the cheapest path to green an agent can find. The argument holds for blocking findings too: a
 baseline gives an agent a command that turns any regression green.
 
-`config/golangci.yml` tells adopters to run with `--new-from-rev=origin/main`, which is a baseline
-by another route. `experiments/newfromrev` shows what that filter does to tiger's findings. With
+The golangci-lint configuration tiger ships tells adopters to run with `--new-from-rev=origin/main`, which is a baseline
+by another route. Tiger's newfromrev experiment, which runs the plugin and `tiger check` over a two-commit repository, shows what that filter does to tiger's findings. With
 `--new-from-rev=HEAD~1` the plugin drops the finding on the line the branch didn't touch and prints
 nothing about it. With `--new-from-rev=HEAD` a repository with two blocking findings passes. Run
 through a symlinked path, it drops every finding, including the new one. `tiger check` reads no git
@@ -26,7 +26,7 @@ history and reports both.
 
 ## Decision
 
-Tiger gets no baseline mechanism and does not recommend one. `config/golangci.yml` drops its line
+Tiger gets no baseline mechanism and does not recommend one. The golangci-lint configuration it ships drops its line
 telling adopters to use `--new-from-rev=origin/main`.
 
 An adopter who chooses golangci-lint's own new-code filters (`--new-from-rev`, `new-from-merge-base`,

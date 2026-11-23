@@ -29,7 +29,7 @@ for i := range requests {
 ```
 
 ```
-service/common_test.go:626:3: TS-C09: this loop starts a goroutine per item, so the goroutines react to each item instead of working at their own pace — append the items to a bounded queue and drain it from one supervisor goroutine
+common_test.go:626:3: TS-C09: this loop starts a goroutine per item, so the goroutines react to each item instead of working at their own pace — append the items to a bounded queue and drain it from one supervisor goroutine
 ```
 
 The test exists to put N concurrent requests on the server at once. A single-worker queue would

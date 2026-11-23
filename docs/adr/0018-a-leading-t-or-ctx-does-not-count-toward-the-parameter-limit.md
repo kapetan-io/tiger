@@ -20,7 +20,7 @@ func assertPartition(t *testing.T, ctx context.Context, c *querator.Client, name
 ```
 
 ```
-service/partition_test.go:503:1: TS-N07: this function takes 5 parameters — group the related ones into an options struct
+partition_test.go:503:1: TS-N07: this function takes 5 parameters — group the related ones into an options struct
 ```
 
 The two leading parameters are Go convention, and nothing after them can be swapped with them. They

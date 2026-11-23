@@ -5,6 +5,10 @@ Date: 2026-08-28
 ## Status
 
 Accepted
+Amended by ADR 0024
+Amended by ADR 0026
+
+## Related decisions
 
 Amended by [ADR-0024](0024-packages-declare-no-restrictions.md), which removes TS-P02, and by
 [ADR-0026](0026-tiger-changed-replaces-effect-and-frame-pins.md), which removes effect sets and
@@ -43,7 +47,7 @@ drop the claim.
 
 Advisory stays exactly as the specification defines it — the accounting channel ADR-0006 and
 TS-D06 need — and is not a home for rules that would otherwise be warnings. Ratchet-counted
-accounting is ENG-153's.
+accounting is deferred to separate work on tiger's supporting tooling.
 
 ## Consequences
 

@@ -5,6 +5,9 @@ Date: 2026-10-12
 ## Status
 
 Accepted
+Amends ADR 0004
+
+## Related decisions
 
 Supersedes the loop-bound half of [ADR-0004](0004-batched-waives-the-loop-bound-on-cursor-shaped-loops.md).
 `//tiger:batched` remains the waiver for TS-M10.
@@ -26,7 +29,7 @@ first.
 Tiger never reads a `//tiger:batched` reason. A cursor that returns 50 rows and one that never runs out get the same verdict
 when they carry the same reason. The second never returns. A `//tiger:variant` is the opposite case: tiger proves it, and every
 false variant is blocked. ADR-0004 also left TS-V01 firing on loops TS-S02
-waived, the clash tracked as ENG-183.
+waived, so the two rules disagreed about the same loop.
 
 A limit restated in the header holds whatever the store does:
 
@@ -64,8 +67,8 @@ pass so the scan can be cancelled.
 
 ## Consequences
 
-- A loop's bound is in code tiger checks, not in a reason it takes on trust. ENG-183 closes,
-  because no waiver is left for TS-V01 to disagree with.
+- A loop's bound is in code tiger checks, not in a reason it takes on trust. TS-V01 and TS-S02
+  no longer disagree, because no waiver is left for TS-V01 to disagree with.
 - Tiger keeps bounding how many times a loop runs, not only how much it returns. A filtered list
   can return `ErrScanLimit` on a sparse table, and callers have to handle it.
 - The five whole-partition scans in querator stop hiding behind "the table size is the bound" and
@@ -74,5 +77,5 @@ pass so the scan can be cancelled.
   and knowing each driver's API. A loop limit smaller than the query's drops rows, which is a
   correctness bug for tests and review, not a loop that never ends.
 - Tiger cannot see the short page in the shape that counts every row read: its only other exit
-  drains the cursor, so the counter reads as a page size. The "filtered page" pattern
-  (`patterns/filtered-page`) covers that gap.
+  drains the cursor, so the counter reads as a page size. The "filtered page" pattern,
+  which `tiger pattern filtered-page` prints, covers that gap.

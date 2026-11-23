@@ -48,8 +48,8 @@ The edit is an edit: a comment to add, a call to remove, a name to change. Ratio
 unless the edit would look arbitrary without it. A body names exactly one rule code, in the
 prefix. A body is one line, at most 240 characters on corpus output, 160 by preference.
 
-The specification's "Diagnostics" section is the operative checklist. The corpus meta-test in
-`internal/rules` and a fixture test in `internal/golangci` enforce the mechanical half on every
+The specification's "Diagnostics" section is the operative checklist. The meta-test over the rule corpus
+and a fixture test of `tiger golangci`'s findings enforce the mechanical half on every
 `go test`: no second rule code, no newline, the length cap, the banned list, and `//tiger:`
 wherever a directive verb appears. A blind reader given the message text alone checks the rest
 before a message ships.
@@ -72,5 +72,5 @@ before a message ships.
 - Every `// want` regex in the corpus, every exact-string CLI test, and the CI report fixtures
   moved with the wording, in the same change. A future rewording pays the same cost, which is
   the point: the corpus is each rule's executable specification, and the message is part of it.
-- ENG-154's reference documentation quotes these messages and adds the reasoning the messages
+- Tiger's rule reference documentation quotes these messages and adds the reasoning the messages
   no longer carry. The why lives there and in the specification, not on the finding line.

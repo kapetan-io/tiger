@@ -1,0 +1,17 @@
+name: changes-existing-tests
+
+# Labels a pull request changes-existing-tests while it modifies or deletes a Go test
+# function that existed at the merge base, and removes the label once it doesn't, so the
+# change gets extra review. The labeler runs from dispatch's shared workflow, which needs
+# pull-requests: write. That grant cannot create a label, so the changes-existing-tests label
+# must already exist in this repo. Edits are included so a changed base branch is checked again.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+
+jobs:
+  changes-existing-tests:
+    permissions:
+      contents: read
+      pull-requests: write
+    uses: kapetan-io/dispatch/.github/workflows/changes-existing-tests.yml@main

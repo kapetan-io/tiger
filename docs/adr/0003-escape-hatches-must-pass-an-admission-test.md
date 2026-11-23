@@ -5,6 +5,10 @@ Date: 2026-08-12
 ## Status
 
 Accepted
+Amended by ADR 0014
+Amended by ADR 0023
+
+## Related decisions
 
 Amended by [ADR-0014](0014-a-store-loop-states-its-limit-instead-of-batched.md), which removes
 `//tiger:batched` as a loop-bound waiver, and by

@@ -5,6 +5,12 @@ Date: 2026-10-12
 ## Status
 
 Accepted
+Amends ADR 0007
+Amends ADR 0008
+Amends ADR 0012
+Amended by ADR 0030
+
+## Related decisions
 
 Amended by [ADR-0030](0030-tiger-changed-reports-every-added-and-removed-call.md): the report lists
 every call added and removed by function, and the syscall-reach filter applies only to packages
@@ -64,13 +70,13 @@ functions it calls now that it did not call at the base revision.
 
 The report is for review, human or agent. It is not a rule, so ADR-0012 does not apply to it.
 `//tiger:variant` stays. `//tiger:requires` and `//tiger:ensures` are not part of this decision.
-ENG-203 settles the output format.
+The output format is set by the `tiger changed` output format specification in tiger's docs.
 
 ## Consequences
 
 - A reviewer sees which struct started calling something new, and there is no annotation an agent
   can edit to hide it. A prototype of the `tiger changed` report printed 5
-  lines over 10 querator commits, 2 of them real: commit aeb014c, where the daemon starts
+  lines over 10 querator commits, 2 of them real: the querator change where the daemon starts
   constructing the Postgres stores. On git-server's head commit, the mixed filter and skipping
   generated files bring 173 lines down to 36 hand-written ones.
 - Nothing blocks. The report informs review and does not fail a build.

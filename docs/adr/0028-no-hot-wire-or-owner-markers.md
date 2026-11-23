@@ -23,8 +23,8 @@ TS-S17 also used `//tiger:wire` to find types whose size assertions it checks, a
 paths.
 
 None of the seven rules is built. The parser accepts the three verbs, but no analyzer reads them,
-which is why ENG-191 and ENG-178 item 4 disposed of the
-verbs. The hot-path rules also leaned on the effects analyzer that ADR-0026 removes. Keeping the
+which is why a due-diligence review of tiger's approach and the work to close the uncounted
+ways a finding could be silenced disposed of the verbs. The hot-path rules also leaned on the effects analyzer that ADR-0026 removes. Keeping the
 rules as unbuilt goals would keep a set of features in the specification that are not part of what
 tiger is.
 

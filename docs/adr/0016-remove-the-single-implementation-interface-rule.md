@@ -23,7 +23,7 @@ I2 ("graph queries never change refs") is enforced by the Go compiler. Only the 
 implements `RefReader`, so TS-X01 fires:
 
 ```
-services/git-server/internal/graphapi/graphapi.go:32:6: TS-X01: interface RefReader has one implementation, memory.refStore — use memory.refStore directly and delete the interface, or add a second implementation outside _test.go files
+graphapi.go:32:6: TS-X01: interface RefReader has one implementation, memory.refStore — use memory.refStore directly and delete the interface, or add a second implementation outside _test.go files
 ```
 
 Following that message puts `CompareAndSwap` in reach of every graph query. The other 14

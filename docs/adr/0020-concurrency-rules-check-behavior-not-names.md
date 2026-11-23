@@ -31,7 +31,9 @@ but rejects querator's request-carrying `shutdownCh` and the best shutdown desig
 only at runtime with goleak missed querator's unwaited daemon in 50 of 50 runs, because the
 goroutine exits a moment after `Shutdown`, before goleak looks.
 
-Five shutdown designs were then built on querator's main and run against the ENG-160 race test and
+Five shutdown designs were then built on querator's main and run against querator's shutdown race test, in which `Shutdown` hangs
+until its context expires because a request loop that is mid-request exits on the shutdown flag
+without receiving the shutdown request, and
 five edge cases: the caller's ctx expiring while the loop is busy, a retry after that, two concurrent
 `Shutdown` calls, a pause queued before shutdown, and a cold request queued before shutdown. Only the
 `net/http` shape, with every waiter also selecting on `done`, passed all of them. Strict, exact-shape
@@ -46,7 +48,8 @@ docs say not to store a context in a struct.
 
 None of the static designs catch the four querator bugs the edge tests found: an abandoned shutdown
 when the caller's ctx expires, a second `Shutdown` returning early, a panic on a queued cold request,
-and a cold request never answered. Only running the shutdown paths does. They are filed as ENG-196.
+and a cold request never answered. Only running the shutdown paths does. They are filed together as one
+querator bug.
 
 ## Decision
 
@@ -78,12 +81,12 @@ above.
   `wg.Go` with no `Wait` no longer passes TS-C02.
 - Correct shutdown code, including querator's best design, passes. The shape every message points to
   is the one Go's own `net/http` uses.
-- The one-exit rule flags the shape behind ENG-160. It also flags the correct handshake design, which
+- The one-exit rule flags the shape behind querator's shutdown race, a loop that exits on a flag outside its stop case. It also flags the correct handshake design, which
   pushes agents toward closing a stop channel; its message names the `net/http` shape as the fix.
 - TS-S03 and TS-C05 still miss a `close` in dead code and a `Wait` in a method nobody calls. The
   goleak harness and the shutdown edge tests are the runtime backstop, and goleak alone misses a
   goroutine that exits just after `Shutdown`, so the static checks stay.
 - Whether every waiter also selects on `done` is beyond any of these rules. The shutdown-loop
   pattern covers it.
-- This revives ENG-177. Each fixture above becomes
-  an analyzer test case, and both codebases are rerun.
+- This revives earlier work on making the concurrency rules check behavior, not names. Each
+  fixture above becomes an analyzer test case, and both codebases are rerun.

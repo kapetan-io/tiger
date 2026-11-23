@@ -5,8 +5,7 @@ Date: 2026-10-15
 ## Status
 
 Accepted
-
-Amends [ADR-0026](0026-tiger-changed-replaces-effect-and-frame-pins.md).
+Amends ADR 0026
 
 ## Context
 
@@ -56,8 +55,8 @@ merge base of `<base>` and HEAD and the working tree.
   structure and length cap do not apply, because the report is not a diagnostic.
 - `tiger changed` filters no `tiger check` findings and does not replace it. CI keeps running
   `tiger check` on the whole tree (ADR-0022).
-- The output format is `format.md` on ENG-203, as amended by the blueprint "tiger changed output
-  format".
+- The output format is the `tiger changed` output format specification in tiger's docs, which
+  includes the amendments for partial loads and head naming.
 
 ## Consequences
 

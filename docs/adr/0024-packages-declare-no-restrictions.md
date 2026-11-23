@@ -5,6 +5,10 @@ Date: 2026-10-12
 ## Status
 
 Accepted
+Amends ADR 0012
+Amended by ADR 0029
+
+## Related decisions
 
 Supersedes the TS-P02 paragraph of [ADR-0012](0012-a-rule-either-blocks-or-does-not-exist.md),
 since TS-P02 is removed.
@@ -53,9 +57,9 @@ layer file.
 - A dependent can no longer check a claim that a dependency avoids reflection or interface
   dispatch. No codebase made such a claim.
 - The TS-X03 layer file this decision relies on for `imports(...)` is not built. TS-X03 exists only
-  in the specification, and depguard cannot fail a package that no rule covers. Until ENG-328
-  builds it, layering inside a module is enforced only by the hand-written depguard rules in
-  `config/golangci.yml`.
+  in the specification, and depguard cannot fail a package that no rule covers. Until the layer file
+  is built, layering inside a module is enforced only by the hand-written depguard rules in the
+  golangci-lint configuration tiger ships.
 - Effect pins lose their closed-dispatch requirement here. ADR-0026 removes effect and frame pins
   entirely.
 - The specification drops the directive and the four rules.
