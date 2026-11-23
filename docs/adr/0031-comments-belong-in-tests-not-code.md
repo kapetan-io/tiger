@@ -5,9 +5,9 @@ Date: 2026-10-20
 ## Status
 
 Accepted
-Amends ADR 0017
+Supersedes in part ADR 0017
 Amends ADR 0022
-Amends ADR 0023
+Supersedes in part ADR 0023
 
 ## Related decisions
 
