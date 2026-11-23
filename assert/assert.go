@@ -12,6 +12,9 @@
 // Import it as github.com/kapetan-io/tiger/assert. Tiger recognizes the
 // package by that import path alone, so a copy under another path is
 // treated as an ordinary package.
+//
+// The package is its own module and requires nothing, so a project that
+// requires it takes on no analyzer dependencies.
 package assert
 
 import (

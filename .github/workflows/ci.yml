@@ -40,7 +40,7 @@ jobs:
           # piece is one anchored alternative, joined with | below. Go source
           # and module files, the embedded patterns/ tree and this workflow
           # feed every job.
-          every='\.go$|^go\.(mod|sum)$|^patterns/|^\.github/workflows/ci\.yml$'
+          every='\.go$|^(assert/)?go\.(mod|sum)$|^patterns/|^\.github/workflows/ci\.yml$'
           fixtures='(^|/)testdata/'
           golangci='^\.golangci\.yml$|^\.custom-gcl\.yml$'
           tiger='^tiger\.'
@@ -114,6 +114,13 @@ jobs:
           restore-keys: go-test-
       - run: go vet ./...
       - run: go test ./...
+      # assert/ is its own module, so ./... above skips it. Its go.mod
+      # requires nothing, and its test fails if that changes.
+      - name: assert module
+        working-directory: assert
+        run: |
+          go vet ./...
+          go test -race -count=1 ./...
       - uses: actions/cache/save@v4
         with:
           path: |
@@ -134,6 +141,9 @@ jobs:
         with:
           go-version: '1.27'
       - run: go test ./...
+      - name: assert module
+        working-directory: assert
+        run: go test -count=1 ./...
 
   # ADR-0025: a pattern is only worth shipping while it stays true. Every
   # pattern passes tiger check with zero findings and its tests under -race.
@@ -208,6 +218,8 @@ jobs:
           echo "code=$?" >> "$GITHUB_OUTPUT"
           set -e
           cat report.txt
+      - name: tiger check on the assert module
+        run: ./bin/tiger check -C assert ./...
       - name: report summarizer matches its golden
         run: |
           awk -f .github/report.awk .github/testdata/report.txt > got.md
