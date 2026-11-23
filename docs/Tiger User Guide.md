@@ -230,15 +230,11 @@ is an error, because the committed file is the reviewed source.
 
 ```yaml
 version: 1
-participle:
-  allow:
-    - value: binding
-      reason: RoleBinding is an association record, not an action
-      packages: [internal/auth/...]
 ioinloop:
   packages:
     - value: github.com/jackc/pgx/v5
       reason: every call is a network round trip
+      packages: [internal/store/...]
 comments:
   allow:
     - value: internal/legacy

@@ -1293,7 +1293,9 @@ Enforce. `sametypeparams` (custom).
 **`TS-N09` Prefer nouns to participles.**
 Why. `replica.pipeline` can be a heading in a design doc. `replica.preparing` must be rephrased first,
 and derived names like `pipelineMax` compose where `preparingMax` does not.
-Enforce. via `TS-N14`.
+Enforce. `review`. A trailing `-ing` is a suffix check, and the words it catches are mostly states and
+ordinary nouns such as `Draining` and `Keyring`, so no rule can tell the activity from the noun.
+*(Amended 2026-11-22: the `participle` check, `TS-N14`, is removed, ADR-0033.)*
 
 **`TS-N10` No stutter, no context-dependent overloading.**
 Why. `replica.ReplicaState` reads badly. Worse, reusing a term that already means something else in
@@ -1306,11 +1308,6 @@ comments that the production-code comment ban forbids (ADR-0031).
 Why. Binary floating point cannot represent a tenth.
 Enforce. `nofloat` (custom), applied to the packages a `tiger.yaml` entry lists for it.
 *(Amended 2026-10-12: it was scoped by `TS-P01`, which ADR-0024 removed.)*
-
-**`TS-N14` Exported identifiers do not end in a present participle.**
-Why. Enforces `TS-N09`. A trailing `-ing` is a suffix check, so nouns-over-participles turns out to be
-almost free.
-Enforce. `participle` (custom), allowlisting genuine nouns like `Encoding` and `Logging`.
 
 ## Layout and comments
 
@@ -1669,7 +1666,7 @@ that cannot fill the third column does not go in.
 | TS-N09 | Prefer nouns to participles | B3, B0 | Mixed |
 | TS-N10 | No stutter, no context-dependent overloading | B0 | Coord |
 | TS-N11 | Money and other exact quantities are integers, never fl... | B2 | Sub |
-| TS-N14 | Exported identifiers do not end in a present participle | B3, B0 | Mixed |
+| TS-N14 | Retired, the participle check is removed and TS-N09 is review (ADR-0033) | — | Retired |
 | TS-L01 | gofmt is not negotiable. gofumpt on top | B0 | Coord |
 | TS-L02 | Lines at most 100 columns, tab counted as 4 | B0, B3 | Coord |
 | TS-L03 | Declaration order is const, var, type, func | B0 | Coord |
@@ -1708,25 +1705,25 @@ that cannot fill the third column does not go in.
 | Benefit | Rules citing it |
 | --- | --- |
 | B2 Short defect distance | 37 |
-| B3 Local reasoning | 33 |
+| B3 Local reasoning | 32 |
 | B7 Change safety | 24 |
-| B0 Uniformity | 21 |
+| B0 Uniformity | 20 |
 | B1 Bounded execution | 17 |
 | B4 Determinism | 18 |
 | B6 Predictable cost | 16 |
 | B5 Defect discovery | 15 |
 | B8 Blast radius | 11 |
 
-Of 144 rule IDs, 119 are live: 98 substantive, 12 substantive in a conventional form, and 9 pure
-convention. The other 25 are retired (22) or deleted (3). Short defect distance and local reasoning
+Of 144 rule IDs, 118 are live: 98 substantive, 11 substantive in a conventional form, and 9 pure
+convention. The other 26 are retired (23) or deleted (3). Short defect distance and local reasoning
 carry the document between them, which is a fair description of what TigerStyle is once the poetry
-is stripped off. B0 is cited by 21 rules, so roughly one rule in six exists for agreement rather
+is stripped off. B0 is cited by 20 rules, so roughly one rule in six exists for agreement rather
 than correctness. Better to know that number than to pretend it is zero.
 
 ## The nine coordination-only rules
 
 `TS-N01`, `TS-N10`, `TS-L01`, `TS-L02`, `TS-L03`, `TS-L04`, `TS-L05`, `TS-L06`, `TS-L11`, plus the
-formatting halves of the 12 `Mixed` rules.
+formatting halves of the 11 `Mixed` rules.
 
 These are conventions. Their entire value is that everyone follows them, they are enforced by tooling
 so nobody has to think about them, and arguing about them is the most expensive thing you can do with
@@ -1804,7 +1801,6 @@ changes what it checks), or **not built**.
 | `quantitycast` | TS-Q01, Q03 | `types`, forbid direct conversions outside the quantity package | not built |
 | `domaintypes` | TS-Q02 | `types`, exported signatures may not take bare primitives | not built |
 | `sametypeparams` | TS-N07, N08 | `types`, adjacent identical types, bool params, arity; a leading `t` or `ctx` is not counted | built |
-| `participle` | TS-N14 | Suffix check plus allowlist | built |
 | `unitsuffix` | TS-N03 | AST plus token dictionary and a position rule | not built |
 | `noabbrev` | TS-N02 | AST plus dictionary; the dictionary is the work | not built |
 | `escapecheck` | TS-C11 | AST, returns of `&x.field`, `x.slice`, `x.map` from exported methods | not built |
@@ -2129,7 +2125,7 @@ one as another rule plus a review judgment, one as another rule's existence prec
 second ID — and their IDs are retired rather than reused, so that a reference to either in an old
 commit still resolves.
 
-Twenty more were retired, each recorded in an ADR, and none of the IDs is reused:
+Twenty-one more were retired, each recorded in an ADR, and none of the IDs is reused:
 
 | IDs | Why | ADR |
 | --- | --- | --- |
@@ -2139,6 +2135,7 @@ Twenty more were retired, each recorded in an ADR, and none of the IDs is reused
 | `TS-M02`, `TS-M06`, `TS-M08`, `TS-M11`, `TS-K06`, `TS-C10` | They applied only to code marked `//tiger:hot`, `//tiger:wire`, or `//tiger:owner`, and those verbs are removed | ADR-0028 |
 | `TS-R01` | Proving a refactor preserves behavior rested on computed frames | ADR-0027 |
 | `TS-L08`, `TS-L13` | "Always say why" has no mechanical check, and comments in production code are banned (ADR-0031). The `Why:` commit section never had a check | ADR-0032 |
+| `TS-N14` | Trials on querator and git-server reported states and ordinary nouns, and each ended by lengthening the noun list; `TS-N09` stays as a review maxim | ADR-0033 |
 
 `TS-X01` keeps its ID as a review maxim; its single-implementation check is removed (ADR-0016). The
 built analyzers behind retired rules are removed in their build tickets; the `restrictions`,

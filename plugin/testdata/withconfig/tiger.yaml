@@ -1,6 +1,5 @@
 version: 1
-participle:
+comments:
   allow:
-    - value: signing
-      reason: KeySigning is a credential record, not an action
-      packages: [scoped]
+    - value: scoped
+      reason: the scoped package keeps its prose to prove the exemption silences the plugin

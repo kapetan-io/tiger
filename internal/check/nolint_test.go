@@ -246,12 +246,14 @@ func TestNolintBanSkipsGeneratedFiles(t *testing.T) {
 
 // TestNolintBlockLoadsAlongsideAnalyzerBlocks covers the shared document.
 //
-// Goal: a nolint block next to a participle block loads, both take effect,
+// Goal: a nolint block next to an ioinloop block loads, both take effect,
 // and the nolint block comes after or before the analyzer block alike.
 func TestNolintBlockLoadsAlongsideAnalyzerBlocks(t *testing.T) {
-	source := "package tree\n\ntype KeySigning struct{}\n\nvar x = 1 //nolint\n"
-	analyzer := "participle:\n  allow:\n    - value: signing\n" +
-		"      reason: KeySigning is a credential record\n"
+	source := "package tree\n\nimport \"fixture.example/tree/storage\"\n\nvar x = 1 //nolint\n\n" +
+		"func SaveAll(items []string) error {\n\tfor _, item := range items {\n\t\tif err := storage.Save(item); err != nil {\n\t\t\treturn err\n\t\t}\n\t}\n\treturn nil\n}\n"
+	store := "package storage\n\nfunc Save(item string) error { return nil }\n"
+	analyzer := "ioinloop:\n  packages:\n    - value: fixture.example/tree/storage\n" +
+		"      reason: every call is a network round trip\n"
 	for _, test := range []struct {
 		name   string
 		config string
@@ -260,13 +262,15 @@ func TestNolintBlockLoadsAlongsideAnalyzerBlocks(t *testing.T) {
 		{name: "NolintLast", config: "version: 1\n" + analyzer + banConfig[len("version: 1\n"):]},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			dir := writeTree(t, map[string]string{"tiger.yaml": test.config, "a.go": source})
+			dir := writeTree(t, map[string]string{
+				"tiger.yaml": test.config, "a.go": source, "storage/storage.go": store,
+			})
 			got := run(t, "check", "-C", dir, "./...")
 			assert.Empty(t, got.stderr)
 			assert.Equal(t, command.ExitFindings, got.code)
 			assert.Contains(t, got.stdout, "TS-L09: line 5 has a //nolint")
-			assert.NotContains(t, got.stdout, "TS-N14")
-			assert.Contains(t, got.stdout, "tiger: 1 blocking\n")
+			assert.Contains(t, got.stdout, "TS-M10")
+			assert.Contains(t, got.stdout, "tiger: 2 blocking\n")
 		})
 	}
 }

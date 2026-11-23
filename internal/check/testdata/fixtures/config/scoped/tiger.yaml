@@ -1,6 +1,6 @@
 version: 1
-participle:
-  allow:
-    - value: signing
-      reason: KeySigning is a credential record, not an action
-      packages: [internal/auth/...]
+ioinloop:
+  packages:
+    - value: fixture.example/scoped/storage
+      reason: every Save is a network round trip
+      packages: [internal/api/...]

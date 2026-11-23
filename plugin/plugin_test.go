@@ -69,8 +69,8 @@ func TestPluginDropsFacts(t *testing.T) {
 // the plugin's construction surface.
 //
 // Goal: a plugin built with a `config` setting naming a directory applies
-// that directory's tiger.yaml — a scoped participle.allow entry silences
-// TS-N14 in the scoped package and leaves it firing outside — and a
+// that directory's tiger.yaml — a scoped comments.allow entry silences
+// TS-L14 in the scoped package and leaves it firing outside — and a
 // directory whose tiger.yaml fails to load fails plugin construction with
 // the one-line message.
 func TestPluginInstallsConfigFromSettings(t *testing.T) {
@@ -84,7 +84,7 @@ func TestPluginInstallsConfigFromSettings(t *testing.T) {
 	analyzers, err := built.BuildAnalyzers()
 	require.NoError(t, err)
 	for _, analyzer := range analyzers {
-		if analyzer.Name != "participle" {
+		if analyzer.Name != "comments" {
 			continue
 		}
 		results := analysistest.Run(t, corpus, analyzer,

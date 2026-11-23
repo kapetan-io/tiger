@@ -1642,35 +1642,6 @@ func save(mode SyncMode) {
 signatures are often dictated by the API that consumes them, so a finding there would be
 unfixable at the literal itself.
 
-<!-- rule: TS-N14 -->
-### TS-N14 — exported identifiers do not end in a present participle
-
-**Severity:** blocking — a finding fails the run.
-
-A name ending in "-ing", like `Preparing` or `Loading`, describes an activity instead of
-a thing. Nouns compose better. `Pipeline` can take a suffix like `pipelineMax`, while
-`preparing` cannot extend the same way. Rename the identifier to the noun it stands for.
-
-Code that fires it:
-
-```go
-type Preparing struct{}
-```
-
-```
-state.go:1:6: TS-N14: "Preparing" ends in the -ing word "Preparing", which names an activity rather than a thing — rename it to the noun it stands for, or pass the flag -allow=preparing if it really is a noun
-```
-
-The compliant rewrite:
-
-```go
-type Preparation struct{}
-```
-
-**Known miss:** The analyzer walks types, functions, methods, consts, vars, and struct
-fields. Interface methods are not in that set, so an exported interface method ending in
-a participle stays silent.
-
 
 ## Tests
 
