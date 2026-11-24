@@ -516,3 +516,51 @@ func TestChangedTestsListsNoUnreadModulesForARootOnlyRepository(t *testing.T) {
 	require.NoError(t, json.Unmarshal([]byte(got.stdout), &doc))
 	assert.JSONEq(t, `[]`, string(doc["unread_modules"]))
 }
+
+// Goal: a nested module holding a directory the run cannot list is named,
+// and the rest of the tree is still compared.
+func TestChangedTestsNamesANestedModuleWithADirectoryThatCannotBeListed(t *testing.T) {
+	c := newCheckout(t)
+	c.write("cart/cart_test.go", cartTest)
+	c.write("tools/go.mod", "module example.com/tools\n\ngo 1.26\n")
+	c.write("tools/lint/lint_test.go", lintTest)
+	c.branch()
+	c.remove("cart/cart_test.go")
+	lint := filepath.Join(c.dir, "tools", "lint")
+	require.NoError(t, os.Chmod(lint, 0o000))
+	t.Cleanup(func() { require.NoError(t, os.Chmod(lint, 0o755)) })
+
+	doc := c.treeReport()
+
+	assert.Equal(t, []test{
+		{
+			Package: "example.com/shop/cart", File: "cart/cart_test.go",
+			Function: "TestEmpty", Change: "deleted",
+		},
+		{
+			Package: "example.com/shop/cart", File: "cart/cart_test.go",
+			Function: "TestTotal", Change: "deleted",
+		},
+	}, doc.Tests)
+	assert.Equal(t, []unread{{
+		Dir:    "tools",
+		Reason: "cannot read tools/lint: permission denied at head",
+	}}, doc.UnreadModules)
+}
+
+// Goal: a directory the run cannot list inside the run's own module still
+// produces no report, since that module's tests are not all known.
+func TestChangedTestsExitsTwoWhenARunModuleDirectoryCannotBeListed(t *testing.T) {
+	c := newCheckout(t)
+	c.write("cart/cart_test.go", cartTest)
+	c.branch()
+	cart := filepath.Join(c.dir, "cart")
+	require.NoError(t, os.Chmod(cart, 0o000))
+	t.Cleanup(func() { require.NoError(t, os.Chmod(cart, 0o755)) })
+
+	got := run(t, "changed-tests", "-C", c.dir, "main")
+
+	assert.Equal(t, command.ExitOperational, got.code)
+	assert.Empty(t, got.stdout)
+	assert.Contains(t, got.stderr, "permission denied")
+}

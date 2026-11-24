@@ -126,8 +126,11 @@ func ReadModules(dir string) (Modules, error) {
 	}
 	tree := Modules{Read: []Module{}, Unread: []Unread{}}
 	err = filepath.WalkDir(root, func(walked string, entry fs.DirEntry, err error) error {
-		if err != nil {
+		if err != nil && walked == root {
 			return err
+		}
+		if err != nil {
+			return nil
 		}
 		if !entry.IsDir() {
 			return nil
