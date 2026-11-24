@@ -112,3 +112,21 @@ func pingEach(ctx context.Context, db *sql.DB, n int) error {
 	}
 	return nil
 }
+
+// resolveEach resolves UDP and IP addresses and ports through a Resolver in
+// a loop: each skips the lookup for an IP literal or a port number, so the
+// list marks them unproven and the calls are silent.
+func resolveEach(ctx context.Context, r *net.Resolver, hosts []string) error {
+	for _, host := range hosts {
+		if _, err := net.ResolveUDPAddr("udp", net.JoinHostPort(host, "53")); err != nil {
+			return err
+		}
+		if _, err := net.ResolveIPAddr("ip", host); err != nil {
+			return err
+		}
+		if _, err := r.LookupPort(ctx, "tcp", "443"); err != nil {
+			return err
+		}
+	}
+	return nil
+}
