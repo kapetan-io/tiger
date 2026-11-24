@@ -385,7 +385,7 @@ func TestWaitOnlyInParallelSubtest(t *testing.T) {
 }
 
 // TestWaitInParallelSubtestOneLevelDown is an expected false positive
-// (ENG-OVER): t.Run("x") does not return until the parallel subtest "y"
+// (ENG-965): t.Run("x") does not return until the parallel subtest "y"
 // finishes, so the Wait runs, but the check treats any subtest that calls
 // t.Parallel as not run.
 func TestWaitInParallelSubtestOneLevelDown(t *testing.T) {
@@ -642,7 +642,7 @@ func TestDeferredLiteralWaitsOnOneBranch(t *testing.T) {
 	wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
 }
 
-// TestSavedWaitReassignedAfterCall is an expected false positive (ENG-OVER):
+// TestSavedWaitReassignedAfterCall is an expected false positive (ENG-965):
 // the literal is replaced only after it was called, but the check follows a
 // saved literal only when the variable is assigned once.
 func TestSavedWaitReassignedAfterCall(t *testing.T) {

@@ -139,7 +139,7 @@ func literalNoWaitInFailingFunc() error {
 // error before its Wait, and the test logs it and returns.
 //
 // known-miss: the literal's error return is not a success path, so the call
-// counts as a Wait whatever the caller does with the error (ENG-ERR).
+// counts as a Wait whatever the caller does with the error (ENG-966).
 func TestCalledLiteralErrorSkipsWait(t *testing.T) {
 	var wg sync.WaitGroup
 	wg.Go(func() {})
