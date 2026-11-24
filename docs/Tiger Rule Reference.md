@@ -1008,7 +1008,9 @@ func drain(queue []string) {
 
 A `wg.Go(...)`, `group.Go(...)` or `group.TryGo(...)` inside the loop fires the same finding
 as the `go` statement, even when the group's `Wait` is reached, because the number of
-goroutines still follows the input. A group with `SetLimit` is still reported, because the limit caps
+goroutines still follows the input. Known gap: a `Go` method saved in a variable (`start := wg.Go`) and called in the loop is
+not seen, because the rule reads the call, not where the method value came from. A group
+with `SetLimit` is still reported, because the limit caps
 how many goroutines run at once but not how many the loop starts; the rule has no exemption for it. The compliant rewrite above applies to all of them.
 
 **Not checked in tests:** `_test.go` files are skipped for this rule. A concurrency test

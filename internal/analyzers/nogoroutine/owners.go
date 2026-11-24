@@ -293,9 +293,14 @@ func addressed(expr ast.Expr) ast.Expr {
 }
 
 func called(sel *ast.SelectorExpr, ancestors []ast.Node) bool {
-	if len(ancestors) == 0 {
+	for i := len(ancestors) - 1; i >= 0; i-- {
+		switch parent := ancestors[i].(type) {
+		case *ast.ParenExpr:
+			continue
+		case *ast.CallExpr:
+			return ast.Unparen(parent.Fun) == sel
+		}
 		return false
 	}
-	call, ok := ancestors[len(ancestors)-1].(*ast.CallExpr)
-	return ok && call.Fun == sel
+	return false
 }

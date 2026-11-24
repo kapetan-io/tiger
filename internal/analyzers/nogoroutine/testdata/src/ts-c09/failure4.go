@@ -26,3 +26,12 @@ func notifyOnce(entry string) {
 	wg.Go(func() { notifyOne(entry) })
 	wg.Wait()
 }
+
+// Parentheses around the method do not hide the call.
+func notifyGroupParen(entries []string) {
+	var wg sync.WaitGroup
+	for _, entry := range entries {
+		(wg.Go)(func() { notifyOne(entry) }) // want `TS-C09: this loop starts a goroutine per item`
+	}
+	wg.Wait()
+}
