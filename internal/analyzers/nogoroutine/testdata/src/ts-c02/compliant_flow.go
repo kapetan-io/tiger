@@ -251,7 +251,7 @@ func dispatchLoop(ctx context.Context, jobs chan func()) error {
 			wg.Wait()
 			return nil
 		case job := <-jobs:
-			wg.Go(job)
+			wg.Go(job) // want `TS-C09: this loop starts a goroutine per item`
 		}
 	}
 }
@@ -270,7 +270,7 @@ func (d *dispatcher) Run(ctx context.Context) error {
 			d.wg.Wait()
 			return nil
 		case job := <-d.jobs:
-			d.wg.Go(job)
+			d.wg.Go(job) // want `TS-C09: this loop starts a goroutine per item`
 		}
 	}
 }
@@ -292,7 +292,7 @@ func fanOutOnExpiry(ctx context.Context, conns []func()) error {
 	select {
 	case <-ctx.Done():
 		for _, conn := range conns {
-			wg.Go(conn)
+			wg.Go(conn) // want `TS-C09: this loop starts a goroutine per item`
 		}
 		wg.Wait()
 		return ctx.Err()
