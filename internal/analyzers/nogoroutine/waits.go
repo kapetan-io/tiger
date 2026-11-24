@@ -213,7 +213,10 @@ func (o *owners) literalOf(expr ast.Expr) *ast.FuncLit {
 	if len(defs) != 1 || o.rebound(local, decl) {
 		return nil
 	}
-	literal, _ := ast.Unparen(defs[0]).(*ast.FuncLit)
+	literal, ok := ast.Unparen(defs[0]).(*ast.FuncLit)
+	if !ok {
+		return nil
+	}
 	return literal
 }
 
@@ -240,28 +243,30 @@ func (o *owners) callsParallel(literal *ast.FuncLit) bool {
 	if len(params) == 0 || len(params[0].Names) == 0 {
 		return false
 	}
-	return o.parallelOn(literal.Body, o.index.Object(params[0].Names[0]), map[*types.Var]bool{})
+	return o.parallelOn(literal.Body, o.index.Object(params[0].Names[0]), searched{})
 }
 
-func (o *owners) parallelOn(body *ast.BlockStmt, subtest *types.Var, searched map[*types.Var]bool) bool {
-	if subtest == nil || searched[subtest] {
+type searched map[*types.Var]bool
+
+func (o *owners) parallelOn(body *ast.BlockStmt, subtest *types.Var, seen searched) bool {
+	if subtest == nil || seen[subtest] {
 		return false
 	}
-	searched[subtest] = true
+	seen[subtest] = true
 	parallel := false
 	ast.Inspect(body, func(node ast.Node) bool {
 		if call, ok := node.(*ast.CallExpr); ok {
-			parallel = parallel || o.marksParallel(call, subtest, searched)
+			parallel = parallel || o.marksParallel(call, subtest, seen)
 		}
 		return !parallel
 	})
 	return parallel
 }
 
-func (o *owners) marksParallel(call *ast.CallExpr, subtest *types.Var, searched map[*types.Var]bool) bool {
+func (o *owners) marksParallel(call *ast.CallExpr, subtest *types.Var, seen searched) bool {
 	selector, isSelector := ast.Unparen(call.Fun).(*ast.SelectorExpr)
 	if isSelector && o.calleeName(selector) == "(*testing.T).Parallel" {
-		return o.index.Object(selector.X) == subtest
+		return o.promoted(selector) || o.unalias(o.index.Object(selector.X), selector) == subtest
 	}
 	decl := o.calledDecl(call)
 	if decl == nil {
@@ -276,11 +281,16 @@ func (o *owners) marksParallel(call *ast.CallExpr, subtest *types.Var, searched 
 		if i >= len(params) || params[i] == nil || o.index.Object(arg) != subtest {
 			continue
 		}
-		if o.parallelOn(decl.Body, o.index.Object(params[i]), searched) {
+		if o.parallelOn(decl.Body, o.index.Object(params[i]), seen) {
 			return true
 		}
 	}
 	return false
+}
+
+func (o *owners) promoted(selector *ast.SelectorExpr) bool {
+	selection := o.pass.TypesInfo.Selections[selector]
+	return selection != nil && len(selection.Index()) > 1
 }
 
 func (o *owners) calledDecl(call *ast.CallExpr) *ast.FuncDecl {

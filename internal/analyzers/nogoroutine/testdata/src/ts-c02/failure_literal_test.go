@@ -742,3 +742,31 @@ func TestParallelThroughGenericHelperInSubtest(t *testing.T) {
 		wg.Wait()
 	})
 }
+
+// TestParallelThroughAliasInSubtest calls t.Parallel on a copy of the
+// subtest's t.
+func TestParallelThroughAliasInSubtest(t *testing.T) {
+	var wg sync.WaitGroup
+	wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+	t.Run("x", func(t *testing.T) {
+		alias := t
+		alias.Parallel()
+		wg.Wait()
+	})
+}
+
+type embeddedSubtest struct {
+	*testing.T
+}
+
+// TestParallelThroughEmbeddingInSubtest calls t.Parallel through a struct
+// that embeds the subtest's t.
+func TestParallelThroughEmbeddingInSubtest(t *testing.T) {
+	var wg sync.WaitGroup
+	wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+	t.Run("x", func(t *testing.T) {
+		suite := embeddedSubtest{t}
+		suite.Parallel()
+		wg.Wait()
+	})
+}
