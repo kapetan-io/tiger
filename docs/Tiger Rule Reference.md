@@ -838,8 +838,8 @@ literal before it returns reaches the literal's `Wait` when the literal waits on
 of its own success paths: a literal called where it is written, a local variable that only
 ever holds one literal and is called, or the body `t.Run` or `b.Run` runs, unless that
 body calls `t.Parallel`. A `Wait` after a `return`, on one branch only, in a literal that
-is saved and never called or passed to any other function, in a parallel subtest, or
-inside the goroutine it waits for does not count. A path that returns a
+is saved and never called or passed to any other function, in a parallel subtest, in a
+`t.Cleanup` literal, or inside the goroutine it waits for does not count. A path that returns a
 non-nil error is not a success path, so a `Shutdown` that returns its flush error before it
 waits is accepted. A `Wait` that only runs in the
 branch where the caller's context expired does not count. That branch is a `Shutdown`
