@@ -18,8 +18,10 @@
 // that do none (net.SplitHostPort, os.IsNotExist); those are skipped,
 // matched by the callee's fully qualified name from the type checker, never
 // by the spelling at the call site. An entry is added only after reading the
-// function's source and finding no syscall, file access or network access on
-// any path; when unsure, leave it off, since an unlisted function is reported
+// function's source and finding no network, disk or database access on any
+// path (os.Getenv reads an in-memory copy of the environment on Unix and
+// calls a Windows API for one variable on Windows, neither of which is disk
+// or network IO); when unsure, leave it off, since an unlisted function is reported
 // and fails loudly where a wrong entry would silently hide real IO. Methods
 // on map, slice or basic receivers need no entry.
 //
