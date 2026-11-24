@@ -87,12 +87,12 @@ func (r Report) count(change Change) int {
 	return n
 }
 
-type unreadAt struct {
+type unreadSides struct {
 	base []module.Unread
 	head []module.Unread
 }
 
-func (u unreadAt) modules() []UnreadModule {
+func (u unreadSides) modules() []UnreadModule {
 	unread := []UnreadModule{}
 	for _, mod := range u.head {
 		reason := mod.Reason + " at head"
@@ -113,6 +113,19 @@ func (u unreadAt) modules() []UnreadModule {
 	return unread
 }
 
-func (u unreadAt) all() []module.Unread {
+func (u unreadSides) all() []module.Unread {
 	return slices.Concat(u.base, u.head)
+}
+
+func roots(sides ...module.Modules) []string {
+	var dirs []string
+	for _, side := range sides {
+		for _, mod := range side.Read {
+			dirs = append(dirs, mod.Dir)
+		}
+		for _, mod := range side.Unread {
+			dirs = append(dirs, mod.Dir)
+		}
+	}
+	return dirs
 }

@@ -81,9 +81,9 @@ _Avoid_: diff, effect report
 **`tiger changed-tests`**:
 The report, not a rule, that lists each **changed test**, with its package and file, between the
 merge base of a base revision and the working tree. It reads `_test.go` files without type-checking
-in every **module (Go)** at and below the run directory, nested modules included, and names each
-nested module it could not read. It is separate from `tiger changed`, whose report skips every test
-file and nested modules.
+in the **module (Go)** the run directory sits in and every nested module below it, except under
+directories `go test ./...` skips, and names each nested module whose `go.mod` it could not read. It
+is separate from `tiger changed`, whose report skips every test file and nested modules.
 _Avoid_: test diff
 
 **Changed test**:
@@ -275,10 +275,11 @@ Tiger's own continuous integration (CI) workflow, `.github/workflows/ci.yml`: th
 every PR and the rules that skip jobs a change cannot affect. `internal/ci` holds only tests of it.
 
 **Module (Go)**:
-A directory tree rooted at a `go.mod`, without the directories below it that hold their own
-`go.mod` (nested modules): its module path, module-relative package paths, directory layout and Go
-files. Most commands read the one module a run sits in; `tiger changed-tests` reads that module
-and every nested module below the run directory. Not the config file.
+The Go files governed by one `go.mod`, the nearest one at or above them, leaving out directories
+below that hold their own `go.mod` (nested modules). Its facts are its module path, module-relative
+package paths, directory layout and Go files. Most commands read the one module a run sits in, and
+`tiger changed-tests` reads that module and every nested module below the run directory. Not the
+config file.
 
 **Check run**:
 Everything `tiger check` does from arguments to exit code: run setup, the driver call, the severity

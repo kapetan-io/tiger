@@ -2,6 +2,8 @@ package changedtests_test
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -185,4 +187,207 @@ func TestChangedTestsExitsTwoWhenTheRunModuleIsUnread(t *testing.T) {
 	assert.Empty(t, got.stdout)
 	assert.Contains(t, got.stderr, "cannot read the tests at head (")
 	assert.Contains(t, got.stderr, "go.mod has no module line")
+}
+
+// Goal: a nested go.mod the run has no permission to read is named in both
+// the text and the JSON report, and its tests are not reported.
+func TestChangedTestsNamesAModuleWhoseGoModCannotBeOpened(t *testing.T) {
+	c := newCheckout(t)
+	c.write("cart/cart_test.go", cartTest)
+	c.write("tools/go.mod", "module example.com/tools\n\ngo 1.26\n")
+	c.write("tools/lint/lint_test.go", lintTest)
+	c.branch()
+	c.remove("tools/lint/lint_test.go")
+	goMod := filepath.Join(c.dir, "tools", "go.mod")
+	require.NoError(t, os.Chmod(goMod, 0o000))
+	t.Cleanup(func() { require.NoError(t, os.Chmod(goMod, 0o644)) })
+
+	doc := c.treeReport()
+
+	assert.False(t, doc.ChangesExistingTests)
+	assert.Empty(t, doc.Tests)
+	assert.Equal(t, []unread{
+		{Dir: "tools", Reason: "cannot read go.mod: permission denied at head"},
+	}, doc.UnreadModules)
+
+	got := run(t, "changed-tests", "-C", c.dir, "main")
+
+	assert.Equal(t, command.ExitClean, got.code)
+	assert.Contains(t, got.stdout, "Not read: the module in tools, so its tests are not "+
+		"compared (cannot read go.mod: permission denied at head).\n")
+}
+
+// Goal: a go.mod that has no module line only at the merge base is named
+// for the merge base alone.
+func TestChangedTestsNamesAModuleUnreadOnlyAtTheMergeBase(t *testing.T) {
+	c := newCheckout(t)
+	c.write("tools/go.mod", "go 1.26\n")
+	c.write("tools/lint/lint_test.go", lintTest)
+	c.branch()
+	c.write("tools/go.mod", "module example.com/tools\n\ngo 1.26\n")
+	c.remove("tools/lint/lint_test.go")
+
+	doc := c.treeReport()
+
+	assert.False(t, doc.ChangesExistingTests)
+	assert.Empty(t, doc.Tests)
+	assert.Equal(t, []unread{
+		{Dir: "tools", Reason: "go.mod has no module line at the merge base"},
+	}, doc.UnreadModules)
+}
+
+// Goal: a module that is read is reported even when the module around it
+// is unread, since its own go.mod makes it a separate module.
+func TestChangedTestsReportsAModuleNestedInsideAnUnreadModule(t *testing.T) {
+	c := newCheckout(t)
+	c.write("tools/go.mod", "module example.com/tools\n\ngo 1.26\n")
+	c.write("tools/gen/go.mod", "module example.com/gen\n\ngo 1.26\n")
+	c.write("tools/gen/gen_test.go",
+		"package gen\n\nimport \"testing\"\n\nfunc TestGen(t *testing.T) {}\n")
+	c.branch()
+	c.write("tools/go.mod", "go 1.26\n")
+	c.remove("tools/gen/gen_test.go")
+
+	doc := c.treeReport()
+
+	assert.True(t, doc.ChangesExistingTests)
+	assert.Equal(t, []test{{
+		Package: "example.com/gen", File: "tools/gen/gen_test.go",
+		Function: "TestGen", Change: "deleted",
+	}}, doc.Tests)
+	assert.Equal(t, []unread{
+		{Dir: "tools", Reason: "go.mod has no module line at head"},
+	}, doc.UnreadModules)
+}
+
+// Goal: a run from a subdirectory of the root module reads the nested
+// modules below it, with files relative to the run directory.
+func TestChangedTestsReadsNestedModulesBelowARunSubdirectory(t *testing.T) {
+	c := newCheckout(t)
+	c.write("internal/cart/cart_test.go", cartTest)
+	c.write("internal/tools/go.mod", "module example.com/tools\n\ngo 1.26\n")
+	c.write("internal/tools/lint/lint_test.go", lintTest)
+	c.branch()
+	c.remove("internal/cart/cart_test.go")
+	c.remove("internal/tools/lint/lint_test.go")
+
+	got := run(t, "changed-tests", "-C", filepath.Join(c.dir, "internal"),
+		"--format", "json", "main")
+
+	require.Equal(t, command.ExitClean, got.code, got.stderr)
+	var doc treeReport
+	require.NoError(t, json.Unmarshal([]byte(got.stdout), &doc))
+	assert.Equal(t, []test{
+		{
+			Package: "example.com/shop/internal/cart", File: "cart/cart_test.go",
+			Function: "TestEmpty", Change: "deleted",
+		},
+		{
+			Package: "example.com/shop/internal/cart", File: "cart/cart_test.go",
+			Function: "TestTotal", Change: "deleted",
+		},
+		{
+			Package: "example.com/tools/lint", File: "tools/lint/lint_test.go",
+			Function: "TestLint", Change: "deleted",
+		},
+	}, doc.Tests)
+	assert.Equal(t, []unread{}, doc.UnreadModules)
+}
+
+// Goal: a run from a directory inside a nested module reports that
+// module's tests under its own module path, and none of the root module's.
+func TestChangedTestsReadsFromInsideANestedModule(t *testing.T) {
+	c := newCheckout(t)
+	c.write("cart/cart_test.go", cartTest)
+	c.write("tools/go.mod", "module example.com/tools\n\ngo 1.26\n")
+	c.write("tools/lint/lint_test.go", lintTest)
+	c.branch()
+	c.remove("cart/cart_test.go")
+	c.remove("tools/lint/lint_test.go")
+
+	got := run(t, "changed-tests", "-C", filepath.Join(c.dir, "tools", "lint"),
+		"--format", "json", "main")
+
+	require.Equal(t, command.ExitClean, got.code, got.stderr)
+	var doc treeReport
+	require.NoError(t, json.Unmarshal([]byte(got.stdout), &doc))
+	assert.Equal(t, []test{{
+		Package: "example.com/tools/lint", File: "lint_test.go",
+		Function: "TestLint", Change: "deleted",
+	}}, doc.Tests)
+}
+
+// Goal: -C through a symbolic link to the checkout reads its nested
+// modules, with files relative to the link.
+func TestChangedTestsReadsNestedModulesThroughASymlinkedDirectory(t *testing.T) {
+	c := newCheckout(t)
+	c.write("tools/go.mod", "module example.com/tools\n\ngo 1.26\n")
+	c.write("tools/lint/lint_test.go", lintTest)
+	c.branch()
+	c.remove("tools/lint/lint_test.go")
+	link := filepath.Join(t.TempDir(), "shop")
+	require.NoError(t, os.Symlink(c.dir, link))
+
+	got := run(t, "changed-tests", "-C", link, "--format", "json", "main")
+
+	require.Equal(t, command.ExitClean, got.code, got.stderr)
+	var doc treeReport
+	require.NoError(t, json.Unmarshal([]byte(got.stdout), &doc))
+	assert.Equal(t, []test{{
+		Package: "example.com/tools/lint", File: "tools/lint/lint_test.go",
+		Function: "TestLint", Change: "deleted",
+	}}, doc.Tests)
+}
+
+// Goal: a module under testdata, vendor, or a directory whose name starts
+// with a dot or underscore is skipped, as go test skips it when expanding a
+// package pattern, so test fixtures that hold a go.mod never fill the report.
+func TestChangedTestsSkipsModulesInDirectoriesGoNeverBuilds(t *testing.T) {
+	for _, dir := range []string{"testdata", "vendor", ".tools", "_tools"} {
+		t.Run(dir, func(t *testing.T) {
+			c := newCheckout(t)
+			c.write(repoPath(dir+"/go.mod"), "module example.com/tools\n\ngo 1.26\n")
+			c.write(repoPath(dir+"/lint/lint_test.go"), lintTest)
+			c.branch()
+			c.remove(repoPath(dir + "/lint/lint_test.go"))
+
+			doc := c.treeReport()
+
+			assert.False(t, doc.ChangesExistingTests)
+			assert.Empty(t, doc.Tests)
+			assert.Equal(t, []unread{}, doc.UnreadModules)
+		})
+	}
+}
+
+// Goal: the merge base is read from a temporary directory, and a go.mod
+// above that directory belongs to neither revision, so it never adds tests
+// or stops the report.
+func TestChangedTestsIgnoresAGoModAboveTheMergeBaseCopy(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		goMod string
+	}{
+		{"Readable", "module example.com/outside\n\ngo 1.26\n"},
+		{"NoModuleLine", "go 1.26\n"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := newCheckout(t)
+			c.remove("go.mod")
+			c.write("cart/cart_test.go", cartTest)
+			c.branch()
+			c.write("go.mod", "module example.com/shop\n\ngo 1.26\n")
+			c.remove("cart/cart_test.go")
+			outside := t.TempDir()
+			goMod := filepath.Join(outside, "go.mod")
+			require.NoError(t, os.WriteFile(goMod, []byte(tc.goMod), 0o644))
+			require.NoError(t, os.Mkdir(filepath.Join(outside, "tmp"), 0o755))
+			t.Setenv("TMPDIR", filepath.Join(outside, "tmp"))
+
+			doc := c.treeReport()
+
+			assert.False(t, doc.ChangesExistingTests)
+			assert.Empty(t, doc.Tests)
+		})
+	}
 }

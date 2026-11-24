@@ -1,7 +1,8 @@
 // Package module owns the facts about the Go module a run sits in: its path
 // from go.mod, the import path of a directory inside it, module-relative
 // package paths, the directory layout and the Go files, from one walk of its
-// tree, and the nested modules below it. It does not read tiger.yaml.
+// tree, and the modules at and below a run directory. It does not read
+// tiger.yaml.
 package module
 
 import (
@@ -39,7 +40,7 @@ func ReadPath(dir string) (Path, error) {
 	}
 	found := modfile.ModulePath(raw)
 	if found == "" {
-		return "", errors.New("go.mod has no module line")
+		return "", errNoModuleLine
 	}
 	return Path(found), nil
 }
@@ -94,8 +95,7 @@ func (l *Layout) enter(walked string, entry fs.DirEntry) error {
 	if neverSearched(entry.Name()) {
 		return filepath.SkipDir
 	}
-	info, err := os.Stat(filepath.Join(walked, "go.mod"))
-	if err != nil || info.IsDir() {
+	if !hasGoMod(walked) {
 		return nil
 	}
 	if nested, err := ReadPath(walked); err == nil {
@@ -104,14 +104,14 @@ func (l *Layout) enter(walked string, entry fs.DirEntry) error {
 	return filepath.SkipDir
 }
 
-type Tree struct {
+type Modules struct {
 	Read   []Module
 	Unread []Unread
 }
 
 type Module struct {
-	Dir  string
-	Path Path
+	Dir        string
+	ImportPath Path
 }
 
 type Unread struct {
@@ -119,21 +119,12 @@ type Unread struct {
 	Reason string
 }
 
-func ReadTree(dir string) (Tree, error) {
+func ReadModules(dir string) (Modules, error) {
 	root, err := filepath.EvalSymlinks(dir)
 	if err != nil {
-		return Tree{}, fmt.Errorf("listing modules: %w", err)
+		return Modules{}, fmt.Errorf("listing modules: %w", err)
 	}
-	tree := Tree{Read: []Module{}, Unread: []Unread{}}
-	if !hasGoMod(root) {
-		found, err := PathOf(root)
-		switch {
-		case err == nil:
-			tree.Read = append(tree.Read, Module{Dir: ".", Path: found})
-		case !errors.Is(err, errNoGoMod):
-			return Tree{}, err
-		}
-	}
+	tree := Modules{Read: []Module{}, Unread: []Unread{}}
 	err = filepath.WalkDir(root, func(walked string, entry fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -152,7 +143,7 @@ func ReadTree(dir string) (Tree, error) {
 			if err != nil {
 				return err
 			}
-			tree.Read = append(tree.Read, Module{Dir: ".", Path: found})
+			tree.Read = append(tree.Read, Module{Dir: ".", ImportPath: found})
 			return nil
 		}
 		rel, err := filepath.Rel(root, walked)
@@ -160,28 +151,44 @@ func ReadTree(dir string) (Tree, error) {
 			return err
 		}
 		rel = filepath.ToSlash(rel)
-		raw, err := os.ReadFile(filepath.Join(walked, "go.mod"))
+		found, err := ReadPath(walked)
 		if err != nil {
-			var pathErr *fs.PathError
-			if errors.As(err, &pathErr) {
-				err = pathErr.Err
-			}
-			tree.Unread = append(tree.Unread,
-				Unread{Dir: rel, Reason: "cannot read go.mod: " + err.Error()})
+			tree.Unread = append(tree.Unread, Unread{Dir: rel, Reason: unreadReason(err)})
 			return nil
 		}
-		found := modfile.ModulePath(raw)
-		if found == "" {
-			tree.Unread = append(tree.Unread, Unread{Dir: rel, Reason: "go.mod has no module line"})
-			return nil
-		}
-		tree.Read = append(tree.Read, Module{Dir: rel, Path: Path(found)})
+		tree.Read = append(tree.Read, Module{Dir: rel, ImportPath: found})
 		return nil
 	})
 	if err != nil {
-		return Tree{}, fmt.Errorf("listing modules: %w", err)
+		return Modules{}, fmt.Errorf("listing modules: %w", err)
 	}
 	return tree, nil
+}
+
+func unreadReason(err error) string {
+	if errors.Is(err, errNoModuleLine) {
+		return err.Error()
+	}
+	var pathErr *fs.PathError
+	if errors.As(err, &pathErr) {
+		err = pathErr.Err
+	}
+	return "cannot read go.mod: " + err.Error()
+}
+
+func (t Modules) Enclosed(dir string) (Modules, error) {
+	if slices.ContainsFunc(t.Read, func(mod Module) bool { return mod.Dir == "." }) {
+		return t, nil
+	}
+	found, err := PathOf(dir)
+	if errors.Is(err, errNoGoMod) {
+		return t, nil
+	}
+	if err != nil {
+		return Modules{}, err
+	}
+	t.Read = slices.Insert(slices.Clone(t.Read), 0, Module{Dir: ".", ImportPath: found})
+	return t, nil
 }
 
 func neverSearched(dir string) bool {
@@ -280,7 +287,10 @@ func PathOf(dir string) (Path, error) {
 	return Path(path.Join(string(root), filepath.ToSlash(rel))), nil
 }
 
-var errNoGoMod = errors.New("no go.mod")
+var (
+	errNoGoMod      = errors.New("no go.mod")
+	errNoModuleLine = errors.New("go.mod has no module line")
+)
 
 func hasGoMod(dir string) bool {
 	info, err := os.Stat(filepath.Join(dir, "go.mod"))

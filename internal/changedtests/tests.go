@@ -36,31 +36,40 @@ type definition struct {
 
 var testPrefixes = []string{"Test", "Benchmark", "Fuzz", "Example"}
 
-type treeTests struct {
-	tests testFunctions
-	tree  module.Tree
+type revisionTests struct {
+	tests   testFunctions
+	modules module.Modules
 }
 
-func readTests(dir string) (treeTests, error) {
-	tree, err := module.ReadTree(dir)
-	if err != nil {
-		return treeTests{}, err
+type runDir struct {
+	path      string
+	enclosing bool
+}
+
+func readTests(run runDir) (revisionTests, error) {
+	dir := run.path
+	modules, err := module.ReadModules(dir)
+	if err == nil && run.enclosing {
+		modules, err = modules.Enclosed(dir)
 	}
-	read := treeTests{tests: testFunctions{}, tree: tree}
-	for _, mod := range tree.Read {
+	if err != nil {
+		return revisionTests{}, err
+	}
+	read := revisionTests{tests: testFunctions{}, modules: modules}
+	for _, mod := range modules.Read {
 		files, err := module.GoFiles(filepath.Join(dir, filepath.FromSlash(mod.Dir)))
 		if err != nil {
-			return treeTests{}, err
+			return revisionTests{}, err
 		}
 		for _, pkgDir := range slices.Sorted(maps.Keys(files)) {
-			pkg := path.Join(string(mod.Path), pkgDir)
+			pkg := path.Join(string(mod.ImportPath), pkgDir)
 			for _, rel := range files[pkgDir] {
 				if !strings.HasSuffix(rel, "_test.go") {
 					continue
 				}
 				file := testFile{dir: dir, rel: path.Join(mod.Dir, rel)}
 				if err := read.tests.read(file, pkg); err != nil {
-					return treeTests{}, err
+					return revisionTests{}, err
 				}
 			}
 		}
@@ -205,16 +214,24 @@ func (t testFunctions) packages() int {
 	return len(seen)
 }
 
-func (t testFunctions) outside(unread []module.Unread) testFunctions {
+func (t testFunctions) outside(unread []module.Unread, roots []string) testFunctions {
 	kept := testFunctions{}
 	for _, name := range slices.SortedFunc(maps.Keys(t), testName.order) {
-		if !slices.ContainsFunc(unread, name.within) {
+		owner := name.module(roots)
+		if !slices.ContainsFunc(unread, func(mod module.Unread) bool { return mod.Dir == owner }) {
 			kept[name] = t[name]
 		}
 	}
 	return kept
 }
 
-func (n testName) within(mod module.Unread) bool {
-	return n.dir == mod.Dir || strings.HasPrefix(n.dir, mod.Dir+"/")
+func (n testName) module(roots []string) string {
+	owner := ""
+	for _, root := range roots {
+		within := root == "." || n.dir == root || strings.HasPrefix(n.dir, root+"/")
+		if within && len(root) > len(owner) {
+			owner = root
+		}
+	}
+	return owner
 }

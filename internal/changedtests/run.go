@@ -11,7 +11,6 @@ import (
 	"strings"
 
 	"github.com/kapetan-io/tiger/internal/command"
-	"github.com/kapetan-io/tiger/internal/module"
 	"github.com/kapetan-io/tiger/internal/revision"
 )
 
@@ -75,9 +74,9 @@ func Run(args []string, streams command.Streams) int {
 }
 
 func compareRevisions(dir string, rev revision.Comparison) (Report, error) {
-	head, err := readTests(dir)
-	if err == nil && len(head.tree.Read) == 0 && len(head.tree.Unread) == 0 {
-		_, err = module.PathOf(dir)
+	head, err := readTests(runDir{path: dir, enclosing: true})
+	if err == nil && len(head.modules.Read) == 0 && len(head.modules.Unread) == 0 {
+		err = fmt.Errorf("no go.mod in %s, any directory above it or any directory below it", dir)
 	}
 	if err != nil {
 		return Report{}, fmt.Errorf("cannot read the tests at head (%s): %w",
@@ -87,16 +86,17 @@ func compareRevisions(dir string, rev revision.Comparison) (Report, error) {
 	if err != nil {
 		return Report{}, err
 	}
-	unread := unreadAt{base: base.tree.Unread, head: head.tree.Unread}
+	unread := unreadSides{base: base.modules.Unread, head: head.modules.Unread}
+	dirs := roots(base.modules, head.modules)
 	report := changedTests(sides{
-		base: base.tests.outside(unread.all()),
-		head: head.tests.outside(unread.all()),
+		base: base.tests.outside(unread.all(), dirs),
+		head: head.tests.outside(unread.all(), dirs),
 	})
 	report.Unread = unread.modules()
 	return report, nil
 }
 
-func readBase(rev revision.Comparison) (read treeTests, err error) {
+func readBase(rev revision.Comparison) (read revisionTests, err error) {
 	extracted, err := rev.Extract()
 	if err != nil {
 		return read, err
@@ -105,7 +105,7 @@ func readBase(rev revision.Comparison) (read treeTests, err error) {
 	if info, err := os.Stat(extracted.Dir); err != nil || !info.IsDir() {
 		return read, nil
 	}
-	read, err = readTests(extracted.Dir)
+	read, err = readTests(runDir{path: extracted.Dir, enclosing: extracted.Present})
 	if err != nil {
 		return read, fmt.Errorf("cannot read the tests at base (%s): %w",
 			revision.Short(rev.MergeBase), err)

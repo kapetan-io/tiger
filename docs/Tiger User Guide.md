@@ -128,13 +128,14 @@ run at the repository root covers them all, even when the root has no `go.mod` o
 test's `file` is relative to the run directory and its `package` is the import path in its own
 module, so `tools/lint/lint_test.go` in module `example.com/tools` reports package
 `example.com/tools/lint`. A branch that removes a nested module reports its tests deleted.
-Directories `go` never builds from (`testdata`, `vendor`, and names starting with `.` or `_`) are
-not searched for modules.
+Directories that `go test ./...` skips (`testdata`, `vendor`, and names starting with `.` or `_`)
+are not searched for modules, and a module inside one is neither read nor named.
 
 A nested module whose `go.mod` cannot be read, such as one with no `module` line, is named in the
 report with the reason and the revision, and its tests are not compared at either revision, so an
-empty list never means "nothing changed" in a module that was not read. When the run directory's
-own `go.mod` cannot be read, no report is produced.
+empty list never means "nothing changed" in a module that was not read. A module nested inside an
+unread one is still read. When the `go.mod` of the module the run directory sits in cannot be read,
+or a directory inside a module cannot be listed, no report is produced.
 
 - Only top-level `Test`, `Benchmark`, `Fuzz` and `Example` functions in `_test.go` files count.
   Test methods on suite types, helpers and testdata are not reported.
@@ -156,7 +157,9 @@ What it does not report:
   (`linux`) and `b_test.go` (`!linux`). Each body still matches a copy on the other side.
 - A test the branch moves into a gitignored `_test.go` file reads as unchanged in a local run,
   because the working tree still has it; CI's checkout does not, so CI reports it deleted.
-- Any test when the merge base has no `go.mod` at, above or below the run directory.
+- Any test when the merge base has no `go.mod` at, above or below the run directory. Only the
+  repository's files count at the merge base, so a `go.mod` above the repository is read at head
+  only.
 
 `tiger changed-tests --format json <base>` prints one JSON object (`tiger.changed-tests/v1`).
 Its `changes_existing_tests` field is true when the list is not empty, so a script can decide from
