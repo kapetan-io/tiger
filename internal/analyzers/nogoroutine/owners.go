@@ -36,6 +36,8 @@ type span struct {
 	from, to token.Pos
 }
 
+func (s span) holds(pos token.Pos) bool { return s.from <= pos && pos < s.to }
+
 func newOwners(pass *analysis.Pass) *owners {
 	stops := stopcase.New(pass)
 	o := &owners{

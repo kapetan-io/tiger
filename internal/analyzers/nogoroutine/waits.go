@@ -12,9 +12,10 @@ import (
 )
 
 type flowQuery struct {
-	group   *types.Var
-	start   *ast.SelectorExpr
-	anyPath bool
+	group    *types.Var
+	start    *ast.SelectorExpr
+	anyPath  bool
+	shutdown bool
 }
 
 type flowState struct {
@@ -75,6 +76,7 @@ func (o *owners) uncovered(fn function, query flowQuery, always waiters) (unwait
 	if len(graph.Blocks) == 0 {
 		return false, false
 	}
+	query.shutdown = o.givesUpIn(fn.body) && o.waitsIn(fn.body, query.group, always)
 	seen := map[stateKey]bool{}
 	work := []flowState{{block: graph.Blocks[0], passed: query.start == nil}}
 	i := 0
@@ -114,11 +116,11 @@ func (o *owners) uncovered(fn function, query flowQuery, always waiters) (unwait
 
 func (o *owners) walk(state flowState, query flowQuery, always waiters) flowState {
 	for _, node := range state.block.Nodes {
+		if query.shutdown && state.passed && o.givesUp(node.Pos(), query.start) {
+			state.covered = true
+		}
 		if query.start != nil && covers(node, query.start) {
 			state.passed = true
-		}
-		if o.inExpired(node.Pos()) {
-			state.covered = true
 		}
 		if !o.waitsIn(node, query.group, always) {
 			continue
@@ -134,9 +136,32 @@ func covers(node ast.Node, start *ast.SelectorExpr) bool {
 	return node.Pos() <= start.Pos() && start.End() <= node.End()
 }
 
+func (o *owners) givesUp(pos token.Pos, start *ast.SelectorExpr) bool {
+	gives := false
+	for _, gone := range o.expired {
+		if !gone.holds(pos) {
+			continue
+		}
+		if start != nil && gone.holds(start.Pos()) {
+			return false
+		}
+		gives = true
+	}
+	return gives
+}
+
+func (o *owners) givesUpIn(body *ast.BlockStmt) bool {
+	for _, gone := range o.expired {
+		if body.Pos() <= gone.from && gone.to <= body.End() {
+			return true
+		}
+	}
+	return false
+}
+
 func (o *owners) inExpired(pos token.Pos) bool {
 	for _, gone := range o.expired {
-		if gone.from <= pos && pos < gone.to {
+		if gone.holds(pos) {
 			return true
 		}
 	}
