@@ -9,5 +9,6 @@ import (
 )
 
 func TestCorpus(t *testing.T) {
-	analysistest.Run(t, analysistest.TestData(), packagecomment.Analyzer, "ts-l15", "ts-l16")
+	analysistest.Run(t, analysistest.TestData(), packagecomment.Analyzer,
+		"ts-l15/...", "ts-l16/...")
 }

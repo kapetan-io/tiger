@@ -1411,8 +1411,9 @@ a hash, a rank formula and when queues move. That prose drifts the same way TS-L
 paragraph says why the package exists and has no room for how it works.
 Enforce. `packagecomment` (custom), blocking. The package comment is the comment group directly
 above the `package` clause, read as `go doc` reads it: a blank comment line, a `# Heading`, a list or
-a code block starts a second block, and a second block is a finding. Test files, generated files and
-directories under `comments.allow` are exempt, as for TS-L14. No fix ships (ADR-0008).
+a code block starts a second block, and a second block is a finding. As in `go doc`, the package
+comments of every file in a package join into one. Test files, generated files and directories under
+`comments.allow` are exempt, as for TS-L14. No fix ships (ADR-0008).
 
 **`TS-L16` No production file holds only comments and the package clause.**
 Why. A file with no declarations exists only to carry prose, usually a `doc.go` holding a long

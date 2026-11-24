@@ -1469,7 +1469,9 @@ package comment says why the package exists, in one paragraph.
 
 The package comment is the comment group directly above the `package` clause, read the way
 `go doc` reads it. A blank comment line, a `# Heading`, a list or an indented code block starts
-a second block, and a second block is a finding, reported at the comment's first line.
+a second block, and a second block is a finding, reported at the comment's first line. `go doc`
+joins the package comments of every file in a package, so one paragraph in each of two files is
+two paragraphs, and each file's package comment is reported.
 
 Code that fires it, in `queue.go`:
 
@@ -1499,7 +1501,8 @@ Test files, generated files and directories under `comments.allow` are exempt, a
 `tiger check` writes no fix (ADR-0008).
 
 **Known miss:** a comment separated from the `package` clause by a blank line is not the package
-comment, so it may run to any length. That is how a licence header stays legal.
+comment, so it may run to any length. That is how a licence header stays legal. A file that uses
+cgo is not checked, for the reason TS-L14 gives.
 
 
 <!-- rule: TS-L16 -->
@@ -1533,7 +1536,9 @@ package queue
 type Queue struct{}
 ```
 
-A file with an import and nothing else has a declaration, so it passes. Test files, generated
+A file with an import and nothing else has a declaration, so it passes. A file holding only
+the `package` clause, with no comment at all, carries no prose and passes. A `//go:build` line
+is a comment, so a file holding only a build constraint and the `package` clause fires. Test files, generated
 files and directories under `comments.allow` are exempt, as for TS-L14. `tiger check` writes no
 fix (ADR-0008).
 

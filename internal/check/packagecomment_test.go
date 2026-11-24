@@ -163,3 +163,50 @@ func TestCommentsAllowExemptsPackageComments(t *testing.T) {
 	assert.NotContains(t, got.stdout, "legacy/")
 	assert.Equal(t, "tiger: 1 blocking", splitLines(got.stdout)[1])
 }
+
+func TestCommentsAllowLeavesOtherDirectoriesChecked(t *testing.T) {
+	dir := commentsTree(t, allowing("legacy"))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "legacy", "doc.go"),
+		[]byte("// Package legacy exists.\n//\n// It works like this.\npackage legacy\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "fresh", "doc.go"),
+		[]byte("// Package fresh exists.\n//\n// It works like this.\npackage fresh\n"), 0o644))
+	got := run(t, "check", "-C", dir, "./...")
+	assert.Empty(t, got.stderr)
+	assert.Equal(t, command.ExitFindings, got.code)
+	assert.NotContains(t, got.stdout, "legacy/")
+	assert.Contains(t, got.stdout, "fresh/doc.go:1:1: "+longFinding)
+	assert.Contains(t, got.stdout, "fresh/doc.go:4:1: "+emptyFinding)
+	assert.Equal(t, "tiger: 3 blocking", splitLines(got.stdout)[3])
+}
+
+func TestPackageCommentFindingSitsAtTheCommentsFirstLine(t *testing.T) {
+	dir := commentsModule(t, sourceFile{
+		name:    "p.go",
+		content: licence + "// Package p exists.\n//\n// More.\npackage p\n\ntype T struct{}\n",
+	})
+	got := run(t, "check", "-C", dir, "./...")
+	assert.Empty(t, got.stderr)
+	assert.Equal(t, command.ExitFindings, got.code)
+	assert.Equal(t, "p.go:3:1: "+longFinding+"\ntiger: 1 blocking\n", got.stdout)
+}
+
+func TestPackageCommentCountsEveryFilesComment(t *testing.T) {
+	dir := commentsModule(t, sourceFile{
+		name: "a.go", content: "// Package p exists.\npackage p\n\ntype A struct{}\n",
+	})
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "b.go"),
+		[]byte("// It works like this.\npackage p\n\ntype B struct{}\n"), 0o644))
+	got := run(t, "check", "-C", dir, "./...")
+	assert.Empty(t, got.stderr)
+	assert.Equal(t, command.ExitFindings, got.code)
+	assert.Equal(t, "a.go:1:1: "+longFinding+"\nb.go:1:1: "+longFinding+"\ntiger: 2 blocking\n",
+		got.stdout)
+}
+
+func TestBarePackageFileIsNotAFinding(t *testing.T) {
+	dir := beside(t, sourceFile{name: "empty.go", content: "package p\n"})
+	got := run(t, "check", "-C", dir, "./...")
+	assert.Empty(t, got.stderr)
+	assert.Equal(t, command.ExitClean, got.code)
+	assert.Empty(t, got.stdout)
+}

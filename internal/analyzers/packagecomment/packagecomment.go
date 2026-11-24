@@ -33,18 +33,26 @@ func run(pass *analysis.Pass) (any, error) {
 	if len(config.Values(pass.Pkg.Path(), config.Key{Analyzer: "comments", Flag: "allow"})) > 0 {
 		return nil, nil
 	}
+	docs := []*ast.CommentGroup{}
+	blocks := 0
 	for _, file := range pass.Files {
 		if exempt(pass, file) {
 			continue
 		}
-		if file.Doc != nil && paragraphs(file.Doc) > 1 {
-			pass.Report(analysis.Diagnostic{
-				Pos: file.Doc.Pos(), Category: "TS-L15", Message: longMessage,
-			})
+		if file.Doc != nil {
+			docs = append(docs, file.Doc)
+			blocks += paragraphs(file.Doc)
 		}
 		if len(file.Decls) == 0 && len(file.Comments) > 0 {
 			pass.Report(analysis.Diagnostic{
 				Pos: file.Package, Category: "TS-L16", Message: emptyMessage,
+			})
+		}
+	}
+	if blocks > 1 {
+		for _, doc := range docs {
+			pass.Report(analysis.Diagnostic{
+				Pos: doc.Pos(), Category: "TS-L15", Message: longMessage,
 			})
 		}
 	}
