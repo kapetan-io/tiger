@@ -27,8 +27,8 @@ TS-M10 blocks a loop that calls IO once per item. A blocking rule must not fire 
 Deciding by package fails that test. `os`, `net`, `net/http` and `database/sql` each hold both IO and
 pure calls. `net.SplitHostPort` parses a string, `os.Getpid` returns a number the process holds,
 `sql.Rows.Scan` copies a row already fetched, and `sql.Named` wraps a value. Classified by package,
-each one blocks a build when called inside a loop. Exempting them one by one means keeping a list of sites or functions to excuse, and
-the config file never names a function to exempt (ADR-0003).
+each one blocks a build when called inside a loop. Exempting them one by one means keeping a list
+of sites or functions to excuse, and the config file never names a function to exempt (ADR-0003).
 
 Deciding by reading the callee's body fails in both directions. `http.Client.Do` and `sql.DB.Query`
 reach no system call through direct calls, because the work goes through an interface. A call graph
@@ -59,8 +59,8 @@ their code.
 
 A repository widens detection the way ADR-0005 allows, by naming a whole package in
 `ioinloop.packages`. Every call into that package counts as IO, except a method on a map, slice or
-basic-typed value. Naming a standard library package there replaces the IO list for that package. There
-is no list of calls to exempt.
+basic-typed value. Naming a standard library package there replaces the IO list for that package.
+There is no list of calls to exempt.
 
 ## Consequences
 
