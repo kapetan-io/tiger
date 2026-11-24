@@ -20,7 +20,9 @@
 // net.LookupPort on a port number), a call that touches the system only on
 // its first use (http.ParseTime loading the local time zone), or a call that
 // signals or waits on another process
-// ((*os.Process).Kill, Signal, Wait, Release and os.FindProcess). Unproven
+// ((*os.Process).Kill, Signal, Wait, Release and os.FindProcess). Those
+// return early on a released or finished process, and a loop that waits on
+// or signals each of its children has no batched form to move to. Unproven
 // and Unlisted calls are silent, the same as NoIO, because a blocking rule
 // must not guess. When a new call sits between IO and Unproven, choose
 // Unproven.

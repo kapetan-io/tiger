@@ -65,8 +65,9 @@ their code.
 
 A repository widens detection the way ADR-0005 allows, by naming a whole package in
 `ioinloop.packages`. Every call into that package counts as IO, except a method on a map, slice or
-basic-typed value. Naming a standard library package there replaces the IO list for that package.
-There is no list of calls to exempt.
+basic-typed value. Naming a standard library package there adds to the IO list for that package.
+A call into it is IO when the IO list classifies it IO or when it is not a container method. There
+is no list of calls to exempt.
 
 ## Consequences
 

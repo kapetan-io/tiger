@@ -5,6 +5,7 @@
 package fixture
 
 import (
+	"context"
 	"database/sql"
 	"net"
 	"net/http"
@@ -94,4 +95,20 @@ func resolveAll(addrs []string) ([]*net.TCPAddr, error) {
 		resolved = append(resolved, a)
 	}
 	return resolved, nil
+}
+
+// pingEach borrows a pooled connection per item: db.Conn can reuse an idle
+// connection and conn.Close returns it to the pool, so the list marks both
+// unproven and they are silent.
+func pingEach(ctx context.Context, db *sql.DB, n int) error {
+	for i := 0; i < n; i++ {
+		conn, err := db.Conn(ctx)
+		if err != nil {
+			return err
+		}
+		if err := conn.Close(); err != nil {
+			return err
+		}
+	}
+	return nil
 }

@@ -40,7 +40,9 @@ func TestEveryExportedCallIsListed(t *testing.T) {
 	}
 	assert.Empty(t, unlisted, "classify each call in calls.go as IO, NoIO or Unproven, using the "+
 		"definitions in stdlibio.go's package doc, in its class's sorted group; "+
-		"use Unproven when unsure")
+		"use Unproven when unsure. The test lists the standard library of the go running it, so a "+
+		"toolchain newer than go.mod's adds calls; run it with go.mod's Go, or classify them when "+
+		"go.mod moves to that release")
 }
 
 // TestEveryListedCallExists fails on an entry that names nothing, such as a

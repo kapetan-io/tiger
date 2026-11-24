@@ -2,7 +2,6 @@ package stdlibio
 
 var classes = map[string]Class{
 	"(*database/sql.Conn).BeginTx":                IO,
-	"(*database/sql.Conn).Close":                  IO,
 	"(*database/sql.Conn).ExecContext":            IO,
 	"(*database/sql.Conn).PingContext":            IO,
 	"(*database/sql.Conn).PrepareContext":         IO,
@@ -11,7 +10,6 @@ var classes = map[string]Class{
 	"(*database/sql.DB).Begin":                    IO,
 	"(*database/sql.DB).BeginTx":                  IO,
 	"(*database/sql.DB).Close":                    IO,
-	"(*database/sql.DB).Conn":                     IO,
 	"(*database/sql.DB).Exec":                     IO,
 	"(*database/sql.DB).ExecContext":              IO,
 	"(*database/sql.DB).Ping":                     IO,
@@ -255,6 +253,8 @@ var classes = map[string]Class{
 	"syscall.Truncate":                            IO,
 	"syscall.Unlink":                              IO,
 	"syscall.Write":                               IO,
+	"(*database/sql.Conn).Close":                  Unproven,
+	"(*database/sql.DB).Conn":                     Unproven,
 	"(*database/sql.Row).Scan":                    Unproven,
 	"(*database/sql.Rows).Next":                   Unproven,
 	"(*database/sql.Rows).NextResultSet":          Unproven,
