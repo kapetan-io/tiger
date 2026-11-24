@@ -5,8 +5,8 @@ github.com/golangci/plugin-module-register v0.1.2 h1:e5WM6PO6NIAEcij3B053CohVp3H
 github.com/golangci/plugin-module-register v0.1.2/go.mod h1:1+QGTsKBvAIvPvoY/os+G5eoqxWn70HYDm2uvUyGuVw=
 github.com/google/go-cmp v0.6.0 h1:ofyhxvXcZhMsU5ulbFiLKl/XBFqE1GSq7atu8tAmTRI=
 github.com/google/go-cmp v0.6.0/go.mod h1:17dUlkBOakJ0+DkrSSNjCkIjxS6bF9zb3elmeNGIjoY=
-github.com/kapetan-io/tiger/assert v0.0.0-20261123063720-135b8fdb8234 h1:pKSKkstvpWzAR8LpR+n32ZWJ4kFA9nEfMuUz4aM75mI=
-github.com/kapetan-io/tiger/assert v0.0.0-20261123063720-135b8fdb8234/go.mod h1:QcZpcIniCfSp6voMvNovBiaxiIulgE/Ad9EE7lRvltM=
+github.com/kapetan-io/tiger/assert v0.0.0-20261123155959-4902e97492d2 h1:cADXahV4raQ56nmo+9qgd3gmpWei5y/H1AYBR64UGvo=
+github.com/kapetan-io/tiger/assert v0.0.0-20261123155959-4902e97492d2/go.mod h1:QcZpcIniCfSp6voMvNovBiaxiIulgE/Ad9EE7lRvltM=
 github.com/kr/pretty v0.1.0 h1:L/CwN0zerZDmRFUapSPitk6f+Q3+0za1rQkzVuMiMFI=
 github.com/kr/pretty v0.1.0/go.mod h1:dAy3ld7l9f0ibDNOQOHHMYYIIbhfbHSm3C4ZsoJORNo=
 github.com/kr/text v0.2.0 h1:5Nx0Ya0ZqY2ygV366QzturHI13Jq95ApcVaJBhpS+AY=
