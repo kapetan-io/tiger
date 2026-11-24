@@ -553,7 +553,7 @@ ledger's card does not list it.
 A module that wants its import graph checked keeps a `tiger.layers.yaml` next to `go.mod`
 (TS-X03). Each key is a package of the module, and its list names what that package may
 import beyond the pure standard library: other packages of the module, third-party modules,
-and the eight standard library subtrees that leave the process or are nondeterministic,
+and the nine standard library subtrees that leave the process or are nondeterministic,
 such as `os`, `net` and `math/rand`.
 
 ```yaml

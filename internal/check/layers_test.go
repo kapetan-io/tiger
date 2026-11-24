@@ -161,7 +161,7 @@ func TestLayersInModuleNamesAreExact(t *testing.T) {
 // TestLayersImpureSubtreeMustBeNamed covers the impure subtree contract.
 //
 // Goal: a package whose entry names no subtree is denied every package in each of
-// the eight subtrees that leave the process or are nondeterministic, and
+// the nine subtrees that leave the process or are nondeterministic, and
 // keeps the rest of the standard library, crypto/sha256 included.
 func TestLayersImpureSubtreeMustBeNamed(t *testing.T) {
 	dir := writeModuleFiles(t, layerTree)
@@ -176,7 +176,7 @@ func TestLayersImpureSubtreeMustBeNamed(t *testing.T) {
 
 	writeFiles(t, dir, map[string]string{
 		"service/io.go": "package service\n\nimport (\n" +
-			"\t_ \"crypto/rand\"\n\t_ \"database/sql/driver\"\n\t_ \"io/ioutil\"\n" +
+			"\t_ \"crypto/rand\"\n\t_ \"database/sql/driver\"\n\t_ \"io/ioutil\"\n\t_ \"log/syslog\"\n" +
 			"\t_ \"math/rand/v2\"\n\t_ \"net/http/httptest\"\n\t_ \"os/exec\"\n" +
 			"\t_ \"plugin\"\n\t_ \"syscall\"\n)\n",
 	})
@@ -190,20 +190,39 @@ func TestLayersImpureSubtreeMustBeNamed(t *testing.T) {
 		"service/io.go:6:2: TS-X03: the \"./service\" entry in tiger.layers.yaml doesn't " +
 			"list io/ioutil, so this package can't import io/ioutil — add \"io/ioutil\"",
 		"service/io.go:7:2: TS-X03: the \"./service\" entry in tiger.layers.yaml doesn't " +
-			"list math/rand, so this package can't import math/rand/v2 — add \"math/rand\"",
+			"list log/syslog, so this package can't import log/syslog — add \"log/syslog\"",
 		"service/io.go:8:2: TS-X03: the \"./service\" entry in tiger.layers.yaml doesn't " +
-			"list net, so this package can't import net/http/httptest — add \"net\"",
+			"list math/rand, so this package can't import math/rand/v2 — add \"math/rand\"",
 		"service/io.go:9:2: TS-X03: the \"./service\" entry in tiger.layers.yaml doesn't " +
-			"list os, so this package can't import os/exec — add \"os\"",
+			"list net, so this package can't import net/http/httptest — add \"net\"",
 		"service/io.go:10:2: TS-X03: the \"./service\" entry in tiger.layers.yaml doesn't " +
-			"list plugin, so this package can't import plugin — add \"plugin\"",
+			"list os, so this package can't import os/exec — add \"os\"",
 		"service/io.go:11:2: TS-X03: the \"./service\" entry in tiger.layers.yaml doesn't " +
+			"list plugin, so this package can't import plugin — add \"plugin\"",
+		"service/io.go:12:2: TS-X03: the \"./service\" entry in tiger.layers.yaml doesn't " +
 			"list syscall, so this package can't import syscall — add \"syscall\"",
 	} {
 		assert.Contains(t, got.stdout, want)
 	}
-	assert.Contains(t, got.stdout, "tiger: 8 blocking\n")
+	assert.Contains(t, got.stdout, "tiger: 9 blocking\n")
 	assert.NotContains(t, got.stdout, "pure.go")
+}
+
+// TestLayersCallsThatReadTheFileSystemNeedOs covers the function contract.
+//
+// Goal: a call to a pure standard library function that reads the file system
+// fires when the entry doesn't list os, and names the function.
+func TestLayersCallsThatReadTheFileSystemNeedOs(t *testing.T) {
+	dir := writeModuleFiles(t, layerTree)
+	writeFiles(t, dir, map[string]string{
+		"service/scan.go": "package service\n\nimport \"path/filepath\"\n\n" +
+			"func Scan() error {\n\t_, err := filepath.Glob(\"*\")\n\treturn err\n}\n",
+	})
+	got := checkModule(t, dir)
+	assert.Equal(t, command.ExitFindings, got.code)
+	assert.Contains(t, got.stdout, "TS-X03: the \"./service\" entry "+
+		"in tiger.layers.yaml doesn't list os, so this package can't call path/filepath.Glob "+
+		"— add \"os\" to it, or take an fs.FS or the data as an input")
 }
 
 // TestLayersNamingNetAllowsOnlyItsSubtree covers the impure subtree contract.
@@ -414,7 +433,8 @@ func TestLayersWithoutAFileChangeNothing(t *testing.T) {
 	delete(files, "tiger.layers.yaml")
 	maps.Copy(files, map[string]string{
 		"worker/worker.go": "// Package worker does IO.\npackage worker\n\nimport (\n" +
-			"\t_ \"os\"\n\t_ \"syscall\"\n\n\t_ \"" + layerModule + "/web\"\n)\n",
+			"\t_ \"os\"\n\t\"path/filepath\"\n\t_ \"syscall\"\n\n\t_ \"" + layerModule +
+			"/web\"\n)\n\nfunc Scan() error {\n\t_, err := filepath.Glob(\"*\")\n\treturn err\n}\n",
 	})
 
 	got := checkModule(t, writeModuleFiles(t, files))

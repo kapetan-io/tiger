@@ -9,7 +9,8 @@
 // Naming the impure packages a package may import keeps most IO and all
 // randomness behind interfaces passed in. It is not a proof: a few pure
 // standard library packages reach the file system or the network on their
-// own (path/filepath.Glob, html/template.ParseFiles, log/syslog, crypto/tls).
+// own (crypto/tls). Calls to the standard library functions that read the
+// file system or the working directory need the entry to name os.
 package layerfile
 
 import (
@@ -44,8 +45,27 @@ const (
 )
 
 var impure = []string{
-	"crypto/rand", "database", "io/ioutil", "math/rand", "net", "os", "plugin", "syscall",
+	"crypto/rand", "database", "io/ioutil", "log/syslog", "math/rand", "net", "os", "plugin",
+	"syscall",
 }
+
+var readsOutsideProcess = map[string]bool{
+	"path/filepath.Glob":                   true,
+	"path/filepath.Walk":                   true,
+	"path/filepath.WalkDir":                true,
+	"path/filepath.Abs":                    true,
+	"path/filepath.EvalSymlinks":           true,
+	"html/template.ParseFiles":             true,
+	"html/template.ParseGlob":              true,
+	"(*html/template.Template).ParseFiles": true,
+	"(*html/template.Template).ParseGlob":  true,
+	"text/template.ParseFiles":             true,
+	"text/template.ParseGlob":              true,
+	"(*text/template.Template).ParseFiles": true,
+	"(*text/template.Template).ParseGlob":  true,
+}
+
+const processAccess = "os"
 
 type entry struct {
 	key   string
@@ -293,6 +313,7 @@ const (
 	unlistedPackage
 	unlistedModule
 	unlistedImpure
+	unlistedCall
 )
 
 type Verdict struct {
@@ -300,6 +321,7 @@ type Verdict struct {
 	entryKey string
 	imported string
 	name     string
+	call     string
 }
 
 func (v Verdict) Allowed() bool {
@@ -332,6 +354,15 @@ func (i Importer) Judge(imported string) Verdict {
 		verdict.breach = unlistedModule
 	}
 	return verdict
+}
+
+func (i Importer) JudgeUse(fullName string) Verdict {
+	assert.Ok(i.entry != nil, "only a package with an entry is judged use by use")
+	if !readsOutsideProcess[fullName] || slices.Contains(i.entry.names, processAccess) {
+		return Verdict{}
+	}
+	return Verdict{breach: unlistedCall, entryKey: i.entry.key, name: processAccess,
+		call: fullName}
 }
 
 func impureSubtree(imported string) string {

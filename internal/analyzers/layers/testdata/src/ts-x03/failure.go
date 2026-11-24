@@ -5,6 +5,7 @@ package layered
 // does not allow example.com/lib-c, whose path only starts the same way, and
 // dotless/lib is a third-party module though its path has no dot.
 import (
+	_ "log/syslog"   // want `doesn't list log/syslog, so this package can't import log/syslog — add "log/syslog" to it, or pass it in through an interface`
 	_ "math/rand/v2" // want `the "\." entry in tiger\.layers\.yaml doesn't list math/rand, so this package can't import math/rand/v2 — add "math/rand" to it`
 	_ "net/http"     // want `doesn't list net, so this package can't import net/http — add "net" to it, or pass it in through an interface`
 

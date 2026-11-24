@@ -2,6 +2,7 @@ package layerfile
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/kapetan-io/tiger/assert"
 )
@@ -20,6 +21,10 @@ func (v Verdict) Message() string {
 		text = fmt.Sprintf("%s: %s doesn't list %s, so this package can't import %s — add %q "+
 			"to it, or pass it in through an interface", RuleID, entryText, v.name, v.imported,
 			v.name)
+	case unlistedCall:
+		text = fmt.Sprintf("%s: %s doesn't list %s, so this package can't call %s — add %q "+
+			"to it, or take an fs.FS or the data as an input", RuleID, entryText, v.name,
+			callName(v.call), v.name)
 	default:
 		assert.Unreachable("an allowed import is never reported")
 	}
@@ -47,4 +52,13 @@ func packageName(key string) string {
 		return `the root package "."`
 	}
 	return key
+}
+
+func callName(full string) string {
+	rest, found := strings.CutPrefix(full, "(*")
+	if !found {
+		return full
+	}
+	receiver, method, _ := strings.Cut(rest, ")")
+	return receiver + method
 }

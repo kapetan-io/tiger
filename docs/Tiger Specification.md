@@ -1163,21 +1163,24 @@ direction of every dependency is a fact you write down once and check forever. L
 enforceable residue of architecture. A package that does IO almost always imports the package that
 does it, so a package whose list leaves out `net`, `database`, `os` and the drivers keeps that IO
 behind an interface passed in. A few pure standard library packages reach the file system or the
-network on their own (`path/filepath.Glob`, `html/template.ParseFiles`, `log/syslog`,
-`crypto/tls`), so the list is a strong default, not a proof.
+network on their own (`crypto/tls`), so the list is a strong default, not a proof. The
+standard library functions that read the file system or the working directory without an import
+are held to the entry's `os`, from a fixed list: `path/filepath`'s `Glob`, `Walk`, `WalkDir`,
+`Abs` and `EvalSymlinks`, and `ParseFiles` and `ParseGlob` from both template packages.
 Enforce. `layers` (custom), against a checked-in layer file. `tiger.layers.yaml` sits at the module
 root. Its keys are packages, `.` for the root package, `./dir` for one package, and `./dir/...` for
 a directory and everything below it; keys may not overlap. Each key lists what that package may
 import beyond the pure standard library, in three spellings, each matched exactly. `./pkg` is one
 package of this module, not a package below it. `module/path` allows that path and every path below
-it on a `/` boundary. `net`, `os`, `database`, `syscall`, `plugin`, `io/ioutil`, `crypto/rand` and
+it on a `/` boundary. `net`, `os`, `database`, `syscall`, `plugin`, `io/ioutil`, `log/syslog`, `crypto/rand` and
 `math/rand` are the standard library that leaves the process or is nondeterministic, and naming one
 allows its whole subtree. The rest of the standard library, every package under the GOROOT that
 `go env GOROOT` reports, is always allowed; a dotless third-party module brought in by `replace` or
 `go.work` is a module like any other. A nested module, a directory with its own `go.mod`, is not
 part of this module: its packages need no entry, and an import of one names its module path.
 `_test.go` files are not layered, because surface tests cross layers. The analyzer reports each
-import the package's entry does not allow, at the import, and a package with no entry at its package
+import the package's entry does not allow, at the import, each use of a file-reading standard library function
+the entry's missing `os` does not allow, at the function, and a package with no entry at its package
 clause. `tiger check` also reports, from the module's directories, an entry that matches no package
 directory and a package with no entry that the analyzer did not report (one outside the patterns
 passed, or built only for another platform); a directory is a package when it holds a non-test Go

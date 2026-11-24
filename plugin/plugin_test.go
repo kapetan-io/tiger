@@ -162,6 +162,21 @@ func TestPluginInstallsLayerFileFromSettings(t *testing.T) {
 	require.Len(t, messages, 1)
 	assert.Contains(t, messages[0], "package ./unlisted has no entry in tiger.layers.yaml")
 
+	messages = []string{}
+	for _, analyzer := range analyzers {
+		if analyzer.Name != "layers" {
+			continue
+		}
+		for _, result := range analysistest.Run(quietRun{}, corpus, analyzer,
+			"smoke.example/plugin/nofs") {
+			for _, diagnostic := range result.Diagnostics {
+				messages = append(messages, diagnostic.Message)
+			}
+		}
+	}
+	require.Len(t, messages, 1)
+	assert.Contains(t, messages[0], "so this package can't call path/filepath.Glob")
+
 	_, err = build(map[string]any{"config": filepath.Join("testdata", "badlayers")})
 	require.ErrorContains(t, err,
 		"tiger.layers.yaml: line 1: \"./layered\": \"strings\" is always allowed; remove it")
