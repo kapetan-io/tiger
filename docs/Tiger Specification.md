@@ -902,9 +902,9 @@ Why. Straight from the original, doubly true in Go where the natural shape is on
 request. Accept into a bounded queue, then drain at a rate you control. Batching, back pressure, and a
 bound on work per unit time all fall out of the same decision.
 Enforce. `nogoroutine` (custom) structurally, for a `go` statement or a `sync.WaitGroup.Go`,
-`errgroup.Group.Go` or `TryGo` call inside a loop; the design is `review`. `_test.go` files are not checked: a concurrency test
-fans out on purpose, and a single-worker queue would defeat it. *(Amended 2026-10-12: test-file
-exemption, ADR-0019.)* *(Amended 2026-11-23: `sync.WaitGroup.Go`,
+`errgroup.Group.Go` or `TryGo` call inside a loop; the design is `review`. `_test.go` files are
+not checked: a concurrency test fans out on purpose, and a single-worker queue would defeat it.
+*(Amended 2026-10-12: test-file exemption, ADR-0019.)* *(Amended 2026-11-23: `sync.WaitGroup.Go`,
 `errgroup.Group.Go` and `TryGo` in a loop are findings, with or without `SetLimit`.)*
 
 **`TS-C11` No exported method returns a pointer, slice, or map that aliases an internal field.**
