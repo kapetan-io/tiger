@@ -84,11 +84,14 @@ linters:
         gocognit:
             min-complexity: 15
         gocritic:
+            enabled-checks:
+                - hugeParam
+                - rangeValCopy
             settings:
                 hugeParam:
-                    sizeThreshold: 64
+                    sizeThreshold: 65
                 rangeValCopy:
-                    sizeThreshold: 64
+                    sizeThreshold: 65
         godot:
             capital: true
             scope: declarations

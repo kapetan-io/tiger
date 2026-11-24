@@ -111,7 +111,7 @@ func isCycle(component []*ssa.Function, callees map[*ssa.Function][]*ssa.Functio
 }
 
 func report(pass *analysis.Pass, component []*ssa.Function) {
-	sorted := sortedByName(component)
+	sorted := sortedByName(pass.Fset, component)
 	names := make([]string, 0, len(sorted)+1)
 	for _, fn := range sorted {
 		names = append(names, fn.Name())
@@ -119,29 +119,41 @@ func report(pass *analysis.Pass, component []*ssa.Function) {
 	names = append(names, sorted[0].Name())
 
 	pass.Report(analysis.Diagnostic{
-		Pos:      firstPos(component),
+		Pos:      firstPos(pass.Fset, component),
 		Category: "TS-S01",
 		Message:  "TS-S01: " + strings.Join(names, " → ") + msgRewrite,
 	})
 }
 
-func sortedByName(component []*ssa.Function) []*ssa.Function {
+func sortedByName(fset *token.FileSet, component []*ssa.Function) []*ssa.Function {
 	sorted := slices.Clone(component)
 	slices.SortFunc(sorted, func(a, b *ssa.Function) int {
 		if a.Name() != b.Name() {
 			return strings.Compare(a.Name(), b.Name())
 		}
-		return cmp.Compare(a.Pos(), b.Pos())
+		left := place(fset.PositionFor(a.Pos(), true))
+		return left.compare(place(fset.PositionFor(b.Pos(), true)))
 	})
 	return sorted
 }
 
-func firstPos(component []*ssa.Function) token.Pos {
+func firstPos(fset *token.FileSet, component []*ssa.Function) token.Pos {
 	smallest := component[0].Pos()
 	for _, fn := range component[1:] {
-		if fn.Pos() < smallest {
+		here := place(fset.PositionFor(fn.Pos(), true))
+		if here.compare(place(fset.PositionFor(smallest, true))) < 0 {
 			smallest = fn.Pos()
 		}
 	}
 	return smallest
+}
+
+type place token.Position
+
+func (p place) compare(other place) int {
+	return cmp.Or(
+		strings.Compare(p.Filename, other.Filename),
+		cmp.Compare(p.Line, other.Line),
+		cmp.Compare(p.Column, other.Column),
+	)
 }

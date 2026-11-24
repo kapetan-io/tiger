@@ -115,6 +115,10 @@ A recursive function's depth depends on its input data, not on anything in the c
 lets a single call stack grow up to one gigabyte before it gives up. So a bad input does
 not fail fast. It quietly eats memory and crashes far from the real cause.
 
+A cycle is reported once, at the cycle's first function ordered by file name, then line. A
+cycle across files therefore reports at the same file and line on every run, so a
+`//nolint` or a `--new-from-rev` baseline on that line keeps matching.
+
 Code that fires it:
 
 ```go
@@ -866,7 +870,13 @@ is written, or inside the goroutine it waits for does not count. A path that ret
 non-nil error is not a success path, so a `Shutdown` that returns its flush error before it
 waits is accepted. A `Wait` that only runs in the
 branch where the caller's context expired does not count. That branch is a `Shutdown`
-giving up early, and the early return is exempt from the check. A group handed in as a
+giving up early, and the early return is exempt from the check. The exemption needs a
+`Wait` on the group somewhere in the same function, that branch included, and covers only
+a branch the path reaches after the start. A branch the path passes before the start, a
+branch the start itself sits in, and a function that never calls `Wait` exempt nothing. A
+`Wait` after the start inside the branch that holds the start counts as usual. Any `Wait`
+on the group in the function satisfies the exemption, even one the path never reaches or
+reaches only before the start, and that gap is not caught. A group handed in as a
 parameter is the caller's to wait on, and this check does not follow it.
 
 Code that fires it:
@@ -994,8 +1004,9 @@ func awaitWithShutdown(ctx context.Context, values chan int) (int, error) {
 
 **Severity:** blocking — a finding fails the run.
 
-Spawning one goroutine per incoming item lets outside events set the code's pace, not
-the code itself. A burst of requests becomes a burst of goroutines, with no limit on how
+Spawning one goroutine per incoming item, with a `go` statement or a `sync.WaitGroup.Go`,
+`errgroup.Group.Go` or `TryGo` call inside a loop, lets outside events set the code's pace,
+not the code itself. A burst of requests becomes a burst of goroutines, with no limit on how
 many run at once. Putting items in a bounded queue and draining it from one worker gives
 you batching and back pressure. The queue's size becomes the one place that decides how
 fast work happens.
@@ -1031,6 +1042,15 @@ func drain(queue []string) {
 	}
 }
 ```
+
+A `wg.Go(...)`, `group.Go(...)` or `group.TryGo(...)` inside the loop fires the same finding
+as the `go` statement, even when the group's `Wait` is reached, because the number of
+goroutines still follows the input. A group with `SetLimit` is still reported, because the
+limit caps how many goroutines run at once but not how many the loop starts. The rule has no
+exemption for it. The compliant rewrite above applies to all of them.
+
+Known gap: a `Go` method saved in a variable (`start := wg.Go`) and called in the loop is not
+seen, because the rule reads the call, not where the method value came from.
 
 **Not checked in tests:** `_test.go` files are skipped for this rule. A concurrency test
 starts one goroutine per request on purpose, and a single-worker queue would defeat it.
@@ -2231,7 +2251,7 @@ one exactly. Write `[]` for a package that imports nothing beyond it.
 |---|---|
 | `./pkg` | that one package of this module (`.` for the root), not a package below it |
 | `module/path` | that path and every path below it, on a `/` boundary: `example.com/a/b` allows `example.com/a/b/c` but not `example.com/a/b-c` |
-| `net`, `os`, `database`, `syscall`, `plugin`, `io/ioutil`, `crypto/rand`, `math/rand` | that standard library subtree: naming `net` allows `net/http` |
+| `net`, `os`, `database`, `syscall`, `plugin`, `io/ioutil`, `log/syslog`, `crypto/rand`, `math/rand` | that standard library subtree: naming `net` allows `net/http` |
 
 The rest of the standard library, every package under the GOROOT that `go env GOROOT`
 reports, is always allowed, so naming `strings` is an error, and so is naming `net/http`
@@ -2244,7 +2264,20 @@ package here that imports one names it by its module path. Packages under a
 even one under the same key. `_test.go` files are not layered, because surface tests cross
 layers.
 
-Code that fires it, under the file above, where `./service`'s entry names `./internal/store`
+A few pure standard library functions read the file system or the working directory without
+the package importing `os`, so a call to one needs the entry to name `os` too: `path/filepath`'s
+`Glob`, `Walk`, `WalkDir`, `Abs` and `EvalSymlinks`, and `ParseFiles` and `ParseGlob` from
+`html/template` and `text/template`, as functions and as `Template` methods. `Abs` reads the
+working directory, so process state counts like the disk. A reference that is not a call, such
+as `walk := filepath.WalkDir`, is judged the same. Pure path functions (`Join`, `Clean`,
+`Base`, `Ext`) and the `fs.FS` forms (`fs.Glob`, `fs.WalkDir`, `template.ParseFS`) stay allowed.
+The finding names the function:
+
+```
+store/scan.go:9:9: TS-X03: the "./store" entry in tiger.layers.yaml doesn't list os, so this package can't use path/filepath.Glob — add "os" to it, or take an fs.FS or the data as an input
+```
+
+Code that fires the import check, under the file above, where `./service`'s entry names `./internal/store`
 and `./internal/types` but not `database`:
 
 ```go
@@ -2322,9 +2355,9 @@ packages still fire; stock golangci-lint without the tiger plugin reports none o
 
 **Known miss:** imports can't see interface shape, such as a `Store` with 40 methods, or
 business logic in a handler that imports nothing new. A package that names `net` may use
-anything under it, `net/http/httptest` included. The eight subtrees are not all of the
-standard library's IO: `path/filepath.Glob`, `html/template.ParseFiles`, `log/syslog` and
-`crypto/tls` reach the file system or the network without importing one of them. An import in
+anything under it, `net/http/httptest` included. `crypto/tls` can reach the network in a package whose
+entry does not name `net`, because tiger gates no function in it. The `os` gate is a fixed list
+of functions, so `time.LoadLocation` and `go/parser.ParseDir`, which also read the disk, pass. An import in
 a file built for another OS or behind a build tag is checked only on a platform that builds
 it. `tiger check` never judges a package in a directory whose name ends in `.test` import by
 import, because its driver drops every package ID ending in `.test` as the main package `go test`
@@ -2388,7 +2421,10 @@ golangci-lint findings fail its run.
 | TS-L11 | imports grouped standard, external, internal | gci |
 | TS-T01 | time and randomness are injected | forbidigo |
 
-TS-T01's forbidigo half bans direct reads of the clock. Randomness is enforced through the
+TS-T01's forbidigo half bans every direct read of the clock (`time.Now`, `time.Since`,
+`time.Until`, `time.After`, `time.Tick`, `time.NewTimer`, `time.NewTicker`, `time.AfterFunc`).
+`tiger golangci` audits the ban list as "at least these": a config may carry bans of its own, but
+must hold every one of these. Randomness is enforced through the
 layer file instead (TS-X03): a package may import `math/rand` or `crypto/rand` only when its
 entry names them, so without `tiger.layers.yaml` randomness is not checked.
 
