@@ -24,10 +24,10 @@ const (
 var standardLinters = []string{"errcheck", "govet", "ineffassign", "staticcheck", "unused"}
 
 type Setting struct {
-	Path     []string
-	Want     any
-	Contains bool
-	Reason   string
+	Path         []string
+	Want         any
+	Contains     bool
+	Reason       string
 	Alternatives []Setting
 }
 
