@@ -6,3 +6,8 @@
   - example.com/lib
 "./store": []
 "./domain/...": []
+"./nofs": []
+"./logging":
+  - log/syslog
+"./testfile": []
+"./dotfs": []

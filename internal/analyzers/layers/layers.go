@@ -2,7 +2,8 @@
 // tiger.layers.yaml and every import obeys it.
 //
 // The driver loads and installs the layer file; this pass only asks it
-// where the analyzed package sits and whether each import is listed
+// where the analyzed package sits, whether each import is listed and whether
+// each use of a file-reading standard library function has os
 // (ADR-0002). Matching is exact, because depguard's prefix match against the
 // nearest allow entry cannot express it (ADR-0029). _test.go files are not
 // layered, because surface tests cross layers. Entries that match no package,
@@ -12,6 +13,7 @@ package layers
 
 import (
 	"go/ast"
+	"go/types"
 	"strconv"
 	"strings"
 
@@ -61,8 +63,30 @@ func run(pass *analysis.Pass) (any, error) {
 				Message:  verdict.Message(),
 			})
 		}
+		reportUses(pass, importer, file)
 	}
 	return nil, nil
+}
+
+func reportUses(pass *analysis.Pass, importer layerfile.Importer, file *ast.File) {
+	ast.Inspect(file, func(node ast.Node) bool {
+		ident, isIdent := node.(*ast.Ident)
+		if !isIdent {
+			return true
+		}
+		used, isFunc := pass.TypesInfo.Uses[ident].(*types.Func)
+		if !isFunc || used.Pkg() == nil {
+			return true
+		}
+		if verdict := importer.JudgeUse(used.FullName()); !verdict.Allowed() {
+			pass.Report(analysis.Diagnostic{
+				Pos:      ident.Pos(),
+				Category: layerfile.RuleID,
+				Message:  verdict.Message(),
+			})
+		}
+		return true
+	})
 }
 
 func testMain(pass *analysis.Pass) bool {

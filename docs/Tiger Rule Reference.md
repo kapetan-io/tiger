@@ -2208,7 +2208,7 @@ one exactly. Write `[]` for a package that imports nothing beyond it.
 |---|---|
 | `./pkg` | that one package of this module (`.` for the root), not a package below it |
 | `module/path` | that path and every path below it, on a `/` boundary: `example.com/a/b` allows `example.com/a/b/c` but not `example.com/a/b-c` |
-| `net`, `os`, `database`, `syscall`, `plugin`, `io/ioutil`, `crypto/rand`, `math/rand` | that standard library subtree: naming `net` allows `net/http` |
+| `net`, `os`, `database`, `syscall`, `plugin`, `io/ioutil`, `log/syslog`, `crypto/rand`, `math/rand` | that standard library subtree: naming `net` allows `net/http` |
 
 The rest of the standard library, every package under the GOROOT that `go env GOROOT`
 reports, is always allowed, so naming `strings` is an error, and so is naming `net/http`
@@ -2221,7 +2221,20 @@ package here that imports one names it by its module path. Packages under a
 even one under the same key. `_test.go` files are not layered, because surface tests cross
 layers.
 
-Code that fires it, under the file above, where `./service`'s entry names `./internal/store`
+A few pure standard library functions read the file system or the working directory without
+the package importing `os`, so a call to one needs the entry to name `os` too: `path/filepath`'s
+`Glob`, `Walk`, `WalkDir`, `Abs` and `EvalSymlinks`, and `ParseFiles` and `ParseGlob` from
+`html/template` and `text/template`, as functions and as `Template` methods. `Abs` reads the
+working directory, so process state counts like the disk. A reference that is not a call, such
+as `walk := filepath.WalkDir`, is judged the same. Pure path functions (`Join`, `Clean`,
+`Base`, `Ext`) and the `fs.FS` forms (`fs.Glob`, `fs.WalkDir`, `template.ParseFS`) stay allowed.
+The finding names the function:
+
+```
+store/scan.go:9:9: TS-X03: the "./store" entry in tiger.layers.yaml doesn't list os, so this package can't use path/filepath.Glob — add "os" to it, or take an fs.FS or the data as an input
+```
+
+Code that fires the import check, under the file above, where `./service`'s entry names `./internal/store`
 and `./internal/types` but not `database`:
 
 ```go
@@ -2299,9 +2312,9 @@ packages still fire; stock golangci-lint without the tiger plugin reports none o
 
 **Known miss:** imports can't see interface shape, such as a `Store` with 40 methods, or
 business logic in a handler that imports nothing new. A package that names `net` may use
-anything under it, `net/http/httptest` included. The eight subtrees are not all of the
-standard library's IO: `path/filepath.Glob`, `html/template.ParseFiles`, `log/syslog` and
-`crypto/tls` reach the file system or the network without importing one of them. An import in
+anything under it, `net/http/httptest` included. `crypto/tls` can reach the network in a package whose
+entry does not name `net`, because tiger gates no function in it. The `os` gate is a fixed list
+of functions, so `time.LoadLocation` and `go/parser.ParseDir`, which also read the disk, pass. An import in
 a file built for another OS or behind a build tag is checked only on a platform that builds
 it. `tiger check` never judges a package in a directory whose name ends in `.test` import by
 import, because its driver drops every package ID ending in `.test` as the main package `go test`
