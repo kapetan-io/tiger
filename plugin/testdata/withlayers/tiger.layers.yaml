@@ -4,3 +4,4 @@
 "./layered":
   - net
 "./tool.test": []
+"./nofs": []

@@ -5,9 +5,11 @@
 # Its list names what the package may import beyond the pure standard library:
 #   ./pkg        a package of this module, exactly that package
 #   module/path  that import path and every path below it
-#   net os database syscall plugin io/ioutil crypto/rand math/rand
+#   net os database syscall plugin io/ioutil log/syslog crypto/rand math/rand
 #                the standard library that leaves the process or is
 #                nondeterministic; naming one allows its whole subtree
+# A package also needs os to use path/filepath Glob, Walk, WalkDir, Abs and
+# EvalSymlinks, and ParseFiles and ParseGlob in html/template and text/template.
 # The rest of the standard library is always allowed; write [] for a package
 # that needs nothing more. _test.go files are not layered.
 #
