@@ -11,8 +11,8 @@ import (
 
 // TestCorpus runs the TS-M10 corpus through the analysistest driver.
 //
-// Goal: stdlib IO resolved through pass.TypesInfo to a package on the
-// allowlist fires inside a for or range body; a //tiger:batched loop, the
+// Goal: stdlib IO resolved through pass.TypesInfo to a call the IO list
+// marks IO fires inside a for or range body; a //tiger:batched loop, the
 // same IO hoisted above the loop, IO outside any loop, and an in-memory
 // bytes.Buffer write all stay silent; an inner loop under an
 // outer-only-annotated directive still fires (the nested-loop exclusion);
