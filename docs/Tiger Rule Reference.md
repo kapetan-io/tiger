@@ -1469,9 +1469,12 @@ package comment says why the package exists, in one paragraph.
 
 The package comment is the comment group directly above the `package` clause, read the way
 `go doc` reads it. A blank comment line, a `# Heading`, a list or an indented code block starts
-a second block, and a second block is a finding, reported at the comment's first line. `go doc`
-joins the package comments of every file in a package, so one paragraph in each of two files is
-two paragraphs, and each file's package comment is reported.
+a second block, and a second block is a finding, reported at the comment's first line.
+
+`go doc` joins the package comments of every file in a package, so a package comment in two
+files is a finding at each, with its own message: keep the package comment in one file and
+delete it from the others. A comment above `package` that holds only directives, such as
+`//go:generate x`, prints nothing in `go doc` and does not count.
 
 Code that fires it, in `queue.go`:
 
@@ -1502,7 +1505,8 @@ Test files, generated files and directories under `comments.allow` are exempt, a
 
 **Known miss:** a comment separated from the `package` clause by a blank line is not the package
 comment, so it may run to any length. That is how a licence header stays legal. A file that uses
-cgo is not checked, for the reason TS-L14 gives.
+cgo is not checked, for the reason TS-L14 gives, and neither its package comment nor a generated
+file's counts toward the package's total, though `go doc` prints both.
 
 
 <!-- rule: TS-L16 -->
@@ -1538,7 +1542,10 @@ type Queue struct{}
 
 A file with an import and nothing else has a declaration, so it passes. A file holding only
 the `package` clause, with no comment at all, carries no prose and passes. A `//go:build` line
-is a comment, so a file holding only a build constraint and the `package` clause fires. Test files, generated
+is a comment, so a file holding only a build constraint and the `package` clause fires. In a
+package that uses cgo, the Go toolchain also hands tiger an import stub from its build cache,
+holding only the `package` clause and `//go:cgo_import_dynamic` lines; tiger skips it, along
+with any other file whose name does not end in `.go`. Test files, generated
 files and directories under `comments.allow` are exempt, as for TS-L14. `tiger check` writes no
 fix (ADR-0008).
 

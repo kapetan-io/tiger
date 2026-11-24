@@ -18,6 +18,9 @@ const (
 	emptyFinding = "TS-L16: this file holds only comments and the package clause — tiger " +
 		"expects every production file to carry code — move any package comment above the " +
 		"package clause of a file with code, then delete this file"
+	splitFinding = "TS-L15: this is one of several files with a package comment, which go " +
+		"doc joins into one — tiger expects one paragraph in one file — keep the package " +
+		"comment in one file and delete it from the others"
 	licence = "// Copyright 2026 The Fixture Authors.\n\n"
 	docOnly = "// Package p exists.\npackage p\n"
 )
@@ -199,8 +202,20 @@ func TestPackageCommentCountsEveryFilesComment(t *testing.T) {
 	got := run(t, "check", "-C", dir, "./...")
 	assert.Empty(t, got.stderr)
 	assert.Equal(t, command.ExitFindings, got.code)
-	assert.Equal(t, "a.go:1:1: "+longFinding+"\nb.go:1:1: "+longFinding+"\ntiger: 2 blocking\n",
+	assert.Equal(t, "a.go:1:1: "+splitFinding+"\nb.go:1:1: "+splitFinding+"\ntiger: 2 blocking\n",
 		got.stdout)
+}
+
+func TestPackageCommentIgnoresDirectivesAboveThePackageClause(t *testing.T) {
+	dir := commentsModule(t, sourceFile{
+		name: "a.go", content: "// Package p exists.\npackage p\n\ntype A struct{}\n",
+	})
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "g.go"),
+		[]byte("//go:generate echo hi\npackage p\n\ntype G struct{}\n"), 0o644))
+	got := run(t, "check", "-C", dir, "./...")
+	assert.Empty(t, got.stderr)
+	assert.Equal(t, command.ExitClean, got.code)
+	assert.Empty(t, got.stdout)
 }
 
 func TestBarePackageFileIsNotAFinding(t *testing.T) {
