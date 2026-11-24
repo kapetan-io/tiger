@@ -6,9 +6,10 @@
 // anything else is checkable: every package-level constant whose name ends
 // in Max or Min must appear inside a package-level `const _ = uint(...)`
 // expression somewhere in the package, the compile-time relational
-// assertion pattern from TS-S17. The analyzer only checks that the name
-// appears inside such an expression — it does not judge whether the
-// relation is a meaningful one.
+// assertion pattern from TS-S17. An unexported limit must also be used
+// somewhere outside such expressions, or it bounds nothing the program
+// does. The analyzer matches names and does not judge whether a relation
+// is a meaningful one.
 package limitrelate
 
 import (
@@ -17,6 +18,7 @@ import (
 	"go/token"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"golang.org/x/tools/go/analysis"
@@ -83,10 +85,23 @@ func usesInExcludedFiles(pass *analysis.Pass) map[string]bool {
 		return found
 	}
 	loaded := map[string]bool{}
+	var dirs []string
 	for _, file := range pass.Files {
-		loaded[pass.Fset.File(file.Pos()).Name()] = true
+		name := pass.Fset.File(file.Pos()).Name()
+		loaded[name] = true
+		dirs = append(dirs, filepath.Dir(name))
 	}
-	dir := filepath.Dir(pass.Fset.File(pass.Files[0].Pos()).Name())
+	slices.Sort(dirs)
+	for _, dir := range slices.Compact(dirs) {
+		for name := range unloadedUses(pass, dir, loaded) {
+			found[name] = true
+		}
+	}
+	return found
+}
+
+func unloadedUses(pass *analysis.Pass, dir string, loaded map[string]bool) map[string]bool {
+	found := map[string]bool{}
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return found
@@ -132,6 +147,7 @@ func usesOutsideAssertions(file *ast.File) map[string]bool {
 			}
 		}
 	}
+	skipBlankBindings(file, skip)
 	found := map[string]bool{}
 	ast.Inspect(file, func(node ast.Node) bool {
 		if node == nil || skip[node] {
@@ -143,6 +159,54 @@ func usesOutsideAssertions(file *ast.File) map[string]bool {
 		return true
 	})
 	return found
+}
+
+func skipBlankBindings(file *ast.File, skip map[ast.Node]bool) {
+	ast.Inspect(file, func(node ast.Node) bool {
+		switch bind := node.(type) {
+		case *ast.ValueSpec:
+			if allBlank(bind.Names) && allIdents(bind.Values) {
+				for _, value := range bind.Values {
+					skip[value] = true
+				}
+			}
+		case *ast.AssignStmt:
+			if bind.Tok == token.ASSIGN && allIdents(bind.Rhs) &&
+				blankLhs(bind.Lhs) {
+				for _, value := range bind.Rhs {
+					skip[value] = true
+				}
+			}
+		}
+		return true
+	})
+}
+
+func allBlank(names []*ast.Ident) bool {
+	for _, name := range names {
+		if name.Name != "_" {
+			return false
+		}
+	}
+	return true
+}
+
+func blankLhs(exprs []ast.Expr) bool {
+	for _, expr := range exprs {
+		if ident, ok := expr.(*ast.Ident); !ok || ident.Name != "_" {
+			return false
+		}
+	}
+	return true
+}
+
+func allIdents(exprs []ast.Expr) bool {
+	for _, expr := range exprs {
+		if _, ok := expr.(*ast.Ident); !ok {
+			return false
+		}
+	}
+	return len(exprs) > 0
 }
 
 func collectAssertion(spec *ast.ValueSpec, found map[string]bool) {

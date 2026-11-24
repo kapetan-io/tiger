@@ -833,11 +833,18 @@ tags.go:1:7: TS-S21: nestedMin is a limit that only appears inside a relational 
 
 **Known misses:** A guard that only casts the limit, such as `const _ = uint(queueMax)`,
 passes while `queueMax` has a second use, because tiger collects every name inside a
-`const _ = uint(...)` expression and does not judge the relation. A companion constant
-invented for the guard passes when something else also mentions it. An exported limit
-used only in its guard passes, because another package may use it and tiger sees one
-package at a time. Tiger matches names, so a local variable with a limit's name counts as
-a use of the limit.
+`const _ = uint(...)` expression and does not judge the relation. The guard-only finding
+reaches only constants whose names end in `Max` or `Min`. A companion constant with any
+other name, such as `const itemFloor = 1` with `const _ = uint(itemMax - itemFloor)`, passes,
+because tiger cannot tell an invented companion from a real input such as `writeBufferSize`
+in the example above, which is also mentioned only in the guard. A companion with a `Max` or
+`Min` name passes when something else mentions it, even a constant nothing reads. An
+exported limit used only in its guard passes, because another package may use it and tiger
+sees one package at a time.
+
+Tiger matches names, not objects, so a local variable, struct field or method with a
+limit's name counts as a use of the limit. A blank `var _ = x`, `const _ = x` or `_ = x`
+does not count.
 
 ## Concurrency
 
