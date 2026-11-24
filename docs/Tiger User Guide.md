@@ -129,13 +129,15 @@ test's `file` is relative to the run directory and its `package` is the import p
 module, so `tools/lint/lint_test.go` in module `example.com/tools` reports package
 `example.com/tools/lint`. A branch that removes a nested module reports its tests deleted.
 Directories that `go test ./...` skips (`testdata`, `vendor`, and names starting with `.` or `_`)
-are not searched for modules, and a module inside one is neither read nor named.
+are not searched for modules, and a module inside one is neither read nor named. A `go.work` file
+is ignored: modules are found from the `go.mod` files in the tree alone.
 
 A nested module that cannot be read is named in the report with the reason and the revision, and
 its tests are not compared at either revision, so an empty list never means "nothing changed" in a
 module that was not read. That covers a `go.mod` with no `module` line or one the run cannot open,
 a directory inside the module that cannot be listed, and a test file that cannot be opened or does
-not parse. A module nested inside an unread one is still read. When any of these happen in the
+not parse. A module unread at both revisions for different reasons is listed once per revision, each row
+naming its revision. A module nested inside an unread one is still read. When any of these happen in the
 module the run directory sits in, no report is produced.
 
 - Only top-level `Test`, `Benchmark`, `Fuzz` and `Example` functions in `_test.go` files count.

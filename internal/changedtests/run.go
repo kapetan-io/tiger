@@ -18,8 +18,10 @@ const synopsis = "tiger changed-tests [-C dir] [--format text|json] <base>"
 
 const Usage = "  " + synopsis + `
       list the test functions that existed at the merge base of <base> and
-      HEAD and are modified or deleted in the working tree; flags go before
-      <base>; exit 0 for any report, 2 when no report can be produced
+      HEAD and are modified or deleted in the working tree, in the module at
+      the run directory and every nested module below it; a nested module it
+      cannot read is named; flags go before <base>; exit 0 for any report, 2
+      when no report can be produced
 `
 
 func Run(args []string, streams command.Streams) int {

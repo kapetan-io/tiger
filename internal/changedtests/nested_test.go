@@ -501,3 +501,18 @@ func TestChangedTestsNamesANestedModuleWhoseTestCannotBeOpened(t *testing.T) {
 		Reason: "cannot read tools/lint/lint_test.go: permission denied at head",
 	}}, doc.UnreadModules)
 }
+
+// Goal: a repository with only a root module gets an empty unread_modules
+// list in the JSON, never a missing or null field.
+func TestChangedTestsListsNoUnreadModulesForARootOnlyRepository(t *testing.T) {
+	c := newCheckout(t)
+	c.write("cart/cart_test.go", cartTest)
+	c.branch()
+
+	got := run(t, "changed-tests", "-C", c.dir, "--format", "json", "main")
+
+	require.Equal(t, command.ExitClean, got.code, got.stderr)
+	var doc map[string]json.RawMessage
+	require.NoError(t, json.Unmarshal([]byte(got.stdout), &doc))
+	assert.JSONEq(t, `[]`, string(doc["unread_modules"]))
+}
