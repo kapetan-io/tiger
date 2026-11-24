@@ -335,7 +335,8 @@ golangci-lint's own behavior applies:
   findings as for any linter's, so CI still gates on `tiger check`, where `//nolint` changes
   nothing.
 - **Computed facts never print.** golangci-lint has no `--show-facts` and treats every
-  diagnostic as an issue, so facts would bury real findings. The plugin drops them, as `tiger check`
+  diagnostic as an issue, so facts would bury real findings, and under its default of one
+  issue per line they would push findings off their lines. The plugin drops them, as `tiger check`
   does without `--show-facts`.
 - **Budgets are CLI-only.** The plugin API has no end-of-run hook to aggregate counts across
   packages and no warning tier, so it reports every counted finding (escape directive, skipped

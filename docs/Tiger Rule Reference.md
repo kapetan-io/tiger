@@ -1553,8 +1553,8 @@ type Queue struct{}
 
 A file with an import and nothing else has a declaration, so it passes. A file holding only
 the `package` clause, with no comment at all, carries no prose and passes. Go directives
-(`//go:build`, `//go:generate` and the others TS-L14 lists), tiger directives and `//nolint`
-lines are not prose either, so a file holding only directives and the `package` clause passes.
+(`//go:build` with its old `// +build` form, `//go:generate` and the others TS-L14 lists),
+tiger directives and `//nolint` lines are not prose either, so a file holding only directives and the `package` clause passes.
 A licence header or package comment beside the directives still fires. In a
 package that uses cgo, the Go toolchain also hands tiger an import stub from its build cache,
 holding only the `package` clause and `//go:cgo_import_dynamic` lines; tiger skips it, along

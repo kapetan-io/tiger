@@ -85,6 +85,9 @@ func blocks(group *ast.CommentGroup) int {
 func hasProse(file *ast.File) bool {
 	for _, group := range file.Comments {
 		for _, line := range group.List {
+			if strings.HasPrefix(line.Text, "// +build") {
+				continue
+			}
 			class := directive.Classify(file, line)
 			if class == directive.Prose || class == directive.Header {
 				return true

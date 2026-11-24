@@ -153,6 +153,12 @@ func TestCommentOnlyFileExemptions(t *testing.T) {
 			file:   "build.go",
 			source: "//go:build darwin || linux || windows\n\npackage p\n",
 		},
+		{
+			name: "OldStyleBuildLine",
+			file: "build.go",
+			source: "//go:build darwin || linux || windows\n// +build darwin linux windows\n\n" +
+				"package p\n",
+		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			dir := beside(t, sourceFile{name: test.file, content: test.source})
