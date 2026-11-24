@@ -613,7 +613,9 @@ Why. Whether `BatchMax = 8189` is correct is arithmetic about your hardware and 
 Whether you believe it relates to anything else is checkable, and a limit that relates to nothing is a
 limit nobody reasoned about.
 Enforce. `limitrelate` (custom). Every `Max`/`Min` constant must appear in at least one `const _ =
-uint(...)` expression in its package.
+uint(...)` expression in its package, and an unexported one must also appear outside any such
+expression. A limit that depends on nothing else is guarded against the smallest value at which the
+code still works, written as a literal.
 
 **`TS-S22` Write a limit as an expression of its named inputs.**
 Why. A limit written as `8189` hides where it came from, so nobody can tell it went stale when an

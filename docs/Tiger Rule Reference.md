@@ -792,7 +792,7 @@ const batchMax = 8189
 ```
 
 ```
-limits.go:1:7: TS-S21: batchMax is a limit that no assertion relates to any other quantity, so nothing checks it makes sense — add a compile-time relation such as const _ = uint(bufferSize - batchMax), which stops compiling once batchMax outgrows what bounds it
+limits.go:1:7: TS-S21: batchMax is a limit that no assertion relates to any other quantity — add a compile-time relation such as const _ = uint(bufferSize - batchMax), or if it depends on nothing, const _ = uint(batchMax - 1)
 ```
 
 The compliant rewrite:
@@ -807,6 +807,33 @@ const batchMax = 8189
 // Stops compiling if batchMax outgrows the buffer that must hold a batch.
 const _ = uint((writeBufferSize - headerSizeBytes) - batchMax*entrySize)
 ```
+
+A limit that depends on no other quantity has nothing honest to relate to, and a second
+constant invented for the comparison proves nothing. Guard it against the smallest value
+at which the code still works, written as a literal. If a tag chain of fewer than 1 link
+means the lookup refuses everything, write `const _ = uint(tagChainMax - 1)`. The guard
+stops compiling if the limit drops below that value. Tiger checks that the guard exists,
+not that the literal is the true minimum.
+
+An unexported `Max` or `Min` constant that appears only inside a `const _` guard is also a
+finding. It bounds nothing the program does, so use it where the limit applies or delete it.
+
+```go
+const nestedMin = 2
+const _ = uint(tagChainMax - nestedMin)
+```
+
+```
+tags.go:1:7: TS-S21: nestedMin is a limit that only appears inside a relational assertion, so it bounds nothing — use it where the limit applies, or delete it
+```
+
+**Known misses:** A guard that only casts the limit, such as `const _ = uint(queueMax)`,
+passes while `queueMax` has a second use, because tiger collects every name inside a
+`const _ = uint(...)` expression and does not judge the relation. A companion constant
+invented for the guard passes when something else also mentions it. An exported limit
+used only in its guard passes, because another package may use it and tiger sees one
+package at a time. Tiger matches names, so a local variable with a limit's name counts as
+a use of the limit.
 
 ## Concurrency
 
