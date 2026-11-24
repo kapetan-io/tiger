@@ -400,3 +400,42 @@ func TestDeferredWaitInLaterSubtest(t *testing.T) {
 		t.Log("x")
 	})
 }
+
+// TestWaitAsArgumentBeforeCall waits in an argument followed by another call
+// in the same statement.
+func TestWaitAsArgumentBeforeCall(t *testing.T) {
+	var g errgroup.Group
+	g.Go(func() error { return nil })
+	_ = errors.Join(g.Wait(), errors.New("x"))
+}
+
+func runParallelCase(t *testing.T) {
+	t.Run("case", func(t *testing.T) { t.Parallel() })
+}
+
+// TestHelperParallelOnOtherSubtest waits in a subtest whose helper makes a
+// subtest of its own parallel, not the one it was handed.
+func TestHelperParallelOnOtherSubtest(t *testing.T) {
+	var wg sync.WaitGroup
+	wg.Go(func() {})
+	t.Run("x", func(t *testing.T) {
+		runParallelCase(t)
+		wg.Wait()
+	})
+}
+
+// TestWaitInUnnamedSubtestParams waits in subtests whose t is unnamed or
+// blank, so neither can call t.Parallel.
+func TestWaitInUnnamedSubtestParams(t *testing.T) {
+	var wg sync.WaitGroup
+	wg.Go(func() {})
+	t.Run("x", func(*testing.T) { wg.Wait() })
+	t.Run("y", func(_ *testing.T) { wg.Wait() })
+}
+
+var runPackageSavedWait = func() {
+	var wg sync.WaitGroup
+	wait := func() { wg.Wait() }
+	wg.Go(func() {})
+	wait()
+}

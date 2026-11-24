@@ -596,7 +596,6 @@ func TestSubtestWaitsInGoStatement(t *testing.T) {
 	})
 }
 
-
 // TestStartLiteralReachedTwoHops calls the literal that waits and then starts
 // through another literal, so the Go runs after the Wait.
 func TestStartLiteralReachedTwoHops(t *testing.T) {
@@ -652,4 +651,69 @@ func TestSavedWaitReassignedAfterCall(t *testing.T) {
 	wait()
 	wait = func() {}
 	_ = wait
+}
+
+// TestSavedWaitReplacedThroughPointerBeforeRange replaces the saved literal
+// through a pointer, with a range statement after it.
+func TestSavedWaitReplacedThroughPointerBeforeRange(t *testing.T) {
+	var wg sync.WaitGroup
+	wait := func() { wg.Wait() }
+	slot := &wait
+	*slot = func() {}
+	for range 1 {
+	}
+	wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+	wait()
+}
+
+// TestSavedWaitReplacedThroughPointerPair takes the literal's address in a
+// two-value assignment.
+func TestSavedWaitReplacedThroughPointerPair(t *testing.T) {
+	var wg sync.WaitGroup
+	var other int
+	wait := func() { wg.Wait() }
+	slot, _ := &wait, &other
+	*slot = func() {}
+	wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+	wait()
+}
+
+func markParallelThroughHelper(t *testing.T) { markParallel(t) }
+
+// TestParallelTwoHelpersDownInSubtest calls t.Parallel two helpers down.
+func TestParallelTwoHelpersDownInSubtest(t *testing.T) {
+	var wg sync.WaitGroup
+	wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+	t.Run("x", func(t *testing.T) {
+		markParallelThroughHelper(t)
+		wg.Wait()
+	})
+}
+
+type parallelSuite struct{}
+
+func (parallelSuite) setup(t *testing.T) { t.Parallel() }
+
+// TestParallelThroughMethodInSubtest calls t.Parallel through a method.
+func TestParallelThroughMethodInSubtest(t *testing.T) {
+	var suite parallelSuite
+	var wg sync.WaitGroup
+	wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+	t.Run("x", func(t *testing.T) {
+		suite.setup(t)
+		wg.Wait()
+	})
+}
+
+// TestSavedGoroutineBodyCalledAfter waits on the group from inside its own
+// goroutine, then calls the same literal.
+//
+// known-miss: the literal reaches wg.Go through a variable, so the check does
+// not see it runs as the group's goroutine, and the call after counts as the
+// Wait (ENG-804).
+func TestSavedGoroutineBodyCalledAfter(t *testing.T) {
+	var wg sync.WaitGroup
+	body := func() { wg.Wait() }
+	wg.Go(body)
+	body()
 }

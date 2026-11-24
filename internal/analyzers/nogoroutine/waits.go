@@ -4,7 +4,6 @@ import (
 	"go/ast"
 	"go/token"
 	"go/types"
-	"slices"
 
 	"golang.org/x/tools/go/cfg"
 
@@ -152,7 +151,7 @@ func (o *owners) waitsIn(node ast.Node, query flowQuery, always waiters) bool {
 		case *ast.FuncLit, *ast.GoStmt:
 			return false
 		case *ast.CallExpr:
-			waits = o.callWaits(found, query.group, always)
+			waits = waits || o.callWaits(found, query.group, always)
 			if literal := o.literalRunBy(found); !waits && literal != nil {
 				waits = o.literalWaits(literal, query, always)
 			}
@@ -223,9 +222,9 @@ func (o *owners) rebound(local *types.Var, decl *ast.FuncDecl) bool {
 	ast.Inspect(decl.Body, func(node ast.Node) bool {
 		switch stmt := node.(type) {
 		case *ast.UnaryExpr:
-			found = stmt.Op == token.AND && o.index.Object(stmt.X) == local
+			found = found || stmt.Op == token.AND && o.index.Object(stmt.X) == local
 		case *ast.RangeStmt:
-			found = o.rangeTarget(stmt.Key, local) || o.rangeTarget(stmt.Value, local)
+			found = found || o.rangeTarget(stmt.Key, local) || o.rangeTarget(stmt.Value, local)
 		}
 		return !found
 	})
@@ -241,53 +240,75 @@ func (o *owners) callsParallel(literal *ast.FuncLit) bool {
 	if len(params) == 0 || len(params[0].Names) == 0 {
 		return false
 	}
-	subtest := o.index.Object(params[0].Names[0])
+	return o.parallelOn(literal.Body, o.index.Object(params[0].Names[0]), 0)
+}
+
+const helperHopsMax = 8
+
+const _ = uint(worklist.NodesMax - helperHopsMax)
+
+func (o *owners) parallelOn(body *ast.BlockStmt, subtest *types.Var, hops int) bool {
+	if subtest == nil || hops > helperHopsMax {
+		return false
+	}
 	parallel := false
-	ast.Inspect(literal.Body, func(node ast.Node) bool {
+	ast.Inspect(body, func(node ast.Node) bool {
 		if call, ok := node.(*ast.CallExpr); ok {
-			parallel = o.marksParallel(call, subtest)
+			parallel = parallel || o.marksParallel(call, subtest, hops)
 		}
 		return !parallel
 	})
 	return parallel
 }
 
-func (o *owners) marksParallel(call *ast.CallExpr, subtest *types.Var) bool {
+func (o *owners) marksParallel(call *ast.CallExpr, subtest *types.Var, hops int) bool {
 	if selector, ok := ast.Unparen(call.Fun).(*ast.SelectorExpr); ok {
 		if o.calleeName(selector) == "(*testing.T).Parallel" {
 			return o.index.Object(selector.X) == subtest
 		}
 	}
-	if !slices.ContainsFunc(call.Args, func(arg ast.Expr) bool {
-		return o.index.Object(arg) == subtest
-	}) {
-		return false
-	}
-	return o.helperCallsParallel(call)
-}
-
-func (o *owners) helperCallsParallel(call *ast.CallExpr) bool {
-	ident, ok := ast.Unparen(call.Fun).(*ast.Ident)
-	if !ok {
-		return false
-	}
-	fn, ok := o.pass.TypesInfo.Uses[ident].(*types.Func)
-	if !ok {
-		return false
-	}
-	decl := o.index.DeclFor(fn)
+	decl := o.calledDecl(call)
 	if decl == nil {
 		return false
 	}
-	parallel := false
-	ast.Inspect(decl.Body, func(node ast.Node) bool {
-		if inner, isCall := node.(*ast.CallExpr); isCall {
-			selector, isSelector := ast.Unparen(inner.Fun).(*ast.SelectorExpr)
-			parallel = isSelector && o.calleeName(selector) == "(*testing.T).Parallel"
+	params := paramNames(decl)
+	for i, arg := range call.Args {
+		if i >= len(params) || params[i] == nil || o.index.Object(arg) != subtest {
+			continue
 		}
-		return !parallel
-	})
-	return parallel
+		if o.parallelOn(decl.Body, o.index.Object(params[i]), hops+1) {
+			return true
+		}
+	}
+	return false
+}
+
+func (o *owners) calledDecl(call *ast.CallExpr) *ast.FuncDecl {
+	var ident *ast.Ident
+	switch fun := ast.Unparen(call.Fun).(type) {
+	case *ast.Ident:
+		ident = fun
+	case *ast.SelectorExpr:
+		ident = fun.Sel
+	default:
+		return nil
+	}
+	fn, ok := o.pass.TypesInfo.Uses[ident].(*types.Func)
+	if !ok {
+		return nil
+	}
+	return o.index.DeclFor(fn)
+}
+
+func paramNames(decl *ast.FuncDecl) []*ast.Ident {
+	var names []*ast.Ident
+	for _, field := range decl.Type.Params.List {
+		if len(field.Names) == 0 {
+			names = append(names, nil)
+		}
+		names = append(names, field.Names...)
+	}
+	return names
 }
 
 func (o *owners) calleeName(selector *ast.SelectorExpr) string {
@@ -311,20 +332,7 @@ func (o *owners) callWaits(call *ast.CallExpr, group *types.Var, always waiters)
 }
 
 func (o *owners) helperWaits(call *ast.CallExpr, always waiters) bool {
-	var ident *ast.Ident
-	switch fun := ast.Unparen(call.Fun).(type) {
-	case *ast.Ident:
-		ident = fun
-	case *ast.SelectorExpr:
-		ident = fun.Sel
-	default:
-		return false
-	}
-	fn, ok := o.pass.TypesInfo.Uses[ident].(*types.Func)
-	if !ok {
-		return false
-	}
-	decl := o.index.DeclFor(fn)
+	decl := o.calledDecl(call)
 	return decl != nil && always[decl]
 }
 
