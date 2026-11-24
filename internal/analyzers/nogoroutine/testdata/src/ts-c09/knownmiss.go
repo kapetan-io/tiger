@@ -1,4 +1,4 @@
-// Documented gap: a Go method saved in a variable and called in a loop starts
+// known-miss: a Go method saved in a variable and called in a loop starts
 // a goroutine per item, but TS-C09 sees only a call on the selector itself, so
 // it stays silent.
 package fixture
