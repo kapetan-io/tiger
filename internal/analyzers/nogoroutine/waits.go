@@ -76,7 +76,9 @@ func (o *owners) uncovered(fn function, query flowQuery, always waiters) (unwait
 	if len(graph.Blocks) == 0 {
 		return false, false
 	}
-	query.shutdown = o.givesUpIn(fn.body) && o.waitsIn(fn.body, query.group, always)
+	query.shutdown = o.givesUpIn(fn.body) && o.callsIn(fn.body, func(call *ast.CallExpr) bool {
+		return o.waitCall(call, query.group, always)
+	})
 	seen := map[stateKey]bool{}
 	work := []flowState{{block: graph.Blocks[0], passed: query.start == nil}}
 	i := 0
@@ -169,6 +171,12 @@ func (o *owners) inExpired(pos token.Pos) bool {
 }
 
 func (o *owners) waitsIn(node ast.Node, group *types.Var, always waiters) bool {
+	return o.callsIn(node, func(call *ast.CallExpr) bool {
+		return o.callWaits(call, group, always)
+	})
+}
+
+func (o *owners) callsIn(node ast.Node, match func(*ast.CallExpr) bool) bool {
 	work := []ast.Node{node}
 	i := 0
 	for ; i < len(work) && i < worklist.NodesMax; i++ {
@@ -181,7 +189,7 @@ func (o *owners) waitsIn(node ast.Node, group *types.Var, always waiters) bool {
 				if literal, ok := ast.Unparen(found.Fun).(*ast.FuncLit); ok {
 					work = append(work, literal.Body)
 				}
-				waits = waits || o.callWaits(found, group, always)
+				waits = waits || match(found)
 			}
 			return !waits
 		})
@@ -189,14 +197,15 @@ func (o *owners) waitsIn(node ast.Node, group *types.Var, always waiters) bool {
 			return true
 		}
 	}
-	assert.Ok(i == len(work), "waitsIn: worklist reached worklist.NodesMax")
+	assert.Ok(i == len(work), "callsIn: worklist reached worklist.NodesMax")
 	return false
 }
 
 func (o *owners) callWaits(call *ast.CallExpr, group *types.Var, always waiters) bool {
-	if o.inExpired(call.Pos()) {
-		return false
-	}
+	return !o.inExpired(call.Pos()) && o.waitCall(call, group, always)
+}
+
+func (o *owners) waitCall(call *ast.CallExpr, group *types.Var, always waiters) bool {
 	if selector, ok := ast.Unparen(call.Fun).(*ast.SelectorExpr); ok {
 		if waited, isWait := o.groupMethod(selector, "Wait"); isWait && waited == group {
 			return true

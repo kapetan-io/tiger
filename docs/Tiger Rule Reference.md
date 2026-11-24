@@ -840,9 +840,11 @@ non-nil error is not a success path, so a `Shutdown` that returns its flush erro
 waits is accepted. A `Wait` that only runs in the
 branch where the caller's context expired does not count. That branch is a `Shutdown`
 giving up early, and the early return is exempt from the check. The exemption needs a
-`Wait` on the group elsewhere in the same function, and covers only a branch the path
-reaches after the start. A branch the path passes before the start, a branch the start
-itself sits in, and a function that never calls `Wait` exempt nothing. A group handed in as a
+`Wait` on the group somewhere in the same function, that branch included, and covers only
+a branch the path reaches after the start. A branch the path passes before the start, a
+branch the start itself sits in, and a function that never calls `Wait` exempt nothing. A
+`Wait` on a path that never reaches the start still satisfies the exemption, and is not
+caught. A group handed in as a
 parameter is the caller's to wait on, and this check does not follow it.
 
 Code that fires it:

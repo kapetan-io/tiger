@@ -240,3 +240,47 @@ func (f *fallThroughStop) Stop(ctx context.Context) {
 		f.wg.Wait()
 	}
 }
+
+// dispatchLoop starts a goroutine per job and waits in the ctx.Done() case,
+// its only exit.
+func dispatchLoop(ctx context.Context, jobs chan func()) error {
+	var wg sync.WaitGroup
+	for {
+		select {
+		case <-ctx.Done():
+			wg.Wait()
+			return nil
+		case job := <-jobs:
+			wg.Go(job)
+		}
+	}
+}
+
+// dispatcher is dispatchLoop on a field group; Run is the type's only waiter.
+type dispatcher struct {
+	wg   sync.WaitGroup
+	jobs chan func()
+}
+
+// Run starts a goroutine per job and waits when ctx expires.
+func (d *dispatcher) Run(ctx context.Context) error {
+	for {
+		select {
+		case <-ctx.Done():
+			d.wg.Wait()
+			return nil
+		case job := <-d.jobs:
+			d.wg.Go(job)
+		}
+	}
+}
+
+// waitInExpired starts and then waits inside the only case, on ctx.Done().
+func waitInExpired(ctx context.Context) {
+	var wg sync.WaitGroup
+	wg.Go(work)
+	select {
+	case <-ctx.Done():
+		wg.Wait()
+	}
+}
