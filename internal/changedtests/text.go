@@ -33,6 +33,10 @@ func (r Report) Text(rev revision.Comparison) string {
 	}
 	fmt.Fprintf(&out, "Compared %s in %s at the merge base.\n",
 		counted(r.BaseTests, "test function"), counted(r.BasePackages, "package"))
+	for _, mod := range r.Unread {
+		fmt.Fprintf(&out, "Not read: the module in %s, so its tests are not compared (%s).\n",
+			mod.Dir, mod.Reason)
+	}
 	out.WriteString(scope + "\n")
 	return out.String()
 }

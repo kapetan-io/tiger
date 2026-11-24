@@ -7,9 +7,11 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 
 	"github.com/kapetan-io/tiger/internal/command"
+	"github.com/kapetan-io/tiger/internal/module"
 	"github.com/kapetan-io/tiger/internal/revision"
 )
 
@@ -74,6 +76,9 @@ func Run(args []string, streams command.Streams) int {
 
 func compareRevisions(dir string, rev revision.Comparison) (Report, error) {
 	head, err := readTests(dir)
+	if err == nil && len(head.tree.Read) == 0 && len(head.tree.Unread) == 0 {
+		_, err = module.PathOf(dir)
+	}
 	if err != nil {
 		return Report{}, fmt.Errorf("cannot read the tests at head (%s): %w",
 			revision.Short(rev.Head), err)
@@ -82,24 +87,30 @@ func compareRevisions(dir string, rev revision.Comparison) (Report, error) {
 	if err != nil {
 		return Report{}, err
 	}
-	return changedTests(sides{base: base, head: head}), nil
+	unread := unreadAt{base: base.tree.Unread, head: head.tree.Unread}
+	report := changedTests(sides{
+		base: base.tests.outside(unread.all()),
+		head: head.tests.outside(unread.all()),
+	})
+	report.Unread = unread.modules()
+	return report, nil
 }
 
-func readBase(rev revision.Comparison) (tests testFunctions, err error) {
-	tree, err := rev.Extract()
+func readBase(rev revision.Comparison) (read treeTests, err error) {
+	extracted, err := rev.Extract()
 	if err != nil {
-		return tests, err
+		return read, err
 	}
-	defer func() { err = errors.Join(err, tree.Close()) }()
-	if !tree.Present {
-		return tests, nil
+	defer func() { err = errors.Join(err, extracted.Close()) }()
+	if info, err := os.Stat(extracted.Dir); err != nil || !info.IsDir() {
+		return read, nil
 	}
-	tests, err = readTests(tree.Dir)
+	read, err = readTests(extracted.Dir)
 	if err != nil {
-		return tests, fmt.Errorf("cannot read the tests at base (%s): %w",
+		return read, fmt.Errorf("cannot read the tests at base (%s): %w",
 			revision.Short(rev.MergeBase), err)
 	}
-	return tests, nil
+	return read, nil
 }
 
 func failure(streams command.Streams, err error) int {

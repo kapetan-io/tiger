@@ -36,28 +36,36 @@ type definition struct {
 
 var testPrefixes = []string{"Test", "Benchmark", "Fuzz", "Example"}
 
-func readTests(dir string) (testFunctions, error) {
-	modulePath, err := module.PathOf(dir)
+type treeTests struct {
+	tests testFunctions
+	tree  module.Tree
+}
+
+func readTests(dir string) (treeTests, error) {
+	tree, err := module.ReadTree(dir)
 	if err != nil {
-		return nil, err
+		return treeTests{}, err
 	}
-	files, err := module.GoFiles(dir)
-	if err != nil {
-		return nil, err
-	}
-	tests := testFunctions{}
-	for _, pkgDir := range slices.Sorted(maps.Keys(files)) {
-		pkg := path.Join(string(modulePath), pkgDir)
-		for _, rel := range files[pkgDir] {
-			if !strings.HasSuffix(rel, "_test.go") {
-				continue
-			}
-			if err := tests.read(testFile{dir: dir, rel: rel}, pkg); err != nil {
-				return nil, err
+	read := treeTests{tests: testFunctions{}, tree: tree}
+	for _, mod := range tree.Read {
+		files, err := module.GoFiles(filepath.Join(dir, filepath.FromSlash(mod.Dir)))
+		if err != nil {
+			return treeTests{}, err
+		}
+		for _, pkgDir := range slices.Sorted(maps.Keys(files)) {
+			pkg := path.Join(string(mod.Path), pkgDir)
+			for _, rel := range files[pkgDir] {
+				if !strings.HasSuffix(rel, "_test.go") {
+					continue
+				}
+				file := testFile{dir: dir, rel: path.Join(mod.Dir, rel)}
+				if err := read.tests.read(file, pkg); err != nil {
+					return treeTests{}, err
+				}
 			}
 		}
 	}
-	return tests, nil
+	return read, nil
 }
 
 type testFile struct {
@@ -195,4 +203,18 @@ func (t testFunctions) packages() int {
 		}
 	}
 	return len(seen)
+}
+
+func (t testFunctions) outside(unread []module.Unread) testFunctions {
+	kept := testFunctions{}
+	for _, name := range slices.SortedFunc(maps.Keys(t), testName.order) {
+		if !slices.ContainsFunc(unread, name.within) {
+			kept[name] = t[name]
+		}
+	}
+	return kept
+}
+
+func (n testName) within(mod module.Unread) bool {
+	return n.dir == mod.Dir || strings.HasPrefix(n.dir, mod.Dir+"/")
 }

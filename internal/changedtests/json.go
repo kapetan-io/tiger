@@ -16,6 +16,10 @@ func (r Report) JSON(rev revision.Comparison) ([]byte, error) {
 		Head:                 headDoc{Commit: rev.Head, Dirty: rev.Dirty},
 		ChangesExistingTests: len(r.Changed) > 0,
 		Tests:                make([]testDoc, 0, len(r.Changed)),
+		UnreadModules:        make([]unreadDoc, 0, len(r.Unread)),
+	}
+	for _, mod := range r.Unread {
+		doc.UnreadModules = append(doc.UnreadModules, unreadDoc(mod))
 	}
 	for _, test := range r.Changed {
 		doc.Tests = append(doc.Tests, testDoc{
@@ -34,11 +38,17 @@ func (r Report) JSON(rev revision.Comparison) ([]byte, error) {
 }
 
 type document struct {
-	Schema               string    `json:"schema"`
-	Base                 baseDoc   `json:"base"`
-	Head                 headDoc   `json:"head"`
-	ChangesExistingTests bool      `json:"changes_existing_tests"`
-	Tests                []testDoc `json:"tests"`
+	Schema               string      `json:"schema"`
+	Base                 baseDoc     `json:"base"`
+	Head                 headDoc     `json:"head"`
+	ChangesExistingTests bool        `json:"changes_existing_tests"`
+	Tests                []testDoc   `json:"tests"`
+	UnreadModules        []unreadDoc `json:"unread_modules"`
+}
+
+type unreadDoc struct {
+	Dir    string `json:"dir"`
+	Reason string `json:"reason"`
 }
 
 type baseDoc struct {

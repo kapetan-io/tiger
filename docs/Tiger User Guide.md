@@ -122,6 +122,20 @@ deletes, with its package and file. A pull request that changes an existing test
 behavior that test guarded, so those are the tests a reviewer reads first. It exits 0 for any
 report and 2 when no report can be produced, and flags go before `<base>`.
 
+It reads every module at and below the run directory: the module the run directory sits in, each
+nested module (a directory below it with its own `go.mod`), and modules nested inside those. One
+run at the repository root covers them all, even when the root has no `go.mod` of its own. A
+test's `file` is relative to the run directory and its `package` is the import path in its own
+module, so `tools/lint/lint_test.go` in module `example.com/tools` reports package
+`example.com/tools/lint`. A branch that removes a nested module reports its tests deleted.
+Directories `go` never builds from (`testdata`, `vendor`, and names starting with `.` or `_`) are
+not searched for modules.
+
+A nested module whose `go.mod` cannot be read, such as one with no `module` line, is named in the
+report with the reason and the revision, and its tests are not compared at either revision, so an
+empty list never means "nothing changed" in a module that was not read. When the run directory's
+own `go.mod` cannot be read, no report is produced.
+
 - Only top-level `Test`, `Benchmark`, `Fuzz` and `Example` functions in `_test.go` files count.
   Test methods on suite types, helpers and testdata are not reported.
 - A test counts as modified when its signature or body differs in its Go tokens. An edit to
@@ -137,19 +151,17 @@ report and 2 when no report can be produced, and flags go before `<base>`.
 
 What it does not report:
 
-- Tests in a nested module, a directory below the run directory with its own `go.mod`. They are
-  skipped without a word, the same way `go test ./...` skips them. Run it once per module with
-  `-C`, as in `tiger changed-tests -C sub main`, to cover them.
 - A change to a file's `//go:build` line alone, which changes where its tests run.
 - Two build-tagged copies of one test whose bodies are swapped, say `TestOS` in `a_test.go`
   (`linux`) and `b_test.go` (`!linux`). Each body still matches a copy on the other side.
 - A test the branch moves into a gitignored `_test.go` file reads as unchanged in a local run,
   because the working tree still has it; CI's checkout does not, so CI reports it deleted.
-- Any test when the merge base has no `go.mod`, the same as `tiger changed`.
+- Any test when the merge base has no `go.mod` at, above or below the run directory.
 
 `tiger changed-tests --format json <base>` prints one JSON object (`tiger.changed-tests/v1`).
 Its `changes_existing_tests` field is true when the list is not empty, so a script can decide from
-one field:
+one field. `unread_modules` lists each nested module left unread, as above, and is `[]` when every
+module was read:
 
 ```json
 {
@@ -160,6 +172,9 @@ one field:
   "tests": [
     {"package": "example.com/shop/cart", "file": "cart/cart_test.go",
      "function": "TestTotal", "change": "modified"}
+  ],
+  "unread_modules": [
+    {"dir": "tools", "reason": "go.mod has no module line at head"}
   ]
 }
 ```
