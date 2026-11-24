@@ -352,6 +352,13 @@ func asNumber(number any) (float64, bool) {
 }
 
 func formatWant(fragment any) string {
+	if listed, ok := fragment.([]any); ok && allScalars(listed) {
+		names := make([]string, len(listed))
+		for i, element := range listed {
+			names[i] = fmt.Sprint(element)
+		}
+		return "[" + strings.Join(names, ", ") + "]"
+	}
 	rendered, err := yaml.Marshal(fragment)
 	if err != nil {
 		return fmt.Sprintf("%v", fragment)
@@ -405,4 +412,14 @@ func modulePath(dir string) (string, error) {
 		}
 	}
 	return "", errors.New("go.mod has no module line")
+}
+
+func allScalars(listed []any) bool {
+	for _, element := range listed {
+		switch element.(type) {
+		case map[string]any, []any:
+			return false
+		}
+	}
+	return true
 }

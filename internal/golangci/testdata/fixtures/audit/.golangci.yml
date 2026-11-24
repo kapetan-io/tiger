@@ -85,6 +85,9 @@ linters:
         gocognit:
             min-complexity: 15
         gocritic:
+            enabled-checks:
+                - hugeParam
+                - rangeValCopy
             settings:
                 hugeParam:
                     sizeThreshold: 64

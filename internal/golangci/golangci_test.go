@@ -1,6 +1,7 @@
 package golangci_test
 
 import (
+	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -104,4 +105,43 @@ func TestVerifyMissingLinterNamesTheEdit(t *testing.T) {
 	}
 	assert.Equal(t, "TS-S05: cyclop is missing from linters.enable, so nothing enforces the "+
 		"rule \"cyclomatic complexity at most 10\" — add cyclop to linters.enable", got)
+}
+
+// TestVerifyGocriticChecksFindingsFollowTheStyleGuide covers the wording of
+// the TS-M03 enabled-checks findings.
+//
+// Goal: the finding for an absent enabled-checks list and the finding for a
+// list missing one check both satisfy invariants I1–I6.
+func TestVerifyGocriticChecksFindingsFollowTheStyleGuide(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		drop string
+		want string
+	}{
+		{name: "absent", drop: "            enabled-checks:\n                - hugeParam\n                - rangeValCopy\n", want: "isn't set"},
+		{name: "partial", drop: "                - rangeValCopy\n", want: "doesn't include"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			dir := t.TempDir()
+			source, err := os.ReadFile(filepath.Join("testdata", "fixtures", "audit", ".golangci.yml"))
+			require.NoError(t, err)
+			config := strings.Replace(string(source), test.drop, "", 1)
+			require.NotEqual(t, string(source), config)
+			require.NoError(t, os.WriteFile(filepath.Join(dir, ".golangci.yml"), []byte(config), 0o644))
+			require.NoError(t, os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module audit.example/p\n\ngo 1.26\n"), 0o644))
+
+			findings, err := golangci.Verify(dir)
+			require.NoError(t, err)
+			var checked int
+			for _, finding := range findings {
+				if !strings.Contains(finding.Message, "gocritic.enabled-checks") {
+					continue
+				}
+				checked++
+				assert.Contains(t, finding.Message, test.want)
+				checkStyle(t, finding)
+			}
+			assert.Equal(t, 1, checked)
+		})
+	}
 }

@@ -178,6 +178,9 @@ linters:
           msg: TS-S18. Use the assert package so there is one crash path.
 
     gocritic:
+      enabled-checks:
+        - hugeParam      # TS-M03
+        - rangeValCopy   # TS-M03
       enabled-tags:
         - performance
         - diagnostic

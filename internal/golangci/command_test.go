@@ -3,12 +3,14 @@ package golangci_test
 import (
 	"bytes"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gopkg.in/yaml.v3"
 
 	"github.com/kapetan-io/tiger/internal/command"
 	"github.com/kapetan-io/tiger/internal/golangci"
@@ -397,4 +399,98 @@ func TestGolangciAuditPassesExtrasBeyondTheBaseline(t *testing.T) {
 	assert.Equal(t, command.ExitClean, got.code)
 	assert.Empty(t, got.stdout)
 	assert.Empty(t, got.stderr)
+}
+
+// TestGolangciGeneratedConfigEnablesTheGocriticChecks covers the generated baseline.
+//
+// Goal: TS-M03 sets the two gocritic size thresholds, and gocritic runs a
+// check only when it is enabled, so the generated config also enables
+// hugeParam and rangeValCopy. Without that, golangci-lint warns that settings
+// were given for a disabled check and reports no by-value copies.
+func TestGolangciGeneratedConfigEnablesTheGocriticChecks(t *testing.T) {
+	dir := t.TempDir()
+	moduleFile{dir: dir, module: "gocritic.example/project"}.write(t)
+	require.Equal(t, command.ExitClean, run(t, "golangci", "-C", dir, "--init").code)
+
+	var document struct {
+		Linters struct {
+			Settings struct {
+				Gocritic struct {
+					EnabledChecks []string `yaml:"enabled-checks"`
+				} `yaml:"gocritic"`
+			} `yaml:"settings"`
+		} `yaml:"linters"`
+	}
+	require.NoError(t, yaml.Unmarshal([]byte(readFile(t, filepath.Join(dir, ".golangci.yml"))), &document))
+	assert.ElementsMatch(t, []string{"hugeParam", "rangeValCopy"},
+		document.Linters.Settings.Gocritic.EnabledChecks)
+}
+
+// TestGolangciGocriticThresholdsWithoutTheChecksFindTheAutoRule covers the audit contract.
+//
+// Goal: a config that sets the TS-M03 size thresholds but leaves hugeParam
+// and rangeValCopy off is reported as drift from the baseline.
+func TestGolangciGocriticThresholdsWithoutTheChecksFindTheAutoRule(t *testing.T) {
+	dir := t.TempDir()
+	moduleFile{dir: dir, module: "unchecked.example/project"}.write(t)
+	require.Equal(t, command.ExitClean, run(t, "golangci", "-C", dir, "--init").code)
+
+	path := filepath.Join(dir, ".golangci.yml")
+	config := readFile(t, path)
+	start := strings.Index(config, "enabled-checks:")
+	require.NotEqual(t, -1, start)
+	end := start + strings.Index(config[start:], "settings:")
+	require.Greater(t, end, start)
+	require.NoError(t, os.WriteFile(path, []byte(config[:start]+config[end:]), 0o644))
+
+	got := run(t, "golangci", "-C", dir)
+	assert.Equal(t, command.ExitFindings, got.code)
+	assert.Contains(t, got.stdout, "TS-M03: linters.settings.gocritic.enabled-checks isn't set")
+	assert.Contains(t, got.stdout, "to [hugeParam, rangeValCopy]")
+}
+
+// TestGolangciGeneratedConfigMakesGolangciLintReportByValueCopies covers the
+// generated baseline against the real golangci-lint.
+//
+// Goal: golangci-lint run with the --init config reports hugeParam and
+// rangeValCopy for an 80-byte struct and prints no "settings were provided
+// for disabled check" warning.
+func TestGolangciGeneratedConfigMakesGolangciLintReportByValueCopies(t *testing.T) {
+	// Wraps an external tool, so the real binary is the only faithful check.
+	binary, err := exec.LookPath("golangci-lint")
+	if err != nil {
+		t.Skip("golangci-lint is not on PATH")
+	}
+	dir := t.TempDir()
+	moduleFile{dir: dir, module: "bigcopy.example/project"}.write(t)
+	source := "package project\n\ntype Big struct{ A, B, C, D, E, F, G, H, I, J int64 }\n\n" +
+		"func Take(b Big) int64 { return b.A }\n\n" +
+		"func Sum(bs []Big) (n int64) {\n\tfor _, b := range bs {\n\t\tn += b.A\n\t}\n\treturn n\n}\n"
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "big.go"), []byte(source), 0o644))
+	require.Equal(t, command.ExitClean, run(t, "golangci", "-C", dir, "--init").code)
+
+	lint := exec.Command(binary, "run")
+	lint.Dir = dir
+	output, _ := lint.CombinedOutput()
+	assert.Contains(t, string(output), "hugeParam: b is heavy (80 bytes)")
+	assert.Contains(t, string(output), "rangeValCopy: each iteration copies 80 bytes")
+	assert.NotContains(t, string(output), "settings were provided for disabled check")
+}
+
+// TestGolangciGocriticChecksMissingOneFindsTheAutoRule covers the partial list.
+//
+// Goal: a config that enables hugeParam but not rangeValCopy is reported
+// with a finding naming rangeValCopy, and not hugeParam.
+func TestGolangciGocriticChecksMissingOneFindsTheAutoRule(t *testing.T) {
+	dir := t.TempDir()
+	moduleFile{dir: dir, module: "partial.example/project"}.write(t)
+	require.Equal(t, command.ExitClean, run(t, "golangci", "-C", dir, "--init").code)
+	path := filepath.Join(dir, ".golangci.yml")
+	config := strings.Replace(readFile(t, path), "                - rangeValCopy\n", "", 1)
+	require.NoError(t, os.WriteFile(path, []byte(config), 0o644))
+
+	got := run(t, "golangci", "-C", dir)
+	assert.Equal(t, command.ExitFindings, got.code)
+	assert.Contains(t, got.stdout, "TS-M03: linters.settings.gocritic.enabled-checks doesn't include rangeValCopy")
+	assert.NotContains(t, got.stdout, "include hugeParam")
 }

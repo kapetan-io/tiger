@@ -245,6 +245,11 @@ var autoRules = []AutoRule{
 		Title: "pass structs larger than 64 bytes by pointer",
 		Settings: []Setting{
 			{
+				Path:     []string{"linters", "settings", "gocritic", "enabled-checks"},
+				Want:     []any{"hugeParam", "rangeValCopy"},
+				Contains: true,
+			},
+			{
 				Path: []string{
 					"linters",
 					"settings",
