@@ -10,6 +10,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gopkg.in/yaml.v3"
 
 	"github.com/kapetan-io/tiger/internal/command"
 	"github.com/kapetan-io/tiger/internal/golangci"
@@ -398,6 +399,199 @@ func TestGolangciAuditPassesExtrasBeyondTheBaseline(t *testing.T) {
 	assert.Equal(t, command.ExitClean, got.code)
 	assert.Empty(t, got.stdout)
 	assert.Empty(t, got.stderr)
+}
+
+// TestGolangciGeneratedConfigEnablesTheGocriticChecks covers the generated baseline.
+//
+// Goal: TS-M03 sets the two gocritic size thresholds, and gocritic runs a
+// check only when it is enabled, so the generated config also enables
+// hugeParam and rangeValCopy. Without that, golangci-lint warns that settings
+// were given for a disabled check and reports no by-value copies.
+func TestGolangciGeneratedConfigEnablesTheGocriticChecks(t *testing.T) {
+	dir := t.TempDir()
+	moduleFile{dir: dir, module: "gocritic.example/project"}.write(t)
+	require.Equal(t, command.ExitClean, run(t, "golangci", "-C", dir, "--init").code)
+
+	var document struct {
+		Linters struct {
+			Settings struct {
+				Gocritic struct {
+					EnabledChecks []string `yaml:"enabled-checks"`
+				} `yaml:"gocritic"`
+			} `yaml:"settings"`
+		} `yaml:"linters"`
+	}
+	generated := readFile(t, filepath.Join(dir, ".golangci.yml"))
+	require.NoError(t, yaml.Unmarshal([]byte(generated), &document))
+	assert.ElementsMatch(t, []string{"hugeParam", "rangeValCopy"},
+		document.Linters.Settings.Gocritic.EnabledChecks)
+}
+
+// TestGolangciGocriticThresholdsWithoutTheChecksFindTheAutoRule covers the audit contract.
+//
+// Goal: a config that sets the TS-M03 size thresholds but leaves hugeParam
+// and rangeValCopy off is reported as drift from the baseline.
+func TestGolangciGocriticThresholdsWithoutTheChecksFindTheAutoRule(t *testing.T) {
+	dir := t.TempDir()
+	moduleFile{dir: dir, module: "unchecked.example/project"}.write(t)
+	require.Equal(t, command.ExitClean, run(t, "golangci", "-C", dir, "--init").code)
+
+	path := filepath.Join(dir, ".golangci.yml")
+	config := readFile(t, path)
+	start := strings.Index(config, "enabled-checks:")
+	require.NotEqual(t, -1, start)
+	end := start + strings.Index(config[start:], "settings:")
+	require.Greater(t, end, start)
+	require.NoError(t, os.WriteFile(path, []byte(config[:start]+config[end:]), 0o644))
+
+	got := run(t, "golangci", "-C", dir)
+	assert.Equal(t, command.ExitFindings, got.code)
+	assert.Contains(t, got.stdout, "TS-M03: linters.settings.gocritic.enabled-checks isn't set")
+	assert.Contains(t, got.stdout, "to [hugeParam, rangeValCopy]")
+}
+
+// TestGolangciGocriticChecksMissingOneFindsTheAutoRule covers the partial list.
+//
+// Goal: a config that enables hugeParam but not rangeValCopy is reported
+// with a finding naming rangeValCopy, and not hugeParam.
+func TestGolangciGocriticChecksMissingOneFindsTheAutoRule(t *testing.T) {
+	dir := t.TempDir()
+	moduleFile{dir: dir, module: "partial.example/project"}.write(t)
+	require.Equal(t, command.ExitClean, run(t, "golangci", "-C", dir, "--init").code)
+	path := filepath.Join(dir, ".golangci.yml")
+	config := strings.Replace(readFile(t, path), "                - rangeValCopy\n", "", 1)
+	require.NoError(t, os.WriteFile(path, []byte(config), 0o644))
+
+	got := run(t, "golangci", "-C", dir)
+	assert.Equal(t, command.ExitFindings, got.code)
+	assert.Contains(t, got.stdout,
+		"TS-M03: linters.settings.gocritic.enabled-checks doesn't include rangeValCopy")
+	assert.NotContains(t, got.stdout, "include hugeParam")
+}
+
+// TestGolangciGocriticChecksEnabledAnotherWayPassTheAudit covers the audit contract.
+//
+// Goal: a config that turns hugeParam and rangeValCopy on through
+// enable-all or the performance tag, instead of enabled-checks, conforms.
+// Listing enabled-checks beside enable-all would make golangci-lint fail.
+func TestGolangciGocriticChecksEnabledAnotherWayPassTheAudit(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		with string
+	}{
+		{name: "enableAll", with: "enable-all: true\n"},
+		{name: "performanceTag", with: "enabled-tags:\n                - performance\n"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			dir := t.TempDir()
+			moduleFile{dir: dir, module: "another.example/project"}.write(t)
+			require.Equal(t, command.ExitClean, run(t, "golangci", "-C", dir, "--init").code)
+
+			path := filepath.Join(dir, ".golangci.yml")
+			config := readFile(t, path)
+			const checks = "            enabled-checks:\n                - hugeParam\n" +
+				"                - rangeValCopy\n"
+			require.Contains(t, config, checks)
+			config = strings.Replace(config, checks, "            "+test.with, 1)
+			require.NoError(t, os.WriteFile(path, []byte(config), 0o644))
+
+			got := run(t, "golangci", "-C", dir)
+			assert.Equal(t, command.ExitClean, got.code)
+			assert.Empty(t, got.stdout)
+		})
+	}
+}
+
+// TestGolangciGeneratedConfigFlagsStructsLargerThan64Bytes covers the generated baseline.
+//
+// Goal: TS-M03 says larger than 64 bytes, and gocritic flags a size at or
+// above its threshold, so the generated thresholds are 65.
+func TestGolangciGeneratedConfigFlagsStructsLargerThan64Bytes(t *testing.T) {
+	dir := t.TempDir()
+	moduleFile{dir: dir, module: "threshold.example/project"}.write(t)
+	require.Equal(t, command.ExitClean, run(t, "golangci", "-C", dir, "--init").code)
+
+	generated := readFile(t, filepath.Join(dir, ".golangci.yml"))
+	assert.Contains(t, generated, "hugeParam:\n                    sizeThreshold: 65")
+	assert.Contains(t, generated, "rangeValCopy:\n                    sizeThreshold: 65")
+}
+
+// TestGolangciGocriticChecksSwitchedOffFindTheAutoRule covers the audit contract.
+//
+// Goal: a config that turns hugeParam or rangeValCopy off is reported, however
+// the checks were turned on, because golangci-lint applies the disabled lists
+// after every enable. Disabling one check is reported for that check only.
+func TestGolangciGocriticChecksSwitchedOffFindTheAutoRule(t *testing.T) {
+	const checks = "            enabled-checks:\n                - hugeParam\n" +
+		"                - rangeValCopy\n"
+	const offChecks = "            disabled-checks:\n                - hugeParam\n" +
+		"                - rangeValCopy\n"
+	bothDisabled := []string{
+		"disabled-checks lists hugeParam", "disabled-checks lists rangeValCopy",
+	}
+	const offHuge = "            disabled-checks:\n                - hugeParam\n"
+	const offTag = "            disabled-tags:\n                - performance\n"
+	for _, test := range []struct {
+		name   string
+		config string
+		want   []string
+		absent []string
+	}{
+		{
+			name:   "enableAllDisabledChecks",
+			config: "            enable-all: true\n" + offChecks,
+			want:   bothDisabled,
+		},
+		{
+			name:   "performanceTagDisabledChecks",
+			config: "            enabled-tags:\n                - performance\n" + offChecks,
+			want:   bothDisabled,
+		},
+		{
+			name:   "enableAllDisabledTag",
+			config: "            enable-all: true\n" + offTag,
+			want:   []string{"disabled-tags lists performance"},
+		},
+		{
+			name:   "enabledChecksDisabledTag",
+			config: checks + offTag,
+			want:   []string{"disabled-tags lists performance"},
+		},
+		{
+			name:   "oneCheckDisabled",
+			config: "            enable-all: true\n" + offHuge,
+			want:   []string{"disabled-checks lists hugeParam"},
+			absent: []string{"rangeValCopy"},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			dir := t.TempDir()
+			moduleFile{dir: dir, module: "switchedoff.example/project"}.write(t)
+			require.Equal(t, command.ExitClean, run(t, "golangci", "-C", dir, "--init").code)
+
+			path := filepath.Join(dir, ".golangci.yml")
+			config := readFile(t, path)
+			require.Contains(t, config, checks)
+			config = strings.Replace(config, checks, test.config, 1)
+			require.NoError(t, os.WriteFile(path, []byte(config), 0o644))
+
+			got := run(t, "golangci", "-C", dir)
+			assert.Equal(t, command.ExitFindings, got.code)
+			for _, want := range test.want {
+				assert.Contains(t, got.stdout, "TS-M03: linters.settings.gocritic."+want)
+			}
+			for _, absent := range test.absent {
+				assert.NotContains(t, got.stdout, absent)
+			}
+
+			findings, err := golangci.Verify(dir)
+			require.NoError(t, err)
+			require.Len(t, findings, len(test.want))
+			for _, finding := range findings {
+				checkStyle(t, finding)
+			}
+		})
+	}
 }
 
 // TestGolangciGeneratedConfigBansEveryClockRead covers the clock bans.
