@@ -464,3 +464,22 @@ func TestWaitAfterRecursiveHelper(t *testing.T) {
 		wg.Wait()
 	})
 }
+
+type parentSuite struct {
+	*testing.T
+}
+
+// TestEmbeddedParallelOnOtherTest calls Parallel through a struct that embeds
+// the parent's t, not the subtest's, so the subtest still runs before t.Run
+// returns.
+func TestEmbeddedParallelOnOtherTest(t *testing.T) {
+	var wg sync.WaitGroup
+	suite := parentSuite{t}
+	wg.Go(func() {})
+	t.Run("x", func(t *testing.T) {
+		if testing.Short() {
+			suite.Parallel()
+		}
+		wg.Wait()
+	})
+}

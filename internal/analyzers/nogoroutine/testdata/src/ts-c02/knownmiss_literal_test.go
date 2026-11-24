@@ -259,3 +259,19 @@ func TestParallelThroughOtherPackage(t *testing.T) {
 		wg.Wait()
 	})
 }
+
+// TestParallelThroughEmbeddingSetLater leaks the goroutine: the subtest is
+// parallel, so its Wait runs after the test function returns.
+//
+// known-miss: the embedded t is set by a field assignment, and the check only
+// reads the struct literal that built the value.
+func TestParallelThroughEmbeddingSetLater(t *testing.T) {
+	var wg sync.WaitGroup
+	wg.Go(func() {})
+	t.Run("x", func(t *testing.T) {
+		var suite embeddedSubtest
+		suite.T = t
+		suite.Parallel()
+		wg.Wait()
+	})
+}

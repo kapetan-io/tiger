@@ -266,7 +266,10 @@ func (o *owners) parallelOn(body *ast.BlockStmt, subtest *types.Var, seen search
 func (o *owners) marksParallel(call *ast.CallExpr, subtest *types.Var, seen searched) bool {
 	selector, isSelector := ast.Unparen(call.Fun).(*ast.SelectorExpr)
 	if isSelector && o.calleeName(selector) == "(*testing.T).Parallel" {
-		return o.promoted(selector) || o.unalias(o.index.Object(selector.X), selector) == subtest
+		if o.promoted(selector) {
+			return o.embeds(selector, subtest)
+		}
+		return o.unalias(o.index.Object(selector.X), selector) == subtest
 	}
 	decl := o.calledDecl(call)
 	if decl == nil {
@@ -291,6 +294,36 @@ func (o *owners) marksParallel(call *ast.CallExpr, subtest *types.Var, seen sear
 func (o *owners) promoted(selector *ast.SelectorExpr) bool {
 	selection := o.pass.TypesInfo.Selections[selector]
 	return selection != nil && len(selection.Index()) > 1
+}
+
+func (o *owners) embeds(selector *ast.SelectorExpr, subtest *types.Var) bool {
+	holder := o.unalias(o.index.Object(selector.X), selector)
+	if holder == nil || holder.IsField() || o.index.IsParameter(holder) {
+		return false
+	}
+	found := false
+	for _, def := range o.index.Definitions(holder, o.index.DeclOf(selector)) {
+		source := ast.Unparen(def)
+		if address, ok := source.(*ast.UnaryExpr); ok && address.Op == token.AND {
+			source = ast.Unparen(address.X)
+		}
+		if literal, ok := source.(*ast.CompositeLit); ok {
+			found = found || o.holds(literal, subtest, selector)
+		}
+	}
+	return found
+}
+
+func (o *owners) holds(literal *ast.CompositeLit, subtest *types.Var, at ast.Node) bool {
+	for _, element := range literal.Elts {
+		if pair, ok := element.(*ast.KeyValueExpr); ok {
+			element = pair.Value
+		}
+		if o.unalias(o.index.Object(element), at) == subtest {
+			return true
+		}
+	}
+	return false
 }
 
 func (o *owners) calledDecl(call *ast.CallExpr) *ast.FuncDecl {

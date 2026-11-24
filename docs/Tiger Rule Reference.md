@@ -839,8 +839,8 @@ A `Wait` may sit in a literal that a call after the start runs before it returns
 counts when the literal waits on every one of its own success paths. Such a call is a literal called where it is written, a call to a local
 variable that only ever holds one literal, or `t.Run` or `b.Run` with a body that does
 not call `t.Parallel`. A body calls `t.Parallel` when it calls it on its own `t`, on a
-copy of that `t`, through a struct that embeds it, or through a function or method of
-the same package that it hands `t` to. A call through a helper in another package, a
+copy of that `t`, through a struct literal that embeds it, or through a function or
+method of the same package that it hands `t` to. A call through a helper in another package, a
 method value, an interface, a struct field or a called literal's parameter is not seen,
 so that body counts as running before `t.Run` returns. A body `t.Run` skips under `-run`
 or `-skip` does not run at all, and its `Wait` still counts. These do not count: a `Wait` after a `return`, on one branch only,
