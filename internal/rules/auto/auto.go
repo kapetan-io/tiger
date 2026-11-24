@@ -24,10 +24,17 @@ const (
 var standardLinters = []string{"errcheck", "govet", "ineffassign", "staticcheck", "unused"}
 
 type Setting struct {
-	Path     []string
-	Want     any
-	Contains bool
-	Reason   string
+	Path         []string
+	Want         any
+	Contains     bool
+	Reason       string
+	Alternatives []Setting
+	Disabled     []Disabler
+}
+
+type Disabler struct {
+	Path  []string
+	Names []string
 }
 
 type AutoRule struct {
@@ -274,6 +281,29 @@ var autoRules = []AutoRule{
 		Title: "pass structs larger than 64 bytes by pointer",
 		Settings: []Setting{
 			{
+				Path:     []string{"linters", "settings", "gocritic", "enabled-checks"},
+				Want:     []any{"hugeParam", "rangeValCopy"},
+				Contains: true,
+				Alternatives: []Setting{
+					{Path: []string{"linters", "settings", "gocritic", "enable-all"}, Want: true},
+					{
+						Path:     []string{"linters", "settings", "gocritic", "enabled-tags"},
+						Want:     []any{"performance"},
+						Contains: true,
+					},
+				},
+				Disabled: []Disabler{
+					{
+						Path:  []string{"linters", "settings", "gocritic", "disabled-checks"},
+						Names: []string{"hugeParam", "rangeValCopy"},
+					},
+					{
+						Path:  []string{"linters", "settings", "gocritic", "disabled-tags"},
+						Names: []string{"performance"},
+					},
+				},
+			},
+			{
 				Path: []string{
 					"linters",
 					"settings",
@@ -282,7 +312,7 @@ var autoRules = []AutoRule{
 					"hugeParam",
 					"sizeThreshold",
 				},
-				Want: 64,
+				Want: 65,
 			},
 			{
 				Path: []string{
@@ -293,7 +323,7 @@ var autoRules = []AutoRule{
 					"rangeValCopy",
 					"sizeThreshold",
 				},
-				Want: 64,
+				Want: 65,
 			},
 		},
 	},

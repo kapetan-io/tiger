@@ -82,8 +82,16 @@ func verifyRule(document map[string]any, rule auto.AutoRule, module string) []Fi
 	}
 	findings := []Finding{}
 	for _, setting := range rule.Settings {
+		findings = append(findings, verifyDisabled(document, rule, setting)...)
+	}
+	for _, setting := range rule.Settings {
 		joined := strings.Join(setting.Path, ".")
 		want := auto.SubstituteModule(setting.Want, module)
+		if slices.ContainsFunc(setting.Alternatives, func(alternative auto.Setting) bool {
+			return holds(document, alternative, module)
+		}) {
+			continue
+		}
 		got, found := lookup(document, setting.Path)
 		if !found {
 			findings = append(findings, Finding{
@@ -125,6 +133,44 @@ func verifyRule(document map[string]any, rule auto.AutoRule, module string) []Fi
 		}
 	}
 	return findings
+}
+
+func verifyDisabled(document map[string]any, rule auto.AutoRule, setting auto.Setting) []Finding {
+	findings := []Finding{}
+	for _, disabler := range setting.Disabled {
+		listed, found := lookup(document, disabler.Path)
+		names, isList := listed.([]any)
+		if !found || !isList {
+			continue
+		}
+		joined := strings.Join(disabler.Path, ".")
+		for _, name := range disabler.Names {
+			if !slices.Contains(names, any(name)) {
+				continue
+			}
+			findings = append(findings, Finding{
+				RuleID: rule.RuleID,
+				Linter: rule.Linter,
+				Message: fmt.Sprintf(
+					"%s: %s lists %s, which switches off a check tiger's baseline for the "+
+						"rule %q needs — remove %s from %s",
+					rule.RuleID, joined, name, rule.Title, name, joined),
+			})
+		}
+	}
+	return findings
+}
+
+func holds(document map[string]any, setting auto.Setting, module string) bool {
+	want := auto.SubstituteModule(setting.Want, module)
+	got, found := lookup(document, setting.Path)
+	if !found {
+		return false
+	}
+	if setting.Contains {
+		return len((baseline{want: want}).missingFrom(got)) == 0
+	}
+	return (baseline{want: want}).matches(got)
 }
 
 func missingMessage(
@@ -383,6 +429,13 @@ func asNumber(number any) (float64, bool) {
 }
 
 func formatWant(fragment any) string {
+	if listed, ok := fragment.([]any); ok && allScalars(listed) {
+		names := make([]string, len(listed))
+		for i, element := range listed {
+			names[i] = fmt.Sprint(element)
+		}
+		return "[" + strings.Join(names, ", ") + "]"
+	}
 	rendered, err := yaml.Marshal(fragment)
 	if err != nil {
 		return fmt.Sprintf("%v", fragment)
@@ -436,4 +489,14 @@ func modulePath(dir string) (string, error) {
 		}
 	}
 	return "", errors.New("go.mod has no module line")
+}
+
+func allScalars(listed []any) bool {
+	for _, element := range listed {
+		switch element.(type) {
+		case map[string]any, []any:
+			return false
+		}
+	}
+	return true
 }

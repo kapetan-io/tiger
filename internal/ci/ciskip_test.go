@@ -26,6 +26,10 @@ func newCheckout(t *testing.T) checkout {
 	require.NoError(t, err)
 	c := checkout{t: t, dir: dir}
 	c.git("init", "-q", "-b", "main")
+	// A commit starts a detached `git maintenance run` that creates and removes
+	// .git/objects/maintenance.lock, which breaks a fork copying the directory.
+	c.git("config", "maintenance.auto", "false")
+	c.git("config", "gc.auto", "0") // git before 2.29 runs gc --auto instead
 	return c
 }
 
@@ -328,4 +332,21 @@ func TestCIJobsHonorTheChangesDecision(t *testing.T) {
 	assert.Equal(t, "github.event_name == 'pull_request'", ifs["actions/cache/restore@v4"])
 	assert.Empty(t, ifs["actions/cache/save@v4"])
 	assert.Contains(t, ifs, "actions/cache/save@v4")
+}
+
+// TestCheckoutCommitStartsNoGitMaintenance guards the fork helper's copy.
+//
+// Goal: committing in a test checkout never starts git's background
+// maintenance, whose lock file appears and vanishes while a fork copies .git.
+func TestCheckoutCommitStartsNoGitMaintenance(t *testing.T) {
+	trace := filepath.Join(t.TempDir(), "trace.txt")
+	t.Setenv("GIT_TRACE", trace)
+	c := newCheckout(t)
+	c.write("a.txt", "a\n")
+	c.commit("base")
+
+	raw, err := os.ReadFile(trace)
+	require.NoError(t, err)
+	assert.NotContains(t, string(raw), "maintenance run")
+	assert.NotContains(t, string(raw), "gc --auto")
 }

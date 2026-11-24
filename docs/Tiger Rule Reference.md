@@ -991,8 +991,9 @@ func awaitWithShutdown(ctx context.Context, values chan int) (int, error) {
 
 **Severity:** blocking — a finding fails the run.
 
-Spawning one goroutine per incoming item lets outside events set the code's pace, not
-the code itself. A burst of requests becomes a burst of goroutines, with no limit on how
+Spawning one goroutine per incoming item, with a `go` statement or a `sync.WaitGroup.Go`,
+`errgroup.Group.Go` or `TryGo` call inside a loop, lets outside events set the code's pace,
+not the code itself. A burst of requests becomes a burst of goroutines, with no limit on how
 many run at once. Putting items in a bounded queue and draining it from one worker gives
 you batching and back pressure. The queue's size becomes the one place that decides how
 fast work happens.
@@ -1028,6 +1029,15 @@ func drain(queue []string) {
 	}
 }
 ```
+
+A `wg.Go(...)`, `group.Go(...)` or `group.TryGo(...)` inside the loop fires the same finding
+as the `go` statement, even when the group's `Wait` is reached, because the number of
+goroutines still follows the input. A group with `SetLimit` is still reported, because the
+limit caps how many goroutines run at once but not how many the loop starts. The rule has no
+exemption for it. The compliant rewrite above applies to all of them.
+
+Known gap: a `Go` method saved in a variable (`start := wg.Go`) and called in the loop is not
+seen, because the rule reads the call, not where the method value came from.
 
 **Not checked in tests:** `_test.go` files are skipped for this rule. A concurrency test
 starts one goroutine per request on purpose, and a single-worker queue would defeat it.

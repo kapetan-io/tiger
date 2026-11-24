@@ -901,9 +901,11 @@ caught statically; `tiger changed` reports a struct's new call into `time` for r
 Why. Straight from the original, doubly true in Go where the natural shape is one goroutine per
 request. Accept into a bounded queue, then drain at a rate you control. Batching, back pressure, and a
 bound on work per unit time all fall out of the same decision.
-Enforce. `nogoroutine` (custom) structurally; the design is `review`. `_test.go` files are not
-checked: a concurrency test fans out on purpose, and a single-worker queue would defeat it. *(Amended
-2026-10-12: test-file exemption, ADR-0019.)*
+Enforce. `nogoroutine` (custom) structurally, for a `go` statement or a `sync.WaitGroup.Go`,
+`errgroup.Group.Go` or `TryGo` call inside a loop; the design is `review`. `_test.go` files are
+not checked: a concurrency test fans out on purpose, and a single-worker queue would defeat it.
+*(Amended 2026-10-12: test-file exemption, ADR-0019.)* *(Amended 2026-11-23: `sync.WaitGroup.Go`,
+`errgroup.Group.Go` and `TryGo` in a loop are findings, with or without `SetLimit`.)*
 
 **`TS-C11` No exported method returns a pointer, slice, or map that aliases an internal field.**
 Why. This is where single ownership actually leaks in Go. `func (s *State) Entries() []Entry` hands
@@ -1815,7 +1817,7 @@ changes what it checks), or **not built**.
 | `paradigm` | TS-C13 | `types`, mutex fields versus channel fields per package | not built |
 | `chandecl` | TS-C12 | AST, channel type declarations per package | built |
 | `selectctx` | TS-C05 | AST, every blocking select needs a `default` or a stop case: `ctx.Done()` on a context that is not `Background` or `TODO`, or a channel the package closes or sends on | built |
-| `nogoroutine` | TS-C02, C03, C09 | AST, only `errgroup.Group.Go` and `sync.WaitGroup.Go` start goroutines, with `Wait` reached; a goleak harness in `TestMain` where goroutines start; `_test.go` files skipped for TS-C09 | built |
+| `nogoroutine` | TS-C02, C03, C09 | AST, only `errgroup.Group.Go` and `sync.WaitGroup.Go` start goroutines, with `Wait` reached; a goleak harness in `TestMain` where goroutines start; TS-C09 also for `sync.WaitGroup.Go`, `errgroup.Group.Go` and `TryGo` in a loop; `_test.go` files skipped for TS-C09 | built |
 | `queuebound` | TS-C04 | AST, slice-backed queues with unbounded append | not built |
 | `ioinloop` | TS-M10 | `types`, IO calls inside loop bodies | built |
 | `poolzero` | TS-M05 | `buildssa`, the `sync.Pool.Put` argument must be zeroed with `*b = T{}` | built |
