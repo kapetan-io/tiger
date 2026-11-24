@@ -514,3 +514,81 @@ func TestGolangciGeneratedConfigFlagsStructsLargerThan64Bytes(t *testing.T) {
 	assert.Contains(t, generated, "hugeParam:\n                    sizeThreshold: 65")
 	assert.Contains(t, generated, "rangeValCopy:\n                    sizeThreshold: 65")
 }
+
+// TestGolangciGocriticChecksSwitchedOffFindTheAutoRule covers the audit contract.
+//
+// Goal: a config that turns hugeParam or rangeValCopy off is reported, however
+// the checks were turned on, because golangci-lint applies the disabled lists
+// after every enable. Disabling one check is reported for that check only.
+func TestGolangciGocriticChecksSwitchedOffFindTheAutoRule(t *testing.T) {
+	const checks = "            enabled-checks:\n                - hugeParam\n" +
+		"                - rangeValCopy\n"
+	const offChecks = "            disabled-checks:\n                - hugeParam\n" +
+		"                - rangeValCopy\n"
+	bothDisabled := []string{
+		"disabled-checks lists hugeParam", "disabled-checks lists rangeValCopy",
+	}
+	const offHuge = "            disabled-checks:\n                - hugeParam\n"
+	const offTag = "            disabled-tags:\n                - performance\n"
+	for _, test := range []struct {
+		name   string
+		config string
+		want   []string
+		absent []string
+	}{
+		{
+			name:   "enableAllDisabledChecks",
+			config: "            enable-all: true\n" + offChecks,
+			want:   bothDisabled,
+		},
+		{
+			name:   "performanceTagDisabledChecks",
+			config: "            enabled-tags:\n                - performance\n" + offChecks,
+			want:   bothDisabled,
+		},
+		{
+			name:   "enableAllDisabledTag",
+			config: "            enable-all: true\n" + offTag,
+			want:   []string{"disabled-tags lists performance"},
+		},
+		{
+			name:   "enabledChecksDisabledTag",
+			config: checks + offTag,
+			want:   []string{"disabled-tags lists performance"},
+		},
+		{
+			name:   "oneCheckDisabled",
+			config: "            enable-all: true\n" + offHuge,
+			want:   []string{"disabled-checks lists hugeParam"},
+			absent: []string{"rangeValCopy"},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			dir := t.TempDir()
+			moduleFile{dir: dir, module: "switchedoff.example/project"}.write(t)
+			require.Equal(t, command.ExitClean, run(t, "golangci", "-C", dir, "--init").code)
+
+			path := filepath.Join(dir, ".golangci.yml")
+			config := readFile(t, path)
+			require.Contains(t, config, checks)
+			config = strings.Replace(config, checks, test.config, 1)
+			require.NoError(t, os.WriteFile(path, []byte(config), 0o644))
+
+			got := run(t, "golangci", "-C", dir)
+			assert.Equal(t, command.ExitFindings, got.code)
+			for _, want := range test.want {
+				assert.Contains(t, got.stdout, "TS-M03: linters.settings.gocritic."+want)
+			}
+			for _, absent := range test.absent {
+				assert.NotContains(t, got.stdout, absent)
+			}
+
+			findings, err := golangci.Verify(dir)
+			require.NoError(t, err)
+			require.Len(t, findings, len(test.want))
+			for _, finding := range findings {
+				checkStyle(t, finding)
+			}
+		})
+	}
+}

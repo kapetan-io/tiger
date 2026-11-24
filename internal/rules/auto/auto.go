@@ -29,6 +29,12 @@ type Setting struct {
 	Contains     bool
 	Reason       string
 	Alternatives []Setting
+	Disabled     []Disabler
+}
+
+type Disabler struct {
+	Path  []string
+	Names []string
 }
 
 type AutoRule struct {
@@ -255,6 +261,16 @@ var autoRules = []AutoRule{
 						Path:     []string{"linters", "settings", "gocritic", "enabled-tags"},
 						Want:     []any{"performance"},
 						Contains: true,
+					},
+				},
+				Disabled: []Disabler{
+					{
+						Path:  []string{"linters", "settings", "gocritic", "disabled-checks"},
+						Names: []string{"hugeParam", "rangeValCopy"},
+					},
+					{
+						Path:  []string{"linters", "settings", "gocritic", "disabled-tags"},
+						Names: []string{"performance"},
 					},
 				},
 			},

@@ -82,6 +82,9 @@ func verifyRule(document map[string]any, rule auto.AutoRule, module string) []Fi
 	}
 	findings := []Finding{}
 	for _, setting := range rule.Settings {
+		findings = append(findings, verifyDisabled(document, rule, setting)...)
+	}
+	for _, setting := range rule.Settings {
 		joined := strings.Join(setting.Path, ".")
 		want := auto.SubstituteModule(setting.Want, module)
 		if slices.ContainsFunc(setting.Alternatives, func(alternative auto.Setting) bool {
@@ -129,6 +132,32 @@ func verifyRule(document map[string]any, rule auto.AutoRule, module string) []Fi
 					formatWant(want),
 					formatWant(want),
 				),
+			})
+		}
+	}
+	return findings
+}
+
+func verifyDisabled(document map[string]any, rule auto.AutoRule, setting auto.Setting) []Finding {
+	findings := []Finding{}
+	for _, disabler := range setting.Disabled {
+		listed, found := lookup(document, disabler.Path)
+		names, isList := listed.([]any)
+		if !found || !isList {
+			continue
+		}
+		joined := strings.Join(disabler.Path, ".")
+		for _, name := range disabler.Names {
+			if !slices.Contains(names, any(name)) {
+				continue
+			}
+			findings = append(findings, Finding{
+				RuleID: rule.RuleID,
+				Linter: rule.Linter,
+				Message: fmt.Sprintf(
+					"%s: %s lists %s, which switches off a check tiger's baseline for the "+
+						"rule %q needs — remove %s from %s",
+					rule.RuleID, joined, name, rule.Title, name, joined),
 			})
 		}
 	}
