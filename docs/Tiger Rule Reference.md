@@ -2227,7 +2227,7 @@ as `walk := filepath.WalkDir`, is judged the same. Pure path functions (`Join`, 
 The finding names the function:
 
 ```
-store/scan.go:9:9: TS-X03: the "./store" entry in tiger.layers.yaml doesn't list os, so this package can't call path/filepath.Glob — add "os" to it, or take an fs.FS or the data as an input
+store/scan.go:9:9: TS-X03: the "./store" entry in tiger.layers.yaml doesn't list os, so this package can't use path/filepath.Glob — add "os" to it, or take an fs.FS or the data as an input
 ```
 
 Code that fires the import check, under the file above, where `./service`'s entry names `./internal/store`

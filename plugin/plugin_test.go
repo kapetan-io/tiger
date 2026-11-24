@@ -175,7 +175,7 @@ func TestPluginInstallsLayerFileFromSettings(t *testing.T) {
 		}
 	}
 	require.Len(t, messages, 1)
-	assert.Contains(t, messages[0], "so this package can't call path/filepath.Glob")
+	assert.Contains(t, messages[0], "so this package can't use path/filepath.Glob")
 
 	_, err = build(map[string]any{"config": filepath.Join("testdata", "badlayers")})
 	require.ErrorContains(t, err,

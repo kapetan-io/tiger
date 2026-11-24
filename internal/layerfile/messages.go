@@ -22,7 +22,7 @@ func (v Verdict) Message() string {
 			"to it, or pass it in through an interface", RuleID, entryText, v.name, v.imported,
 			v.name)
 	case unlistedCall:
-		text = fmt.Sprintf("%s: %s doesn't list %s, so this package can't call %s — add %q "+
+		text = fmt.Sprintf("%s: %s doesn't list %s, so this package can't use %s — add %q "+
 			"to it, or take an fs.FS or the data as an input", RuleID, entryText, v.name,
 			callName(v.call), v.name)
 	default:
