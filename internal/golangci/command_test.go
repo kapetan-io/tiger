@@ -476,3 +476,20 @@ func TestGolangciAuditRequiresEveryBaselineBan(t *testing.T) {
 	assert.Contains(t, got.stdout, `linters.settings.forbidigo.forbid doesn't include `+
 		`^time\.Since$, ^time\.NewTicker$`)
 }
+
+// TestGolangciAuditRejectsBareStringBan covers the audit's ban identity.
+//
+// Goal: a forbid entry written as a bare string is not a baseline ban, so a
+// config holding time.Now only that way fails with a finding naming it.
+func TestGolangciAuditRejectsBareStringBan(t *testing.T) {
+	bareString := func(config string) string {
+		ban := regexp.MustCompile(`- pattern: ('\^time\\\.Now\$')\n\s+msg: [^\n]*\n`)
+		return ban.ReplaceAllString(config, "- $1\n")
+	}
+	shipped := readFile(t, filepath.Join("..", "..", "config", "golangci.yml"))
+	require.NotEqual(t, shipped, bareString(shipped))
+
+	got := run(t, "golangci", "-C", shippedConfigIn(t, bareString))
+	assert.Equal(t, command.ExitFindings, got.code)
+	assert.Contains(t, got.stdout, `doesn't include ^time\.Now$`)
+}

@@ -164,13 +164,22 @@ func (b baseline) missingFrom(got any) []string {
 	absent := []string{}
 	for _, element := range required {
 		if !held[identity(element)] {
-			absent = append(absent, identity(element))
+			absent = append(absent, named(element))
 		}
 	}
 	return absent
 }
 
 func identity(element any) string {
+	if mapped, ok := element.(map[string]any); ok {
+		if pattern, found := mapped["pattern"]; found {
+			return "pattern " + fmt.Sprint(pattern)
+		}
+	}
+	return fmt.Sprint(element)
+}
+
+func named(element any) string {
 	if mapped, ok := element.(map[string]any); ok {
 		if pattern, found := mapped["pattern"]; found {
 			return fmt.Sprint(pattern)
