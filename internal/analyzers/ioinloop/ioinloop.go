@@ -1,19 +1,18 @@
 // Package ioinloop enforces TS-M10: no IO call inside a loop body.
 //
-// A call is IO when its callee — function or method — resolves through
-// pass.TypesInfo to a *types.Func whose declaring package is on the
-// allowlist, never by name or by the interface it happens to satisfy: an
-// io.Writer implementer includes the in-memory bytes.Buffer, and flagging
-// it would break the exact-tier invariant (blocking findings are true by
-// construction). Within an allowlist package, a method on a map-, slice-,
-// or basic-underlying receiver is exempt for the same reason: a pure
-// container or value holds no connection or descriptor, so the call is an
-// in-memory operation (http.Header.Set — a map write — was a trial false
-// positive on the git-server pin). The seed allowlist — os (filesystem),
-// net and net/http (sockets and HTTP transport), database/sql (database
-// drivers), and syscall (raw system calls) — is extensible per repo
-// through the -ioinloop.packages flag or ioinloop.packages entries in
-// tiger.yaml, appended to the seed.
+// A call is IO when its callee, function or method, resolves through
+// pass.TypesInfo to a *types.Func that stdlibio lists as IO, never by name
+// or by the interface it happens to satisfy. An io.Writer implementer
+// includes the in-memory bytes.Buffer, and flagging it would break the
+// exact-tier invariant (blocking findings are true by construction). A call
+// stdlibio does not list as IO is silent: net.SplitHostPort, os.Getpid,
+// (*sql.Rows).Scan and http.Header.Set do no IO, and an interface method
+// such as http.ResponseWriter.Write may be backed by memory.
+//
+// The -ioinloop.packages flag and ioinloop.packages entries in tiger.yaml
+// add whole packages per repo: every call into one counts as IO, except a
+// method on a map-, slice-, or basic-underlying receiver, because a pure
+// container or value holds no connection or descriptor.
 //
 // Init, Cond, Post, and a RangeStmt's X each run once per loop, not once
 // per iteration, so IO there is deliberately unflagged — this is what
@@ -37,10 +36,9 @@ import (
 	"golang.org/x/tools/go/analysis"
 
 	"github.com/kapetan-io/tiger/internal/analyzers/internal/attach"
+	"github.com/kapetan-io/tiger/internal/analyzers/ioinloop/stdlibio"
 	"github.com/kapetan-io/tiger/internal/config"
 )
-
-var seedPackages = []string{"os", "net", "net/http", "database/sql", "syscall"}
 
 const msg = "TS-M10: this call does IO (network, disk, or database) and runs once per loop " +
 	"iteration — move it above the loop, or if each item genuinely needs its own IO, mark " +
@@ -55,7 +53,7 @@ func newAnalyzer() *analysis.Analyzer {
 		Run:  run,
 	}
 	built.Flags.StringVar(&packagesFlag, "packages", "",
-		"comma-separated import paths appended to the seed IO allowlist")
+		"comma-separated import paths whose every call counts as IO")
 	return built
 }
 
@@ -72,9 +70,6 @@ func run(pass *analysis.Pass) (any, error) {
 
 func allowlist(pass *analysis.Pass) map[string]bool {
 	allowed := map[string]bool{}
-	for _, path := range seedPackages {
-		allowed[path] = true
-	}
 	paths := strings.Split(packagesFlag, ",")
 	paths = append(paths, config.Values(
 		pass.Pkg.Path(), config.Key{Analyzer: "ioinloop", Flag: "packages"},
@@ -135,6 +130,9 @@ func (w *walker) isIO(call *ast.CallExpr) bool {
 	fn := w.calleeFunc(call)
 	if fn == nil || fn.Pkg() == nil {
 		return false
+	}
+	if stdlibio.EffectOf(fn.Origin().FullName()) == stdlibio.IO {
+		return true
 	}
 	return w.allowed[fn.Pkg().Path()] && !containerMethod(fn)
 }

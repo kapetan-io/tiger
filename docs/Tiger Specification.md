@@ -1143,7 +1143,10 @@ Why. You cannot check that a design batches, but you can check for its opposite,
 query ever written.
 Enforce. `ioinloop` (custom), unless annotated `//tiger:batched <reason>`. The annotation counts
 against its package's `TS-D06` budget on every run and prints when the package goes over, so an
-escape is never free. This is the only rule `//tiger:batched` waives (ADR-0014).
+escape is never free. This is the only rule `//tiger:batched` waives (ADR-0014). A call is IO when
+tiger's list of standard library IO calls names it, or when its package is on the repo's
+`ioinloop.packages`. The list covers every exported call in `os`, `net`, `net/http` and
+`database/sql`, and tiger's CI fails when a Go release adds one it does not classify.
 
 ## Abstraction
 
