@@ -162,10 +162,11 @@ func usesOutsideAssertions(file *ast.File) map[string]bool {
 }
 
 func skipBlankBindings(file *ast.File, skip map[ast.Node]bool) {
+	repeated := repeatedSpecs(file)
 	ast.Inspect(file, func(node ast.Node) bool {
 		switch bind := node.(type) {
 		case *ast.ValueSpec:
-			if allBlank(bind.Names) && allIdents(bind.Values) {
+			if allBlank(bind.Names) && allIdents(bind.Values) && !repeated[bind] {
 				for _, value := range bind.Values {
 					skip[value] = true
 				}
@@ -180,6 +181,29 @@ func skipBlankBindings(file *ast.File, skip map[ast.Node]bool) {
 		}
 		return true
 	})
+}
+
+func repeatedSpecs(file *ast.File) map[*ast.ValueSpec]bool {
+	repeated := map[*ast.ValueSpec]bool{}
+	for _, decl := range file.Decls {
+		genDecl, ok := decl.(*ast.GenDecl)
+		if !ok || genDecl.Tok != token.CONST {
+			continue
+		}
+		var last *ast.ValueSpec
+		for _, spec := range genDecl.Specs {
+			constSpec, ok := spec.(*ast.ValueSpec)
+			if !ok {
+				continue
+			}
+			if len(constSpec.Values) > 0 {
+				last = constSpec
+			} else if last != nil {
+				repeated[last] = true
+			}
+		}
+	}
+	return repeated
 }
 
 func allBlank(names []*ast.Ident) bool {
