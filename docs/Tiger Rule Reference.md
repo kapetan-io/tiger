@@ -1586,16 +1586,16 @@ The `ioinloop.packages` entries in `tiger.yaml` widen detection by whole package
 into a listed package counts as IO, except a method on a map, slice or basic-typed value,
 so a repo that calls a database client such as `github.com/jackc/pgx/v5` names it there to
 get its per-item calls reported. Naming a standard library package there overrides the list for
-that package, so every call into it is reported again.
+that package, so every call into it counts as IO except those container methods.
 
 **Known misses:** a call the list does not mark as IO is silent, even when it may do IO.
 Interface methods other than `net.Conn.Write` are silent, such as `net.Conn.Read`,
 `http.ResponseWriter.Write` and `http.RoundTripper.RoundTrip`, because an in-memory value
 (`net.Pipe`, `httptest.ResponseRecorder`) can implement them. Calls whose cost depends on
 the database driver are silent too, such as `sql.Open`, `(*sql.Rows).Next` and
-`(*sql.Row).Scan`, and so is every `syscall` call outside the short list. IO hidden behind a same-package helper is invisible. The analyzer checks
-direct calls, not a call graph, so a loop calling a local helper that itself calls
-`os.ReadFile` is missed.
+`(*sql.Row).Scan`, and so is every `syscall` call outside the short list. IO hidden behind a
+same-package helper is invisible. The analyzer checks direct calls, not a call graph, so a loop
+calling a local helper that itself calls `os.ReadFile` is missed.
 
 
 ## Naming

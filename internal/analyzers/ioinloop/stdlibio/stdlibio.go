@@ -17,9 +17,11 @@
 // implementer may be in memory (net.Pipe, httptest.ResponseRecorder), a
 // database/sql call whose cost depends on the driver, a call that touches
 // the system only on its first use (http.ParseTime loading the local time
-// zone), or an os.Process call. Unproven and Unlisted calls are silent, the
-// same as NoIO, because a blocking rule must not guess. When a new call sits
-// between IO and Unproven, choose Unproven.
+// zone), or a call that signals or waits on another process
+// ((*os.Process).Kill, Signal, Wait, Release and os.FindProcess). Unproven
+// and Unlisted calls are silent, the same as NoIO, because a blocking rule
+// must not guess. When a new call sits between IO and Unproven, choose
+// Unproven.
 //
 // (net.Conn).Write is the one interface method listed as IO, although
 // net.Pipe implements it, because a net.Conn outside tests is almost always
@@ -30,9 +32,11 @@
 // or method to one of the four packages, TestEveryExportedCallIsListed fails
 // and names the call, and the fix is one line in its group.
 //
-// Unlike the effect table ADR-0026 removed, this list covers only the
-// standard library. A repo adds a third-party client, such as a database
-// driver, by package through ioinloop.packages.
+// Unlike the effect table ADR-0026 removed, this list classifies every
+// exported call in its four packages, enforced by a test, and decides one
+// rule's verdict on direct calls only, never effects along a call chain. A
+// repo adds a third-party client, such as a database driver, by package
+// through ioinloop.packages.
 package stdlibio
 
 import (

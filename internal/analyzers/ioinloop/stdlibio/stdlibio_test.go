@@ -23,8 +23,8 @@ var listedPackages = []string{"os", "net", "net/http", "database/sql"}
 //
 // TestEveryExportedCallIsListed fails when the Go release in go.mod has an
 // exported function or method in os, net, net/http or database/sql that
-// stdlibio does not list. Adopters never run this test, so a new Go release
-// fails only tiger's own CI, and only once go.mod moves to it: CI's job on
+// stdlibio does not list. Adopters never run this test. A Go release newer
+// than go.mod's fails it too, once that release adds a call, so CI's job on
 // the next Go release leaves this test out with -skip.
 //
 // Goal: every exported function, and every exported method in the method set
