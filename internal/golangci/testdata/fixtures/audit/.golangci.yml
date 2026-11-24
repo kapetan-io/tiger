@@ -90,9 +90,9 @@ linters:
                 - rangeValCopy
             settings:
                 hugeParam:
-                    sizeThreshold: 64
+                    sizeThreshold: 65
                 rangeValCopy:
-                    sizeThreshold: 64
+                    sizeThreshold: 65
         godot:
             capital: true
             scope: declarations

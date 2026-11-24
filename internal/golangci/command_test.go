@@ -467,3 +467,50 @@ func TestGolangciGocriticChecksMissingOneFindsTheAutoRule(t *testing.T) {
 		"TS-M03: linters.settings.gocritic.enabled-checks doesn't include rangeValCopy")
 	assert.NotContains(t, got.stdout, "include hugeParam")
 }
+
+// TestGolangciGocriticChecksEnabledAnotherWayPassTheAudit covers the audit contract.
+//
+// Goal: a config that turns hugeParam and rangeValCopy on through
+// enable-all or the performance tag, instead of enabled-checks, conforms.
+// Listing enabled-checks beside enable-all would make golangci-lint fail.
+func TestGolangciGocriticChecksEnabledAnotherWayPassTheAudit(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		with string
+	}{
+		{name: "enableAll", with: "enable-all: true\n"},
+		{name: "performanceTag", with: "enabled-tags:\n                - performance\n"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			dir := t.TempDir()
+			moduleFile{dir: dir, module: "another.example/project"}.write(t)
+			require.Equal(t, command.ExitClean, run(t, "golangci", "-C", dir, "--init").code)
+
+			path := filepath.Join(dir, ".golangci.yml")
+			config := readFile(t, path)
+			const checks = "            enabled-checks:\n                - hugeParam\n" +
+				"                - rangeValCopy\n"
+			require.Contains(t, config, checks)
+			config = strings.Replace(config, checks, "            "+test.with, 1)
+			require.NoError(t, os.WriteFile(path, []byte(config), 0o644))
+
+			got := run(t, "golangci", "-C", dir)
+			assert.Equal(t, command.ExitClean, got.code)
+			assert.Empty(t, got.stdout)
+		})
+	}
+}
+
+// TestGolangciGeneratedConfigFlagsStructsLargerThan64Bytes covers the generated baseline.
+//
+// Goal: TS-M03 says larger than 64 bytes, and gocritic flags a size at or
+// above its threshold, so the generated thresholds are 65.
+func TestGolangciGeneratedConfigFlagsStructsLargerThan64Bytes(t *testing.T) {
+	dir := t.TempDir()
+	moduleFile{dir: dir, module: "threshold.example/project"}.write(t)
+	require.Equal(t, command.ExitClean, run(t, "golangci", "-C", dir, "--init").code)
+
+	generated := readFile(t, filepath.Join(dir, ".golangci.yml"))
+	assert.Contains(t, generated, "hugeParam:\n                    sizeThreshold: 65")
+	assert.Contains(t, generated, "rangeValCopy:\n                    sizeThreshold: 65")
+}

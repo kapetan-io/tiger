@@ -59,6 +59,10 @@ tiger changed-tests --format json main # the same list for a script, such as a P
 
 Every command but `tiger pattern` takes `-C dir` to run as if started in `dir`.
 
+The generated baseline turns on gocritic's `hugeParam` and `rangeValCopy` for TS-M03, so a project
+that adopts it, or fixes its config to match, gets findings for every struct larger than 64 bytes
+passed or ranged by value.
+
 The analysis is deterministic static analysis and never a language model (ADR-0015). Tiger
 itself calls no outside service. It loads packages through the `go` command, which fetches a
 missing module the way `go build` would.

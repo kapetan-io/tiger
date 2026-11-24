@@ -178,19 +178,17 @@ linters:
           msg: TS-S18. Use the assert package so there is one crash path.
 
     gocritic:
-      enabled-checks:
-        - hugeParam      # TS-M03
-        - rangeValCopy   # TS-M03
       enabled-tags:
         - performance
         - diagnostic
         - style
       settings:
         hugeParam:
-          # TS-M03. Above this, pass a pointer. Two cache lines.
-          sizeThreshold: 64
+          # TS-M03. Larger than 64 bytes (two cache lines) takes a pointer;
+          # gocritic flags a size at or above the threshold, so 65.
+          sizeThreshold: 65
         rangeValCopy:
-          sizeThreshold: 64
+          sizeThreshold: 65
 
     gosec:
       includes:

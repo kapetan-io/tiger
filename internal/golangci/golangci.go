@@ -84,6 +84,11 @@ func verifyRule(document map[string]any, rule auto.AutoRule, module string) []Fi
 	for _, setting := range rule.Settings {
 		joined := strings.Join(setting.Path, ".")
 		want := auto.SubstituteModule(setting.Want, module)
+		if slices.ContainsFunc(setting.Alternatives, func(alternative auto.Setting) bool {
+			return holds(document, alternative, module)
+		}) {
+			continue
+		}
 		got, found := lookup(document, setting.Path)
 		if !found {
 			findings = append(findings, Finding{
@@ -128,6 +133,18 @@ func verifyRule(document map[string]any, rule auto.AutoRule, module string) []Fi
 		}
 	}
 	return findings
+}
+
+func holds(document map[string]any, setting auto.Setting, module string) bool {
+	want := auto.SubstituteModule(setting.Want, module)
+	got, found := lookup(document, setting.Path)
+	if !found {
+		return false
+	}
+	if setting.Contains {
+		return len((baseline{want: want}).missingFrom(got)) == 0
+	}
+	return (baseline{want: want}).matches(got)
 }
 
 func reasonSuffix(setting auto.Setting) string {

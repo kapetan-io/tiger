@@ -28,6 +28,7 @@ type Setting struct {
 	Want     any
 	Contains bool
 	Reason   string
+	Alternatives []Setting
 }
 
 type AutoRule struct {
@@ -248,6 +249,14 @@ var autoRules = []AutoRule{
 				Path:     []string{"linters", "settings", "gocritic", "enabled-checks"},
 				Want:     []any{"hugeParam", "rangeValCopy"},
 				Contains: true,
+				Alternatives: []Setting{
+					{Path: []string{"linters", "settings", "gocritic", "enable-all"}, Want: true},
+					{
+						Path:     []string{"linters", "settings", "gocritic", "enabled-tags"},
+						Want:     []any{"performance"},
+						Contains: true,
+					},
+				},
 			},
 			{
 				Path: []string{
@@ -258,7 +267,7 @@ var autoRules = []AutoRule{
 					"hugeParam",
 					"sizeThreshold",
 				},
-				Want: 64,
+				Want: 65,
 			},
 			{
 				Path: []string{
@@ -269,7 +278,7 @@ var autoRules = []AutoRule{
 					"rangeValCopy",
 					"sizeThreshold",
 				},
-				Want: 64,
+				Want: 65,
 			},
 		},
 	},
