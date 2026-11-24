@@ -833,18 +833,19 @@ caught: a parallel subtest, a literal saved and called later, a deferred or `t.C
 literal, or a goroutine of another group. A `t.Fatal` or `t.FailNow` between the start
 and the `Wait` skips the `Wait`, and is not caught either. For a group held in a struct field, it
 must be reached in an exported method of the owning type, or in a method such a method
-calls. The `Wait` must follow the start on every success path. A call that runs a
-literal before it returns reaches the literal's `Wait` when the literal waits on every one
-of its own success paths: a literal called where it is written, a local variable that only
-ever holds one literal and is called, or the body `t.Run` or `b.Run` runs, unless that
-body calls `t.Parallel`. A `Wait` after a `return`, on one branch only, in a literal that
-is saved and never called or passed to any other function, in a parallel subtest, in a
-`t.Cleanup` literal, or inside the goroutine it waits for does not count. A path that returns a
-non-nil error is not a success path, so a `Shutdown` that returns its flush error before it
-waits is accepted. A `Wait` that only runs in the
-branch where the caller's context expired does not count. That branch is a `Shutdown`
-giving up early, and the early return is exempt from the check. A group handed in as a
-parameter is the caller's to wait on, and this check does not follow it.
+calls. The `Wait` must follow the start on every success path.
+
+A `Wait` may sit in a literal that a call after the start runs before it returns. It
+counts when the literal waits on every one of its own success paths. Such a call is a literal called where it is written, a call to a local
+variable that only ever holds one literal, or `t.Run` or `b.Run` with a body that does
+not call `t.Parallel`. These do not count: a `Wait` after a `return`, on one branch only,
+in a literal saved and never called, in a literal passed to another function, in a
+parallel subtest, in a `t.Cleanup` literal, or inside the goroutine it waits for. A path
+that returns a non-nil error is not a success path, so a `Shutdown` that returns its
+flush error before it waits is accepted. A `Wait` that only runs in the branch where the
+caller's context expired does not count. That branch is a `Shutdown` giving up early,
+and the early return is exempt from the check. A group handed in as a parameter is the
+caller's to wait on, and this check does not follow it.
 
 Code that fires it:
 

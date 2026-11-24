@@ -1,10 +1,12 @@
 // Documented TS-C02 coverage gaps in function literals: the literal holding
 // the Go runs after the Wait or alongside it, a t.Fatal skips the Wait, or a
 // function around the literal returns only a non-nil error, which excuses the
-// literal's own unwaited success path.
+// literal's own unwaited success path, or a called literal returns an error
+// before its Wait and the caller goes on.
 package fixture
 
 import (
+	"context"
 	"sync"
 	"testing"
 )
@@ -131,4 +133,23 @@ func literalNoWaitInFailingFunc() error {
 	}
 	run()
 	return errStop
+}
+
+// TestCalledLiteralErrorSkipsWait leaks the goroutine: the literal returns an
+// error before its Wait, and the test logs it and returns.
+//
+// known-miss: the literal's error return is not a success path, so the call
+// counts as a Wait whatever the caller does with the error (ENG-ERR).
+func TestCalledLiteralErrorSkipsWait(t *testing.T) {
+	var wg sync.WaitGroup
+	wg.Go(func() {})
+	if err := func() error {
+		if testing.Short() {
+			return context.Canceled
+		}
+		wg.Wait()
+		return nil
+	}(); err != nil {
+		t.Log(err)
+	}
 }

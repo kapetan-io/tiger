@@ -4,6 +4,7 @@ import (
 	"go/ast"
 	"go/token"
 	"go/types"
+	"slices"
 
 	"golang.org/x/tools/go/cfg"
 
@@ -14,6 +15,7 @@ import (
 type flowQuery struct {
 	group   *types.Var
 	start   *ast.SelectorExpr
+	held    *ast.SelectorExpr
 	anyPath bool
 }
 
@@ -151,7 +153,7 @@ func (o *owners) waitsIn(node ast.Node, query flowQuery, always waiters) bool {
 			return false
 		case *ast.CallExpr:
 			waits = o.callWaits(found, query.group, always)
-			if literal := o.runLiteral(found); !waits && literal != nil {
+			if literal := o.literalRunBy(found); !waits && literal != nil {
 				waits = o.literalWaits(literal, query, always)
 			}
 		}
@@ -161,25 +163,29 @@ func (o *owners) waitsIn(node ast.Node, query flowQuery, always waiters) bool {
 }
 
 func (o *owners) literalWaits(literal *ast.FuncLit, query flowQuery, always waiters) bool {
-	if o.following[literal] {
+	if o.walking[literal] {
 		return false
 	}
-	if query.start != nil && covers(literal, query.start) {
+	held := query.held
+	if query.start != nil {
+		held = query.start
+	}
+	if held != nil && covers(literal, held) {
 		return false
 	}
-	o.following[literal] = true
-	defer delete(o.following, literal)
+	o.walking[literal] = true
+	defer delete(o.walking, literal)
 	fn := function{decl: o.index.DeclOf(literal), typ: literal.Type, body: literal.Body}
-	unwaited, _ := o.uncovered(fn, flowQuery{group: query.group}, always)
+	unwaited, _ := o.uncovered(fn, flowQuery{group: query.group, held: held}, always)
 	return !unwaited
 }
 
-func (o *owners) runLiteral(call *ast.CallExpr) *ast.FuncLit {
+func (o *owners) literalRunBy(call *ast.CallExpr) *ast.FuncLit {
 	if literal := o.literalOf(call.Fun); literal != nil {
 		return literal
 	}
 	selector, ok := ast.Unparen(call.Fun).(*ast.SelectorExpr)
-	if !ok || len(call.Args) != 2 || !subtestRuns[o.methodName(selector)] {
+	if !ok || len(call.Args) != 2 || !subtestRuns[o.calleeName(selector)] {
 		return nil
 	}
 	body := o.literalOf(call.Args[1])
@@ -203,30 +209,88 @@ func (o *owners) literalOf(expr ast.Expr) *ast.FuncLit {
 	if o.index.IsParameter(local) || local.Parent() == local.Pkg().Scope() {
 		return nil
 	}
-	defs := o.index.Definitions(local, o.index.DeclOf(expr))
-	if len(defs) != 1 {
+	decl := o.index.DeclOf(expr)
+	defs := o.index.Definitions(local, decl)
+	if len(defs) != 1 || o.rebound(local, decl) {
 		return nil
 	}
 	literal, _ := ast.Unparen(defs[0]).(*ast.FuncLit)
 	return literal
 }
 
+func (o *owners) rebound(local *types.Var, decl *ast.FuncDecl) bool {
+	found := false
+	ast.Inspect(decl.Body, func(node ast.Node) bool {
+		switch stmt := node.(type) {
+		case *ast.UnaryExpr:
+			found = stmt.Op == token.AND && o.index.Object(stmt.X) == local
+		case *ast.RangeStmt:
+			found = o.rangeTarget(stmt.Key, local) || o.rangeTarget(stmt.Value, local)
+		}
+		return !found
+	})
+	return found
+}
+
+func (o *owners) rangeTarget(target ast.Expr, local *types.Var) bool {
+	return target != nil && o.index.Object(target) == local
+}
+
 func (o *owners) callsParallel(literal *ast.FuncLit) bool {
+	params := literal.Type.Params.List
+	if len(params) == 0 || len(params[0].Names) == 0 {
+		return false
+	}
+	subtest := o.index.Object(params[0].Names[0])
 	parallel := false
 	ast.Inspect(literal.Body, func(node ast.Node) bool {
-		switch found := node.(type) {
-		case *ast.FuncLit:
-			return false
-		case *ast.CallExpr:
-			selector, ok := ast.Unparen(found.Fun).(*ast.SelectorExpr)
-			parallel = parallel || ok && o.methodName(selector) == "(*testing.T).Parallel"
+		if call, ok := node.(*ast.CallExpr); ok {
+			parallel = o.marksParallel(call, subtest)
 		}
 		return !parallel
 	})
 	return parallel
 }
 
-func (o *owners) methodName(selector *ast.SelectorExpr) string {
+func (o *owners) marksParallel(call *ast.CallExpr, subtest *types.Var) bool {
+	if selector, ok := ast.Unparen(call.Fun).(*ast.SelectorExpr); ok {
+		if o.calleeName(selector) == "(*testing.T).Parallel" {
+			return o.index.Object(selector.X) == subtest
+		}
+	}
+	if !slices.ContainsFunc(call.Args, func(arg ast.Expr) bool {
+		return o.index.Object(arg) == subtest
+	}) {
+		return false
+	}
+	return o.helperCallsParallel(call)
+}
+
+func (o *owners) helperCallsParallel(call *ast.CallExpr) bool {
+	ident, ok := ast.Unparen(call.Fun).(*ast.Ident)
+	if !ok {
+		return false
+	}
+	fn, ok := o.pass.TypesInfo.Uses[ident].(*types.Func)
+	if !ok {
+		return false
+	}
+	decl := o.index.DeclFor(fn)
+	if decl == nil {
+		return false
+	}
+	parallel := false
+	ast.Inspect(decl.Body, func(node ast.Node) bool {
+		if inner, isCall := node.(*ast.CallExpr); isCall {
+			selector, isSelector := ast.Unparen(inner.Fun).(*ast.SelectorExpr)
+			parallel = isSelector && o.calleeName(selector) == "(*testing.T).Parallel"
+		}
+		return !parallel
+	})
+	return parallel
+}
+
+func (o *owners) calleeName(selector *ast.SelectorExpr) string {
 	fn, ok := o.pass.TypesInfo.Uses[selector.Sel].(*types.Func)
 	if !ok {
 		return ""

@@ -1,6 +1,9 @@
 // Function literals count as functions: a Wait that follows the Go in the
 // literal around it, or in a function around that, waits for it, whoever
-// calls the literal.
+// calls the literal. So does a Wait after the Go in a literal that runs before
+// the call holding it returns: a literal called where it is written, a saved
+// literal that is called, or a t.Run or b.Run body that does not call
+// t.Parallel.
 package fixture
 
 import (
@@ -349,4 +352,51 @@ func TestSavedSubtestWaits(t *testing.T) {
 	body := func(t *testing.T) { wg.Wait() }
 	wg.Go(func() {})
 	t.Run("x", body)
+}
+
+// TestSavedWaitWrittenAfterGo saves the waiting literal after the Go and calls
+// it.
+func TestSavedWaitWrittenAfterGo(t *testing.T) {
+	var wg sync.WaitGroup
+	wg.Go(func() {})
+	wait := func() { wg.Wait() }
+	wait()
+}
+
+// TestDeferredSavedWait defers the saved waiting literal before the Go.
+func TestDeferredSavedWait(t *testing.T) {
+	var wg sync.WaitGroup
+	wait := func() { wg.Wait() }
+	defer wait()
+	wg.Go(func() {})
+}
+
+// TestErrgroupWaitInSubtest waits on an errgroup in a later subtest.
+func TestErrgroupWaitInSubtest(t *testing.T) {
+	var g errgroup.Group
+	g.Go(func() error { return nil })
+	t.Run("x", func(t *testing.T) {
+		if err := g.Wait(); err != nil {
+			t.Error(err)
+		}
+	})
+}
+
+// TestSubtestResultChecked waits in a subtest whose result picks the branch.
+func TestSubtestResultChecked(t *testing.T) {
+	var wg sync.WaitGroup
+	wg.Go(func() {})
+	if !t.Run("x", func(t *testing.T) { wg.Wait() }) {
+		return
+	}
+}
+
+// TestDeferredWaitInLaterSubtest defers the Wait inside a subtest after the Go.
+func TestDeferredWaitInLaterSubtest(t *testing.T) {
+	var wg sync.WaitGroup
+	wg.Go(func() {})
+	t.Run("x", func(t *testing.T) {
+		defer wg.Wait()
+		t.Log("x")
+	})
 }
