@@ -361,8 +361,10 @@ func (i Importer) JudgeUse(fullName string) Verdict {
 	if !readsOutsideProcess[fullName] || slices.Contains(i.entry.names, processAccess) {
 		return Verdict{}
 	}
-	return Verdict{breach: unlistedCall, entryKey: i.entry.key, name: processAccess,
-		call: fullName}
+	return Verdict{
+		breach: unlistedCall, entryKey: i.entry.key, name: processAccess,
+		call: fullName,
+	}
 }
 
 func impureSubtree(imported string) string {

@@ -176,7 +176,8 @@ func TestLayersImpureSubtreeMustBeNamed(t *testing.T) {
 
 	writeFiles(t, dir, map[string]string{
 		"service/io.go": "package service\n\nimport (\n" +
-			"\t_ \"crypto/rand\"\n\t_ \"database/sql/driver\"\n\t_ \"io/ioutil\"\n\t_ \"log/syslog\"\n" +
+			"\t_ \"crypto/rand\"\n\t_ \"database/sql/driver\"\n\t_ \"io/ioutil\"\n" +
+			"\t_ \"log/syslog\"\n" +
 			"\t_ \"math/rand/v2\"\n\t_ \"net/http/httptest\"\n\t_ \"os/exec\"\n" +
 			"\t_ \"plugin\"\n\t_ \"syscall\"\n)\n",
 	})
