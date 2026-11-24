@@ -114,7 +114,7 @@ func Run(
 	}
 	relativize(findings, root)
 	sort.Slice(findings, func(i, j int) bool {
-		return findings[i].Before(findings[j])
+		return findings[i].Before(&findings[j])
 	})
 	return Report{Findings: findings, Packages: visited}, nil
 }
@@ -374,7 +374,8 @@ func runFinish(
 	if runErr != nil {
 		return nil, fmt.Errorf("finish step %s failed: %w", name, runErr)
 	}
-	for _, diagnostic := range diagnostics {
+	for i := range diagnostics {
+		diagnostic := &diagnostics[i]
 		position := program.Fset.Position(diagnostic.Pos)
 		if !loadedFiles[position.Filename] {
 			return nil, fmt.Errorf(
@@ -534,7 +535,8 @@ func (s *factsStore) importPackage(
 func (s *factsStore) allSymbols(analyzer *analysis.Analyzer) func() []analysis.ObjectFact {
 	return func() []analysis.ObjectFact {
 		facts := []analysis.ObjectFact{}
-		for _, key := range s.symbolOrder {
+		for i := range s.symbolOrder {
+			key := &s.symbolOrder[i]
 			if key.analyzer != analyzer {
 				continue
 			}
@@ -542,7 +544,7 @@ func (s *factsStore) allSymbols(analyzer *analysis.Analyzer) func() []analysis.O
 			if entity == nil {
 				continue
 			}
-			facts = append(facts, analysis.ObjectFact{Object: entity, Fact: s.symbols[key]})
+			facts = append(facts, analysis.ObjectFact{Object: entity, Fact: s.symbols[*key]})
 		}
 		return facts
 	}
@@ -565,7 +567,7 @@ func (s *factsStore) allPackages(analyzer *analysis.Analyzer) func() []analysis.
 	}
 }
 
-func (s *factsStore) resolveSymbol(key symbolFactKey) types.Object {
+func (s *factsStore) resolveSymbol(key *symbolFactKey) types.Object {
 	if key.path == "" {
 		return key.identity
 	}
@@ -593,7 +595,7 @@ func relativize(findings []Finding, root string) {
 	}
 }
 
-func (f Finding) Before(other Finding) bool {
+func (f *Finding) Before(other *Finding) bool {
 	if f.Position.Filename != other.Position.Filename {
 		return f.Position.Filename < other.Position.Filename
 	}

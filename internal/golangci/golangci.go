@@ -48,8 +48,9 @@ func Verify(dir string) ([]Finding, error) {
 		return nil, err
 	}
 	findings := []Finding{}
-	for _, rule := range auto.AutoRules() {
-		findings = append(findings, verifyRule(document, rule, module)...)
+	autoRules := auto.AutoRules()
+	for i := range autoRules {
+		findings = append(findings, verifyRule(document, &autoRules[i], module)...)
 	}
 	sort.Slice(findings, func(i, j int) bool {
 		if findings[i].RuleID != findings[j].RuleID {
@@ -63,7 +64,7 @@ func Verify(dir string) ([]Finding, error) {
 	return findings, nil
 }
 
-func verifyRule(document map[string]any, rule auto.AutoRule, module string) []Finding {
+func verifyRule(document map[string]any, rule *auto.AutoRule, module string) []Finding {
 	if !enabled(document, rule) {
 		return []Finding{{
 			RuleID: rule.RuleID,
@@ -81,14 +82,15 @@ func verifyRule(document map[string]any, rule auto.AutoRule, module string) []Fi
 		}}
 	}
 	findings := []Finding{}
-	for _, setting := range rule.Settings {
-		findings = append(findings, verifyDisabled(document, rule, setting)...)
+	for i := range rule.Settings {
+		findings = append(findings, verifyDisabled(document, rule, &rule.Settings[i])...)
 	}
-	for _, setting := range rule.Settings {
+	for i := range rule.Settings {
+		setting := &rule.Settings[i]
 		joined := strings.Join(setting.Path, ".")
 		want := auto.SubstituteModule(setting.Want, module)
 		if slices.ContainsFunc(setting.Alternatives, func(alternative auto.Setting) bool {
-			return holds(document, alternative, module)
+			return holds(document, &alternative, module)
 		}) {
 			continue
 		}
@@ -135,7 +137,7 @@ func verifyRule(document map[string]any, rule auto.AutoRule, module string) []Fi
 	return findings
 }
 
-func verifyDisabled(document map[string]any, rule auto.AutoRule, setting auto.Setting) []Finding {
+func verifyDisabled(document map[string]any, rule *auto.AutoRule, setting *auto.Setting) []Finding {
 	findings := []Finding{}
 	for _, disabler := range setting.Disabled {
 		listed, found := lookup(document, disabler.Path)
@@ -161,7 +163,7 @@ func verifyDisabled(document map[string]any, rule auto.AutoRule, setting auto.Se
 	return findings
 }
 
-func holds(document map[string]any, setting auto.Setting, module string) bool {
+func holds(document map[string]any, setting *auto.Setting, module string) bool {
 	want := auto.SubstituteModule(setting.Want, module)
 	got, found := lookup(document, setting.Path)
 	if !found {
@@ -174,8 +176,8 @@ func holds(document map[string]any, setting auto.Setting, module string) bool {
 }
 
 func missingMessage(
-	rule auto.AutoRule,
-	setting auto.Setting,
+	rule *auto.AutoRule,
+	setting *auto.Setting,
 	joined string,
 	absent []string,
 ) string {
@@ -189,7 +191,7 @@ func missingMessage(
 		rule.RuleID, joined, strings.Join(absent, ", "), reasonSuffix(setting))
 }
 
-func reasonSuffix(setting auto.Setting) string {
+func reasonSuffix(setting *auto.Setting) string {
 	if setting.Reason == "" {
 		return ""
 	}
@@ -234,7 +236,7 @@ func named(element any) string {
 	return fmt.Sprint(element)
 }
 
-func enabled(document map[string]any, rule auto.AutoRule) bool {
+func enabled(document map[string]any, rule *auto.AutoRule) bool {
 	names, found := lookup(document, []string{rule.Section, "enable"})
 	if found {
 		if listed, ok := names.([]any); ok {

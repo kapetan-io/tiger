@@ -43,6 +43,6 @@ type Site struct {
 	Line int
 }
 
-func (c Call) Key() string {
+func (c *Call) Key() string {
 	return c.Path + "\x00" + strings.TrimPrefix(c.Callee, c.Package)
 }

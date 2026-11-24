@@ -55,7 +55,7 @@ func Run(args []string, streams command.Streams) int {
 		return changedFailure(streams, err)
 	}
 	file := callinventory.NewReachFile(*chdir)
-	report, err := compareRevisions(*chdir, rev, file)
+	report, err := compareRevisions(*chdir, &rev, file)
 	if err != nil {
 		return changedFailure(streams, err)
 	}
@@ -64,11 +64,11 @@ func Run(args []string, streams command.Streams) int {
 			"so every run rebuilds it: %v\n", err)
 	}
 	if *format == "markdown" {
-		fmt.Fprint(streams.Stdout, report.Markdown(rev))
+		fmt.Fprint(streams.Stdout, report.Markdown(&rev))
 		return command.ExitClean
 	}
 	if *format == "json" {
-		data, err := report.JSON(rev)
+		data, err := report.JSON(&rev)
 		if err != nil {
 			return changedFailure(streams, err)
 		}
@@ -77,12 +77,12 @@ func Run(args []string, streams command.Streams) int {
 		}
 		return command.ExitClean
 	}
-	fmt.Fprint(streams.Stdout, report.Text(rev))
+	fmt.Fprint(streams.Stdout, report.Text(&rev))
 	return command.ExitClean
 }
 
 func compareRevisions(
-	dir string, rev revision.Comparison, file *callinventory.ReachFile,
+	dir string, rev *revision.Comparison, file *callinventory.ReachFile,
 ) (Report, error) {
 	headLabel := "head (" + revision.Short(rev.Head) + ")"
 	var group sync.WaitGroup
@@ -95,16 +95,16 @@ func compareRevisions(
 		return Report{}, fmt.Errorf("cannot load the Go packages at %s: %w", headLabel, headErr)
 	}
 	if len(head.Packages) == 0 {
-		return Report{}, noPackages(head, headLabel)
+		return Report{}, noPackages(&head, headLabel)
 	}
 	if baseErr != nil {
 		return Report{}, baseErr
 	}
-	return Compare(Sides{Base: base, Head: head}), nil
+	return Compare(&Sides{Base: base, Head: head}), nil
 }
 
 func loadBase(
-	rev revision.Comparison, file *callinventory.ReachFile,
+	rev *revision.Comparison, file *callinventory.ReachFile,
 ) (inv callinventory.Inventory, err error) {
 	tree, err := rev.Extract()
 	if err != nil {
@@ -125,7 +125,7 @@ func loadBase(
 	return inv, nil
 }
 
-func noPackages(inv callinventory.Inventory, label string) error {
+func noPackages(inv *callinventory.Inventory, label string) error {
 	if inv.LoadError != "" {
 		return fmt.Errorf("no Go package loads at %s: %s", label, inv.LoadError)
 	}

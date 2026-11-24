@@ -139,21 +139,21 @@ type candidate struct {
 	head definition
 }
 
-type match func(candidate) bool
+type match func(*candidate) bool
 
-func sameFileAndTokens(c candidate) bool {
+func sameFileAndTokens(c *candidate) bool {
 	return c.base.file == c.head.file && c.base.tokenText == c.head.tokenText
 }
 
-func sameTokens(c candidate) bool {
+func sameTokens(c *candidate) bool {
 	return c.base.tokenText == c.head.tokenText
 }
 
-func sameFile(c candidate) bool {
+func sameFile(c *candidate) bool {
 	return c.base.file == c.head.file
 }
 
-func anyDefinition(candidate) bool {
+func anyDefinition(*candidate) bool {
 	return true
 }
 
@@ -163,11 +163,11 @@ type matching struct {
 	head        definitions
 }
 
-func (m matching) next(matches match) matching {
-	out := matching{head: slices.Clone(m.head)}
+func (m *matching) next(matches match) *matching {
+	out := &matching{head: slices.Clone(m.head)}
 	for _, base := range m.base {
 		index := slices.IndexFunc(out.head, func(head definition) bool {
-			return matches(candidate{base: base, head: head})
+			return matches(&candidate{base: base, head: head})
 		})
 		if index < 0 {
 			out.base = append(out.base, base)
