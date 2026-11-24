@@ -1572,7 +1572,8 @@ A loop that filters rows takes the page limit and scan limit form shown under TS
 
 **What counts as IO:** a call is IO when tiger's list of standard library IO calls names it.
 The list covers every exported function and method in `os`, `net`, `net/http` and
-`database/sql`, plus the raw read, write, open and socket calls in `syscall`. It names
+`database/sql`, plus a short list of raw system calls in `syscall` (`Read`, `Write`, `Open`,
+`Stat`, `Rename`, `Socket`, `Connect` and similar). It names
 `os.ReadFile`, `net.Dial`, `net.LookupHost`, `(*http.Client).Do`, `(*sql.DB).Query`,
 `(*sql.Rows).Close`, `(*os.File).Read` and `net.Conn.Write`, among others. A call the list
 marks as doing no IO is silent in a loop, such as `net.SplitHostPort`, `net.ParseIP`,
@@ -1584,14 +1585,15 @@ name.
 The `ioinloop.packages` entries in `tiger.yaml` widen detection by whole package. Every call
 into a listed package counts as IO, except a method on a map, slice or basic-typed value,
 so a repo that calls a database client such as `github.com/jackc/pgx/v5` names it there to
-get its per-item calls reported.
+get its per-item calls reported. Naming a standard library package there overrides the list for
+that package, so every call into it is reported again.
 
 **Known misses:** a call the list does not mark as IO is silent, even when it may do IO.
 Interface methods other than `net.Conn.Write` are silent, such as `net.Conn.Read`,
 `http.ResponseWriter.Write` and `http.RoundTripper.RoundTrip`, because an in-memory value
 (`net.Pipe`, `httptest.ResponseRecorder`) can implement them. Calls whose cost depends on
 the database driver are silent too, such as `sql.Open`, `(*sql.Rows).Next` and
-`(*sql.Row).Scan`. IO hidden behind a same-package helper is invisible. The analyzer checks
+`(*sql.Row).Scan`, and so is every `syscall` call outside the short list. IO hidden behind a same-package helper is invisible. The analyzer checks
 direct calls, not a call graph, so a loop calling a local helper that itself calls
 `os.ReadFile` is missed.
 

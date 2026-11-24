@@ -1,6 +1,6 @@
 package stdlibio
 
-var effects = map[string]Effect{
+var classes = map[string]Class{
 	"(*database/sql.Conn).BeginTx":                IO,
 	"(*database/sql.Conn).Close":                  IO,
 	"(*database/sql.Conn).ExecContext":            IO,

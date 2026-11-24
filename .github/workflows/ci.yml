@@ -143,7 +143,9 @@ jobs:
 
   # Tiger reads the export data the `go` in use writes, so a newer Go can
   # break loading while go.mod's Go stays green (ENG-753). This job runs the
-  # tests under Go 1.27 so a later export-data bump fails here first.
+  # tests under Go 1.27 so a later export-data bump fails here first. It
+  # leaves out the IO list's completeness test, which checks the list against
+  # go.mod's Go release only, so a call Go 1.27 adds fails once go.mod moves.
   test-go127:
     needs: changes
     if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.test == 'true') }}
@@ -153,7 +155,7 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: '1.27'
-      - run: go test ./...
+      - run: go test -skip '^TestEveryExportedCallIsListed$' ./...
       - name: assert module
         working-directory: assert
         run: go test -count=1 ./...

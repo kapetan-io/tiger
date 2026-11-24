@@ -2,9 +2,6 @@ package stdlibio_test
 
 import (
 	"go/types"
-	"go/version"
-	"os"
-	"path/filepath"
 	"runtime"
 	"slices"
 	"strings"
@@ -12,39 +9,38 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/mod/modfile"
 	"golang.org/x/tools/go/packages"
 
 	"github.com/kapetan-io/tiger/internal/analyzers/ioinloop/stdlibio"
 )
 
-// listedPackages are the packages whose whole exported API carries an
-// Effect. The syscall package is left out because its API differs per
-// platform.
+// listedPackages are the packages whose whole exported API has a Class. The
+// syscall package is left out because its API differs per platform.
 var listedPackages = []string{"os", "net", "net/http", "database/sql"}
 
-// A package test: a Go release adding a call is unreachable from the
-// analyzer's corpus.
+// These tests call stdlibio directly rather than through the analyzer,
+// because no corpus file can contain a call that a future Go release adds.
 //
 // TestEveryExportedCallIsListed fails when the Go release in go.mod has an
 // exported function or method in os, net, net/http or database/sql that
 // stdlibio does not list. Adopters never run this test, so a new Go release
-// fails only tiger's own CI, and only once go.mod moves to it. Under any
-// other Go release, such as CI's job on the next release, the test skips.
+// fails only tiger's own CI, and only once go.mod moves to it: CI's job on
+// the next Go release leaves this test out with -skip.
 //
 // Goal: every exported function, and every exported method in the method set
 // of an exported type (value and pointer, promoted methods included), has an
-// Effect other than Unlisted. The failure names each new call so the fix is
-// one line in effects.go.
+// Class other than Unlisted. The failure names each new call so the fix is
+// one line in calls.go.
 func TestEveryExportedCallIsListed(t *testing.T) {
-	skipUnlessGoModRelease(t)
 	var unlisted []string
 	for _, name := range exportedCalls(t, listedPackages...) {
-		if stdlibio.EffectOf(name) == stdlibio.Unlisted {
+		if stdlibio.Classify(name) == stdlibio.Unlisted {
 			unlisted = append(unlisted, name)
 		}
 	}
-	assert.Empty(t, unlisted, "add each call to effects.go as IO, NoIO or Unproven")
+	assert.Empty(t, unlisted, "classify each call in calls.go as IO, NoIO or Unproven, using the "+
+		"definitions in stdlibio.go's package doc, in its class's sorted group; "+
+		"use Unproven when unsure")
 }
 
 // TestEveryListedCallExists fails on an entry that names nothing, such as a
@@ -57,7 +53,7 @@ func TestEveryExportedCallIsListed(t *testing.T) {
 func TestEveryListedCallExists(t *testing.T) {
 	known := exportedCalls(t, listedPackages...)
 	var stale []string
-	for _, name := range stdlibio.Listed() {
+	for _, name := range stdlibio.Names() {
 		if strings.HasPrefix(name, "syscall.") {
 			continue
 		}
@@ -72,7 +68,7 @@ func TestEveryListedCallExists(t *testing.T) {
 	}
 	known = exportedCalls(t, "syscall")
 	stale = nil
-	for _, name := range stdlibio.Listed() {
+	for _, name := range stdlibio.Names() {
 		if !strings.HasPrefix(name, "syscall.") {
 			continue
 		}
@@ -81,21 +77,6 @@ func TestEveryListedCallExists(t *testing.T) {
 		}
 	}
 	assert.Empty(t, stale)
-}
-
-// skipUnlessGoModRelease skips unless the running Go has go.mod's major and
-// minor version, the release whose API the list was checked against.
-func skipUnlessGoModRelease(t *testing.T) {
-	t.Helper()
-	data, err := os.ReadFile(filepath.Join("..", "..", "..", "..", "go.mod"))
-	require.NoError(t, err)
-	file, err := modfile.ParseLax("go.mod", data, nil)
-	require.NoError(t, err)
-	require.NotNil(t, file.Go)
-	want := version.Lang("go" + file.Go.Version)
-	if got := version.Lang(runtime.Version()); got != want {
-		t.Skipf("the list is checked against %s from go.mod; this is %s", want, runtime.Version())
-	}
 }
 
 // exportedCalls returns the sorted full names of every exported function and

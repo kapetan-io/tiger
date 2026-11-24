@@ -76,3 +76,16 @@ func writeTCP(conn *net.TCPConn, chunks [][]byte) error {
 	}
 	return nil
 }
+
+// openAllDir opens each name through an http.Dir, which opens a file on
+// disk even though Dir is a string type.
+func openAllDir(dir http.Dir, names []string) error {
+	for _, name := range names {
+		file, err := dir.Open(name) // want `TS-M10: this call does IO`
+		if err != nil {
+			return err
+		}
+		file.Close()
+	}
+	return nil
+}

@@ -7,6 +7,7 @@ package fixture
 import (
 	"database/sql"
 	"net"
+	"net/http"
 	"syscall"
 )
 
@@ -45,4 +46,30 @@ func openAll(names []string) ([]*sql.DB, error) {
 		dbs = append(dbs, db)
 	}
 	return dbs, nil
+}
+
+// writeAllResponse writes each chunk through an http.ResponseWriter: an
+// httptest.ResponseRecorder is in memory, so the list marks the interface
+// method unproven and the call is silent.
+func writeAllResponse(w http.ResponseWriter, chunks [][]byte) error {
+	for _, chunk := range chunks {
+		if _, err := w.Write(chunk); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// roundTripAll sends each request through an http.RoundTripper: a test
+// transport can answer in memory, so the list marks RoundTrip unproven and
+// the call is silent.
+func roundTripAll(transport http.RoundTripper, reqs []*http.Request) error {
+	for _, req := range reqs {
+		resp, err := transport.RoundTrip(req)
+		if err != nil {
+			return err
+		}
+		resp.Body.Close()
+	}
+	return nil
 }

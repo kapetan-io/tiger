@@ -12,7 +12,8 @@
 // The -ioinloop.packages flag and ioinloop.packages entries in tiger.yaml
 // add whole packages per repo: every call into one counts as IO, except a
 // method on a map-, slice-, or basic-underlying receiver, because a pure
-// container or value holds no connection or descriptor.
+// container or value holds no connection or descriptor. Naming a standard
+// library package there overrides the IO list for that package.
 //
 // Init, Cond, Post, and a RangeStmt's X each run once per loop, not once
 // per iteration, so IO there is deliberately unflagged — this is what
@@ -60,16 +61,16 @@ func newAnalyzer() *analysis.Analyzer {
 var Analyzer = newAnalyzer()
 
 func run(pass *analysis.Pass) (any, error) {
-	allowed := allowlist(pass)
+	packages := ioPackages(pass)
 	for _, file := range pass.Files {
-		w := walker{pass: pass, file: file, allowed: allowed}
+		w := walker{pass: pass, file: file, ioPackages: packages}
 		w.walk(file, nil)
 	}
 	return nil, nil
 }
 
-func allowlist(pass *analysis.Pass) map[string]bool {
-	allowed := map[string]bool{}
+func ioPackages(pass *analysis.Pass) map[string]bool {
+	packages := map[string]bool{}
 	paths := strings.Split(packagesFlag, ",")
 	paths = append(paths, config.Values(
 		pass.Pkg.Path(), config.Key{Analyzer: "ioinloop", Flag: "packages"},
@@ -77,16 +78,16 @@ func allowlist(pass *analysis.Pass) map[string]bool {
 	for _, path := range paths {
 		path = strings.TrimSpace(path)
 		if path != "" {
-			allowed[path] = true
+			packages[path] = true
 		}
 	}
-	return allowed
+	return packages
 }
 
 type walker struct {
-	pass    *analysis.Pass
-	file    *ast.File
-	allowed map[string]bool
+	pass       *analysis.Pass
+	file       *ast.File
+	ioPackages map[string]bool
 }
 
 func (w *walker) walk(root ast.Node, frame []bool) {
@@ -131,10 +132,10 @@ func (w *walker) isIO(call *ast.CallExpr) bool {
 	if fn == nil || fn.Pkg() == nil {
 		return false
 	}
-	if stdlibio.EffectOf(fn.Origin().FullName()) == stdlibio.IO {
+	if stdlibio.Classify(fn.Origin().FullName()) == stdlibio.IO {
 		return true
 	}
-	return w.allowed[fn.Pkg().Path()] && !containerMethod(fn)
+	return w.ioPackages[fn.Pkg().Path()] && !containerMethod(fn)
 }
 
 func containerMethod(fn *types.Func) bool {

@@ -1146,7 +1146,8 @@ against its package's `TS-D06` budget on every run and prints when the package g
 escape is never free. This is the only rule `//tiger:batched` waives (ADR-0014). A call is IO when
 tiger's list of standard library IO calls names it, or when its package is on the repo's
 `ioinloop.packages`. The list covers every exported call in `os`, `net`, `net/http` and
-`database/sql`, and tiger's CI fails when a Go release adds one it does not classify.
+`database/sql`, and tiger's CI fails when go.mod moves to a Go release that adds one the list
+does not classify.
 
 ## Abstraction
 
