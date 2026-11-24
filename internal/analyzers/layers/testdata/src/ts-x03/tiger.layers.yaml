@@ -10,3 +10,4 @@
 "./logging":
   - log/syslog
 "./testfile": []
+"./dotfs": []
