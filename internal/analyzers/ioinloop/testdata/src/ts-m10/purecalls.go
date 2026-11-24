@@ -69,3 +69,17 @@ func deadlineAll(conns []net.Conn, at time.Time) error {
 	}
 	return nil
 }
+
+// unixAddrs builds socket addresses in a loop: net.ResolveUnixAddr only
+// fills a struct, so the list marks it no IO and the call is silent.
+func unixAddrs(paths []string) ([]*net.UnixAddr, error) {
+	addrs := make([]*net.UnixAddr, 0, len(paths))
+	for _, path := range paths {
+		a, err := net.ResolveUnixAddr("unix", path)
+		if err != nil {
+			return nil, err
+		}
+		addrs = append(addrs, a)
+	}
+	return addrs, nil
+}

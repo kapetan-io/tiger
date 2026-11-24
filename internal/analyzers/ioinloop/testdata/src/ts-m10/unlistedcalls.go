@@ -73,3 +73,25 @@ func roundTripAll(transport http.RoundTripper, reqs []*http.Request) error {
 	}
 	return nil
 }
+
+// resolveAll resolves listen addresses in a loop: an address such as ":8080"
+// or "10.0.0.1:53" resolves without a DNS lookup, so the list marks
+// net.ResolveTCPAddr and net.LookupPort unproven and the calls are silent.
+func resolveAll(addrs []string) ([]*net.TCPAddr, error) {
+	resolved := make([]*net.TCPAddr, 0, len(addrs))
+	for _, addr := range addrs {
+		host, port, err := net.SplitHostPort(addr)
+		if err != nil {
+			return nil, err
+		}
+		if _, err := net.LookupPort("tcp", port); err != nil {
+			return nil, err
+		}
+		a, err := net.ResolveTCPAddr("tcp", net.JoinHostPort(host, port))
+		if err != nil {
+			return nil, err
+		}
+		resolved = append(resolved, a)
+	}
+	return resolved, nil
+}

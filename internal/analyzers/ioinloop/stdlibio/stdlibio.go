@@ -15,17 +15,21 @@
 // net.SplitHostPort, os.Getenv, os.Getpid and (*os.File).SetDeadline.
 // Unproven means the call site cannot tell which: an interface method whose
 // implementer may be in memory (net.Pipe, httptest.ResponseRecorder), a
-// database/sql call whose cost depends on the driver, a call that touches
-// the system only on its first use (http.ParseTime loading the local time
-// zone), or a call that signals or waits on another process
+// database/sql call whose cost depends on the driver, a call that skips the
+// lookup for some arguments (net.ResolveTCPAddr on an IP literal,
+// net.LookupPort on a port number), a call that touches the system only on
+// its first use (http.ParseTime loading the local time zone), or a call that
+// signals or waits on another process
 // ((*os.Process).Kill, Signal, Wait, Release and os.FindProcess). Unproven
 // and Unlisted calls are silent, the same as NoIO, because a blocking rule
 // must not guess. When a new call sits between IO and Unproven, choose
 // Unproven.
 //
-// (net.Conn).Write is the one interface method listed as IO, although
-// net.Pipe implements it, because a net.Conn outside tests is almost always
-// a socket and TS-M10's corpus requires the finding.
+// Two calls are IO although the definitions make them Unproven, because
+// TS-M10's corpus requires the finding. (net.Conn).Write is the one interface
+// method listed as IO, although net.Pipe implements it, because a net.Conn
+// outside tests is almost always a socket. (*sql.Rows).Close depends on the
+// driver, but it usually releases a connection the query still holds.
 //
 // calls.go lists IO calls first, then Unproven, then NoIO, each group sorted
 // by name. When go.mod moves to a Go release that adds an exported function

@@ -1593,7 +1593,9 @@ Interface methods other than `net.Conn.Write` are silent, such as `net.Conn.Read
 `http.ResponseWriter.Write` and `http.RoundTripper.RoundTrip`, because an in-memory value
 (`net.Pipe`, `httptest.ResponseRecorder`) can implement them. Calls whose cost depends on
 the database driver are silent too, such as `sql.Open`, `(*sql.Rows).Next` and
-`(*sql.Row).Scan`, and so is every `syscall` call outside the short list. IO hidden behind a
+`(*sql.Row).Scan`. Calls that skip the lookup for some arguments are silent, such as
+`net.ResolveTCPAddr` on `":8080"` or an IP literal and `net.LookupPort` on a port number,
+and so is every `syscall` call outside the short list. IO hidden behind a
 same-package helper is invisible. The analyzer checks direct calls, not a call graph, so a loop
 calling a local helper that itself calls `os.ReadFile` is missed.
 

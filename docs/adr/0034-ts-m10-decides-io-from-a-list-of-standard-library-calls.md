@@ -50,6 +50,12 @@ classifies it IO.
   value can implement, or a call whose cost depends on the database driver. An unproven call is
   silent. When a call could be IO or unproven, it is unproven.
 
+Two calls are IO although these definitions make them unproven, because TS-M10 already reported
+them and tiger's tests require the finding. `net.Conn.Write` is an interface method an in-memory
+value can implement, but a `net.Conn` outside tests is almost always a socket. `sql.Rows.Close`
+depends on the driver, but it usually releases a connection the query still holds. Any other
+exception needs the same case made for it.
+
 `syscall` is not classified in full, because its API differs per platform. A short list of its raw
 read, write, file and socket calls counts as IO, and every other `syscall` call is silent.
 
