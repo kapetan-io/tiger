@@ -21,7 +21,8 @@ import (
 // nothing (ts-c03verify, ts-c03dead).
 //
 // Goal, TS-C02: a Wait inside a select case on ctx.Done() is the early return
-// of a caller that gave up, so it does not count. A path through that case
+// of a caller that gave up, so it does not count unless the case also holds
+// the start (fanOutOnExpiry). A path through that case
 // needs no Wait, but only after the start, only when the start is outside the
 // case, and only in a function that waits on the group elsewhere
 // (expiredBeforeGo, expiredBeforeTryGo, startInExpired, expiredNoWaitAnywhere,

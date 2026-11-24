@@ -13,7 +13,8 @@
 // in an exported method of the owning type (or a method one reaches). A
 // select case receiving from ctx.Done() is the early return of a Shutdown
 // whose caller gave up, so it is not the success path: a path through it needs
-// no Wait, and a Wait inside it does not cover a path on its own. The case is
+// no Wait, and a Wait inside it covers a path only when the case also holds
+// the start. The case is
 // exempt only when the path reaches it after the start, no such case holds
 // the start, and the function calls Wait on the group anywhere, that case
 // included. A group received as a parameter is the caller's to wait on, which

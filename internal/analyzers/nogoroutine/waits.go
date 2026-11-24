@@ -124,7 +124,7 @@ func (o *owners) walk(state flowState, query flowQuery, always waiters) flowStat
 		if query.start != nil && covers(node, query.start) {
 			state.passed = true
 		}
-		if !o.waitsIn(node, query.group, always) {
+		if !o.waitsIn(node, query, always) {
 			continue
 		}
 		if _, deferred := node.(*ast.DeferStmt); deferred || state.passed {
@@ -161,18 +161,9 @@ func (o *owners) givesUpIn(body *ast.BlockStmt) bool {
 	return false
 }
 
-func (o *owners) inExpired(pos token.Pos) bool {
-	for _, gone := range o.expired {
-		if gone.holds(pos) {
-			return true
-		}
-	}
-	return false
-}
-
-func (o *owners) waitsIn(node ast.Node, group *types.Var, always waiters) bool {
+func (o *owners) waitsIn(node ast.Node, query flowQuery, always waiters) bool {
 	return o.callsIn(node, func(call *ast.CallExpr) bool {
-		return o.callWaits(call, group, always)
+		return !o.givesUp(call.Pos(), query.start) && o.waitCall(call, query.group, always)
 	})
 }
 
@@ -199,10 +190,6 @@ func (o *owners) callsIn(node ast.Node, match func(*ast.CallExpr) bool) bool {
 	}
 	assert.Ok(i == len(work), "callsIn: worklist reached worklist.NodesMax")
 	return false
-}
-
-func (o *owners) callWaits(call *ast.CallExpr, group *types.Var, always waiters) bool {
-	return !o.inExpired(call.Pos()) && o.waitCall(call, group, always)
 }
 
 func (o *owners) waitCall(call *ast.CallExpr, group *types.Var, always waiters) bool {

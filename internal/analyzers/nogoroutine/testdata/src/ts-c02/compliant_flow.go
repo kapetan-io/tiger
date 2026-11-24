@@ -284,3 +284,17 @@ func waitInExpired(ctx context.Context) {
 		wg.Wait()
 	}
 }
+
+// fanOutOnExpiry starts and waits inside the same ctx.Done() case, so the
+// Wait follows the start on that path.
+func fanOutOnExpiry(ctx context.Context, conns []func()) error {
+	var wg sync.WaitGroup
+	select {
+	case <-ctx.Done():
+		for _, conn := range conns {
+			wg.Go(conn)
+		}
+		wg.Wait()
+		return ctx.Err()
+	}
+}
