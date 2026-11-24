@@ -169,9 +169,21 @@ linters:
         - pattern: '^time\.Sleep$'
           msg: TS-C08. Sleep is a guess about someone else timing. Use a channel or a timer you own.
         - pattern: '^time\.Now$'
-          msg: TS-T01. Inject a Clock so the code can be replayed deterministically.
+          msg: TS-T01. Take the time from an injected clock so the code can be replayed deterministically.
+        - pattern: '^time\.Since$'
+          msg: TS-T01. Take the time from an injected clock, then subtract. Since reads the real clock.
+        - pattern: '^time\.Until$'
+          msg: TS-T01. Take the time from an injected clock, then subtract. Until reads the real clock.
         - pattern: '^time\.After$'
-          msg: TS-C05. Leaks a timer until it fires. Use a context or a timer you stop.
+          msg: TS-C05. Leaks a timer until it fires, and a test clock can't fire it. Take the timer from an injected clock.
+        - pattern: '^time\.Tick$'
+          msg: TS-T01. Leaks a ticker that can't be stopped, and a test clock can't drive it. Take the ticker from an injected clock.
+        - pattern: '^time\.NewTimer$'
+          msg: TS-T01. A test clock can't fire this timer. Take the timer from an injected clock.
+        - pattern: '^time\.NewTicker$'
+          msg: TS-T01. A test clock can't drive this ticker. Take the ticker from an injected clock.
+        - pattern: '^time\.AfterFunc$'
+          msg: TS-T01. A test clock can't fire this callback. Take the timer from an injected clock.
         - pattern: '^fmt\.Print.*$'
           msg: TS-I08. Use the structured logger so output has a level and a destination.
         - pattern: '^panic$'
@@ -184,10 +196,11 @@ linters:
         - style
       settings:
         hugeParam:
-          # TS-M03. Above this, pass a pointer. Two cache lines.
-          sizeThreshold: 64
+          # TS-M03. Larger than 64 bytes (two cache lines) takes a pointer;
+          # gocritic flags a size at or above the threshold, so 65.
+          sizeThreshold: 65
         rangeValCopy:
-          sizeThreshold: 64
+          sizeThreshold: 65
 
     gosec:
       includes:

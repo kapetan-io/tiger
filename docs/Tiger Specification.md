@@ -875,7 +875,9 @@ as `TS-S03`: a receive from `ctx.Done()` on a `context.Context` that does not tr
 function, to `context.Background()` or `context.TODO()`, or a receive from or send on a channel the
 package itself closes or sends on (for a struct field, in a method of the owning type reachable from
 an exported method). A channel's name or `struct{}` element type does not count, and a bare receive
-or send gets no exemption by name. Pattern: shutdown loop.
+or send gets no exemption by name. Pattern: shutdown loop. A `select` that waits on `time.After`
+is also banned by `forbidigo` (auto), which tells the author to take the timer from an injected
+clock, not a `time` timer the code stops itself.
 *(Amended 2026-10-12: ADR-0020 replaces the 2026-08-17 amendment that recognized a shutdown channel
 by name or `struct{}` element type. Built (ENG-177).)*
 
@@ -892,16 +894,18 @@ Enforce. `containedctx`, `contextcheck`, `noctx`, `revive` (auto).
 **`TS-C08` No `time.Sleep` in production code.**
 Why. Sleep is a guess about someone else's timing. Use a channel, a timer you own, or a condition you
 can assert on.
-Enforce. `forbidigo` (auto) bans the direct call. A helper three frames down that sleeps is not
+Enforce. `forbidigo` (auto) bans the direct call. The other clock reads are `TS-T01`'s bans. A helper three frames down that sleeps is not
 caught statically; `tiger changed` reports a struct's new call into `time` for review.
 
 **`TS-C09` Run at your own pace. Do not spawn work in direct reaction to an external event.**
 Why. Straight from the original, doubly true in Go where the natural shape is one goroutine per
 request. Accept into a bounded queue, then drain at a rate you control. Batching, back pressure, and a
 bound on work per unit time all fall out of the same decision.
-Enforce. `nogoroutine` (custom) structurally; the design is `review`. `_test.go` files are not
-checked: a concurrency test fans out on purpose, and a single-worker queue would defeat it. *(Amended
-2026-10-12: test-file exemption, ADR-0019.)*
+Enforce. `nogoroutine` (custom) structurally, for a `go` statement or a `sync.WaitGroup.Go`,
+`errgroup.Group.Go` or `TryGo` call inside a loop; the design is `review`. `_test.go` files are
+not checked: a concurrency test fans out on purpose, and a single-worker queue would defeat it.
+*(Amended 2026-10-12: test-file exemption, ADR-0019.)* *(Amended 2026-11-23: `sync.WaitGroup.Go`,
+`errgroup.Group.Go` and `TryGo` in a loop are findings, with or without `SetLimit`.)*
 
 **`TS-C11` No exported method returns a pointer, slice, or map that aliases an internal field.**
 Why. This is where single ownership actually leaks in Go. `func (s *State) Entries() []Entry` hands
@@ -1163,21 +1167,24 @@ direction of every dependency is a fact you write down once and check forever. L
 enforceable residue of architecture. A package that does IO almost always imports the package that
 does it, so a package whose list leaves out `net`, `database`, `os` and the drivers keeps that IO
 behind an interface passed in. A few pure standard library packages reach the file system or the
-network on their own (`path/filepath.Glob`, `html/template.ParseFiles`, `log/syslog`,
-`crypto/tls`), so the list is a strong default, not a proof.
+network on their own (`crypto/tls`), so the list is a strong default, not a proof. The
+standard library functions that read the file system or the working directory without an import
+are held to the entry's `os`, from a fixed list: `path/filepath`'s `Glob`, `Walk`, `WalkDir`,
+`Abs` and `EvalSymlinks`, and `ParseFiles` and `ParseGlob` from both template packages.
 Enforce. `layers` (custom), against a checked-in layer file. `tiger.layers.yaml` sits at the module
 root. Its keys are packages, `.` for the root package, `./dir` for one package, and `./dir/...` for
 a directory and everything below it; keys may not overlap. Each key lists what that package may
 import beyond the pure standard library, in three spellings, each matched exactly. `./pkg` is one
 package of this module, not a package below it. `module/path` allows that path and every path below
-it on a `/` boundary. `net`, `os`, `database`, `syscall`, `plugin`, `io/ioutil`, `crypto/rand` and
+it on a `/` boundary. `net`, `os`, `database`, `syscall`, `plugin`, `io/ioutil`, `log/syslog`, `crypto/rand` and
 `math/rand` are the standard library that leaves the process or is nondeterministic, and naming one
 allows its whole subtree. The rest of the standard library, every package under the GOROOT that
 `go env GOROOT` reports, is always allowed; a dotless third-party module brought in by `replace` or
 `go.work` is a module like any other. A nested module, a directory with its own `go.mod`, is not
 part of this module: its packages need no entry, and an import of one names its module path.
 `_test.go` files are not layered, because surface tests cross layers. The analyzer reports each
-import the package's entry does not allow, at the import, and a package with no entry at its package
+import the package's entry does not allow, at the import, each use of a file-reading standard library function
+the entry's missing `os` does not allow, at the function, and a package with no entry at its package
 clause. `tiger check` also reports, from the module's directories, an entry that matches no package
 directory and a package with no entry that the analyzer did not report (one outside the patterns
 passed, or built only for another platform); a directory is a package when it holds a non-test Go
@@ -1447,7 +1454,10 @@ Enforce. `skipcheck` (custom).
 **`TS-T01` Core logic is deterministic. Time, randomness, and IDs are injected.**
 Why. This is what makes simulation testing possible, and simulation testing is what found the bugs
 that made TigerBeetle worth imitating.
-Enforce. `forbidigo` (auto) bans direct reads of the clock. When the module has a `TS-X03` layer
+Enforce. `forbidigo` (auto) bans every direct read of the clock: `time.Now`, `time.Since`,
+`time.Until`, `time.After`, `time.Tick`, `time.NewTimer`, `time.NewTicker` and `time.AfterFunc`. Take
+the time, timer or ticker from an injected clock, so a test's frozen clock can drive every loop that
+waits. When the module has a `TS-X03` layer
 file, it denies `math/rand` and `crypto/rand` to a package whose entry doesn't name them; without
 the file, randomness is not checked. A helper that reads them is not caught statically;
 `tiger changed` reports a struct's new call into `time` or a random source for review, as `TS-I01`
@@ -1807,7 +1817,7 @@ changes what it checks), or **not built**.
 | `paradigm` | TS-C13 | `types`, mutex fields versus channel fields per package | not built |
 | `chandecl` | TS-C12 | AST, channel type declarations per package | built |
 | `selectctx` | TS-C05 | AST, every blocking select needs a `default` or a stop case: `ctx.Done()` on a context that is not `Background` or `TODO`, or a channel the package closes or sends on | built |
-| `nogoroutine` | TS-C02, C03, C09 | AST, only `errgroup.Group.Go` and `sync.WaitGroup.Go` start goroutines, with `Wait` reached; a goleak harness in `TestMain` where goroutines start; `_test.go` files skipped for TS-C09 | built |
+| `nogoroutine` | TS-C02, C03, C09 | AST, only `errgroup.Group.Go` and `sync.WaitGroup.Go` start goroutines, with `Wait` reached; a goleak harness in `TestMain` where goroutines start; TS-C09 also for `sync.WaitGroup.Go`, `errgroup.Group.Go` and `TryGo` in a loop; `_test.go` files skipped for TS-C09 | built |
 | `queuebound` | TS-C04 | AST, slice-backed queues with unbounded append | not built |
 | `ioinloop` | TS-M10 | `types`, IO calls inside loop bodies | built |
 | `poolzero` | TS-M05 | `buildssa`, the `sync.Pool.Put` argument must be zeroed with `*b = T{}` | built |

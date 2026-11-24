@@ -10,10 +10,14 @@
 // function around it, whoever calls the literal. A literal passed to Go or
 // TryGo on the same group is that group's goroutine, so neither it nor any
 // literal inside it counts. For a group held in a struct field, the Wait goes
-// in an exported method of the owning type (or a method one reaches). A Wait
-// that sits in a select case receiving from ctx.Done() is the early return of
-// a Shutdown whose caller gave up, so it is not the success path and does not
-// count. A group received as a parameter is the caller's to wait on, which
+// in an exported method of the owning type (or a method one reaches). A
+// select case receiving from ctx.Done() is the early return of a Shutdown
+// whose caller gave up, so it is not the success path: a path through it needs
+// no Wait, and a Wait inside it covers a path only when the case also holds
+// the start. The case is
+// exempt only when the path reaches it after the start, no such case holds
+// the start, and the function calls Wait on the group anywhere, that case
+// included. A group received as a parameter is the caller's to wait on, which
 // this check does not follow. There is no allowlist of supervisor functions,
 // because a function listed there would have every go statement inside it
 // exempted — a per-site deviation in config shape, which ADR-0003/0005 gate.
@@ -22,15 +26,19 @@
 // wg.Go or errgroup.Go needs a goleak check in a TestMain of its tests (see
 // harness.go).
 //
-// TS-C09. A spawn lexically inside a for or range loop body is the reactive
+// TS-C09. A go statement, a sync.WaitGroup.Go call, or an errgroup.Group.Go
+// or TryGo call, lexically inside a for or range loop body is the reactive
 // anti-pattern TS-C09 warns about — work started in direct response to each
-// event or item, with no back pressure. It skips _test.go files (ADR-0019): a
+// event or item, with no back pressure. A group with SetLimit is still
+// reported, because SetLimit caps how many goroutines run at once but not how
+// many the loop starts. The rule skips _test.go files (ADR-0019): a
 // concurrency test starts one goroutine per request on purpose. A spawn in a
 // test loop is silent; a spawn outside a loop in a test still fires TS-C02.
 package nogoroutine
 
 import (
 	"go/ast"
+	"go/token"
 	"strings"
 
 	"golang.org/x/tools/go/analysis"
@@ -70,7 +78,7 @@ func run(pass *analysis.Pass) (any, error) {
 				check(pass, stmt, ancestors)
 				starts = append(starts, stmt)
 			case *ast.SelectorExpr:
-				if owners.checkStart(stmt) {
+				if owners.checkStart(stmt, ancestors) {
 					starts = append(starts, stmt)
 				}
 			}
@@ -84,13 +92,17 @@ func run(pass *analysis.Pass) (any, error) {
 
 func check(pass *analysis.Pass, spawn *ast.GoStmt, ancestors []ast.Node) {
 	if insideLoop(ancestors) {
-		if strings.HasSuffix(pass.Fset.PositionFor(spawn.Pos(), false).Filename, "_test.go") {
-			return
-		}
-		pass.Report(analysis.Diagnostic{Pos: spawn.Pos(), Category: "TS-C09", Message: msgReactive})
+		reportReactive(pass, spawn.Pos())
 		return
 	}
 	pass.Report(analysis.Diagnostic{Pos: spawn.Pos(), Category: "TS-C02", Message: msgUnowned})
+}
+
+func reportReactive(pass *analysis.Pass, pos token.Pos) {
+	if strings.HasSuffix(pass.Fset.PositionFor(pos, false).Filename, "_test.go") {
+		return
+	}
+	pass.Report(analysis.Diagnostic{Pos: pos, Category: "TS-C09", Message: msgReactive})
 }
 
 func insideLoop(ancestors []ast.Node) bool {
