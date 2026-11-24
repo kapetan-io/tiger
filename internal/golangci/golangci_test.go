@@ -118,17 +118,25 @@ func TestVerifyGocriticChecksFindingsFollowTheStyleGuide(t *testing.T) {
 		drop string
 		want string
 	}{
-		{name: "absent", drop: "            enabled-checks:\n                - hugeParam\n                - rangeValCopy\n", want: "isn't set"},
+		{
+			name: "absent",
+			drop: "            enabled-checks:\n                - hugeParam\n" +
+				"                - rangeValCopy\n",
+			want: "isn't set",
+		},
 		{name: "partial", drop: "                - rangeValCopy\n", want: "doesn't include"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			dir := t.TempDir()
-			source, err := os.ReadFile(filepath.Join("testdata", "fixtures", "audit", ".golangci.yml"))
+			source, err := os.ReadFile(
+				filepath.Join("testdata", "fixtures", "audit", ".golangci.yml"))
 			require.NoError(t, err)
 			config := strings.Replace(string(source), test.drop, "", 1)
 			require.NotEqual(t, string(source), config)
-			require.NoError(t, os.WriteFile(filepath.Join(dir, ".golangci.yml"), []byte(config), 0o644))
-			require.NoError(t, os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module audit.example/p\n\ngo 1.26\n"), 0o644))
+			moduleDir := moduleFile{dir: dir, module: "audit.example/p"}
+			moduleDir.write(t)
+			require.NoError(t,
+				os.WriteFile(filepath.Join(dir, ".golangci.yml"), []byte(config), 0o644))
 
 			findings, err := golangci.Verify(dir)
 			require.NoError(t, err)

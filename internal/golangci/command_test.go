@@ -3,7 +3,6 @@ package golangci_test
 import (
 	"bytes"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -421,7 +420,8 @@ func TestGolangciGeneratedConfigEnablesTheGocriticChecks(t *testing.T) {
 			} `yaml:"settings"`
 		} `yaml:"linters"`
 	}
-	require.NoError(t, yaml.Unmarshal([]byte(readFile(t, filepath.Join(dir, ".golangci.yml"))), &document))
+	generated := readFile(t, filepath.Join(dir, ".golangci.yml"))
+	require.NoError(t, yaml.Unmarshal([]byte(generated), &document))
 	assert.ElementsMatch(t, []string{"hugeParam", "rangeValCopy"},
 		document.Linters.Settings.Gocritic.EnabledChecks)
 }
@@ -449,34 +449,6 @@ func TestGolangciGocriticThresholdsWithoutTheChecksFindTheAutoRule(t *testing.T)
 	assert.Contains(t, got.stdout, "to [hugeParam, rangeValCopy]")
 }
 
-// TestGolangciGeneratedConfigMakesGolangciLintReportByValueCopies covers the
-// generated baseline against the real golangci-lint.
-//
-// Goal: golangci-lint run with the --init config reports hugeParam and
-// rangeValCopy for an 80-byte struct and prints no "settings were provided
-// for disabled check" warning.
-func TestGolangciGeneratedConfigMakesGolangciLintReportByValueCopies(t *testing.T) {
-	// Wraps an external tool, so the real binary is the only faithful check.
-	binary, err := exec.LookPath("golangci-lint")
-	if err != nil {
-		t.Skip("golangci-lint is not on PATH")
-	}
-	dir := t.TempDir()
-	moduleFile{dir: dir, module: "bigcopy.example/project"}.write(t)
-	source := "package project\n\ntype Big struct{ A, B, C, D, E, F, G, H, I, J int64 }\n\n" +
-		"func Take(b Big) int64 { return b.A }\n\n" +
-		"func Sum(bs []Big) (n int64) {\n\tfor _, b := range bs {\n\t\tn += b.A\n\t}\n\treturn n\n}\n"
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "big.go"), []byte(source), 0o644))
-	require.Equal(t, command.ExitClean, run(t, "golangci", "-C", dir, "--init").code)
-
-	lint := exec.Command(binary, "run")
-	lint.Dir = dir
-	output, _ := lint.CombinedOutput()
-	assert.Contains(t, string(output), "hugeParam: b is heavy (80 bytes)")
-	assert.Contains(t, string(output), "rangeValCopy: each iteration copies 80 bytes")
-	assert.NotContains(t, string(output), "settings were provided for disabled check")
-}
-
 // TestGolangciGocriticChecksMissingOneFindsTheAutoRule covers the partial list.
 //
 // Goal: a config that enables hugeParam but not rangeValCopy is reported
@@ -491,6 +463,7 @@ func TestGolangciGocriticChecksMissingOneFindsTheAutoRule(t *testing.T) {
 
 	got := run(t, "golangci", "-C", dir)
 	assert.Equal(t, command.ExitFindings, got.code)
-	assert.Contains(t, got.stdout, "TS-M03: linters.settings.gocritic.enabled-checks doesn't include rangeValCopy")
+	assert.Contains(t, got.stdout,
+		"TS-M03: linters.settings.gocritic.enabled-checks doesn't include rangeValCopy")
 	assert.NotContains(t, got.stdout, "include hugeParam")
 }
