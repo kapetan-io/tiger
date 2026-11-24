@@ -12,10 +12,11 @@ import (
 )
 
 type flowQuery struct {
-	group   *types.Var
-	start   *ast.SelectorExpr
-	held    *ast.SelectorExpr
-	anyPath bool
+	group    *types.Var
+	start    *ast.SelectorExpr
+	held     *ast.SelectorExpr
+	anyPath  bool
+	shutdown bool
 }
 
 type flowState struct {
@@ -76,6 +77,9 @@ func (o *owners) uncovered(fn function, query flowQuery, always waiters) (unwait
 	if len(graph.Blocks) == 0 {
 		return false, false
 	}
+	query.shutdown = o.givesUpIn(fn.body) && o.callsIn(fn.body, func(call *ast.CallExpr) bool {
+		return o.waitCall(call, query.group, always)
+	})
 	seen := map[stateKey]bool{}
 	work := []flowState{{block: graph.Blocks[0], passed: query.start == nil}}
 	i := 0
@@ -115,11 +119,11 @@ func (o *owners) uncovered(fn function, query flowQuery, always waiters) (unwait
 
 func (o *owners) walk(state flowState, query flowQuery, always waiters) flowState {
 	for _, node := range state.block.Nodes {
+		if query.shutdown && state.passed && o.givesUp(node.Pos(), query.start) {
+			state.covered = true
+		}
 		if query.start != nil && covers(node, query.start) {
 			state.passed = true
-		}
-		if o.inExpired(node.Pos()) {
-			state.covered = true
 		}
 		if !o.waitsIn(node, query, always) {
 			continue
@@ -135,9 +139,23 @@ func covers(node ast.Node, start *ast.SelectorExpr) bool {
 	return node.Pos() <= start.Pos() && start.End() <= node.End()
 }
 
-func (o *owners) inExpired(pos token.Pos) bool {
+func (o *owners) givesUp(pos token.Pos, start *ast.SelectorExpr) bool {
+	gives := false
 	for _, gone := range o.expired {
-		if gone.from <= pos && pos < gone.to {
+		if !gone.holds(pos) {
+			continue
+		}
+		if start != nil && gone.holds(start.Pos()) {
+			return false
+		}
+		gives = true
+	}
+	return gives
+}
+
+func (o *owners) givesUpIn(body *ast.BlockStmt) bool {
+	for _, gone := range o.expired {
+		if body.Pos() <= gone.from && gone.to <= body.End() {
 			return true
 		}
 	}
@@ -145,13 +163,18 @@ func (o *owners) inExpired(pos token.Pos) bool {
 }
 
 func (o *owners) waitsIn(node ast.Node, query flowQuery, always waiters) bool {
+	start := query.start
+	if start == nil {
+		start = query.held
+	}
 	waits := false
 	ast.Inspect(node, func(inner ast.Node) bool {
 		switch found := inner.(type) {
 		case *ast.FuncLit, *ast.GoStmt:
 			return false
 		case *ast.CallExpr:
-			waits = waits || o.callWaits(found, query.group, always)
+			counted := !o.givesUp(found.Pos(), start)
+			waits = waits || counted && o.waitCall(found, query.group, always)
 			if literal := o.literalRunBy(found); !waits && literal != nil {
 				waits = o.literalWaits(literal, query, always)
 			}
@@ -369,10 +392,32 @@ func (o *owners) calleeName(selector *ast.SelectorExpr) string {
 	return fn.FullName()
 }
 
-func (o *owners) callWaits(call *ast.CallExpr, group *types.Var, always waiters) bool {
-	if o.inExpired(call.Pos()) {
-		return false
+func (o *owners) callsIn(node ast.Node, match func(*ast.CallExpr) bool) bool {
+	work := []ast.Node{node}
+	i := 0
+	for ; i < len(work) && i < worklist.NodesMax; i++ {
+		waits := false
+		ast.Inspect(work[i], func(inner ast.Node) bool {
+			switch found := inner.(type) {
+			case *ast.FuncLit, *ast.GoStmt:
+				return false
+			case *ast.CallExpr:
+				if literal, ok := ast.Unparen(found.Fun).(*ast.FuncLit); ok {
+					work = append(work, literal.Body)
+				}
+				waits = waits || match(found)
+			}
+			return !waits
+		})
+		if waits {
+			return true
+		}
 	}
+	assert.Ok(i == len(work), "callsIn: worklist reached worklist.NodesMax")
+	return false
+}
+
+func (o *owners) waitCall(call *ast.CallExpr, group *types.Var, always waiters) bool {
 	if selector, ok := ast.Unparen(call.Fun).(*ast.SelectorExpr); ok {
 		if waited, isWait := o.groupMethod(selector, "Wait"); isWait && waited == group {
 			return true

@@ -21,7 +21,12 @@ import (
 // nothing (ts-c03verify, ts-c03dead).
 //
 // Goal, TS-C02: a Wait inside a select case on ctx.Done() is the early return
-// of a caller that gave up, so it does not count; a goroutine waiting on its
+// of a caller that gave up, so it does not count unless the case also holds
+// the start (fanOutOnExpiry). A path through that case
+// needs no Wait, but only after the start, only when the start is outside the
+// case, and only in a function that waits on the group elsewhere
+// (expiredBeforeGo, expiredBeforeTryGo, startInExpired, expiredNoWaitAnywhere,
+// and the expiredOnlyIdle type, whose Idle method never waits); a goroutine waiting on its
 // own group never finishes (waitsOnItself); TryGo needs a Wait on only some
 // path after it, since the path where it returned false started nothing
 // (tryGoWaited); a return of a non-nil error is the failure path, so it

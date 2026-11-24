@@ -224,12 +224,41 @@ var autoRules = []AutoRule{
 		Title: "no time.Sleep in production code",
 		Settings: []Setting{
 			{Path: []string{"linters", "settings", "forbidigo", "analyze-types"}, Want: true},
-			{Path: []string{"linters", "settings", "forbidigo", "forbid"}, Want: []any{
-				map[string]any{"pattern": `^time\.Sleep$`},
-				map[string]any{"pattern": `^time\.Now$`},
-				map[string]any{"pattern": `^time\.After$`},
-				map[string]any{"pattern": `^panic$`},
-			}},
+			{
+				Path: []string{"linters", "settings", "forbidigo", "forbid"},
+				Want: []any{
+					ban(`^time\.Sleep$`,
+						"TS-C08. Sleep is a guess about someone else timing. Use a channel or "+
+							"a timer you own."),
+					ban(`^time\.Now$`,
+						"TS-T01. Take the time from an injected clock so the code can be "+
+							"replayed deterministically."),
+					ban(`^time\.Since$`,
+						"TS-T01. Take the time from an injected clock, then subtract. Since "+
+							"reads the real clock."),
+					ban(`^time\.Until$`,
+						"TS-T01. Take the time from an injected clock, then subtract. Until "+
+							"reads the real clock."),
+					ban(`^time\.After$`,
+						"TS-C05. Leaks a timer until it fires, and a test clock can't fire "+
+							"it. Take the timer from an injected clock."),
+					ban(`^time\.Tick$`,
+						"TS-T01. Leaks a ticker that can't be stopped, and a test clock can't "+
+							"drive it. Take the ticker from an injected clock."),
+					ban(`^time\.NewTimer$`,
+						"TS-T01. A test clock can't fire this timer. Take the timer from an "+
+							"injected clock."),
+					ban(`^time\.NewTicker$`,
+						"TS-T01. A test clock can't drive this ticker. Take the ticker from "+
+							"an injected clock."),
+					ban(`^time\.AfterFunc$`,
+						"TS-T01. A test clock can't fire this callback. Take the timer from "+
+							"an injected clock."),
+					ban(`^panic$`,
+						"TS-S18. Use the assert package so there is one crash path."),
+				},
+				Contains: true,
+			},
 		},
 	},
 	{
@@ -370,6 +399,12 @@ var autoRules = []AutoRule{
 		RuleID: "TS-T01", Linter: "forbidigo", Section: SectionLinters,
 		Title: "time and randomness are injected",
 	},
+}
+
+type banMessage string
+
+func ban(pattern string, msg banMessage) map[string]any {
+	return map[string]any{"pattern": pattern, "msg": string(msg)}
 }
 
 func AutoRules() []AutoRule {

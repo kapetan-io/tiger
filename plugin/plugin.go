@@ -22,7 +22,7 @@
 // read from the working directory — golangci-lint runs from the module root
 // — unless the plugin's settings carry a `config` key naming another
 // directory. A load error fails plugin construction with the same one-line
-// message tiger check prints. TS-X03's import and missing-entry findings
+// message tiger check prints. TS-X03's import, function-use and missing-entry findings
 // surface here for the packages golangci-lint loads; an entry that matches no
 // package, and a package with no entry that the run did not load, do not, because those checks need
 // the module's directories and only tiger check runs them (ADR-0029). golangci-lint keys

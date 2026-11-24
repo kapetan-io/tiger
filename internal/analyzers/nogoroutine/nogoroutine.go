@@ -14,10 +14,13 @@
 // saved in a local that holds only that literal, or a t.Run body that does
 // not call t.Parallel), when the literal waits on all its success paths. For
 // a group held in a struct field, the Wait goes in an exported method of the
-// owning type (or a method one reaches). A Wait
-// that sits in a select case receiving from ctx.Done() is the early return of
-// a Shutdown whose caller gave up, so it is not the success path and does not
-// count. A group received as a parameter is the caller's to wait on, which
+// owning type (or a method one reaches). A select case receiving from
+// ctx.Done() is the early return of a Shutdown whose caller gave up, so it is
+// not the success path: a path through it needs no Wait, and a Wait inside it
+// covers a path only when the case also holds the start. The case is exempt
+// only when the path reaches it after the start, no such case holds the
+// start, and the function calls Wait on the group anywhere, that case
+// included. A group received as a parameter is the caller's to wait on, which
 // this check does not follow. There is no allowlist of supervisor functions,
 // because a function listed there would have every go statement inside it
 // exempted — a per-site deviation in config shape, which ADR-0003/0005 gate.

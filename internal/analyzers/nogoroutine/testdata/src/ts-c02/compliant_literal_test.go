@@ -483,3 +483,15 @@ func TestEmbeddedParallelOnOtherTest(t *testing.T) {
 		wg.Wait()
 	})
 }
+
+// TestStartAndSubtestWaitInExpired starts and waits inside the ctx.Done()
+// case, with the Wait in a subtest run there.
+func TestStartAndSubtestWaitInExpired(t *testing.T) {
+	var wg sync.WaitGroup
+	select {
+	case <-t.Context().Done():
+		wg.Go(func() {})
+		t.Run("x", func(t *testing.T) { wg.Wait() })
+	default:
+	}
+}

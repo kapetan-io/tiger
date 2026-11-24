@@ -98,14 +98,11 @@ func verifyRule(document map[string]any, rule auto.AutoRule, module string) []Fi
 			continue
 		}
 		if setting.Contains {
-			if absent := strings.Join((baseline{want: want}).missingFrom(got), ", "); absent != "" {
+			if absent := (baseline{want: want}).missingFrom(got); len(absent) > 0 {
 				findings = append(findings, Finding{
-					RuleID: rule.RuleID,
-					Linter: rule.Linter,
-					Message: fmt.Sprintf(
-						"%[1]s: %[2]s doesn't include %[3]s, which tiger's baseline for the "+
-							"rule %[4]q needs — add %[3]s to %[2]s%[5]s",
-						rule.RuleID, joined, absent, rule.Title, reasonSuffix(setting)),
+					RuleID:  rule.RuleID,
+					Linter:  rule.Linter,
+					Message: missingMessage(rule, setting, joined, absent),
 				})
 			}
 			continue
@@ -130,6 +127,22 @@ func verifyRule(document map[string]any, rule auto.AutoRule, module string) []Fi
 	return findings
 }
 
+func missingMessage(
+	rule auto.AutoRule,
+	setting auto.Setting,
+	joined string,
+	absent []string,
+) string {
+	if len(absent) == 1 {
+		return fmt.Sprintf(
+			"%[1]s: %[2]s doesn't include %[3]s, which tiger's baseline for the "+
+				"rule %[4]q needs — add %[3]s to %[2]s%[5]s",
+			rule.RuleID, joined, absent[0], rule.Title, reasonSuffix(setting))
+	}
+	return fmt.Sprintf("%s: %s doesn't include %s, which tiger's baseline needs — add each%s",
+		rule.RuleID, joined, strings.Join(absent, ", "), reasonSuffix(setting))
+}
+
 func reasonSuffix(setting auto.Setting) string {
 	if setting.Reason == "" {
 		return ""
@@ -141,7 +154,7 @@ func (b baseline) missingFrom(got any) []string {
 	held := map[string]bool{}
 	if listed, ok := got.([]any); ok {
 		for _, element := range listed {
-			held[fmt.Sprint(element)] = true
+			held[identity(element)] = true
 		}
 	}
 	required, ok := b.want.([]any)
@@ -150,11 +163,29 @@ func (b baseline) missingFrom(got any) []string {
 	}
 	absent := []string{}
 	for _, element := range required {
-		if !held[fmt.Sprint(element)] {
-			absent = append(absent, fmt.Sprint(element))
+		if !held[identity(element)] {
+			absent = append(absent, named(element))
 		}
 	}
 	return absent
+}
+
+func identity(element any) string {
+	if mapped, ok := element.(map[string]any); ok {
+		if pattern, found := mapped["pattern"]; found {
+			return "pattern " + fmt.Sprint(pattern)
+		}
+	}
+	return fmt.Sprint(element)
+}
+
+func named(element any) string {
+	if mapped, ok := element.(map[string]any); ok {
+		if pattern, found := mapped["pattern"]; found {
+			return fmt.Sprint(pattern)
+		}
+	}
+	return fmt.Sprint(element)
 }
 
 func enabled(document map[string]any, rule auto.AutoRule) bool {
