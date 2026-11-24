@@ -257,8 +257,9 @@ func ExpireDirect(deadline time.Time) bool {
 ```
 
 golangci-lint checks this, in the configuration tiger generates. The forbidigo
-linter forbids direct calls to `time.Now`, `time.Sleep`, and `time.After`, and
-to `panic`, so `ExpireDirect` is reported and `Expire` passes. When the module
+linter forbids direct calls to `time.Now`, `time.Sleep`, `time.After` and the other
+clock reads (`time.Since`, `time.Until`, `time.Tick`, `time.NewTimer`,
+`time.NewTicker`, `time.AfterFunc`), and to `panic`, so `ExpireDirect` is reported and `Expire` passes. When the module
 has a layer file, tiger denies `math/rand`, `math/rand/v2`, and `crypto/rand` to
 every package whose entry doesn't name them; without one, imports of randomness
 are not checked. Both checks see calls and imports written in the module's own

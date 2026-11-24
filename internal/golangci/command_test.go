@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -397,4 +398,81 @@ func TestGolangciAuditPassesExtrasBeyondTheBaseline(t *testing.T) {
 	assert.Equal(t, command.ExitClean, got.code)
 	assert.Empty(t, got.stdout)
 	assert.Empty(t, got.stderr)
+}
+
+// TestGolangciGeneratedConfigBansEveryClockRead covers the clock bans.
+//
+// Goal: --init emits a ban for each way to read the clock, and each ban's
+// message tells the author to take the time, timer or ticker from an
+// injected clock.
+func TestGolangciGeneratedConfigBansEveryClockRead(t *testing.T) {
+	dir := t.TempDir()
+	moduleFile{dir: dir, module: "clockbans.example/project"}.write(t)
+	require.Equal(t, command.ExitClean, run(t, "golangci", "-C", dir, "--init").code)
+	generated := readFile(t, filepath.Join(dir, ".golangci.yml"))
+
+	for _, test := range []struct {
+		name string
+		call string
+		rule string
+	}{
+		{name: "now", call: "Now", rule: "TS-T01"},
+		{name: "since", call: "Since", rule: "TS-T01"},
+		{name: "until", call: "Until", rule: "TS-T01"},
+		{name: "after", call: "After", rule: "TS-C05"},
+		{name: "tick", call: "Tick", rule: "TS-T01"},
+		{name: "newTimer", call: "NewTimer", rule: "TS-T01"},
+		{name: "newTicker", call: "NewTicker", rule: "TS-T01"},
+		{name: "afterFunc", call: "AfterFunc", rule: "TS-T01"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			assert.Contains(t, generated, `pattern: ^time\.`+test.call+`$`)
+			assert.Regexp(t, `msg: `+test.rule+`\..*injected clock.*\n\s+pattern: \^time\\\.`+
+				test.call+`\$\n`, generated)
+		})
+	}
+	assert.NotContains(t, generated, "a timer you stop")
+}
+
+// TestGolangciAuditRequiresEveryBaselineBan covers the "at least these" audit.
+//
+// Goal: a config holding every baseline ban plus its own, with its own
+// wording, passes; a config missing baseline bans fails with a finding that
+// names each missing ban.
+func TestGolangciAuditRequiresEveryBaselineBan(t *testing.T) {
+	unchanged := func(config string) string { return config }
+	extra := func(config string) string {
+		return strings.Replace(config, "        - pattern: '^panic$'\n",
+			"        - pattern: '^os\\.Exit$'\n          msg: Our own ban, worded our own way.\n"+
+				"        - pattern: '^panic$'\n", 1)
+	}
+	reworded := func(config string) string {
+		return strings.Replace(config, "TS-T01. Take the time", "Use our clock. Take the time", 1)
+	}
+	dropped := func(config string) string {
+		for _, call := range []string{"Since", "NewTicker"} {
+			ban := regexp.MustCompile(`        - pattern: '\^time\\\.` + call + `\$'\n.*\n`)
+			config = ban.ReplaceAllString(config, "")
+		}
+		return config
+	}
+	for _, test := range []struct {
+		name string
+		edit func(string) string
+	}{
+		{name: "baseline", edit: unchanged},
+		{name: "extraBan", edit: extra},
+		{name: "ownWording", edit: reworded},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			got := run(t, "golangci", "-C", shippedConfigIn(t, test.edit))
+			assert.Equal(t, command.ExitClean, got.code)
+			assert.Empty(t, got.stdout)
+		})
+	}
+
+	got := run(t, "golangci", "-C", shippedConfigIn(t, dropped))
+	assert.Equal(t, command.ExitFindings, got.code)
+	assert.Contains(t, got.stdout, `linters.settings.forbidigo.forbid doesn't include `+
+		`^time\.Since$, ^time\.NewTicker$`)
 }
