@@ -8,6 +8,7 @@ package fixture
 
 import (
 	"bytes"
+	"net"
 	"net/http"
 	"os"
 )
@@ -95,4 +96,44 @@ func writeAllSink(path string, chunks [][]byte) error {
 		}
 	}
 	return nil
+}
+
+// splitJoinAddrs calls net.SplitHostPort and net.JoinHostPort in a loop.
+// net is on the allowlist, but both functions only cut and join text, so
+// noIOCalls exempts them.
+func splitJoinAddrs(addrs []string) []string {
+	var out []string
+	for _, addr := range addrs {
+		host, port, err := net.SplitHostPort(addr)
+		if err != nil {
+			continue
+		}
+		out = append(out, net.JoinHostPort(host, port))
+	}
+	return out
+}
+
+// parseValues calls the rest of the functions and methods named in noIOCalls in a loop;
+// each parses, compares or reads a value already in memory and touches no
+// socket, descriptor or file.
+func parseValues(values []string, err error, files []*os.File, netw *net.IPNet, req *http.Request) {
+	for _, value := range values {
+		_ = net.ParseIP(value)
+		_, _, _ = net.ParseCIDR(value)
+		_ = os.Getenv(value)
+		_ = os.IsNotExist(err)
+		_ = http.CanonicalHeaderKey(value)
+		_ = http.StatusText(len(value))
+		_ = netw.Contains(nil)
+		_ = req.Context()
+		_, _ = net.ParseMAC(value)
+		_ = netw.String()
+		_ = os.IsExist(err)
+		_ = os.IsPermission(err)
+		_ = os.IsTimeout(err)
+		_, _, _ = http.ParseHTTPVersion(value)
+		for _, file := range files {
+			_ = file.Name()
+		}
+	}
 }

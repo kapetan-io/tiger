@@ -1550,6 +1550,22 @@ for count := 0; count < opts.Limit && rows.Next(); count++ {
 
 A loop that filters rows takes the page limit and scan limit form shown under TS-S02.
 
+**How the rule decides a call is IO:** a call counts as IO when its callee is defined in
+one of these packages, resolved through type information, never by name: `os`, `net`,
+`net/http`, `database/sql` and `syscall`. A repo adds packages with `ioinloop.packages` in
+`tiger.yaml`. Two kinds of call in those packages are not IO and stay silent. A method on
+a map, slice or basic-typed value, such as `http.Header.Set` or `net.IP.String`, works on
+memory. A short list of functions and methods that only parse, compare or read a value
+already in memory is also exempt. The list is `net.SplitHostPort`,
+`net.JoinHostPort`, `net.ParseIP`, `net.ParseCIDR`, `net.ParseMAC`,
+`(*net.IPNet).Contains`, `(*net.IPNet).String`, `os.Getenv`, `os.IsExist`,
+`os.IsNotExist`, `os.IsPermission`, `os.IsTimeout`, `(*os.File).Name`,
+`http.StatusText`, `http.CanonicalHeaderKey`, `http.ParseHTTPVersion` and
+`(*http.Request).Context`. Every other call in a listed package is reported, so
+`net.Dial` and `net.LookupHost` fire even in a loop that also calls `net.SplitHostPort`.
+A finding on a function that does no IO is an analyzer bug, not a case for
+`//tiger:batched`.
+
 **Known miss:** IO hidden behind a same-package helper is invisible. The analyzer checks
 direct calls, not a call graph, so a loop calling a local helper that itself calls
 `os.ReadFile` is missed.

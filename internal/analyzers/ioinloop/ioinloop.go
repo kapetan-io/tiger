@@ -13,7 +13,15 @@
 // net and net/http (sockets and HTTP transport), database/sql (database
 // drivers), and syscall (raw system calls) — is extensible per repo
 // through the -ioinloop.packages flag or ioinloop.packages entries in
-// tiger.yaml, appended to the seed.
+// tiger.yaml, appended to the seed. A package on the allowlist is not
+// unconditionally IO, so noIOCalls names the functions and methods in it
+// that do none (net.SplitHostPort, os.IsNotExist); those are skipped,
+// matched by the callee's fully qualified name from the type checker, never
+// by the spelling at the call site. An entry is added only after reading the
+// function's source and finding no syscall, file access or network access on
+// any path; when unsure, leave it off, since an unlisted function is reported
+// and fails loudly where a wrong entry would silently hide real IO. Methods
+// on map, slice or basic receivers need no entry.
 //
 // Init, Cond, Post, and a RangeStmt's X each run once per loop, not once
 // per iteration, so IO there is deliberately unflagged — this is what
@@ -136,7 +144,7 @@ func (w *walker) isIO(call *ast.CallExpr) bool {
 	if fn == nil || fn.Pkg() == nil {
 		return false
 	}
-	return w.allowed[fn.Pkg().Path()] && !containerMethod(fn)
+	return w.allowed[fn.Pkg().Path()] && !containerMethod(fn) && !noIO(fn)
 }
 
 func containerMethod(fn *types.Func) bool {

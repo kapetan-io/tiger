@@ -71,3 +71,33 @@ func writeAllConn(conn net.Conn, chunks [][]byte) error {
 	}
 	return nil
 }
+
+// parseTimeAll calls http.ParseTime, which is not exempt: time.Parse can
+// load the local time zone file on first use.
+func parseTimeAll(values []string) {
+	for _, value := range values {
+		_, _ = http.ParseTime(value) // want `TS-M10: this call does IO \(network, disk, or database\) and runs once per loop iteration`
+	}
+}
+
+// dialAndLookupAll shows the exemption is per function: net.Dial and
+// net.LookupHost live in the same package as net.SplitHostPort and still
+// do network IO. Closing the connection resolves to net.Conn's own
+// declaration and is reported too.
+func dialAndLookupAll(addrs []string) error {
+	for _, addr := range addrs {
+		host, _, err := net.SplitHostPort(addr)
+		if err != nil {
+			return err
+		}
+		if _, err := net.LookupHost(host); err != nil { // want `TS-M10: this call does IO \(network, disk, or database\) and runs once per loop iteration`
+			return err
+		}
+		conn, err := net.Dial("tcp", addr) // want `TS-M10: this call does IO \(network, disk, or database\) and runs once per loop iteration`
+		if err != nil {
+			return err
+		}
+		conn.Close() // want `TS-M10: this call does IO \(network, disk, or database\) and runs once per loop iteration`
+	}
+	return nil
+}
