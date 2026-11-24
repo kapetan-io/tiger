@@ -2,6 +2,9 @@ package stdlibio_test
 
 import (
 	"go/types"
+	"go/version"
+	"os"
+	"path/filepath"
 	"runtime"
 	"slices"
 	"strings"
@@ -9,6 +12,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/mod/modfile"
 	"golang.org/x/tools/go/packages"
 
 	"github.com/kapetan-io/tiger/internal/analyzers/ioinloop/stdlibio"
@@ -22,16 +26,18 @@ var listedPackages = []string{"os", "net", "net/http", "database/sql"}
 // A package test: a Go release adding a call is unreachable from the
 // analyzer's corpus.
 //
-// TestEveryExportedCallIsListed fails when the Go toolchain running the tests
-// (the version in go.mod, in CI) has an exported function or method in os,
-// net, net/http or database/sql that stdlibio does not list. Adopters never
-// run this test, so a new Go release fails only tiger's own CI.
+// TestEveryExportedCallIsListed fails when the Go release in go.mod has an
+// exported function or method in os, net, net/http or database/sql that
+// stdlibio does not list. Adopters never run this test, so a new Go release
+// fails only tiger's own CI, and only once go.mod moves to it. Under any
+// other Go release, such as CI's job on the next release, the test skips.
 //
 // Goal: every exported function, and every exported method in the method set
 // of an exported type (value and pointer, promoted methods included), has an
 // Effect other than Unlisted. The failure names each new call so the fix is
 // one line in effects.go.
 func TestEveryExportedCallIsListed(t *testing.T) {
+	skipUnlessGoModRelease(t)
 	var unlisted []string
 	for _, name := range exportedCalls(t, listedPackages...) {
 		if stdlibio.EffectOf(name) == stdlibio.Unlisted {
@@ -75,6 +81,21 @@ func TestEveryListedCallExists(t *testing.T) {
 		}
 	}
 	assert.Empty(t, stale)
+}
+
+// skipUnlessGoModRelease skips unless the running Go has go.mod's major and
+// minor version, the release whose API the list was checked against.
+func skipUnlessGoModRelease(t *testing.T) {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join("..", "..", "..", "..", "go.mod"))
+	require.NoError(t, err)
+	file, err := modfile.ParseLax("go.mod", data, nil)
+	require.NoError(t, err)
+	require.NotNil(t, file.Go)
+	want := version.Lang("go" + file.Go.Version)
+	if got := version.Lang(runtime.Version()); got != want {
+		t.Skipf("the list is checked against %s from go.mod; this is %s", want, runtime.Version())
+	}
 }
 
 // exportedCalls returns the sorted full names of every exported function and
