@@ -875,7 +875,9 @@ as `TS-S03`: a receive from `ctx.Done()` on a `context.Context` that does not tr
 function, to `context.Background()` or `context.TODO()`, or a receive from or send on a channel the
 package itself closes or sends on (for a struct field, in a method of the owning type reachable from
 an exported method). A channel's name or `struct{}` element type does not count, and a bare receive
-or send gets no exemption by name. Pattern: shutdown loop.
+or send gets no exemption by name. Pattern: shutdown loop. A `select` that waits on `time.After`
+is also banned by `forbidigo` (auto), which tells the author to take the timer from an injected
+clock, not a `time` timer the code stops itself.
 *(Amended 2026-10-12: ADR-0020 replaces the 2026-08-17 amendment that recognized a shutdown channel
 by name or `struct{}` element type. Built (ENG-177).)*
 
@@ -892,7 +894,7 @@ Enforce. `containedctx`, `contextcheck`, `noctx`, `revive` (auto).
 **`TS-C08` No `time.Sleep` in production code.**
 Why. Sleep is a guess about someone else's timing. Use a channel, a timer you own, or a condition you
 can assert on.
-Enforce. `forbidigo` (auto) bans the direct call. A helper three frames down that sleeps is not
+Enforce. `forbidigo` (auto) bans the direct call. The other clock reads are `TS-T01`'s bans. A helper three frames down that sleeps is not
 caught statically; `tiger changed` reports a struct's new call into `time` for review.
 
 **`TS-C09` Run at your own pace. Do not spawn work in direct reaction to an external event.**
@@ -1447,7 +1449,10 @@ Enforce. `skipcheck` (custom).
 **`TS-T01` Core logic is deterministic. Time, randomness, and IDs are injected.**
 Why. This is what makes simulation testing possible, and simulation testing is what found the bugs
 that made TigerBeetle worth imitating.
-Enforce. `forbidigo` (auto) bans direct reads of the clock. When the module has a `TS-X03` layer
+Enforce. `forbidigo` (auto) bans every direct read of the clock: `time.Now`, `time.Since`,
+`time.Until`, `time.After`, `time.Tick`, `time.NewTimer`, `time.NewTicker` and `time.AfterFunc`. Take
+the time, timer or ticker from an injected clock, so a test's frozen clock can drive every loop that
+waits. When the module has a `TS-X03` layer
 file, it denies `math/rand` and `crypto/rand` to a package whose entry doesn't name them; without
 the file, randomness is not checked. A helper that reads them is not caught statically;
 `tiger changed` reports a struct's new call into `time` or a random source for review, as `TS-I01`

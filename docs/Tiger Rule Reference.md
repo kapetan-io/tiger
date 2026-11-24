@@ -2361,7 +2361,10 @@ golangci-lint findings fail its run.
 | TS-L11 | imports grouped standard, external, internal | gci |
 | TS-T01 | time and randomness are injected | forbidigo |
 
-TS-T01's forbidigo half bans direct reads of the clock. Randomness is enforced through the
+TS-T01's forbidigo half bans every direct read of the clock (`time.Now`, `time.Since`,
+`time.Until`, `time.After`, `time.Tick`, `time.NewTimer`, `time.NewTicker`, `time.AfterFunc`).
+`tiger golangci` audits the ban list as "at least these": a config may carry bans of its own, but
+must hold every one of these. Randomness is enforced through the
 layer file instead (TS-X03): a package may import `math/rand` or `crypto/rand` only when its
 entry names them, so without `tiger.layers.yaml` randomness is not checked.
 

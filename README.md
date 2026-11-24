@@ -49,8 +49,9 @@ cancelled, and a daemon whose `Shutdown` returned before its HTTP goroutines had
 
 ### Code you can test in isolation
 
-The golangci-lint config tiger generates bans direct calls to `time.Now`, `time.Sleep` and
-`time.After`, and with a layer file a
+The golangci-lint config tiger generates bans every direct read of the clock (`time.Now`,
+`time.Since`, `time.Until`, `time.After`, `time.Tick`, `time.NewTimer`, `time.NewTicker`,
+`time.AfterFunc`) and `time.Sleep`, and with a layer file a
 package imports randomness and IO packages only when its entry names them. Code built that way
 takes its clock, random source and store as inputs. A test that controls them gets the same run
 every time, so failures reproduce, timing tests stop flaking, and an agent debugging a
