@@ -161,10 +161,13 @@ func (o *owners) embeddedField(sel *ast.SelectorExpr) *types.Var {
 	return field.Origin()
 }
 
-func (o *owners) checkStart(sel *ast.SelectorExpr) bool {
+func (o *owners) checkStart(sel *ast.SelectorExpr, ancestors []ast.Node) bool {
 	group, ok := o.groupMethod(sel, "")
 	if !ok {
 		return false
+	}
+	if insideLoop(ancestors) {
+		reportReactive(o.pass, sel.Pos())
 	}
 	if !o.waited(group, sel) {
 		o.pass.Report(analysis.Diagnostic{

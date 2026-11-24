@@ -5,6 +5,8 @@ package fixture
 import (
 	"sync"
 	"testing"
+
+	"golang.org/x/sync/errgroup"
 )
 
 func TestFanOut(t *testing.T) {
@@ -22,4 +24,22 @@ func TestFanOut(t *testing.T) {
 // A spawn outside a loop is still an unowned goroutine, even in a test.
 func TestUnowned(t *testing.T) {
 	go notifyOne("x") // want `TS-C02: this go statement starts a goroutine nobody owns`
+}
+
+// A WaitGroup.Go call per item in a test file is silent too (ADR-0019).
+func TestGroupFanOut(t *testing.T) {
+	var wg sync.WaitGroup
+	for i := 0; i < 8; i++ {
+		wg.Go(func() {})
+	}
+	wg.Wait()
+}
+
+// An errgroup.Group start per item in a test file is silent too (ADR-0019).
+func TestErrgroupFanOut(t *testing.T) {
+	var group errgroup.Group
+	for i := 0; i < 8; i++ {
+		group.Go(func() error { return nil })
+	}
+	_ = group.Wait()
 }

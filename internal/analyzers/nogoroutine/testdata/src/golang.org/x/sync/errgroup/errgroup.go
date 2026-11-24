@@ -15,5 +15,8 @@ func (g *Group) Go(f func() error) { _ = f }
 // TryGo runs f if the group has room.
 func (g *Group) TryGo(f func() error) bool { _ = f; return true }
 
+// SetLimit caps how many functions run at once.
+func (g *Group) SetLimit(n int) { _ = n }
+
 // Wait blocks until every function has returned.
 func (g *Group) Wait() error { return nil }
