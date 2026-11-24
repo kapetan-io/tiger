@@ -482,10 +482,10 @@ func TestChangedTestsReportsNothingWhenTheBaseHasNoModule(t *testing.T) {
 	assert.Empty(t, doc.Tests)
 }
 
-// Goal: tests in a nested module or in a file go never builds
-// (//go:build ignore) are not read, and a test whose file becomes ignored
-// is reported deleted, because go test no longer runs it.
-func TestChangedTestsSkipsNestedModulesAndIgnoredFiles(t *testing.T) {
+// Goal: tests in a file go never builds (//go:build ignore) are not read,
+// a test whose file becomes ignored is reported deleted, because go test no
+// longer runs it, and a test removed from a nested module is reported deleted.
+func TestChangedTestsSkipsIgnoredFilesAndReadsNestedModules(t *testing.T) {
 	c := newCheckout(t)
 	c.write("cart/cart_test.go", cartTest)
 	c.write("cart/gen_test.go", "//go:build ignore\n\npackage cart\n\n"+
@@ -507,6 +507,10 @@ func TestChangedTestsSkipsNestedModulesAndIgnoredFiles(t *testing.T) {
 		{
 			Package: "example.com/shop/cart", File: "cart/cart_test.go",
 			Function: "TestTotal", Change: "deleted",
+		},
+		{
+			Package: "example.com/tools/lint", File: "tools/lint/lint_test.go",
+			Function: "TestLint", Change: "deleted",
 		},
 	}, c.report().Tests)
 }
