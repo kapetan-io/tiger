@@ -6,6 +6,12 @@ Date: 2026-08-17
 
 Accepted
 
+## Related decisions
+
+Amended: a call to a function that does no network, disk or database IO is not counted as IO,
+even in an allowlisted package, so the allowlist names packages that may do IO, not packages
+that always do.
+
 ## Context
 
 The dialect's standing policy reserves the generic per-site deviation directive
