@@ -1,33 +1,5 @@
 // Package norecursion enforces TS-S01: no cycle in the package's static call
 // graph.
-//
-// A recursive function's stack depth depends on data, and data comes from
-// outside; Go grows stacks to 1GB by default, so an unbounded recursion does
-// not fail fast, it quietly eats memory and dies far from the cause. The
-// compliant rewrite bounds the depth explicitly: a stack or queue driven by
-// an index-advancing worklist, or an iteration cap with an assert on
-// exhaustion.
-//
-// Deliberate deviation from spec text. TS-S01's enforcement text says "CHA
-// callgraph." CHA (class hierarchy analysis) resolves an interface call to
-// every implementing type, so it reports cycles that can never occur at
-// runtime — a blocking false positive, which this wave's correctness
-// constraint 7 defines as a bug in the analyzer, not the code. This analyzer
-// builds the static call graph instead, from ssalib.StaticCalls: direct
-// calls, concrete-method calls, and calls through a function literal whose
-// callee is immediately known. Every edge in that graph is a call that
-// provably happens, so every reported cycle is real.
-//
-// Known-miss boundary. Three call shapes fall outside the static call graph
-// and so outside this analyzer's reach: recursion through an interface
-// method (the receiver's dynamic type decides the callee), recursion through
-// a function value whose target is not statically known (assigned behind a
-// branch or a Phi), and recursion whose cycle spans package boundaries (this
-// analyzer's node set is one package's functions; the facts plumbing a later
-// wave builds is the natural way to close this gap). All three are marked
-// known-miss in the corpus rather than reported, matching Undecidability
-// resolves to a known-miss, never a finding. Flagged for spec amendment
-// alongside the wave-1 TS-S02 amendment.
 package norecursion
 
 import (

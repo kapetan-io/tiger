@@ -1,23 +1,6 @@
 // Package contracts enforces TS-V03: a //tiger:requires or //tiger:ensures
 // pin blocks the build only when the analyzer can prove the violation by
 // constant or nil-literal reasoning; every other obligation stays silent.
-//
-// TS-A02 already requires every function to assert its own preconditions
-// and postconditions at runtime — that is the spec's stated default, and it
-// never goes away. What a requires or ensures pin buys on top of that
-// default is the chance to catch a violation at compile time instead of at
-// the panic. This analyzer resolves predicate refs against the callee's
-// parameter names (requires, at each same-package call site) or its result
-// names (ensures, at each return statement), substitutes the corresponding
-// argument or returned expression, and checks whether pass.TypesInfo can
-// prove the substituted predicate false: a literal nil, a compile-time
-// integer constant, or a value whose length is knowable at compile time.
-// Anything else — a variable, a field path, a bare invariant ID, a
-// cross-package callee, a "..." spread call — is a known incompleteness of
-// the restricted predicate language, not a finding. It stays silent and
-// degrades to the callee's own runtime assertion (TS-A02), which is the
-// correct default because the analyzer's incompleteness must never block a
-// build.
 package contracts
 
 import (

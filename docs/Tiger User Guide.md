@@ -264,8 +264,9 @@ comments:
 ```
 
 The `comments.allow` entries are directories rather than package scopes. TS-L14 blocks prose
-comments in production code, and an entry exempts a directory's whole subtree (`.` is the whole
-module). It is the one entry that names a place to exempt, a brownfield adoption path that
+comments in production code, TS-L15 holds a package comment to one paragraph, TS-L16 fails a file
+that holds only comments, and an entry exempts a directory's whole subtree from all three (`.` is
+the whole module). It is the one entry that names a place to exempt, a brownfield adoption path that
 review of `tiger.yaml` guards (ADR-0031).
 
 A `nolint` block with `forbid: true` and a reason turns on the ban on `//nolint`, so

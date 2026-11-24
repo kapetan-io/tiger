@@ -1,20 +1,6 @@
 // Package sametypeparams enforces TS-N07 (adjacent parameters of identical
 // type, and more than four parameters not counting a leading t or ctx, need
 // an options struct) and TS-N08 (a plain bool parameter needs a named type).
-//
-// The spec's own assert package — Ok(cond bool, ...), Equal(got, want T) —
-// is tiger infrastructure whose API the spec itself fixes, so the assert
-// package and its external test package are exempt from both rules. Every
-// other declared function signature in the package is covered: func
-// declarations and interface methods. Function literals are exempt — their
-// signatures are dictated by the API that consumes them (sort.Slice's
-// func(i, j int) bool cannot be restructured into an options struct), so
-// flagging them was a false positive on a blocking rule, surfaced by this
-// repository's own dogfood run and fixed here per correctness constraint 7.
-//
-// The four-parameter limit does not count a leading testing.TB, *testing.T
-// or *testing.B, nor a context.Context first or right after it (ADR-0018).
-// The adjacent-same-type half counts every parameter.
 package sametypeparams
 
 import (

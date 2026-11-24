@@ -1457,6 +1457,86 @@ directive. A team that wants none turns on `nolint.forbid`. Prose in a file that
 not checked, because the Go toolchain hands tiger the cgo-generated file, which carries the
 generated-file marker.
 
+
+<!-- rule: TS-L15 -->
+### TS-L15 — a package comment is one paragraph
+
+**Severity:** blocking — a finding fails the run.
+
+With prose banned below the `package` line (TS-L14), the package comment is the one comment
+left, and it fills with how the package works. That prose drifts like any other comment. The
+package comment says why the package exists, in one paragraph.
+
+The package comment is the comment group directly above the `package` clause, read the way
+`go doc` reads it. A blank comment line, a `# Heading`, a list or an indented code block starts
+a second block, and a second block is a finding, reported at the comment's first line.
+
+Code that fires it, in `queue.go`:
+
+```go
+// Package queue holds work until a worker leases it.
+//
+// The hash picks a partition, and the rank formula orders leases.
+package queue
+
+type Queue struct{}
+```
+
+```
+queue.go:1:1: TS-L15: this package comment runs past one paragraph — tiger expects it to say only why the package exists — keep the first paragraph and move the rest into a test, or delete it
+```
+
+The compliant rewrite keeps the first paragraph:
+
+```go
+// Package queue holds work until a worker leases it.
+package queue
+
+type Queue struct{}
+```
+
+Test files, generated files and directories under `comments.allow` are exempt, as for TS-L14.
+`tiger check` writes no fix (ADR-0008).
+
+**Known miss:** a comment separated from the `package` clause by a blank line is not the package
+comment, so it may run to any length. That is how a licence header stays legal.
+
+
+<!-- rule: TS-L16 -->
+### TS-L16 — no production file holds only comments
+
+**Severity:** blocking — a finding fails the run.
+
+A file with no declarations exists only to carry prose, usually a `doc.go` with a long package
+comment. A file holding only the `package` clause and comments is a finding, reported at the
+`package` line, whatever the file is named. A licence header is a comment, so a file with a
+licence header, a package comment and the `package` clause fires too.
+
+Code that fires it, in `doc.go`:
+
+```go
+// Package queue holds work until a worker leases it.
+package queue
+```
+
+```
+doc.go:2:1: TS-L16: this file holds only comments and the package clause — tiger expects every production file to carry code — move the package comment above the package clause of a file with code, then delete this file
+```
+
+The compliant rewrite moves the package comment into a file with code, any file the author
+picks, and deletes `doc.go`:
+
+```go
+// Package queue holds work until a worker leases it.
+package queue
+
+type Queue struct{}
+```
+
+A file with an import and nothing else has a declaration, so it passes. Test files, generated
+files and directories under `comments.allow` are exempt, as for TS-L14. `tiger check` writes no
+fix (ADR-0008).
+
 ## Memory and IO
 
 <!-- rule: TS-M05 -->

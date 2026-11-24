@@ -1,14 +1,5 @@
 // Package declorder enforces TS-L05: a struct's file-local declarations
 // read type, then constructor, then methods.
-//
-// TS-L05 checks, per struct type declared in a file, that the same file's
-// related declarations — a constructor named New<Type>/new<Type>, and every
-// method whose receiver base type is the struct — appear after the type,
-// and every method appears after the constructor when one exists. It never
-// compares across files (a struct's type in one file and a method in
-// another is invisible to it) and never inspects nested-type promotion
-// inside the struct body (that is TS-K04's job, routed to a later
-// analyzer).
 package declorder
 
 import (

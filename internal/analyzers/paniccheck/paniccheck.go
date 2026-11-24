@@ -1,12 +1,5 @@
 // Package paniccheck enforces TS-S18: no naked panic outside the assert
 // package.
-//
-// One crash path, one message format, one place to change the behaviour.
-// The assert package itself is the sanctioned home of panic — that is the
-// rule's own exemption — and its external test package shares it, because
-// proving the assert package's panic behaviour requires panicking. The
-// check resolves the identifier to the builtin, so a shadowed local panic
-// is not a finding.
 package paniccheck
 
 import (

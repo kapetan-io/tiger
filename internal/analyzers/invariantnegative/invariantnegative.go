@@ -1,11 +1,5 @@
 // Package invariantnegative enforces TS-A09: every declared invariant has
 // a test that violates it.
-//
-// The negative-space proof lives in a _test.go file, possibly in a
-// different package than the one declaring the invariant, so — like
-// TS-A07 — no single pass sees both the declaration and the proof. The
-// per-package pass exports what this package declares and calls; the
-// finish step reads every package's contribution back.
 package invariantnegative
 
 import (

@@ -1,11 +1,4 @@
 // Package tablename enforces TS-T10: table-driven tests have named cases.
-//
-// A slice-of-anonymous-struct table inside a Test/Benchmark/Fuzz function
-// explains a failing case by its field values alone unless one field is
-// named "name" or "Name" — the value t.Run and a failure trace both print.
-// A map[string]struct{...} table is named by construction and stays silent.
-// A slice of a declared struct type is not examined; see the ts-t10 corpus
-// known-miss case for that gap.
 package tablename
 
 import (

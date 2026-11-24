@@ -1,41 +1,5 @@
 // Package plugin exposes the registered tiger analyzers to golangci-lint as
 // a module plugin, so auto and custom rules run in one pass.
-//
-// The analyzer set comes from the rule registry — the only path into any
-// driver — and the analyzers themselves cannot tell which driver runs them
-// (ADR-0002). The one piece of logic here is exactly the piece ADR-0002
-// assigns to a driver: output policy. Computed facts are not rules; they
-// print only under tiger check --show-facts. golangci-lint has no such
-// channel and treats every diagnostic as an issue (and keeps at most one
-// issue per line), so surfacing facts here would both spam adopters and
-// crowd real findings off their lines. The plugin therefore drops fact
-// diagnostics, the same decision tiger check makes when the flag is absent.
-//
-// Whole-program rules (ADR-0010) — TS-A07 and TS-A09 — decide their
-// findings in a finish step only the tiger CLI runs. Under this plugin
-// their per-package halves still run and export their facts, so nothing
-// breaks, but those two rule codes never appear in a golangci-lint run;
-// only `tiger check` reports them.
-//
-// The plugin also installs the repository's tiger.yaml and tiger.layers.yaml
-// (ADR-0002: the driver loads config, analyzers only query it). Both are
-// read from the working directory — golangci-lint runs from the module root
-// — unless the plugin's settings carry a `config` key naming another
-// directory. A load error fails plugin construction with the same one-line
-// message tiger check prints. TS-X03's import, function-use and missing-entry findings
-// surface here for the packages golangci-lint loads; an entry that matches no
-// package, and a package with no entry that the run did not load, do not, because those checks need
-// the module's directories and only tiger check runs them (ADR-0029). golangci-lint keys
-// its issue cache on the sorted analyzer names, salted with its version
-// string, the linters.settings block and go.mod, never on the plugin binary or
-// the layer file, so the plugin adds an analyzer that does nothing and whose
-// name carries the file's digest: an edited layer file changes the key and the
-// cached issues are not replayed. Budgets (tiger.budget.yaml) are not enforced here: the
-// plugin API has no end-of-run hook to aggregate counts, so every counted
-// finding surfaces as an issue.
-//
-// Build it with golangci-lint's module plugin mechanism: see .custom-gcl.yml
-// at the repository root and run `golangci-lint custom`.
 package plugin
 
 import (

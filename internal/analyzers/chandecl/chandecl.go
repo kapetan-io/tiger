@@ -1,23 +1,5 @@
 // Package chandecl enforces TS-C12: channel types are declared in one file
 // per package.
-//
-// The rule text scopes itself to "channel types used across goroutines."
-// Whether a given channel type demonstrably crosses a goroutine boundary is
-// not decidable from one package's AST and types alone — it depends on how
-// values of the type are used, possibly from other packages. Wave 1
-// resolves that open question by dropping the qualifier: every
-// channel-carrying type declaration in a package must colocate, whether or
-// not the channel provably crosses goroutines. This is exact and stricter
-// than the spec text's literal scope, and it is never silent — colocation
-// is checkable in every package that declares more than one such type,
-// regardless of how the channel is used.
-//
-// A type declaration counts if its type expression contains a ChanType
-// anywhere within it: a direct alias ("type Events chan Event") and a
-// struct with a channel field both count. Anonymous channel types spelled
-// out only in a function signature or a var declaration are not type
-// declarations and are not counted (known-miss: wave 1 colocates named
-// types, not every place a channel type is written).
 package chandecl
 
 import (

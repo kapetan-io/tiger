@@ -4,59 +4,6 @@
 // integer ranking expression proven to strictly decrease on every back edge
 // and bounded below — either synthesized by this analyzer or pinned by the
 // author.
-//
-// The fact lifecycle is synthesized -> reported -> pinnable. For every
-// in-scope loop the analyzer first tries to synthesize a variant from a
-// closed set of Cond shapes (len(s) > c, i < n, i > c, low < high, a struct
-// field in place of any variable, and any of those as a top-level && term)
-// paired with an unconditional move at the top level of the loop body or in
-// the Post clause: a fixed step (i++, i += k, s = s[k:], s = s[:len(s)-k]),
-// a division or shift by a constant under a strict > 0 condition, or a
-// slice by the length of a part shown not empty. Nothing may invalidate the
-// move: any other write to the measured variable or field, a pointer to it
-// or a closure that writes it made anywhere in the declaration, a call that
-// receives the struct holding a measured field, or a continue, labeled
-// continue or goto that could skip the move. Variables are matched by
-// object identity, so a shadowing copy never counts. A counter that moves
-// toward a limit at the edge of its type's range wraps around instead of
-// arriving, so that defeats the proof too.
-//
-// Synthesis success is a reported fact (TS-V01-facts, printed only under
-// --show-facts): the loop is proven with no annotation, and the printed line
-// is exact pin syntax (directive.FormatVariant), so ENG-151 can freeze it
-// into a //tiger:variant pin by pasting it.
-//
-// A pin replaces synthesis with the author's own ranking, verified by the
-// identical discipline: each term of the pinned expression classifies as
-// strictly decreasing, strictly increasing, constant, or unknown against
-// the same body rules, and the pin verifies only when every positive term
-// is non-increasing, every negative term is non-decreasing, at least one
-// term moves strictly, and none is unknown. A pin the analyzer cannot
-// verify is blocking even when the loop plausibly terminates: a pin
-// freezes the analyzer's own computed verification, in both directions,
-// so an unverifiable pin is not a weaker claim than an unpinned loop, it is
-// a broken contract. A pin on a loop that needs no variant at all (a
-// RangeStmt, a counted ForStmt) is blocking for the same reason: it
-// states a fact the analyzer never checks, so it means nothing and must be
-// removed.
-//
-// A loop with neither a synthesized nor a verified pinned variant is
-// blocking, and the finding always names the same rewrite: an explicit
-// iteration cap whose own counter is itself a synthesizable variant, with an
-// assert on exhaustion. That rewrite is always available, so no
-// //tiger:variant waiver exists. The finding leads with the cap, and offers a
-// pin only as a way to state the loop's own ranking, which the analyzer then
-// verifies.
-//
-// The loops with a verified variant, synthesized or pinned, are this
-// analyzer's result: boundedloop (TS-S02) accepts them as bounded.
-//
-// Scope is AST and go/types only, mirroring boundedloop's structural
-// model: a RangeStmt is structurally terminating and out of scope (a stray
-// pin on one is itself the finding); a ForStmt with Cond == nil is
-// boundedloop's TS-S02/TS-S03 territory, as is a loop that runs until a
-// context parameter is cancelled; a counted ForStmt (a sound counter
-// in its condition) is bounded by boundedloop, not ranked here.
 package variant
 
 import (

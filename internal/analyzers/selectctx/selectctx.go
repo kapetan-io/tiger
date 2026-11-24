@@ -1,21 +1,5 @@
 // Package selectctx enforces TS-C05: every blocking receive or send has a
 // stop case.
-//
-// A select with no default clause blocks, so it must carry a stop case: a
-// receive from ctx.Done() on a context that does not trace to Background or
-// TODO within the function, or a receive or send on a channel the package
-// itself closes or sends on (see internal/analyzers/internal/stopcase). A
-// select with a default clause is non-blocking and needs none. A send, or a
-// receive that sits outside any select's own comm clause, blocks
-// unconditionally, so it must be wrapped in a select — unless it is a receive
-// that is itself the wait for shutdown, from a live ctx.Done() or a channel
-// the package closes. A channel's name never exempts a bare operation, and
-// neither does its element type: outside a select, a struct{} channel is just
-// as often a completion wait with no cancellation, the very bug this rule
-// catches.
-//
-// Known miss: a bare receive from a channel the package closes is accepted
-// even when it is a completion wait rather than a shutdown wait.
 package selectctx
 
 import (

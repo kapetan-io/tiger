@@ -1,27 +1,5 @@
 // Package limitflow enforces the limit half of TS-S02: every loop limit has
 // an upper bound where it enters the program.
-//
-// A loop that counts up to a number is only as bounded as that number. The
-// analyzer traces each loop limit back to where it enters: through
-// parameters, struct fields, local variables, and function results, across
-// packages. Every value written into a limit must be a constant, a length,
-// another bounded limit, or a value clamped against a declared maximum, such
-// as min(config.Spins, spinsMax) or an if count > objectsMax that rejects. A
-// function that returns a clamped value carries the bound to its callers. A
-// call that passes math.MaxInt, the type's maximum, or a constant at least
-// half of it is a finding too.
-//
-// Three facts cross packages. LimitParams marks the parameters of a function
-// that end up bounding a loop, so a caller's argument is judged where it is
-// passed. LimitFields marks the struct fields that bound a loop, so every
-// write into the field is judged where it is written. BoundedResult marks a
-// function whose result is bounded whenever the listed parameters are.
-//
-// A limit that reaches a loop through a function value or an interface
-// method is not followed, because there is no body to trace. A constant
-// below half the type's maximum is trusted, because it cannot be told from a
-// legitimate large count. Both are listed under "Known misses" in
-// docs/Tiger Rule Reference.md.
 package limitflow
 
 import (

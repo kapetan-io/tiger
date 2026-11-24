@@ -1,11 +1,4 @@
 // Package skipcheck enforces TS-D07: skipped tests are reported on every run.
-//
-// A call to Skip, Skipf, or SkipNow on a *testing.T, *testing.B, *testing.F,
-// or testing.TB receiver surfaces as a standing advisory finding — the same
-// never-silent mechanism escapes use. Visibility beats paperwork: an earlier
-// form of the rule demanded a //tiger:skip directive with a tracker ID, but a
-// tracker reference can outlive its issue, while a report recomputed from the
-// code on every run cannot go stale.
 package skipcheck
 
 import (

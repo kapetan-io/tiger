@@ -1,14 +1,6 @@
 // Package invariants is the per-package half shared by invariantrefs
 // (TS-A07) and invariantnegative (TS-A09), plus the finish-step counting
 // both rules apply to the whole module.
-//
-// An invariant const is a package-level const whose declared type is a
-// named string type that some assert.Invariant or assert.Violates call in
-// the module takes as its ID — defined by use, not by living in a package
-// named inv. The assert package is recognized by import path (assertpkg)
-// and function name Invariant or Violates. Each package contributes what it declares and what
-// it calls; only the finish step, seeing every contribution, can tell
-// which consts are invariants and which of those go undefended.
 package invariants
 
 import (

@@ -1,21 +1,5 @@
 // Package deferdistance enforces TS-L10: no defer inside a loop, and defers
 // stay next to their acquisition.
-//
-// Two independent checks share one corpus, and both treat a func literal as
-// a frame boundary: a defer runs when its own frame returns, so a defer
-// inside a closure spawned by a loop queues nothing across iterations, and
-// a release of something acquired outside the closure's frame has no local
-// acquisition to sit next to. The loop half (TS-L10) fires on any DeferStmt
-// lexically inside a ForStmt/RangeStmt body within the same frame — an
-// unbounded queue of cleanup, which TS-S02 already forbids by construction.
-// The distance half (TS-L10-distance) fires when a defer's call is a
-// selector on a plain identifier (f.Close, tx.Rollback) and the statement
-// in the same block that declared, assigned, or called a method on that
-// identifier (mu.Lock before defer mu.Unlock) is not immediately followed
-// by the defer, or by an `if err != nil`-style check on it. A deferred
-// closure or a deferred package-level call never resolves to an
-// identifier's acquisition statement, so both stay silent for the distance
-// half; see the ts-l10 corpus known-miss case.
 package deferdistance
 
 import (

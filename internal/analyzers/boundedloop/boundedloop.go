@@ -1,38 +1,6 @@
 // Package boundedloop enforces TS-S02, TS-S03 and TS-S23: every loop has an
 // upper bound, an unbounded event loop selects on a stop case, and the stop
 // case is the loop's only exit.
-//
-// A RangeStmt over a slice, array, map, string, integer, or a standard
-// library iterator is bounded by its own syntax. A RangeStmt over a channel
-// or any other iterator is not: termination depends on code the analyzer
-// cannot see, so it is a TS-S02 finding. A ForStmt with no Cond ("for {}")
-// is either the TS-S03 event-loop shape — a direct SelectStmt with a stop
-// case (see internal/analyzers/internal/stopcase) — or a TS-S02 finding.
-//
-// A ForStmt with a Cond is bounded when its Post advances a sound counter
-// (see internal/analyzers/internal/counter), when TS-V01 verified a variant
-// for it, when it runs until a context parameter is cancelled
-// (ctx.Err() == nil), or when Cond — walking through parens, !,
-// && (either operand bounded), and || (every operand bounded) — reduces to
-// one of: a comparison against a constant, a len(), or a cap(); a
-// monotone-counter comparison against zero (x != 0, with every assignment
-// to x inside the loop — matched by object identity, so a shadow is a
-// different variable — provably a right-shift or a division by a constant
-// greater than one, and at least one of them guaranteed every iteration:
-// the Post clause, or a direct body statement no continue or goto can
-// skip); or a tuple-post reversal (i < j / i <= j, with the Post moving i
-// up and j down by the same constant step, closing the gap).
-// A FuncLit is a frame boundary for the monotone-counter and tuple-post
-// direction scans: an assignment inside a closure counts neither for nor
-// against the proof, matching deferdistance's treatment of the same
-// shape.
-//
-// A counter whose limit stands in for a proof is a safety cap, and the loop
-// must report when the cap is hit (see cap.go).
-//
-// Any other Cond is a TS-S02 finding, a store cursor loop (rows.Next())
-// included. //tiger:batched waives TS-M10 only; a cursor loop states its
-// limit in the header (ADR-0014).
 package boundedloop
 
 import (

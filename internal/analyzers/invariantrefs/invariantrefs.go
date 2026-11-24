@@ -1,11 +1,5 @@
 // Package invariantrefs enforces TS-A07: every declared invariant is
 // asserted in at least one function outside _test.go files.
-//
-// The evidence is spread across packages: an invariant const is declared
-// in one package and asserted from the packages that import it, which run
-// after it in dependency order and never report back. The per-package
-// pass exports what this package declares and calls; the finish step,
-// seeing every package's contribution, is the only place both sides meet.
 package invariantrefs
 
 import (

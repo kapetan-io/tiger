@@ -1404,6 +1404,23 @@ Enforce. `comments` (custom), blocking. Below `package`, only `//go:`, `//tiger:
 `//line `, `/*line `, `//export ` and `//extern ` comments survive (ADR-0031). Test files, generated files and directories listed
 under `comments.allow` in `tiger.yaml`, each with a reason, are exempt. No fix ships (ADR-0008).
 
+**`TS-L15` A package comment is one paragraph, saying why the package exists.**
+Why. With prose banned below the `package` line, the package comment is the one place left for it,
+and agents fill it with what used to sit next to the code: a 22-line package comment once explained
+a hash, a rank formula and when queues move. That prose drifts the same way TS-L14's does. One
+paragraph says why the package exists and has no room for how it works.
+Enforce. `packagecomment` (custom), blocking. The package comment is the comment group directly
+above the `package` clause, read as `go doc` reads it: a blank comment line, a `# Heading`, a list or
+a code block starts a second block, and a second block is a finding. Test files, generated files and
+directories under `comments.allow` are exempt, as for TS-L14. No fix ships (ADR-0008).
+
+**`TS-L16` No production file holds only comments and the package clause.**
+Why. A file with no declarations exists only to carry prose, usually a `doc.go` holding a long
+package comment, which is TS-L15's problem in a file of its own. A licence header is a comment too.
+Enforce. `packagecomment` (custom), blocking, whatever the file is named. The package comment moves
+above the `package` clause of a file with code, and which file is the author's call. The exemptions
+are TS-L15's. No fix ships (ADR-0008).
+
 ## Dependencies and tooling
 
 **`TS-D01` The pure standard library, and nothing else, unless the layer file allows more.**
@@ -1690,6 +1707,8 @@ that cannot fill the third column does not go in.
 | TS-L11 | Imports grouped standard, external, internal | B0 | Coord |
 | TS-L13 | Retired, the `Why:` commit section never had a check (ADR-0032) | — | Retired |
 | TS-L14 | No prose comments below the package line of a production file | B7 | Sub |
+| TS-L15 | A package comment is one paragraph, saying why the package exists | B7 | Sub |
+| TS-L16 | No production file holds only comments and the package clause | B7 | Sub |
 | TS-D01 | The pure standard library, and nothing else, unless the lay... | B8, B6 | Sub |
 | TS-D02 | Dependencies are vendored and pinned, including the too... | B4, B8 | Sub |
 | TS-D03 | Scripts are Go programs, not shell | B4, B0 | Mixed |
@@ -1716,7 +1735,7 @@ that cannot fill the third column does not go in.
 | --- | --- |
 | B2 Short defect distance | 37 |
 | B3 Local reasoning | 32 |
-| B7 Change safety | 24 |
+| B7 Change safety | 27 |
 | B0 Uniformity | 20 |
 | B1 Bounded execution | 17 |
 | B4 Determinism | 18 |
@@ -1724,7 +1743,7 @@ that cannot fill the third column does not go in.
 | B5 Defect discovery | 15 |
 | B8 Blast radius | 11 |
 
-Of 144 rule IDs, 118 are live: 98 substantive, 11 substantive in a conventional form, and 9 pure
+Of 147 rule IDs, 121 are live: 101 substantive, 11 substantive in a conventional form, and 9 pure
 convention. The other 26 are retired (23) or deleted (3). Short defect distance and local reasoning
 carry the document between them, which is a fair description of what TigerStyle is once the poetry
 is stripped off. B0 is cited by 20 rules, so roughly one rule in six exists for agreement rather
@@ -1834,6 +1853,7 @@ changes what it checks), or **not built**.
 | `declorder` | TS-L05 | AST, declaration and method order (TS-L04 not shipped, see TS-L04) | built |
 | `deferdistance` | TS-L10 | AST plus token positions | built |
 | `comments` | TS-L14 | AST, comment groups classified by `directive.Classify`; `comments.allow` exempts directories | built (ADR-0031) |
+| `packagecomment` | TS-L15, L16 | AST, the package comment parsed by `go/doc/comment`, and files with no declarations; `comments.allow` exempts directories | built |
 | `directives` | TS-L09 | AST, every escape-hatch directive and `//tiger:openenum` carries a reason; with `nolint.forbid` on, every `//nolint` is a finding | built (ADR-0023, ENG-179) |
 | `maporder` | TS-T02 | `buildssa`, allowlist of order-safe loop bodies; collect-then-sort with plain sorts or full-coverage comparators; the `maps` escape closed | built (ADR-0021) |
 | `fuzzcoverage` | TS-T03 | `packages`, parsers must have a Fuzz function | not built |
