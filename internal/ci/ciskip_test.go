@@ -29,6 +29,7 @@ func newCheckout(t *testing.T) checkout {
 	// A commit starts a detached `git maintenance run` that creates and removes
 	// .git/objects/maintenance.lock, which breaks a fork copying the directory.
 	c.git("config", "maintenance.auto", "false")
+	c.git("config", "gc.auto", "0") // git before 2.29 runs gc --auto instead
 	return c
 }
 
@@ -347,4 +348,5 @@ func TestCheckoutCommitStartsNoGitMaintenance(t *testing.T) {
 	raw, err := os.ReadFile(trace)
 	require.NoError(t, err)
 	assert.NotContains(t, string(raw), "maintenance run")
+	assert.NotContains(t, string(raw), "gc --auto")
 }
