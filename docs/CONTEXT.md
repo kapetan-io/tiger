@@ -82,8 +82,8 @@ _Avoid_: diff, effect report
 The report, not a rule, that lists each **changed test**, with its package and file, between the
 merge base of a base revision and the working tree. It reads `_test.go` files without type-checking
 in the **module (Go)** the run directory sits in and every nested module below it, except under
-directories `go test ./...` skips, and names each nested module whose `go.mod` it could not read. It
-is separate from `tiger changed`, whose report skips every test file and nested modules.
+directories `go test ./...` skips, and names each nested module it could not read, from its
+`go.mod` to its test files. It is separate from `tiger changed`, whose report skips every test file and nested modules.
 _Avoid_: test diff
 
 **Changed test**:

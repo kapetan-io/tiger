@@ -1,12 +1,14 @@
 package changedtests
 
 import (
+	"errors"
 	"fmt"
 	"go/ast"
 	"go/doc"
 	"go/parser"
 	"go/scanner"
 	"go/token"
+	"io/fs"
 	"maps"
 	"os"
 	"path"
@@ -55,26 +57,54 @@ func readTests(run runDir) (revisionTests, error) {
 	if err != nil {
 		return revisionTests{}, err
 	}
-	read := revisionTests{tests: testFunctions{}, modules: modules}
+	read := revisionTests{tests: testFunctions{}, modules: module.Modules{Unread: modules.Unread}}
 	for _, mod := range modules.Read {
-		files, err := module.GoFiles(filepath.Join(dir, filepath.FromSlash(mod.Dir)))
-		if err != nil {
+		tests, err := moduleTests(dir, mod)
+		if err != nil && mod.Dir == "." {
 			return revisionTests{}, err
 		}
-		for _, pkgDir := range slices.Sorted(maps.Keys(files)) {
-			pkg := path.Join(string(mod.ImportPath), pkgDir)
-			for _, rel := range files[pkgDir] {
-				if !strings.HasSuffix(rel, "_test.go") {
-					continue
-				}
-				file := testFile{dir: dir, rel: path.Join(mod.Dir, rel)}
-				if err := read.tests.read(file, pkg); err != nil {
-					return revisionTests{}, err
-				}
+		if err != nil {
+			read.modules.Unread = append(read.modules.Unread,
+				module.Unread{Dir: mod.Dir, Reason: unreadReason(dir, err)})
+			continue
+		}
+		read.modules.Read = append(read.modules.Read, mod)
+		maps.Copy(read.tests, tests)
+	}
+	return read, nil
+}
+
+func unreadReason(dir string, err error) string {
+	var pathErr *fs.PathError
+	if !errors.As(err, &pathErr) {
+		return err.Error()
+	}
+	rel, relErr := filepath.Rel(dir, pathErr.Path)
+	if relErr != nil {
+		return err.Error()
+	}
+	return fmt.Sprintf("cannot read %s: %v", filepath.ToSlash(rel), pathErr.Err)
+}
+
+func moduleTests(dir string, mod module.Module) (testFunctions, error) {
+	files, err := module.GoFiles(filepath.Join(dir, filepath.FromSlash(mod.Dir)))
+	if err != nil {
+		return nil, err
+	}
+	tests := testFunctions{}
+	for _, pkgDir := range slices.Sorted(maps.Keys(files)) {
+		pkg := path.Join(string(mod.ImportPath), pkgDir)
+		for _, rel := range files[pkgDir] {
+			if !strings.HasSuffix(rel, "_test.go") {
+				continue
+			}
+			file := testFile{dir: dir, rel: path.Join(mod.Dir, rel)}
+			if err := tests.read(file, pkg); err != nil {
+				return nil, err
 			}
 		}
 	}
-	return read, nil
+	return tests, nil
 }
 
 type testFile struct {

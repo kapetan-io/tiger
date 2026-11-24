@@ -131,11 +131,12 @@ module, so `tools/lint/lint_test.go` in module `example.com/tools` reports packa
 Directories that `go test ./...` skips (`testdata`, `vendor`, and names starting with `.` or `_`)
 are not searched for modules, and a module inside one is neither read nor named.
 
-A nested module whose `go.mod` cannot be read, such as one with no `module` line, is named in the
-report with the reason and the revision, and its tests are not compared at either revision, so an
-empty list never means "nothing changed" in a module that was not read. A module nested inside an
-unread one is still read. When the `go.mod` of the module the run directory sits in cannot be read,
-or a directory inside a module cannot be listed, no report is produced.
+A nested module that cannot be read is named in the report with the reason and the revision, and
+its tests are not compared at either revision, so an empty list never means "nothing changed" in a
+module that was not read. That covers a `go.mod` with no `module` line or one the run cannot open,
+a directory inside the module that cannot be listed, and a test file that cannot be opened or does
+not parse. A module nested inside an unread one is still read. When any of these happen in the
+module the run directory sits in, no report is produced.
 
 - Only top-level `Test`, `Benchmark`, `Fuzz` and `Example` functions in `_test.go` files count.
   Test methods on suite types, helpers and testdata are not reported.
@@ -147,8 +148,9 @@ or a directory inside a module cannot be listed, no report is produced.
   module reports a modified test under the new path and a deleted one under the path it had.
 - Tests added since the merge base are never listed, so a branch that only adds tests reports
   nothing.
-- It reads the test files without type-checking them, and a test file that does not parse at
-  either revision exits 2 rather than reporting the tests inside it as deleted.
+- It reads the test files without type-checking them. A test file in the run directory's module
+  that does not parse at either revision exits 2 rather than reporting the tests inside it as
+  deleted, and one in a nested module names that module as unread.
 
 What it does not report:
 

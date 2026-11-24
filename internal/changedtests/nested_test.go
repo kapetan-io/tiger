@@ -428,3 +428,76 @@ func TestChangedTestsLeavesOutAModuleSwallowedByAnUnreadModule(t *testing.T) {
 	assert.Equal(t, []unread{{Dir: "tools", Reason: "go.mod has no module line at head"}},
 		doc.UnreadModules)
 }
+
+// Goal: a nested module with a test file that does not parse is named with
+// the parse error and left out, and the rest of the tree is still compared.
+func TestChangedTestsNamesANestedModuleWhoseTestDoesNotParse(t *testing.T) {
+	c := newCheckout(t)
+	c.write("cart/cart_test.go", cartTest)
+	c.write("tools/go.mod", "module example.com/tools\n\ngo 1.26\n")
+	c.write("tools/lint/lint_test.go", lintTest)
+	c.write("tools/gen/go.mod", "module example.com/gen\n\ngo 1.26\n")
+	c.write("tools/gen/gen_test.go",
+		"package gen\n\nimport \"testing\"\n\nfunc TestGen(t *testing.T) {}\n")
+	c.branch()
+	c.write("tools/lint/lint_test.go", "package lint\n\nfunc {\n")
+	c.remove("tools/gen/gen_test.go")
+	c.remove("cart/cart_test.go")
+
+	doc := c.treeReport()
+
+	assert.Equal(t, []test{
+		{
+			Package: "example.com/gen", File: "tools/gen/gen_test.go",
+			Function: "TestGen", Change: "deleted",
+		},
+		{
+			Package: "example.com/shop/cart", File: "cart/cart_test.go",
+			Function: "TestEmpty", Change: "deleted",
+		},
+		{
+			Package: "example.com/shop/cart", File: "cart/cart_test.go",
+			Function: "TestTotal", Change: "deleted",
+		},
+	}, doc.Tests)
+	assert.Equal(t, []unread{{
+		Dir:    "tools",
+		Reason: "cannot parse tools/lint/lint_test.go:3:6: expected 'IDENT', found '{' at head",
+	}}, doc.UnreadModules)
+}
+
+// Goal: a test file in the run's own module that does not parse still
+// produces no report, the same as before nested modules were read.
+func TestChangedTestsExitsTwoWhenARunModuleTestDoesNotParse(t *testing.T) {
+	c := newCheckout(t)
+	c.write("cart/cart_test.go", cartTest)
+	c.branch()
+	c.write("cart/cart_test.go", "package cart\n\nfunc {\n")
+
+	got := run(t, "changed-tests", "-C", c.dir, "main")
+
+	assert.Equal(t, command.ExitOperational, got.code)
+	assert.Empty(t, got.stdout)
+	assert.Contains(t, got.stderr, "cannot parse cart/cart_test.go")
+}
+
+// Goal: a nested module with a test file the run has no permission to read
+// is named with the file's path in the repository, not the absolute path.
+func TestChangedTestsNamesANestedModuleWhoseTestCannotBeOpened(t *testing.T) {
+	c := newCheckout(t)
+	c.write("cart/cart_test.go", cartTest)
+	c.write("tools/go.mod", "module example.com/tools\n\ngo 1.26\n")
+	c.write("tools/lint/lint_test.go", lintTest)
+	c.branch()
+	lint := filepath.Join(c.dir, "tools", "lint", "lint_test.go")
+	require.NoError(t, os.Chmod(lint, 0o000))
+	t.Cleanup(func() { require.NoError(t, os.Chmod(lint, 0o644)) })
+
+	doc := c.treeReport()
+
+	assert.Empty(t, doc.Tests)
+	assert.Equal(t, []unread{{
+		Dir:    "tools",
+		Reason: "cannot read tools/lint/lint_test.go: permission denied at head",
+	}}, doc.UnreadModules)
+}
