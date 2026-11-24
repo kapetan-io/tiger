@@ -22,10 +22,12 @@
 // wg.Go or errgroup.Go needs a goleak check in a TestMain of its tests (see
 // harness.go).
 //
-// TS-C09. A go statement, or a Go or TryGo call on a sync.WaitGroup or
-// errgroup.Group, lexically inside a for or range loop body is the reactive
+// TS-C09. A go statement, a sync.WaitGroup.Go call, or an errgroup.Group.Go
+// or TryGo call, lexically inside a for or range loop body is the reactive
 // anti-pattern TS-C09 warns about — work started in direct response to each
-// event or item, with no back pressure. A group with SetLimit is still reported. It skips _test.go files (ADR-0019): a
+// event or item, with no back pressure. A group with SetLimit is still
+// reported, because SetLimit caps how many goroutines run at once but not how
+// many the loop starts. The rule skips _test.go files (ADR-0019): a
 // concurrency test starts one goroutine per request on purpose. A spawn in a
 // test loop is silent; a spawn outside a loop in a test still fires TS-C02.
 package nogoroutine

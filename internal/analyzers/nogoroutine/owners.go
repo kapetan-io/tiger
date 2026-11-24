@@ -166,7 +166,7 @@ func (o *owners) checkStart(sel *ast.SelectorExpr, ancestors []ast.Node) bool {
 	if !ok {
 		return false
 	}
-	if insideLoop(ancestors) {
+	if called(sel, ancestors) && insideLoop(ancestors) {
 		reportReactive(o.pass, sel.Pos())
 	}
 	if !o.waited(group, sel) {
@@ -290,4 +290,12 @@ func addressed(expr ast.Expr) ast.Expr {
 		return address.X
 	}
 	return expr
+}
+
+func called(sel *ast.SelectorExpr, ancestors []ast.Node) bool {
+	if len(ancestors) == 0 {
+		return false
+	}
+	call, ok := ancestors[len(ancestors)-1].(*ast.CallExpr)
+	return ok && call.Fun == sel
 }

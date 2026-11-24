@@ -1,5 +1,5 @@
 // A goroutine per item inside a test file is the fan-out-then-wait idiom a
-// concurrency test uses on purpose (ADR-0019), so it is silent.
+// concurrency test uses on purpose (ADR-0019), so TS-C09 is silent here.
 package fixture
 
 import (
@@ -42,4 +42,13 @@ func TestErrgroupFanOut(t *testing.T) {
 		group.Go(func() error { return nil })
 	}
 	_ = group.Wait()
+}
+
+// A WaitGroup.Go call in a test loop with no Wait stays silent for TS-C09 and
+// still fires TS-C02.
+func TestGroupFanOutUnwaited(t *testing.T) {
+	var wg sync.WaitGroup
+	for i := 0; i < 8; i++ {
+		wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine`
+	}
 }
