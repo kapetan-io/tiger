@@ -191,9 +191,9 @@ func (t Modules) Enclosed(dir string) (Modules, error) {
 	return t, nil
 }
 
-func neverSearched(dir string) bool {
-	return dir == "testdata" || dir == "vendor" || strings.HasPrefix(dir, ".") ||
-		strings.HasPrefix(dir, "_")
+func neverSearched(name string) bool {
+	return name == "testdata" || name == "vendor" || strings.HasPrefix(name, ".") ||
+		strings.HasPrefix(name, "_")
 }
 
 func isSource(name string) bool {

@@ -86,13 +86,12 @@ func compareRevisions(dir string, rev revision.Comparison) (Report, error) {
 	if err != nil {
 		return Report{}, err
 	}
-	unread := unreadSides{base: base.modules.Unread, head: head.modules.Unread}
-	dirs := roots(base.modules, head.modules)
+	modules := moduleSides{base: base.modules, head: head.modules}
 	report := changedTests(sides{
-		base: base.tests.outside(unread.all(), dirs),
-		head: head.tests.outside(unread.all(), dirs),
+		base: base.tests.outside(modules),
+		head: head.tests.outside(modules),
 	})
-	report.Unread = unread.modules()
+	report.Unread = modules.unread()
 	return report, nil
 }
 

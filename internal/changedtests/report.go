@@ -87,22 +87,22 @@ func (r Report) count(change Change) int {
 	return n
 }
 
-type unreadSides struct {
-	base []module.Unread
-	head []module.Unread
+type moduleSides struct {
+	base module.Modules
+	head module.Modules
 }
 
-func (u unreadSides) modules() []UnreadModule {
+func (m moduleSides) unread() []UnreadModule {
 	unread := []UnreadModule{}
-	for _, mod := range u.head {
+	for _, mod := range m.head.Unread {
 		reason := mod.Reason + " at head"
-		if slices.Contains(u.base, mod) {
+		if slices.Contains(m.base.Unread, mod) {
 			reason += " and the merge base"
 		}
 		unread = append(unread, UnreadModule{Dir: mod.Dir, Reason: reason})
 	}
-	for _, mod := range u.base {
-		if !slices.Contains(u.head, mod) {
+	for _, mod := range m.base.Unread {
+		if !slices.Contains(m.head.Unread, mod) {
 			unread = append(unread,
 				UnreadModule{Dir: mod.Dir, Reason: mod.Reason + " at the merge base"})
 		}
@@ -111,21 +111,4 @@ func (u unreadSides) modules() []UnreadModule {
 		return cmp.Or(cmp.Compare(a.Dir, b.Dir), cmp.Compare(a.Reason, b.Reason))
 	})
 	return unread
-}
-
-func (u unreadSides) all() []module.Unread {
-	return slices.Concat(u.base, u.head)
-}
-
-func roots(sides ...module.Modules) []string {
-	var dirs []string
-	for _, side := range sides {
-		for _, mod := range side.Read {
-			dirs = append(dirs, mod.Dir)
-		}
-		for _, mod := range side.Unread {
-			dirs = append(dirs, mod.Dir)
-		}
-	}
-	return dirs
 }

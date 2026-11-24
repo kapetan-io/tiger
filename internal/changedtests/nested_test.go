@@ -391,3 +391,40 @@ func TestChangedTestsIgnoresAGoModAboveTheMergeBaseCopy(t *testing.T) {
 		})
 	}
 }
+
+// Goal: a nested module in a one-letter directory is still the module its
+// tests belong to, so they are left out when its go.mod is unread.
+func TestChangedTestsLeavesOutTestsOfAnUnreadOneLetterModule(t *testing.T) {
+	c := newCheckout(t)
+	c.write("a/go.mod", "module example.com/a\n\ngo 1.26\n")
+	c.write("a/x_test.go", "package a\n\nimport \"testing\"\n\nfunc TestX(t *testing.T) {}\n")
+	c.branch()
+	c.write("a/go.mod", "go 1.26\n")
+
+	doc := c.treeReport()
+
+	assert.False(t, doc.ChangesExistingTests)
+	assert.Empty(t, doc.Tests)
+	assert.Equal(t, []unread{{Dir: "a", Reason: "go.mod has no module line at head"}},
+		doc.UnreadModules)
+}
+
+// Goal: a module read at the merge base that falls inside an unread module
+// at head is not compared, since its tests at head were never read.
+func TestChangedTestsLeavesOutAModuleSwallowedByAnUnreadModule(t *testing.T) {
+	c := newCheckout(t)
+	c.write("tools/go.mod", "module example.com/tools\n\ngo 1.26\n")
+	c.write("tools/sub/go.mod", "module example.com/sub\n\ngo 1.26\n")
+	c.write("tools/sub/x_test.go",
+		"package sub\n\nimport \"testing\"\n\nfunc TestS(t *testing.T) {}\n")
+	c.branch()
+	c.remove("tools/sub/go.mod")
+	c.write("tools/go.mod", "go 1.26\n")
+
+	doc := c.treeReport()
+
+	assert.False(t, doc.ChangesExistingTests)
+	assert.Empty(t, doc.Tests)
+	assert.Equal(t, []unread{{Dir: "tools", Reason: "go.mod has no module line at head"}},
+		doc.UnreadModules)
+}

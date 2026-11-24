@@ -214,24 +214,34 @@ func (t testFunctions) packages() int {
 	return len(seen)
 }
 
-func (t testFunctions) outside(unread []module.Unread, roots []string) testFunctions {
+func (t testFunctions) outside(modules moduleSides) testFunctions {
 	kept := testFunctions{}
 	for _, name := range slices.SortedFunc(maps.Keys(t), testName.order) {
-		owner := name.module(roots)
-		if !slices.ContainsFunc(unread, func(mod module.Unread) bool { return mod.Dir == owner }) {
+		if !name.inUnreadModule(modules.base) && !name.inUnreadModule(modules.head) {
 			kept[name] = t[name]
 		}
 	}
 	return kept
 }
 
-func (n testName) module(roots []string) string {
-	owner := ""
-	for _, root := range roots {
-		within := root == "." || n.dir == root || strings.HasPrefix(n.dir, root+"/")
-		if within && len(root) > len(owner) {
-			owner = root
+func (n testName) inUnreadModule(modules module.Modules) bool {
+	depth, unread := -1, false
+	for _, mod := range modules.Read {
+		if d, ok := n.depthIn(mod.Dir); ok && d > depth {
+			depth, unread = d, false
 		}
 	}
-	return owner
+	for _, mod := range modules.Unread {
+		if d, ok := n.depthIn(mod.Dir); ok && d > depth {
+			depth, unread = d, true
+		}
+	}
+	return unread
+}
+
+func (n testName) depthIn(root string) (int, bool) {
+	if root == "." {
+		return 0, true
+	}
+	return strings.Count(root, "/") + 1, n.dir == root || strings.HasPrefix(n.dir, root+"/")
 }
