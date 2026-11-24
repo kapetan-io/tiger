@@ -62,7 +62,7 @@ func runA() { // want `TS-S01: runA → runA\$1 → runA`
 }
 
 // genSelf calls itself with a type parameter. The call targets an instance,
-// a different function object from genSelf, so a naive lookup misses it.
+// a different function object from genSelf.
 func genSelf[T any](x T) { // want `TS-S01: genSelf → genSelf`
 	genSelf(x)
 }
@@ -106,4 +106,11 @@ func genClosure[T any](x T) { // want `TS-S01: genClosure → genClosure\$1 → 
 func genValue[T any](x T) { // want `TS-S01: genValue → genValue`
 	next := genValue[int]
 	next(1)
+}
+
+// Nest is a generic type whose method calls itself at another instantiation.
+type Nest[T any] struct{}
+
+func (n Nest[T]) Down(depth int) { // want `TS-S01: Down → Down`
+	Nest[int]{}.Down(depth - 1)
 }

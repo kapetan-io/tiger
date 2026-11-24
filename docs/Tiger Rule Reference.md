@@ -166,6 +166,12 @@ TS-S02 and TS-V01 both block the uncapped form `for i := 0; i < len(stack); i++`
 accept the capped one. The report is `i == nodesMax && i < len(stack)`: a graph with
 exactly `nodesMax` nodes ends here too, with nothing left to visit, and must pass.
 
+**Known misses:** Four call shapes sit outside the static call graph and are not reported:
+recursion through an interface method (the receiver's dynamic type decides the callee),
+recursion through a method called on a type-parameter value (`func Visit[T Walker](w T) { w.Walk() }`
+where `Tree.Walk` calls `Visit` again), recursion through a function value whose target is
+chosen behind a branch, and a cycle that spans package boundaries.
+
 <!-- rule: TS-S02 -->
 ### TS-S02 — every loop has an upper bound
 

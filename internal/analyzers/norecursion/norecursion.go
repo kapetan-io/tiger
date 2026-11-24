@@ -18,19 +18,20 @@
 // callee is immediately known. A call to a generic function targets an
 // instance such as F[int], a different *ssa.Function from F, so each callee is
 // mapped back to its source function (sourceFunc) before the cycle search.
-// Every edge in that graph is a call that
-// provably happens, so every reported cycle is real.
+// Every edge in that graph is a call that provably happens, so every reported
+// cycle is real.
 //
-// Known-miss boundary. Three call shapes fall outside the static call graph
+// Known-miss boundary. Four call shapes fall outside the static call graph
 // and so outside this analyzer's reach: recursion through an interface
 // method (the receiver's dynamic type decides the callee), recursion through
-// a function value whose target is not statically known (assigned behind a
-// branch or a Phi), and recursion whose cycle spans package boundaries (this
-// analyzer's node set is one package's functions; the facts plumbing a later
-// wave builds is the natural way to close this gap). All three are marked
-// known-miss in the corpus rather than reported, matching Undecidability
-// resolves to a known-miss, never a finding. Flagged for spec amendment
-// alongside the wave-1 TS-S02 amendment.
+// a method called on a type-parameter value (SSA gives the call no static
+// callee), recursion through a function value whose target is not statically
+// known (assigned behind a branch or a Phi), and recursion whose cycle spans
+// package boundaries (this analyzer's node set is one package's functions;
+// the facts plumbing a later wave builds is the natural way to close this
+// gap). All four are marked known-miss in the corpus rather than reported,
+// matching Undecidability resolves to a known-miss, never a finding. Flagged
+// for spec amendment alongside the wave-1 TS-S02 amendment.
 package norecursion
 
 import (
