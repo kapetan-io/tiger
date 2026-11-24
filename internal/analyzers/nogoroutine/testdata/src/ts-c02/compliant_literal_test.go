@@ -245,3 +245,108 @@ var runPackageLiteral = func() {
 	wg.Go(func() {})
 	wg.Wait()
 }
+
+// TestWaitOnlyInLaterSubtest waits in a subtest after the Go. t.Run runs a
+// literal that does not call t.Parallel before it returns, so the Wait runs.
+func TestWaitOnlyInLaterSubtest(t *testing.T) {
+	var wg sync.WaitGroup
+	wg.Go(func() {})
+	t.Run("x", func(t *testing.T) {
+		wg.Wait()
+	})
+}
+
+// BenchmarkWaitInLaterRun is the same shape through b.Run.
+func BenchmarkWaitInLaterRun(b *testing.B) {
+	var wg sync.WaitGroup
+	wg.Go(func() {})
+	b.Run("x", func(b *testing.B) {
+		wg.Wait()
+	})
+}
+
+// TestSavedWaitCalledLater saves a literal that waits and calls it after the
+// Go.
+func TestSavedWaitCalledLater(t *testing.T) {
+	var wg sync.WaitGroup
+	wait := func() { wg.Wait() }
+	wg.Go(func() {})
+	wait()
+}
+
+// TestSavedWaitDeclaredWithVar is the same through a var declaration.
+func TestSavedWaitDeclaredWithVar(t *testing.T) {
+	var wg sync.WaitGroup
+	var wait = func() { wg.Wait() }
+	wg.Go(func() {})
+	wait()
+}
+
+// TestSavedWaitInSubtest calls a saved waiting literal from a subtest after
+// the Go.
+func TestSavedWaitInSubtest(t *testing.T) {
+	var wg sync.WaitGroup
+	wait := func() { wg.Wait() }
+	wg.Go(func() {})
+	t.Run("x", func(t *testing.T) {
+		wait()
+	})
+}
+
+// TestSavedWaitCalledOnEveryBranch calls the saved literal on both branches.
+func TestSavedWaitCalledOnEveryBranch(t *testing.T) {
+	var wg sync.WaitGroup
+	wait := func() { wg.Wait() }
+	wg.Go(func() {})
+	if testing.Short() {
+		wait()
+		return
+	}
+	wait()
+}
+
+// TestNestedSubtestWaits waits two subtests down, after the Go.
+func TestNestedSubtestWaits(t *testing.T) {
+	var wg sync.WaitGroup
+	wg.Go(func() {})
+	t.Run("x", func(t *testing.T) {
+		t.Run("y", func(t *testing.T) {
+			wg.Wait()
+		})
+	})
+}
+
+// TestParallelInNestedSubtestWaits waits in the outer subtest, which runs
+// before t.Run returns; only the inner subtest is parallel.
+func TestParallelInNestedSubtestWaits(t *testing.T) {
+	var wg sync.WaitGroup
+	wg.Go(func() {})
+	t.Run("x", func(t *testing.T) {
+		t.Run("y", func(t *testing.T) {
+			t.Parallel()
+		})
+		wg.Wait()
+	})
+}
+
+// TestSelfCallingSavedLiteral calls a saved literal that calls itself.
+func TestSelfCallingSavedLiteral(t *testing.T) {
+	var wg sync.WaitGroup
+	var wait func(int)
+	wait = func(n int) {
+		if n > 0 {
+			wait(n - 1)
+		}
+		wg.Wait()
+	}
+	wg.Go(func() {})
+	wait(1)
+}
+
+// TestSavedSubtestWaits passes a saved subtest body to t.Run after the Go.
+func TestSavedSubtestWaits(t *testing.T) {
+	var wg sync.WaitGroup
+	body := func(t *testing.T) { wg.Wait() }
+	wg.Go(func() {})
+	t.Run("x", body)
+}

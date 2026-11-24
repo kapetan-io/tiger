@@ -106,17 +106,6 @@ func TestPassedAlongNoWait(t *testing.T) {
 	})
 }
 
-// TestWaitOnlyInLaterSubtest is an expected false positive (ENG-803): t.Run
-// runs its literal before returning, so the Wait runs, but the check counts
-// only a Wait in the literal holding the Go or a function around it.
-func TestWaitOnlyInLaterSubtest(t *testing.T) {
-	var wg sync.WaitGroup
-	wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
-	t.Run("x", func(t *testing.T) {
-		wg.Wait()
-	})
-}
-
 // TestWaitOnlyInCleanup waits only in t.Cleanup, which runs after the test
 // body returns, so the goroutine outlives the body.
 func TestWaitOnlyInCleanup(t *testing.T) {
@@ -380,4 +369,141 @@ func TestGoStatementInSubtest(t *testing.T) {
 var runPackageLiteralNoWait = func() {
 	var wg sync.WaitGroup
 	wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+}
+
+// TestWaitOnlyInParallelSubtest waits in a subtest that calls t.Parallel, so
+// the Wait runs after the test function returns.
+func TestWaitOnlyInParallelSubtest(t *testing.T) {
+	var wg sync.WaitGroup
+	wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+	t.Run("x", func(t *testing.T) {
+		t.Parallel()
+		wg.Wait()
+	})
+}
+
+// TestWaitInParallelSubtestOneLevelDown waits in a parallel subtest nested
+// inside a plain one.
+func TestWaitInParallelSubtestOneLevelDown(t *testing.T) {
+	var wg sync.WaitGroup
+	wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+	t.Run("x", func(t *testing.T) {
+		t.Run("y", func(t *testing.T) {
+			t.Parallel()
+			wg.Wait()
+		})
+	})
+}
+
+// TestWaitInPassedLiteral passes the waiting literal to a function that may
+// not call it.
+func TestWaitInPassedLiteral(t *testing.T) {
+	var wg sync.WaitGroup
+	wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+	ignore(func() { wg.Wait() })
+}
+
+// TestSavedWaitCalledOnOneBranch calls the saved literal on one branch only.
+func TestSavedWaitCalledOnOneBranch(t *testing.T) {
+	var wg sync.WaitGroup
+	wait := func() { wg.Wait() }
+	wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+	if testing.Short() {
+		wait()
+	}
+}
+
+// TestSavedWaitCalledBeforeGo calls the saved literal before the Go.
+func TestSavedWaitCalledBeforeGo(t *testing.T) {
+	var wg sync.WaitGroup
+	wait := func() { wg.Wait() }
+	wait()
+	wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+}
+
+// TestReassignedSavedWait may call a literal that does not wait, because the
+// variable is reassigned.
+func TestReassignedSavedWait(t *testing.T) {
+	var wg sync.WaitGroup
+	wait := func() { wg.Wait() }
+	if testing.Short() {
+		wait = func() {}
+	}
+	wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+	wait()
+}
+
+// TestSavedWaitPassedAlong passes the saved waiting literal to a function
+// that may not call it.
+func TestSavedWaitPassedAlong(t *testing.T) {
+	var wg sync.WaitGroup
+	wait := func() { wg.Wait() }
+	wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+	ignore(wait)
+}
+
+// TestSubtestWaitInsideOwnGoroutine waits from a subtest inside a goroutine
+// of the same group.
+func TestSubtestWaitInsideOwnGoroutine(t *testing.T) {
+	var wg sync.WaitGroup
+	wg.Go(func() { // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+		t.Run("x", func(t *testing.T) {
+			wg.Wait()
+		})
+	})
+}
+
+// TestSavedWaitInsideOwnGoroutine calls a saved waiting literal from inside a
+// goroutine of the same group.
+func TestSavedWaitInsideOwnGoroutine(t *testing.T) {
+	var wg sync.WaitGroup
+	wait := func() { wg.Wait() }
+	wg.Go(func() { // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+		wait()
+	})
+}
+
+// TestSubtestWaitsOnOneBranch waits in a later subtest that may return first.
+func TestSubtestWaitsOnOneBranch(t *testing.T) {
+	var wg sync.WaitGroup
+	wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+	t.Run("x", func(t *testing.T) {
+		if testing.Short() {
+			return
+		}
+		wg.Wait()
+	})
+}
+
+// TestCalledLiteralWaitsOnOneBranch calls a literal where it is written that
+// waits on one branch only.
+func TestCalledLiteralWaitsOnOneBranch(t *testing.T) {
+	var wg sync.WaitGroup
+	wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+	func() {
+		if testing.Short() {
+			wg.Wait()
+		}
+	}()
+}
+
+// reassignedParameterWait calls the caller's function before the parameter
+// is replaced with a literal that waits.
+func reassignedParameterWait(wait func()) {
+	var wg sync.WaitGroup
+	wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+	wait()
+	wait = func() { wg.Wait() }
+	_ = wait
+}
+
+var packageWait = func() {}
+
+// TestPackageLiteralCalled calls a package variable that may hold any
+// function by the time it runs.
+func TestPackageLiteralCalled(t *testing.T) {
+	var wg sync.WaitGroup
+	wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+	packageWait = func() { wg.Wait() }
+	packageWait()
 }

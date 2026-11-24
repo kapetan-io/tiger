@@ -30,6 +30,7 @@ type owners struct {
 	graphs    map[*ast.BlockStmt]*cfg.CFG
 	summaries map[*types.Var]waiters
 	outside   map[*types.Var]bool
+	following map[*ast.FuncLit]bool
 }
 
 type span struct {
@@ -43,6 +44,7 @@ func newOwners(pass *analysis.Pass) *owners {
 		graphs:    map[*ast.BlockStmt]*cfg.CFG{},
 		summaries: map[*types.Var]waiters{},
 		outside:   map[*types.Var]bool{},
+		following: map[*ast.FuncLit]bool{},
 	}
 	for _, file := range pass.Files {
 		ast.Inspect(file, func(node ast.Node) bool {

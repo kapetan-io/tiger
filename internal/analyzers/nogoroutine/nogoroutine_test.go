@@ -31,7 +31,12 @@ import (
 // Goal, TS-C02: a function literal is a function. A start inside a literal is
 // waited when a Wait follows it on every success path of that literal, or of
 // any literal or declaration around it, whoever calls the literal
-// (compliant_literal_test.go). The goroutine literal of the same group, and
+// (compliant_literal_test.go). A Wait after the start also counts inside a
+// literal that runs before the call holding it returns, a literal called
+// where it is written, a saved literal that is called, or a t.Run or b.Run
+// body that does not call t.Parallel, when that literal waits on every success
+// path; one saved and never called, passed to another function, or in a
+// parallel subtest does not (failure_literal_test.go). The goroutine literal of the same group, and
 // any literal inside it, is not a place to Wait, because a Wait there waits on
 // itself (failure_literal_test.go). A literal that runs after the outer Wait
 // or alongside it (a parallel subtest, a saved literal called later, a

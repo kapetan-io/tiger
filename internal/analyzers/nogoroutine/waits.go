@@ -120,7 +120,7 @@ func (o *owners) walk(state flowState, query flowQuery, always waiters) flowStat
 		if o.inExpired(node.Pos()) {
 			state.covered = true
 		}
-		if !o.waitsIn(node, query.group, always) {
+		if !o.waitsIn(node, query, always) {
 			continue
 		}
 		if _, deferred := node.(*ast.DeferStmt); deferred || state.passed {
@@ -143,29 +143,95 @@ func (o *owners) inExpired(pos token.Pos) bool {
 	return false
 }
 
-func (o *owners) waitsIn(node ast.Node, group *types.Var, always waiters) bool {
-	work := []ast.Node{node}
-	i := 0
-	for ; i < len(work) && i < worklist.NodesMax; i++ {
-		waits := false
-		ast.Inspect(work[i], func(inner ast.Node) bool {
-			switch found := inner.(type) {
-			case *ast.FuncLit, *ast.GoStmt:
-				return false
-			case *ast.CallExpr:
-				if literal, ok := ast.Unparen(found.Fun).(*ast.FuncLit); ok {
-					work = append(work, literal.Body)
-				}
-				waits = waits || o.callWaits(found, group, always)
+func (o *owners) waitsIn(node ast.Node, query flowQuery, always waiters) bool {
+	waits := false
+	ast.Inspect(node, func(inner ast.Node) bool {
+		switch found := inner.(type) {
+		case *ast.FuncLit, *ast.GoStmt:
+			return false
+		case *ast.CallExpr:
+			waits = o.callWaits(found, query.group, always)
+			if literal := o.runLiteral(found); !waits && literal != nil {
+				waits = o.literalWaits(literal, query, always)
 			}
-			return !waits
-		})
-		if waits {
-			return true
 		}
+		return !waits
+	})
+	return waits
+}
+
+func (o *owners) literalWaits(literal *ast.FuncLit, query flowQuery, always waiters) bool {
+	if o.following[literal] {
+		return false
 	}
-	assert.Ok(i == len(work), "waitsIn: worklist reached worklist.NodesMax")
-	return false
+	if query.start != nil && covers(literal, query.start) {
+		return false
+	}
+	o.following[literal] = true
+	defer delete(o.following, literal)
+	fn := function{decl: o.index.DeclOf(literal), typ: literal.Type, body: literal.Body}
+	unwaited, _ := o.uncovered(fn, flowQuery{group: query.group}, always)
+	return !unwaited
+}
+
+func (o *owners) runLiteral(call *ast.CallExpr) *ast.FuncLit {
+	if literal := o.literalOf(call.Fun); literal != nil {
+		return literal
+	}
+	selector, ok := ast.Unparen(call.Fun).(*ast.SelectorExpr)
+	if !ok || len(call.Args) != 2 || !subtestRuns[o.methodName(selector)] {
+		return nil
+	}
+	body := o.literalOf(call.Args[1])
+	if body == nil || o.callsParallel(body) {
+		return nil
+	}
+	return body
+}
+
+var subtestRuns = map[string]bool{"(*testing.T).Run": true, "(*testing.B).Run": true}
+
+func (o *owners) literalOf(expr ast.Expr) *ast.FuncLit {
+	expr = ast.Unparen(expr)
+	if literal, ok := expr.(*ast.FuncLit); ok {
+		return literal
+	}
+	local := o.index.Object(expr)
+	if _, isIdent := expr.(*ast.Ident); !isIdent || local == nil || local.IsField() {
+		return nil
+	}
+	if o.index.IsParameter(local) || local.Parent() == local.Pkg().Scope() {
+		return nil
+	}
+	defs := o.index.Definitions(local, o.index.DeclOf(expr))
+	if len(defs) != 1 {
+		return nil
+	}
+	literal, _ := ast.Unparen(defs[0]).(*ast.FuncLit)
+	return literal
+}
+
+func (o *owners) callsParallel(literal *ast.FuncLit) bool {
+	parallel := false
+	ast.Inspect(literal.Body, func(node ast.Node) bool {
+		switch found := node.(type) {
+		case *ast.FuncLit:
+			return false
+		case *ast.CallExpr:
+			selector, ok := ast.Unparen(found.Fun).(*ast.SelectorExpr)
+			parallel = parallel || ok && o.methodName(selector) == "(*testing.T).Parallel"
+		}
+		return !parallel
+	})
+	return parallel
+}
+
+func (o *owners) methodName(selector *ast.SelectorExpr) string {
+	fn, ok := o.pass.TypesInfo.Uses[selector.Sel].(*types.Func)
+	if !ok {
+		return ""
+	}
+	return fn.FullName()
 }
 
 func (o *owners) callWaits(call *ast.CallExpr, group *types.Var, always waiters) bool {

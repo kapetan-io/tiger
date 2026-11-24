@@ -833,9 +833,13 @@ caught: a parallel subtest, a literal saved and called later, a deferred or `t.C
 literal, or a goroutine of another group. A `t.Fatal` or `t.FailNow` between the start
 and the `Wait` skips the `Wait`, and is not caught either. For a group held in a struct field, it
 must be reached in an exported method of the owning type, or in a method such a method
-calls. The `Wait` must follow the start on every success path. A `Wait` after a
-`return`, on one branch only, in a different function literal that is not called where it
-is written, or inside the goroutine it waits for does not count. A path that returns a
+calls. The `Wait` must follow the start on every success path. A call that runs a
+literal before it returns reaches the literal's `Wait` when the literal waits on every one
+of its own success paths: a literal called where it is written, a local variable that only
+ever holds one literal and is called, or the body `t.Run` or `b.Run` runs, unless that
+body calls `t.Parallel`. A `Wait` after a `return`, on one branch only, in a literal that
+is saved and never called or passed to any other function, in a parallel subtest, or
+inside the goroutine it waits for does not count. A path that returns a
 non-nil error is not a success path, so a `Shutdown` that returns its flush error before it
 waits is accepted. A `Wait` that only runs in the
 branch where the caller's context expired does not count. That branch is a `Shutdown`
