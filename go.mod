@@ -4,7 +4,7 @@ go 1.26.10
 
 require (
 	github.com/golangci/plugin-module-register v0.1.2
-	github.com/kapetan-io/tiger/assert v0.0.0-20261123063720-135b8fdb8234
+	github.com/kapetan-io/tiger/assert v0.0.0-20261123155959-4902e97492d2
 	github.com/stretchr/testify v1.11.1
 	go.uber.org/goleak v1.3.0
 	golang.org/x/mod v0.43.0
