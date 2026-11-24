@@ -115,6 +115,12 @@ A recursive function's depth depends on its input data, not on anything in the c
 lets a single call stack grow up to one gigabyte before it gives up. So a bad input does
 not fail fast. It quietly eats memory and crashes far from the real cause.
 
+Tiger builds the call graph from calls whose target is known: direct calls, calls to a
+concrete type's method, and calls through a function literal. It does not use class
+hierarchy analysis, which treats an interface method call as a call to every type that
+implements it. That would report cycles that never run, and a false finding from a blocking
+rule is a bug in the analyzer.
+
 A cycle is reported once, at the cycle's first function ordered by file name, then line. A
 cycle across files therefore reports at the same file and line on every run, so a
 `//nolint` or a `--new-from-rev` baseline on that line keeps matching.
@@ -1066,6 +1072,11 @@ package worker
 type Jobs chan Job
 ```
 
+Every named type that holds a channel counts, whether or not its values cross goroutines.
+Whether a channel crosses goroutines depends on how its values are used, possibly from other
+packages, which one package's code cannot show. Counting every one is stricter than the rule's
+title, but it is exact, and it never misses a package with more than one channel type.
+
 **Known miss:** A channel type spelled out only in a function signature or a `var`
 declaration, never given its own named type, is not counted, so it can sit anywhere.
 
@@ -1488,7 +1499,7 @@ type Queue struct{}
 ```
 
 ```
-queue.go:1:1: TS-L15: this package comment runs past one paragraph — tiger expects it to say only why the package exists — keep the first paragraph and move the rest into a test, or delete it
+queue.go:1:1: TS-L15: this package comment runs past one paragraph — tiger expects it to say only why the package exists — keep the first paragraph and move the rest into a test or a doc, or delete it
 ```
 
 The compliant rewrite keeps the first paragraph:
@@ -1541,13 +1552,19 @@ type Queue struct{}
 ```
 
 A file with an import and nothing else has a declaration, so it passes. A file holding only
-the `package` clause, with no comment at all, carries no prose and passes. A `//go:build` line
-is a comment, so a file holding only a build constraint and the `package` clause fires. In a
+the `package` clause, with no comment at all, carries no prose and passes. Go directives
+(`//go:build`, `//go:generate` and the others TS-L14 lists), tiger directives and `//nolint`
+lines are not prose either, so a file holding only directives and the `package` clause passes.
+A licence header or package comment beside the directives still fires. In a
 package that uses cgo, the Go toolchain also hands tiger an import stub from its build cache,
 holding only the `package` clause and `//go:cgo_import_dynamic` lines; tiger skips it, along
 with any other file whose name does not end in `.go`. Test files, generated
 files and directories under `comments.allow` are exempt, as for TS-L14. `tiger check` writes no
 fix (ADR-0008).
+
+**Known miss:** tiger reads only the files that build on the platform it runs on, so a
+comment-only file behind a build constraint, such as `//go:build windows` above a package
+comment, fires on Windows and passes everywhere else.
 
 ## Memory and IO
 
@@ -1661,6 +1678,13 @@ for count := 0; count < opts.Limit && rows.Next(); count++ {
 ```
 
 A loop that filters rows takes the page limit and scan limit form shown under TS-S02.
+
+A call is IO when the function or method it calls is declared in an IO package: `os`, `net`,
+`net/http`, `database/sql`, `syscall`, or one a repo adds under `ioinloop.packages`. Tiger never
+decides by name or by the interface a value satisfies, because an `io.Writer` can be an
+in-memory `bytes.Buffer`. A method on a map, slice or basic type from those packages is
+exempt too, because a plain value holds no connection or file. `http.Header.Set` is a map
+write, and reporting it was a false positive in a trial.
 
 **Known miss:** IO hidden behind a same-package helper is invisible. The analyzer checks
 direct calls, not a call graph, so a loop calling a local helper that itself calls
@@ -2051,6 +2075,10 @@ TS-S02 accepts a loop whose variant this rule verified.
 Known miss: a `goto` back above a counted loop restarts it with the counter reset, and
 neither TS-S02 nor TS-V01 fires. TS-S09 blocks every `goto`, so this matters only where
 TS-S09 is waived.
+
+A `//tiger:variant` pin that tiger cannot verify is a finding even when the loop plausibly
+ends. The pin states that tiger checked the ranking, so a pin that fails the check is a
+broken claim, not a weaker one than leaving the loop unpinned.
 
 A `//tiger:variant` comment on a loop that ends on its own, a range or a counted loop,
 is a finding too, because it says nothing: `TS-V01: this loop has a //tiger:variant

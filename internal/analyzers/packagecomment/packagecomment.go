@@ -10,6 +10,7 @@ import (
 	"golang.org/x/tools/go/analysis"
 
 	"github.com/kapetan-io/tiger/internal/config"
+	"github.com/kapetan-io/tiger/internal/directive"
 )
 
 var Analyzer = &analysis.Analyzer{
@@ -22,7 +23,7 @@ var Analyzer = &analysis.Analyzer{
 const (
 	longMessage = "TS-L15: this package comment runs past one paragraph — " +
 		"tiger expects it to say only why the package exists — " +
-		"keep the first paragraph and move the rest into a test, or delete it"
+		"keep the first paragraph and move the rest into a test or a doc, or delete it"
 	splitMessage = "TS-L15: this is one of several files with a package comment, " +
 		"which go doc joins into one — tiger expects one paragraph in one file — " +
 		"keep the package comment in one file and delete it from the others"
@@ -46,7 +47,7 @@ func run(pass *analysis.Pass) (any, error) {
 			docs = append(docs, file.Doc)
 			count += found
 		}
-		if len(file.Decls) == 0 && len(file.Comments) > 0 {
+		if len(file.Decls) == 0 && hasProse(file) {
 			pass.Report(analysis.Diagnostic{
 				Pos: file.Package, Category: "TS-L16", Message: commentOnlyMessage,
 			})
@@ -79,4 +80,16 @@ func blocks(group *ast.CommentGroup) int {
 	}
 	var parser comment.Parser
 	return len(parser.Parse(group.Text()).Content)
+}
+
+func hasProse(file *ast.File) bool {
+	for _, group := range file.Comments {
+		for _, line := range group.List {
+			class := directive.Classify(file, line)
+			if class == directive.Prose || class == directive.Header {
+				return true
+			}
+		}
+	}
+	return false
 }
