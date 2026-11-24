@@ -123,7 +123,10 @@ func usesOutsideAssertions(file *ast.File) map[string]bool {
 				skip[name] = true
 			}
 			for i, name := range constSpec.Names {
-				if name.Name == "_" && i < len(constSpec.Values) && hasUnsignedConversion(constSpec.Values[i]) {
+				if name.Name != "_" || i >= len(constSpec.Values) {
+					continue
+				}
+				if hasUnsignedConversion(constSpec.Values[i]) {
 					skip[constSpec.Values[i]] = true
 				}
 			}
@@ -218,8 +221,9 @@ func reportUnrelated(pass *analysis.Pass, limits []*ast.Ident, participating map
 			Pos:      name.Pos(),
 			Category: "TS-S21",
 			Message: "TS-S21: " + name.Name + " is a limit that no assertion relates to any " +
-				"other quantity — add a compile-time relation such as const _ = uint(bufferSize - " +
-				name.Name + "), or if it depends on nothing, const _ = uint(" + name.Name + " - 1)",
+				"other quantity — add a compile-time relation such as " +
+				"const _ = uint(bufferSize - " + name.Name + "), or if it depends on nothing, " +
+				"const _ = uint(" + name.Name + " - 1)",
 		})
 	}
 }
