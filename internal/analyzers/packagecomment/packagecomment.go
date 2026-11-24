@@ -23,9 +23,9 @@ const (
 	longMessage = "TS-L15: this package comment runs past one paragraph — " +
 		"tiger expects it to say only why the package exists — " +
 		"keep the first paragraph and move the rest into a test, or delete it"
-	emptyMessage = "TS-L16: this file holds only comments and the package clause — " +
+	commentOnlyMessage = "TS-L16: this file holds only comments and the package clause — " +
 		"tiger expects every production file to carry code — " +
-		"move the package comment above the package clause of a file with code, " +
+		"move any package comment above the package clause of a file with code, " +
 		"then delete this file"
 )
 
@@ -34,22 +34,22 @@ func run(pass *analysis.Pass) (any, error) {
 		return nil, nil
 	}
 	docs := []*ast.CommentGroup{}
-	blocks := 0
+	count := 0
 	for _, file := range pass.Files {
 		if exempt(pass, file) {
 			continue
 		}
 		if file.Doc != nil {
 			docs = append(docs, file.Doc)
-			blocks += paragraphs(file.Doc)
+			count += blocks(file.Doc)
 		}
 		if len(file.Decls) == 0 && len(file.Comments) > 0 {
 			pass.Report(analysis.Diagnostic{
-				Pos: file.Package, Category: "TS-L16", Message: emptyMessage,
+				Pos: file.Package, Category: "TS-L16", Message: commentOnlyMessage,
 			})
 		}
 	}
-	if blocks > 1 {
+	if count > 1 {
 		for _, doc := range docs {
 			pass.Report(analysis.Diagnostic{
 				Pos: doc.Pos(), Category: "TS-L15", Message: longMessage,
@@ -66,7 +66,7 @@ func exempt(pass *analysis.Pass, file *ast.File) bool {
 		!strings.HasSuffix(name, ".go")
 }
 
-func paragraphs(group *ast.CommentGroup) int {
+func blocks(group *ast.CommentGroup) int {
 	var parser comment.Parser
 	return len(parser.Parse(group.Text()).Content)
 }

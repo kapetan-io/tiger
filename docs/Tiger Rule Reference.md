@@ -1523,7 +1523,7 @@ package queue
 ```
 
 ```
-doc.go:2:1: TS-L16: this file holds only comments and the package clause — tiger expects every production file to carry code — move the package comment above the package clause of a file with code, then delete this file
+doc.go:2:1: TS-L16: this file holds only comments and the package clause — tiger expects every production file to carry code — move any package comment above the package clause of a file with code, then delete this file
 ```
 
 The compliant rewrite moves the package comment into a file with code, any file the author

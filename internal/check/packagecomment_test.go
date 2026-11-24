@@ -16,7 +16,7 @@ const (
 		"say only why the package exists — keep the first paragraph and move the rest into a " +
 		"test, or delete it"
 	emptyFinding = "TS-L16: this file holds only comments and the package clause — tiger " +
-		"expects every production file to carry code — move the package comment above the " +
+		"expects every production file to carry code — move any package comment above the " +
 		"package clause of a file with code, then delete this file"
 	licence = "// Copyright 2026 The Fixture Authors.\n\n"
 	docOnly = "// Package p exists.\npackage p\n"
@@ -205,6 +205,18 @@ func TestPackageCommentCountsEveryFilesComment(t *testing.T) {
 
 func TestBarePackageFileIsNotAFinding(t *testing.T) {
 	dir := beside(t, sourceFile{name: "empty.go", content: "package p\n"})
+	got := run(t, "check", "-C", dir, "./...")
+	assert.Empty(t, got.stderr)
+	assert.Equal(t, command.ExitClean, got.code)
+	assert.Empty(t, got.stdout)
+}
+
+func TestCgoImportStubIsNotAFinding(t *testing.T) {
+	dir := commentsModule(t, sourceFile{
+		name: "p.go",
+		content: "// Package p wraps a C function.\npackage p\n\n// int one(void) { return 1; }\n" +
+			"import \"C\"\n\nfunc One() int { return int(C.one()) }\n",
+	})
 	got := run(t, "check", "-C", dir, "./...")
 	assert.Empty(t, got.stderr)
 	assert.Equal(t, command.ExitClean, got.code)
