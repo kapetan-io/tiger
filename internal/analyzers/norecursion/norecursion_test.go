@@ -32,3 +32,15 @@ func TestCycleAcrossFiles(t *testing.T) {
 		analysistest.Run(t, analysistest.TestData(), norecursion.Analyzer, "ts-s01-twofiles")
 	}
 }
+
+// TestCycleAcrossCgoFiles runs a cycle across two files that import "C". The
+// loader hands the analyzer cgo output files named by content hash in the
+// build cache, and //line directives point back at the real files. Ordering
+// by the cache names would move the finding when an unrelated edit changed a
+// hash, so it must use the names the finding prints. The "variant" lines in
+// a.go are bytes chosen so that, ranked by cache name, b.go sorts first.
+func TestCycleAcrossCgoFiles(t *testing.T) {
+	for range 5 {
+		analysistest.Run(t, analysistest.TestData(), norecursion.Analyzer, "ts-s01-cgo")
+	}
+}

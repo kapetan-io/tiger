@@ -131,8 +131,8 @@ func sortedByName(fset *token.FileSet, component []*ssa.Function) []*ssa.Functio
 		if a.Name() != b.Name() {
 			return strings.Compare(a.Name(), b.Name())
 		}
-		left := place(fset.PositionFor(a.Pos(), false))
-		return left.compare(place(fset.PositionFor(b.Pos(), false)))
+		left := place(fset.PositionFor(a.Pos(), true))
+		return left.compare(place(fset.PositionFor(b.Pos(), true)))
 	})
 	return sorted
 }
@@ -140,8 +140,8 @@ func sortedByName(fset *token.FileSet, component []*ssa.Function) []*ssa.Functio
 func firstPos(fset *token.FileSet, component []*ssa.Function) token.Pos {
 	smallest := component[0].Pos()
 	for _, fn := range component[1:] {
-		here := place(fset.PositionFor(fn.Pos(), false))
-		if here.compare(place(fset.PositionFor(smallest, false))) < 0 {
+		here := place(fset.PositionFor(fn.Pos(), true))
+		if here.compare(place(fset.PositionFor(smallest, true))) < 0 {
 			smallest = fn.Pos()
 		}
 	}

@@ -115,6 +115,10 @@ A recursive function's depth depends on its input data, not on anything in the c
 lets a single call stack grow up to one gigabyte before it gives up. So a bad input does
 not fail fast. It quietly eats memory and crashes far from the real cause.
 
+A cycle is reported once, at the cycle's first function ordered by file name, then line. A
+cycle across files therefore reports at the same file and line on every run, so a
+`//nolint` or a `--new-from-rev` baseline on that line keeps matching.
+
 Code that fires it:
 
 ```go
