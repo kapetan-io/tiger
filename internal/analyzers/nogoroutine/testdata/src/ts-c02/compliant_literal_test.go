@@ -439,3 +439,28 @@ var runPackageSavedWait = func() {
 	wg.Go(func() {})
 	wait()
 }
+
+func recurseWithSubtest(t *testing.T, n int) {
+	if n == 0 {
+		return
+	}
+	recurseWithSubtest(t, n-1)
+	recurseWithSubtest(t, n-1)
+	recurseWithSubtest(t, n-1)
+	recurseWithSubtest(t, n-1)
+	recurseWithSubtest(t, n-1)
+	recurseWithSubtest(t, n-1)
+	recurseWithSubtest(t, n-1)
+	recurseWithSubtest(t, n-1)
+}
+
+// TestWaitAfterRecursiveHelper hands the subtest's t to a helper that passes it
+// to itself eight times, and none of them calls t.Parallel.
+func TestWaitAfterRecursiveHelper(t *testing.T) {
+	var wg sync.WaitGroup
+	wg.Go(func() {})
+	t.Run("x", func(t *testing.T) {
+		recurseWithSubtest(t, 3)
+		wg.Wait()
+	})
+}

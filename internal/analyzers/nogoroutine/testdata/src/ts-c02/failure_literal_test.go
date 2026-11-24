@@ -717,3 +717,28 @@ func TestSavedGoroutineBodyCalledAfter(t *testing.T) {
 	wg.Go(body)
 	body()
 }
+
+// TestParallelThroughMethodExpressionInSubtest calls t.Parallel through a
+// method expression, whose first argument is the receiver.
+func TestParallelThroughMethodExpressionInSubtest(t *testing.T) {
+	var suite parallelSuite
+	var wg sync.WaitGroup
+	wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+	t.Run("x", func(t *testing.T) {
+		parallelSuite.setup(suite, t)
+		wg.Wait()
+	})
+}
+
+func markParallelGeneric[T any](t *testing.T) { t.Parallel() }
+
+// TestParallelThroughGenericHelperInSubtest calls t.Parallel through an
+// explicitly instantiated generic helper.
+func TestParallelThroughGenericHelperInSubtest(t *testing.T) {
+	var wg sync.WaitGroup
+	wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+	t.Run("x", func(t *testing.T) {
+		markParallelGeneric[int](t)
+		wg.Wait()
+	})
+}

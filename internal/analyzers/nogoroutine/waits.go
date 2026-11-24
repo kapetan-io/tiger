@@ -240,43 +240,43 @@ func (o *owners) callsParallel(literal *ast.FuncLit) bool {
 	if len(params) == 0 || len(params[0].Names) == 0 {
 		return false
 	}
-	return o.parallelOn(literal.Body, o.index.Object(params[0].Names[0]), 0)
+	return o.parallelOn(literal.Body, o.index.Object(params[0].Names[0]), map[*types.Var]bool{})
 }
 
-const helperHopsMax = 8
-
-const _ = uint(worklist.NodesMax - helperHopsMax)
-
-func (o *owners) parallelOn(body *ast.BlockStmt, subtest *types.Var, hops int) bool {
-	if subtest == nil || hops > helperHopsMax {
+func (o *owners) parallelOn(body *ast.BlockStmt, subtest *types.Var, searched map[*types.Var]bool) bool {
+	if subtest == nil || searched[subtest] {
 		return false
 	}
+	searched[subtest] = true
 	parallel := false
 	ast.Inspect(body, func(node ast.Node) bool {
 		if call, ok := node.(*ast.CallExpr); ok {
-			parallel = parallel || o.marksParallel(call, subtest, hops)
+			parallel = parallel || o.marksParallel(call, subtest, searched)
 		}
 		return !parallel
 	})
 	return parallel
 }
 
-func (o *owners) marksParallel(call *ast.CallExpr, subtest *types.Var, hops int) bool {
-	if selector, ok := ast.Unparen(call.Fun).(*ast.SelectorExpr); ok {
-		if o.calleeName(selector) == "(*testing.T).Parallel" {
-			return o.index.Object(selector.X) == subtest
-		}
+func (o *owners) marksParallel(call *ast.CallExpr, subtest *types.Var, searched map[*types.Var]bool) bool {
+	selector, isSelector := ast.Unparen(call.Fun).(*ast.SelectorExpr)
+	if isSelector && o.calleeName(selector) == "(*testing.T).Parallel" {
+		return o.index.Object(selector.X) == subtest
 	}
 	decl := o.calledDecl(call)
 	if decl == nil {
 		return false
 	}
+	args := call.Args
+	if isSelector && o.pass.TypesInfo.Types[selector.X].IsType() && len(args) > 0 {
+		args = args[1:]
+	}
 	params := paramNames(decl)
-	for i, arg := range call.Args {
+	for i, arg := range args {
 		if i >= len(params) || params[i] == nil || o.index.Object(arg) != subtest {
 			continue
 		}
-		if o.parallelOn(decl.Body, o.index.Object(params[i]), hops+1) {
+		if o.parallelOn(decl.Body, o.index.Object(params[i]), searched) {
 			return true
 		}
 	}
@@ -284,12 +284,19 @@ func (o *owners) marksParallel(call *ast.CallExpr, subtest *types.Var, hops int)
 }
 
 func (o *owners) calledDecl(call *ast.CallExpr) *ast.FuncDecl {
+	fun := ast.Unparen(call.Fun)
+	switch generic := fun.(type) {
+	case *ast.IndexExpr:
+		fun = generic.X
+	case *ast.IndexListExpr:
+		fun = generic.X
+	}
 	var ident *ast.Ident
-	switch fun := ast.Unparen(call.Fun).(type) {
+	switch named := fun.(type) {
 	case *ast.Ident:
-		ident = fun
+		ident = named
 	case *ast.SelectorExpr:
-		ident = fun.Sel
+		ident = named.Sel
 	default:
 		return nil
 	}
