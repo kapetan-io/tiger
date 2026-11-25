@@ -1,22 +1,70 @@
 # Tiger Go
 
 A static analyzer that holds Go written by AI agents to the rules NASA wrote for flight software.
+Every loop has a bound, every goroutine starts through a group that waits for it, and code takes
+the clock as an input instead of reading it.
 
-Let agents write the code and let tiger hold the line. Tiger enforces the restrictions NASA's
-[Power of Ten](https://spinroot.com/gerard/pdf/P10.pdf) and TigerBeetle's
+```
+go install github.com/kapetan-io/tiger/cmd/tiger@latest
+```
+
+```
+> tiger check ./...
+
+newton.go:7:2: TS-V01: tiger can't prove this loop ends: nothing in its condition shrinks on every pass — add a cap (for tries := 0; tries < max; tries++ { if done { break } ... }) that fails when the cap is hit, or say what shrinks with //tiger:variant <expr>
+newton.go:7:6: TS-S02: tiger can't tell how many times this loop runs: its condition is not a constant, a len, or a counter — add a cap that fails when the cap is hit, or make it an event loop that selects on ctx.Done() — see `tiger pattern --rule TS-S02`
+status.go:11:2: TS-S08: this switch over Status has no default arm — add default: assert.Unreachable("Status: unhandled value") so a new Status constant fails loudly
+tree.go:7:6: TS-S01: chase → chase is a cycle of calls (recursion) — replace it with a capped worklist loop that returns an error when it stops at max with nodes left — see `tiger pattern capped-worklist`
+worker.go:6:2: TS-C02: this go statement starts a goroutine nobody owns — start it with wg.Go or errgroup.Go and Wait for the group — see `tiger pattern --rule TS-C02`
+worker.go:6:2: TS-C03: this package starts goroutines but its tests have no goleak check — add a TestMain that calls goleak.VerifyTestMain(m)
+tiger: 6 blocking
+```
+
+Tiger enforces the restrictions NASA's [Power of Ten](https://spinroot.com/gerard/pdf/P10.pdf)
+and TigerBeetle's
 [TigerStyle](https://github.com/tigerbeetle/tigerbeetle/blob/main/docs/TIGER_STYLE.md) put on
-flight and database software. Every loop has a bound, every goroutine has an owner that waits
-for it, and code takes the clock as an input instead of reading it. Whole classes of production
-bugs can't be written, code tests in isolation, and your review goes to what the change does
-instead of how it's built.
+flight and database software. Whole classes of
+production bugs can't be written, code tests in isolation, and your review goes to what the
+change does instead of how it's built.
+
+### Add to your agent instructions file
+
+```markdown
+- Run `tiger check ./...` before you finish. A finding fails the run, and there are no warnings.
+- Fix a finding by rewriting the code to follow the rule. Tiger ignores `//nolint`.
+- A finding that ends in "see `tiger pattern ...`" points to a pattern. Run that command and
+  copy the shape it prints.
+```
+
+## Why the rules exist
+
+Each rule stops one shape of bug. The left of each picture is code tiger reports, and the right
+is the rewrite that passes. The rules are in the
+[Tiger Rule Reference](docs/Tiger%20Rule%20Reference.md).
+
+### TS-S01: no recursion
+
+![TS-S01 recursion: before, chase calls itself, so stack depth follows the input and a deep input grows the stack toward 1 GB; after, a loop over a stack of nodes stops at nodesMax and returns errTooManyNodes](docs/recursion.svg)
+
+### TS-S02: every loop has an upper bound
+
+![TS-S02 loop bound: before, a for loop runs until converged returns true, so if refine stalls it never ends and reports nothing; after, the loop counts tries up to triesMax and returns errNoConvergence when it runs out](docs/loop-bound.svg)
+
+### TS-C02: every goroutine starts through a group that waits for it
+
+![TS-C02 goroutine group: before, Launch starts a goroutine with a bare go statement and returns, so nothing waits for it and it can outlive its caller; after, Start launches it with wg.Go and Shutdown closes stop and calls wg.Wait until it exits](docs/goroutine-group.svg)
+
+### TS-S08: a switch over a closed set ends in assert.Unreachable
+
+![TS-S08 closed switch: before, a switch over Status handles Active and Inactive with no default arm, so a new StatusArchived falls out and returns an empty string; after, a default arm calls assert.Unreachable so the new value crashes loudly](docs/closed-switch.svg)
 
 ## At a glance
 
 **What tiger enforces**
 
 - Loops that provably end, or stop at a cap that reports when it is hit
-- Goroutines started through a group that waits for them, and waits that can be cancelled
-- Switches over an enum that handle every value
+- Goroutines started through a group that waits for them, and blocking waits that have a stop case
+- A switch over a closed set ends in `assert.Unreachable`, so a new value fails loudly
 - No direct calls to the clock, through golangci-lint
 - With a layer file, randomness and IO packages only where the file allows them
 - Named invariants, asserted in code and violated on purpose in a test
