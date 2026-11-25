@@ -27,7 +27,8 @@ func exportTotalFacts(pass *analysis.Pass) {
 	candidates := totalCandidates(pass)
 	for range len(candidates) {
 		added := false
-		for i, cand := range candidates {
+		for i := range candidates {
+			cand := &candidates[i]
 			if cand.method == nil || !totalOver(pass, cand.typ, cand.result, cand.ops) {
 				continue
 			}

@@ -19,7 +19,7 @@ const (
 	maxComment = 60000
 )
 
-func (r Report) Markdown(rev revision.Comparison) string {
+func (r *Report) Markdown(rev *revision.Comparison) string {
 	full := r.markdown(rev, view{shown: len(r.Functions)})
 	if tooLong(full) {
 		trimmed := view{shown: len(r.Functions), omitCalls: true}
@@ -40,7 +40,7 @@ type view struct {
 	omitCalls bool
 }
 
-func (r Report) markdown(rev revision.Comparison, show view) string {
+func (r *Report) markdown(rev *revision.Comparison, show view) string {
 	var out strings.Builder
 	base := rev.BaseName()
 	fmt.Fprintf(&out, "%s\n#### tiger changed: %s", marker, codeSpan(base.Name))
@@ -67,8 +67,8 @@ func (r Report) markdown(rev revision.Comparison, show view) string {
 		}
 		if len(hidden) > 0 {
 			calls := 0
-			for _, fn := range hidden {
-				calls += len(fn.Calls)
+			for i := range hidden {
+				calls += len(hidden[i].Calls)
 			}
 			fmt.Fprintf(&out, "%d more calls in %d functions not shown; "+
 				"run %s for the rest.\n\n",
@@ -80,8 +80,8 @@ func (r Report) markdown(rev revision.Comparison, show view) string {
 			"it calls the same %d types and functions in other packages.\n\n",
 			rename.From, rename.To, rename.Callees)
 	}
-	for _, pkg := range r.NewPackages {
-		writeNewPackageMarkdown(&out, pkg, show, rev.BaseRef)
+	for i := range r.NewPackages {
+		writeNewPackageMarkdown(&out, &r.NewPackages[i], show, rev.BaseRef)
 	}
 	for _, pkg := range r.RemovedPackages {
 		fmt.Fprintf(&out, "**Removed package `%s`** — %d types and functions.\n\n",
@@ -91,7 +91,7 @@ func (r Report) markdown(rev revision.Comparison, show view) string {
 	return out.String()
 }
 
-func (r Report) countsMarkdown() string {
+func (r *Report) countsMarkdown() string {
 	parts := r.countParts()
 	labels := make([]string, len(parts))
 	for i, part := range parts {
@@ -103,7 +103,7 @@ func (r Report) countsMarkdown() string {
 	return strings.Join(labels, " · ")
 }
 
-func writeNewPackageMarkdown(out *strings.Builder, pkg NewPackage, show view, base string) {
+func writeNewPackageMarkdown(out *strings.Builder, pkg *NewPackage, show view, base string) {
 	fmt.Fprintf(out, "**New package `%s`** — %d types and functions, %d calls:\n\n",
 		pkg.Name, pkg.Owners, pkg.calls())
 	fmt.Fprintf(out, "- Uses existing packages: %s\n", usesText(pkg.Uses.Prior, "`"))

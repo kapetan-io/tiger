@@ -69,7 +69,7 @@ func Budget(args []string, streams command.Streams) int {
 			return command.ExitOperational
 		}
 	}
-	if printRatchet(streams, budgets, sorted) > 0 {
+	if printRatchet(streams, budgets, &sorted) > 0 {
 		return command.ExitFindings
 	}
 	return command.ExitClean
@@ -125,29 +125,30 @@ func newBudgetCounts() budgetCounts {
 	}
 }
 
-func (c budgetCounts) add(pkg string, entry rules.CustomRule, finding driver.Finding) {
+func (c budgetCounts) add(pkg string, entry *rules.CustomRule, finding *driver.Finding) {
 	key := budget.Key{Package: pkg, Code: entry.RuleID}
 	c.numbers[key]++
-	c.findings[key] = append(c.findings[key], finding)
-	c.entries[entry.RuleID] = entry
+	c.findings[key] = append(c.findings[key], *finding)
+	c.entries[entry.RuleID] = *entry
 }
 
-func printRatchet(streams command.Streams, budgets *budget.File, sorted partitioned) int {
+func printRatchet(streams command.Streams, budgets *budget.File, sorted *partitioned) int {
 	printed := 0
 	for _, overrun := range budgets.Compare(sorted.counts.numbers) {
 		position := token.Position{Filename: budget.FileName, Line: overrun.Line}
-		fmt.Fprintf(streams.Stdout, "%s: %s\n", position,
-			ratchetMessage(overrun, sorted.counts.entries[overrun.Key.Code]))
+		entry := sorted.counts.entries[overrun.Key.Code]
+		fmt.Fprintf(streams.Stdout, "%s: %s\n", position, ratchetMessage(overrun, &entry))
 		printed++
-		for _, finding := range sorted.counts.findings[overrun.Key] {
-			fmt.Fprintf(streams.Stdout, "%s: %s\n", finding.Position, finding.Message)
+		found := sorted.counts.findings[overrun.Key]
+		for i := range found {
+			fmt.Fprintf(streams.Stdout, "%s: %s\n", found[i].Position, found[i].Message)
 			printed++
 		}
 	}
 	return printed
 }
 
-func ratchetMessage(overrun budget.Overrun, entry rules.CustomRule) string {
+func ratchetMessage(overrun budget.Overrun, entry *rules.CustomRule) string {
 	noun := entry.CountedNoun(overrun.Count)
 	if overrun.NoRow {
 		them := "them"

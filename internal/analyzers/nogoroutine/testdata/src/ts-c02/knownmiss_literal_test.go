@@ -1,10 +1,14 @@
 // Documented TS-C02 coverage gaps in function literals: the literal holding
 // the Go runs after the Wait or alongside it, a t.Fatal skips the Wait, or a
 // function around the literal returns only a non-nil error, which excuses the
-// literal's own unwaited success path.
+// literal's own unwaited success path, a called literal returns an error
+// before its Wait and the caller goes on, or a subtest reaches t.Parallel in a
+// way the check does not see.
 package fixture
 
 import (
+	"context"
+	"subtesthelp"
 	"sync"
 	"testing"
 )
@@ -131,4 +135,143 @@ func literalNoWaitInFailingFunc() error {
 	}
 	run()
 	return errStop
+}
+
+// TestCalledLiteralErrorSkipsWait leaks the goroutine: the literal returns an
+// error before its Wait, and the test logs it and returns.
+//
+// known-miss: the literal's error return is not a success path, so the call
+// counts as a Wait whatever the caller does with the error (ENG-966).
+func TestCalledLiteralErrorSkipsWait(t *testing.T) {
+	var wg sync.WaitGroup
+	wg.Go(func() {})
+	if err := func() error {
+		if testing.Short() {
+			return context.Canceled
+		}
+		wg.Wait()
+		return nil
+	}(); err != nil {
+		t.Log(err)
+	}
+}
+
+// TestParallelThroughCalledLiteralParam leaks the goroutine: the subtest is
+// parallel, so its Wait runs after the test function returns.
+//
+// known-miss: t.Parallel runs on a literal's own parameter that the subtest's
+// t is handed to, and the check follows only declared functions.
+func TestParallelThroughCalledLiteralParam(t *testing.T) {
+	var wg sync.WaitGroup
+	wg.Go(func() {})
+	t.Run("x", func(t *testing.T) {
+		func(inner *testing.T) { inner.Parallel() }(t)
+		wg.Wait()
+	})
+}
+
+// TestParallelThroughMethodValue leaks the goroutine the same way.
+//
+// known-miss: t.Parallel runs through a method value, which names no call
+// on t.
+func TestParallelThroughMethodValue(t *testing.T) {
+	var wg sync.WaitGroup
+	wg.Go(func() {})
+	t.Run("x", func(t *testing.T) {
+		parallel := t.Parallel
+		parallel()
+		wg.Wait()
+	})
+}
+
+// TestParallelThroughInterface leaks the goroutine the same way.
+//
+// known-miss: t.Parallel runs through an interface method, which resolves to
+// no testing.T method.
+func TestParallelThroughInterface(t *testing.T) {
+	var wg sync.WaitGroup
+	wg.Go(func() {})
+	t.Run("x", func(t *testing.T) {
+		var marker interface{ Parallel() } = t
+		marker.Parallel()
+		wg.Wait()
+	})
+}
+
+type subtestHolderField struct {
+	t *testing.T
+}
+
+// TestParallelThroughField leaks the goroutine the same way.
+//
+// known-miss: t.Parallel runs on a struct field holding the subtest's t, and
+// the check does not follow what a field holds.
+func TestParallelThroughField(t *testing.T) {
+	var wg sync.WaitGroup
+	wg.Go(func() {})
+	t.Run("x", func(t *testing.T) {
+		holder := subtestHolderField{t: t}
+		holder.t.Parallel()
+		wg.Wait()
+	})
+}
+
+func markParallelTB(tb testing.TB) { tb.(*testing.T).Parallel() }
+
+// TestParallelThroughTB leaks the goroutine the same way.
+//
+// known-miss: the helper takes testing.TB and asserts it back to *testing.T,
+// so the call is not on the parameter it was handed.
+func TestParallelThroughTB(t *testing.T) {
+	var wg sync.WaitGroup
+	wg.Go(func() {})
+	t.Run("x", func(t *testing.T) {
+		markParallelTB(t)
+		wg.Wait()
+	})
+}
+
+// TestSkipBeforeWaitInSubtest leaks the goroutine when the subtest skips.
+//
+// known-miss: t.Skip ends the subtest, so the Wait after it never runs, but
+// the check treats t.Skip as returning (ENG-810).
+func TestSkipBeforeWaitInSubtest(t *testing.T) {
+	var wg sync.WaitGroup
+	wg.Go(func() {})
+	t.Run("x", func(t *testing.T) {
+		if testing.Short() {
+			t.Skip("short")
+		}
+		wg.Wait()
+	})
+}
+
+// TestParallelThroughOtherPackage leaks the goroutine: the subtest is
+// parallel, so its Wait runs after the test function returns.
+//
+// known-miss: t.Parallel runs in a helper in another package, and the check
+// follows only functions declared in the package it checks.
+func TestParallelThroughOtherPackage(t *testing.T) {
+	var wg sync.WaitGroup
+	wg.Go(func() {})
+	t.Run("x", func(t *testing.T) {
+		subtesthelp.Parallel(t)
+		wg.Wait()
+	})
+}
+
+// TestParallelThroughEmbeddingSetLater leaks the goroutine: the subtest is
+// parallel, so its Wait runs after the test function returns.
+//
+// known-miss: the embedded t is set by a field assignment, and the check only
+// reads the struct literal that built the value.
+func TestParallelThroughEmbeddingSetLater(t *testing.T) {
+	var wg sync.WaitGroup
+	wg.Go(func() {})
+	t.Run("x", func(t *testing.T) {
+		var suite embeddedSubtest
+		suite.T = t
+		suite.Parallel()
+		wg.Wait()
+	})
 }

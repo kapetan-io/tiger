@@ -7,7 +7,7 @@ import (
 	"github.com/kapetan-io/tiger/assert"
 )
 
-func (v Verdict) Message() string {
+func (v *Verdict) Message() string {
 	entryText := fmt.Sprintf("the %q entry in %s", v.entryKey, FileName)
 	text := ""
 	switch v.breach {

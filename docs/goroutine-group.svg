@@ -1,0 +1,76 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 360" width="800" height="360" role="img" aria-label="TS-C02 goroutine group: before, Launch starts a goroutine with a bare go statement and returns, so nothing waits for it and it can outlive its caller; after, Start launches it with wg.Go and Shutdown closes stop and calls wg.Wait on the same group until it exits">
+  <title>TS-C02 goroutine group: before, Launch starts a goroutine with a bare go statement and returns, so nothing waits for it and it can outlive its caller; after, Start launches it with wg.Go and Shutdown closes stop and calls wg.Wait on the same group until it exits</title>
+  <style>
+    svg { --ink: #24292f; --dim: #5d656e; --paper: #ffffff; --well: #f3f4f6; --rim: #d4d8dd;
+          --cell: #ffffff; --cellrim: #8a929b; --wire: #57606a;
+          --fail: #c4242f; --failfill: #fde8e8; --pass: #1b7a38; --passfill: #def7e5; }
+    @media (prefers-color-scheme: dark) {
+      svg { --ink: #e4e8ec; --dim: #99a2ac; --paper: #0e1116; --well: #161b21; --rim: #333a42;
+            --cell: #0e1116; --cellrim: #707982; --wire: #99a2ac;
+            --fail: #ff6a62; --failfill: #3b1719; --pass: #46c15d; --passfill: #11271b; }
+    }
+    text { fill: #24292f; fill: var(--ink); font: 13px -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; }
+    .m { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; }
+    .src { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11px; white-space: pre; }
+    .s { font-size: 12px; }
+    .b { font-weight: 600; }
+    .dim { fill: #5d656e; fill: var(--dim); }
+    .rf { fill: #c4242f; fill: var(--fail); }
+    .rp { fill: #1b7a38; fill: var(--pass); }
+    .page { fill: #ffffff; fill: var(--paper); stroke: #d4d8dd; stroke: var(--rim); }
+    .well { fill: #f3f4f6; fill: var(--well); }
+    .srcbox { fill: #ffffff; fill: var(--paper); stroke: #d4d8dd; stroke: var(--rim); }
+    .cell { fill: #ffffff; fill: var(--cell); stroke: #8a929b; stroke: var(--cellrim); stroke-width: 1.2; }
+    .ghost { fill: none; stroke: #8a929b; stroke: var(--cellrim); stroke-width: 1.2; stroke-dasharray: 4 3; }
+    .cellfail { fill: #fde8e8; fill: var(--failfill); stroke: #c4242f; stroke: var(--fail); stroke-width: 1.2; }
+    .cellpass { fill: #def7e5; fill: var(--passfill); stroke: #1b7a38; stroke: var(--pass); stroke-width: 1.2; }
+    .wire { fill: none; stroke: #57606a; stroke: var(--wire); stroke-width: 1.5; }
+    .wfail { fill: none; stroke: #c4242f; stroke: var(--fail); stroke-width: 1.8; }
+    .wpass { fill: none; stroke: #1b7a38; stroke: var(--pass); stroke-width: 2; }
+    .tw { fill: #57606a; fill: var(--wire); } .tf { fill: #c4242f; fill: var(--fail); } .tp { fill: #1b7a38; fill: var(--pass); }
+  </style>
+  <defs>
+    <marker id="headWire" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="tw"/></marker>
+    <marker id="headFail" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="tf"/></marker>
+    <marker id="headPass" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="tp"/></marker>
+  </defs>
+  <rect class="page" x="0.5" y="0.5" width="799" height="359" rx="8"/>
+  <g transform="translate(10,0)"><rect class="well" x="0" y="10" width="380" height="340" rx="6"/><rect class="cellfail" x="12" y="20" width="64" height="22" rx="11"/><text class="b s rf" x="44.0" y="35" text-anchor="middle">Before</text><text class="m b s" x="86" y="35">TS-C02 · goroutine group</text>
+  <rect class="cell" x="20" y="70" width="110" height="34" rx="6"/>
+  <text class="m" x="75.0" y="91.0" text-anchor="middle">Launch()</text>
+  <rect class="ghost" x="220" y="70" width="130" height="34" rx="6"/>
+  <text class="m" x="285.0" y="91.0" text-anchor="middle">go run()</text>
+  <path class="wfail" d="M 130 87 L 218 87" marker-end="url(#headFail)"/>
+  <text class="s rf" x="174" y="78" text-anchor="middle">starts</text>
+  <text class="s dim" x="190" y="134" text-anchor="middle">Launch returns; nothing waits for run</text>
+  <text class="s rf" x="190" y="152" text-anchor="middle">the goroutine can outlive its caller</text>
+  <rect class="srcbox" x="8" y="176" width="364" height="56" rx="5"/>
+  <text class="src" xml:space="preserve" x="16" y="194">func Launch() {</text>
+  <text class="src" xml:space="preserve" x="16" y="208">    go run()</text>
+  <text class="src" xml:space="preserve" x="16" y="222">}</text>
+  <text class="s b rf" x="190" y="338" text-anchor="middle">TS-C02: this go statement starts a goroutine nobody owns</text></g>
+  <g transform="translate(410,0)"><rect class="well" x="0" y="10" width="380" height="340" rx="6"/><rect class="cellpass" x="12" y="20" width="56" height="22" rx="11"/><text class="b s rp" x="40.0" y="35" text-anchor="middle">After</text><text class="m b s" x="78" y="35">TS-C02 · goroutine group</text>
+  <rect class="cell" x="20" y="52" width="110" height="30" rx="6"/>
+  <text class="m" x="75.0" y="71.0" text-anchor="middle">Start()</text>
+  <rect class="cell" x="220" y="52" width="130" height="30" rx="6"/>
+  <text class="m" x="285.0" y="71.0" text-anchor="middle">wg.Go(serve)</text>
+  <path class="wpass" d="M 130 67 L 218 67" marker-end="url(#headPass)"/>
+  <rect class="cell" x="20" y="108" width="110" height="30" rx="6"/>
+  <text class="m" x="75.0" y="127.0" text-anchor="middle">Shutdown()</text>
+  <rect class="cell" x="220" y="108" width="130" height="30" rx="6"/>
+  <text class="m" x="285.0" y="127.0" text-anchor="middle">wg.Wait()</text>
+  <path class="wpass" d="M 130 123 L 218 123" marker-end="url(#headPass)"/>
+  <path class="wire" d="M 285 82 L 285 106" marker-end="url(#headWire)"/>
+  <text class="s dim" x="292" y="98" text-anchor="start">same group</text>
+  <text class="s dim" x="190" y="156" text-anchor="middle">Shutdown closes stop, then waits</text>
+  <text class="s rp" x="190" y="170" text-anchor="middle">for serve to exit</text>
+  <rect class="srcbox" x="8" y="176" width="364" height="112" rx="5"/>
+  <text class="src" xml:space="preserve" x="16" y="194">func (d *Daemon) Start() {</text>
+  <text class="src" xml:space="preserve" x="16" y="208">    d.wg.Go(d.serve)</text>
+  <text class="src" xml:space="preserve" x="16" y="222">}</text>
+  <text class="src" xml:space="preserve" x="16" y="236">func (d *Daemon) Shutdown() {</text>
+  <text class="src" xml:space="preserve" x="16" y="250">    close(d.stop)</text>
+  <text class="src" xml:space="preserve" x="16" y="264">    d.wg.Wait()</text>
+  <text class="src" xml:space="preserve" x="16" y="278">}</text>
+  <text class="s b rp" x="190" y="338" text-anchor="middle">a group starts it and Shutdown waits for it</text></g>
+</svg>

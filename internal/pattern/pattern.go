@@ -62,9 +62,9 @@ func Load(fsys fs.FS) ([]Pattern, error) {
 }
 
 func Find(all []Pattern, name string) (Pattern, bool) {
-	for _, each := range all {
-		if each.Name == name {
-			return each, true
+	for i := range all {
+		if all[i].Name == name {
+			return all[i], true
 		}
 	}
 	return Pattern{}, false
@@ -72,10 +72,10 @@ func Find(all []Pattern, name string) (Pattern, bool) {
 
 func Behind(all []Pattern, code string) []Pattern {
 	found := []Pattern{}
-	for _, each := range all {
-		for _, backed := range each.Rules {
+	for i := range all {
+		for _, backed := range all[i].Rules {
 			if backed == code {
-				found = append(found, each)
+				found = append(found, all[i])
 			}
 		}
 	}

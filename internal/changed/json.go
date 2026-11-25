@@ -17,7 +17,7 @@ var blindSpotIDs = []string{
 	"renamed-type",
 }
 
-func (r Report) JSON(rev revision.Comparison) ([]byte, error) {
+func (r *Report) JSON(rev *revision.Comparison) ([]byte, error) {
 	doc := document{
 		Schema: schema,
 		Base:   baseDoc{Ref: rev.BaseRef, Commit: rev.MergeBase, MergeBase: true},
@@ -46,7 +46,8 @@ func (r Report) JSON(rev revision.Comparison) ([]byte, error) {
 			Package: rename.Package, From: rename.From, To: rename.To,
 		})
 	}
-	for _, pkg := range r.NewPackages {
+	for i := range r.NewPackages {
+		pkg := &r.NewPackages[i]
 		doc.NewPackages = append(doc.NewPackages, newPackageDoc{
 			Package: pkg.Name,
 			Owners:  pkg.Owners,
@@ -173,22 +174,23 @@ type removedPackageDoc struct {
 
 func functionDocs(functions []Function) []functionDoc {
 	docs := make([]functionDoc, 0, len(functions))
-	for _, fn := range functions {
+	for i := range functions {
+		fn := &functions[i]
 		doc := functionDoc{
 			Function: fn.Name, Owner: fn.Owner, Calls: make([]callDoc, 0, len(fn.Calls)),
 		}
 		if fn.Name != fn.Owner {
 			doc.Method = new(strings.TrimPrefix(fn.Name, fn.Owner+"."))
 		}
-		for _, call := range fn.Calls {
-			doc.Calls = append(doc.Calls, callDocOf(call))
+		for j := range fn.Calls {
+			doc.Calls = append(doc.Calls, callDocOf(&fn.Calls[j]))
 		}
 		docs = append(docs, doc)
 	}
 	return docs
 }
 
-func callDocOf(call Call) callDoc {
+func callDocOf(call *Call) callDoc {
 	change, rev := "removed", "base"
 	if call.Added {
 		change, rev = "added", "head"

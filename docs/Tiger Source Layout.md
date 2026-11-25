@@ -64,7 +64,8 @@ driver runs once after every package has been visited (ADR-0010).
 ## Tiger checks itself
 
 CI runs `go vet ./...`, `go test ./...`, golangci-lint at Stage 0 (the auto rules with no false
-positives, per the specification's adoption ladder) and `tiger check ./...` over this
+positives, per the specification's adoption ladder) plus gocritic's `hugeParam` and `rangeValCopy`
+(TS-M03, so Tiger passes large structs by pointer as it tells adopters to) and `tiger check ./...` over this
 repository against the committed `tiger.budget.yaml`, and every pattern must pass `tiger check`
 with zero findings. A doc meta-test in `internal/rules` keeps the
 [Rule Reference](Tiger%20Rule%20Reference.md) in lockstep with the registry.
