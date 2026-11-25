@@ -275,3 +275,20 @@ func TestParallelThroughEmbeddingSetLater(t *testing.T) {
 		wg.Wait()
 	})
 }
+
+// TestParallelThroughOtherPackageAboveParallelSubtest leaks the goroutine:
+// "x" is parallel, so "y" and its Wait run after the test function returns.
+//
+// known-miss: t.Parallel runs in a helper in another package, so "x" counts
+// as a plain subtest and a parallel subtest on its t counts as waited.
+func TestParallelThroughOtherPackageAboveParallelSubtest(t *testing.T) {
+	var wg sync.WaitGroup
+	wg.Go(func() {})
+	t.Run("x", func(t *testing.T) {
+		subtesthelp.Parallel(t)
+		t.Run("y", func(t *testing.T) {
+			t.Parallel()
+			wg.Wait()
+		})
+	})
+}

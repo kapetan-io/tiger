@@ -897,7 +897,9 @@ variable holds the literal at the call when no `&` or range clause reaches it an
 either it is assigned only that literal, or it is declared, assigned and called in one
 function body and the last assignment on every path to the call is that literal. A
 replacement after the call does not matter, but one that a loop brings back to the call
-does. A body that calls `t.Parallel` also counts when it is started on the `t` of a
+does. Known gap: three safe shapes are reported. They are a call made from a nested
+literal, a replacement inside a deferred literal, and a loop whose first pass always
+calls the literal that waits before replacing it (ENG-989). A body that calls `t.Parallel` also counts when it is started on the `t` of a
 subtest whose body counts as running before its `t.Run` returns, from inside that
 subtest's body, and through no variable declared outside it. The testing package runs
 it after that body returns, and the `t.Run` that started the subtest waits for it. A

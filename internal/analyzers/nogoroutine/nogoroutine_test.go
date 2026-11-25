@@ -40,16 +40,19 @@ import (
 // literal that runs before the call holding it returns (a literal called
 // where it is written, a call to a local variable that is never reached
 // through & or rebound by a range clause and whose only definition is a
-// literal, or that is declared in the function body holding the call and
-// whose last assignment on every path to that call is a literal, or a t.Run
-// or b.Run body that does not call t.Parallel or is started on the t of a
-// subtest whose body counts) when that literal waits on every success path.
-// A Wait in a literal saved and never called, in a literal passed to another
-// function, in a saved literal that another assignment may replace on some
-// path to the call, in a parallel subtest started on any other t or in
-// t.Cleanup does not count (failure_literal_test.go). The goroutine literal of the same group,
-// and any literal inside it, is not a place to Wait, because a Wait there
-// waits on itself (failure_literal_test.go). A Go inside a literal that runs
+// literal, or that is declared, assigned and called in one function body
+// and whose last assignment on every path to that call is a literal, or a
+// t.Run or b.Run body that does not call t.Parallel or is started on the t
+// of a subtest whose body counts, from inside that subtest's body and
+// through no variable declared outside it) when that literal waits on every
+// success path. A Wait in a literal saved and never called, in a literal
+// passed to another function, in a saved literal that another assignment may
+// replace on some path to the call, in a parallel subtest started on any
+// other t or in t.Cleanup does not count (failure_literal_test.go). Three
+// safe shapes of a reassigned literal are reported as expected false
+// positives (ENG-989). The goroutine literal of the same group, and any
+// literal inside it, is not a place to Wait, because a Wait there waits on
+// itself (failure_literal_test.go). A Go inside a literal that runs
 // after the outer Wait or alongside it (a parallel subtest, a saved literal
 // called later, a deferred or t.Cleanup literal, another group's goroutine),
 // a t.Fatal that skips the Wait, and a literal inside a function that returns
