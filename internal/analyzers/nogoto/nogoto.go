@@ -1,9 +1,4 @@
 // Package nogoto enforces TS-S09: no goto, no labeled break or continue.
-//
-// Simple explicit control flow. A labeled break is usually a loop that
-// wanted to be a function; a goto is control flow the reader must simulate.
-// The rule is exact: a BranchStmt either carries a label (or is a goto) or
-// it does not.
 package nogoto
 
 import (

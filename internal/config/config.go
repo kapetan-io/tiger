@@ -2,13 +2,6 @@
 // about its world. Every entry is a value, a reason, and an optional package
 // scope; an entry widens what an analyzer detects or corrects a dictionary,
 // and no entry names a function, file, or site to exempt (ADR-0003/0005).
-//
-// The loader validates shape only — it knows nothing about what a value
-// means; the analyzer does. Both drivers load the file and install it before
-// running; analyzers ask Values for the entries that apply to the package
-// they are analyzing and never read files themselves (ADR-0002). With
-// nothing installed, Values returns nothing, so analysistest corpora run
-// exactly as they did before the file existed.
 package config
 
 import (

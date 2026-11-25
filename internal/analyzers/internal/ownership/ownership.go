@@ -1,20 +1,5 @@
 // Package ownership answers whether code a package runs can reach a
 // close, a send, or a Wait on a channel or group a function uses.
-//
-// TS-S03, TS-C05 and TS-C02 all ask the same question of different calls:
-// is there code in this package that closes this channel, or waits on this
-// group, and can the package's exported surface get there? The answer
-// depends on where the object lives. A local is the function's own, so only
-// that function can act on it. A package variable can be acted on by
-// anything an exported function or method reaches. A struct field belongs to
-// its type, so only a method of that type that an exported method of that
-// type reaches counts. A parameter belongs to the caller, so the answer
-// comes from the arguments the package passes in.
-//
-// The reach is a static walk over the package's own declarations. A call
-// through an interface or a function value is not followed, and code that is
-// only called from dead code still counts as reached when something
-// reachable names it.
 package ownership
 
 import (

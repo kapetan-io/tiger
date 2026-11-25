@@ -1,15 +1,6 @@
 // Package budget owns tiger.budget.yaml: what a repository admits it owes,
 // as one non-negative integer per (module-relative package path, advisory
 // rule code). The driver supplies counts; this package never runs analysis.
-//
-// Its contract is the ratchet's lowering-only half (ADR-0011): Lower takes
-// the loaded file and the current counts and produces rows where every
-// number is min(existing, count) for a row that existed and count for one
-// that did not, deleting rows at 0 and packages with no rows left. No API
-// sets a row to an arbitrary value, so a written number is never greater
-// than the one it replaced. The comparison half — count against budget —
-// is Compare; the "never raised without a commit that says so" half is
-// review's.
 package budget
 
 import (

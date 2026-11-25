@@ -3,13 +3,6 @@
 // limit, or its measure moves the way the rule claims. It also knows what a
 // variable can hold when every write to it is a constant, and which packages
 // sit outside the module under analysis.
-//
-// Variables are matched by object identity, never by name, so a shadowing
-// copy is a different variable. Writes inside the loop come from Writes and
-// FieldWrites. Writes the loop body cannot see (a pointer taken before the
-// loop, a closure made before the loop, a call that receives the owning
-// struct) come from Scope.Escapes, Scope.FieldEscapes and
-// ReceivesOwner; any of them defeats a proof.
 package mutation
 
 import (

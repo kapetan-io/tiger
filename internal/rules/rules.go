@@ -1,11 +1,5 @@
 // Package rules is the registry: the closed set of every rule,
 // and the single source of rule identity.
-//
-// Custom rules bind a diagnostic category to the analyzer that enforces it
-// and its severity. Auto rules live in internal/rules/auto. The tiger
-// binary's analyzer set, the corpus meta-tests and the run's severity
-// behavior are all derived from this package, so a rule cannot exist
-// half-way: registered means enforced.
 package rules
 
 import (
@@ -35,6 +29,7 @@ import (
 	"github.com/kapetan-io/tiger/internal/analyzers/nogoroutine"
 	"github.com/kapetan-io/tiger/internal/analyzers/nogoto"
 	"github.com/kapetan-io/tiger/internal/analyzers/norecursion"
+	"github.com/kapetan-io/tiger/internal/analyzers/packagecomment"
 	"github.com/kapetan-io/tiger/internal/analyzers/paniccheck"
 	"github.com/kapetan-io/tiger/internal/analyzers/poolzero"
 	"github.com/kapetan-io/tiger/internal/analyzers/returnarity"
@@ -198,6 +193,16 @@ var customRules = []CustomRule{
 		Category: "TS-L14", RuleID: "TS-L14", Analyzer: comments.Analyzer,
 		Severity: SeverityBlocking,
 		Title:    "no prose comments below the package line of a production file",
+	},
+	{
+		Category: "TS-L15", RuleID: "TS-L15", Analyzer: packagecomment.Analyzer,
+		Severity: SeverityBlocking,
+		Title:    "a package comment is one paragraph",
+	},
+	{
+		Category: "TS-L16", RuleID: "TS-L16", Analyzer: packagecomment.Analyzer,
+		Severity: SeverityBlocking,
+		Title:    "no production file holds only comments",
 	},
 	{
 		Category: "TS-T12", RuleID: "TS-T12", Analyzer: testpackage.Analyzer,

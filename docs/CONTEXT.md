@@ -243,7 +243,8 @@ The committed `tiger.yaml` at the module root holding facts about the world for 
 (IO packages). Every entry is a value, a reason, and an optional package
 scope, and is reviewed like code. An entry widens what an analyzer detects or corrects a
 dictionary. No entry names a function, file, or site to exempt, with one exception: `comments.allow`
-names a directory whose prose comments the ban skips until a ticket clears them.
+names a directory whose prose comments the ban, and the package-comment rules, skip until a ticket
+clears them.
 _Avoid_: allowlist file, settings (the golangci term), suppression list
 
 **Budget file**:

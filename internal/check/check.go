@@ -1,11 +1,5 @@
 // Package check is the check run, everything tiger check does from arguments
 // to exit code, and tiger budget, the same run printing only the ratchet.
-//
-// All run-level policy lives here: the registry's severity is applied to
-// findings, blocking findings fail the run, advisory findings are counted
-// against tiger.budget.yaml and fail the run on overrun, and operational
-// failures exit with a code distinct from findings so a partial run is
-// never mistaken for a clean one.
 package check
 
 import (

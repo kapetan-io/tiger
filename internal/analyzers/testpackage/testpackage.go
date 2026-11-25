@@ -1,10 +1,4 @@
 // Package testpackage enforces TS-T12: tests live in the external _test package.
-//
-// A _test.go file that declares the package under test (package foo) can reach
-// every unexported name in it, which lets a test pin internals instead of
-// behavior a caller sees. Only package foo_test is allowed. There is no
-// exception for export_test.go: a file that re-exports internals is the same
-// problem in a different file.
 package testpackage
 
 import (

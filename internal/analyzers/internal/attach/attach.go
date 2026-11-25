@@ -1,12 +1,5 @@
 // Package attach resolves which tiger directive, if any, is attached to a
 // node.
-//
-// This is the shared attachment contract for directive consumers: a
-// directive governs a node when it sits in the comment group ending on the
-// line immediately above the node, or trails on the node's own first line.
-// Only a well-formed directive attaches — an escape with no reason is a
-// blocking TS-L09 finding, never a working waiver — and directive
-// validation itself stays solely in the directives analyzer.
 package attach
 
 import (

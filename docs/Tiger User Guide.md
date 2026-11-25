@@ -286,8 +286,9 @@ comments:
 ```
 
 The `comments.allow` entries are directories rather than package scopes. TS-L14 blocks prose
-comments in production code, and an entry exempts a directory's whole subtree (`.` is the whole
-module). It is the one entry that names a place to exempt, a brownfield adoption path that
+comments in production code, TS-L15 holds a package comment to one paragraph, TS-L16 fails a file
+that holds only comments, and an entry exempts a directory's whole subtree from all three (`.` is
+the whole module). It is the one entry that names a place to exempt, a brownfield adoption path that
 review of `tiger.yaml` guards (ADR-0031).
 
 A `nolint` block with `forbid: true` and a reason turns on the ban on `//nolint`, so
@@ -355,6 +356,10 @@ golangci-lint's own behavior applies:
 - **`//nolint` works.** golangci-lint honors `//nolint:tiger` and its `exclusions` for tiger's
   findings as for any linter's, so CI still gates on `tiger check`, where `//nolint` changes
   nothing.
+- **Computed facts never print.** golangci-lint has no `--show-facts` and treats every
+  diagnostic as an issue, so facts would bury real findings, and under its default of one
+  issue per line they would push findings off their lines. The plugin drops them, as `tiger check`
+  does without `--show-facts`.
 - **Budgets are CLI-only.** The plugin API has no end-of-run hook to aggregate counts across
   packages and no warning tier, so it reports every counted finding (escape directive, skipped
   test) as an issue. A repository that carries any budgeted debt needs `tiger check` for the

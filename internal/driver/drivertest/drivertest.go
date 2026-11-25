@@ -1,11 +1,5 @@
 // Package drivertest runs a whole-program rule's module corpus through the
 // tiger driver and checks its // want expectations.
-//
-// analysistest cannot run a finish step, so each whole-program rule's
-// corpus is a small module — its own go.mod, two or more packages — that
-// only driver.Check can exercise end to end. Expectations use the same
-// comment form analysistest reads: // want "regexp" on the line the
-// finding lands, one quoted pattern per expected diagnostic.
 package drivertest
 
 import (

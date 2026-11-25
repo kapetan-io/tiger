@@ -1,15 +1,5 @@
 // Package directive parses and prints the //tiger: source-directive
 // namespace.
-//
-// This package owns the verb vocabulary: an unknown verb is an error, never a
-// silently meaningless comment. It is the single formatting site for directive
-// text — no analyzer or driver builds a //tiger: line by hand — which is what
-// makes the round-trip contract enforceable: for every well-formed directive,
-// Parse(Format(d)) == d. When later waves print computed facts, the same
-// contract guarantees report output is byte-identical to pin syntax.
-//
-// Parse validates verb identity and each verb's argument shape: an escape
-// needs a reason, and a pin takes its verb's grammar.
 package directive
 
 import (

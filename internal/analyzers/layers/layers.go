@@ -1,14 +1,5 @@
 // Package layers enforces TS-X03: the package import graph is declared in
 // tiger.layers.yaml and every import obeys it.
-//
-// The driver loads and installs the layer file; this pass only asks it
-// where the analyzed package sits, whether each import is listed and whether
-// each use of a file-reading standard library function has os
-// (ADR-0002). Matching is exact, because depguard's prefix match against the
-// nearest allow entry cannot express it (ADR-0029). _test.go files are not
-// layered, because surface tests cross layers. Entries that match no package,
-// and packages with no entry that the run did not load, are checked by tiger
-// check (internal/check), which sees the module's directories.
 package layers
 
 import (

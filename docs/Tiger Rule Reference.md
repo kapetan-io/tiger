@@ -115,6 +115,14 @@ A recursive function's depth depends on its input data, not on anything in the c
 lets a single call stack grow up to one gigabyte before it gives up. So a bad input does
 not fail fast. It quietly eats memory and crashes far from the real cause.
 
+Tiger builds the call graph from calls whose target is known: direct calls, calls to a
+concrete type's method, directly or through a method value, calls to a generic function,
+and calls through a function literal.
+It does not use class
+hierarchy analysis, which treats an interface method call as a call to every type that
+implements it. That would report cycles that never run, and a false finding from a blocking
+rule is a bug in the analyzer.
+
 A cycle is reported once, at the cycle's first function ordered by file name, then line. A
 cycle across files therefore reports at the same file and line on every run, so a
 `//nolint` or a `--new-from-rev` baseline on that line keeps matching.
@@ -1122,6 +1130,11 @@ package worker
 type Jobs chan Job
 ```
 
+Every named type that holds a channel counts, whether or not its values cross goroutines.
+Whether a channel crosses goroutines depends on how its values are used, possibly from other
+packages, which one package's code cannot show. Counting every one is stricter than the rule's
+title, but it is exact, and it never misses a package with more than one channel type.
+
 **Known miss:** A channel type spelled out only in a function signature or a `var`
 declaration, never given its own named type, is not counted, so it can sit anywhere.
 
@@ -1512,6 +1525,104 @@ because an entry can clear a finding; review of the `tiger.yaml` diff is the gua
 directive. A team that wants none turns on `nolint.forbid`. Prose in a file that uses cgo is
 not checked, because the Go toolchain hands tiger the cgo-generated file, which carries the
 generated-file marker.
+
+
+<!-- rule: TS-L15 -->
+### TS-L15 — a package comment is one paragraph
+
+**Severity:** blocking — a finding fails the run.
+
+With prose banned below the `package` line (TS-L14), the package comment is the one comment
+left, and it fills with how the package works. That prose drifts like any other comment. The
+package comment says why the package exists, in one paragraph.
+
+The package comment is the comment group directly above the `package` clause, read the way
+`go doc` reads it. A blank comment line, a `# Heading`, a list or an indented code block starts
+a second block, and a second block is a finding, reported at the comment's first line.
+
+`go doc` joins the package comments of every file in a package, so a package comment in two
+files is a finding at each, with its own message: keep the package comment in one file and
+delete it from the others. A comment above `package` that holds only directives, such as
+`//go:generate x`, prints nothing in `go doc` and does not count.
+
+Code that fires it, in `queue.go`:
+
+```go
+// Package queue holds work until a worker leases it.
+//
+// The hash picks a partition, and the rank formula orders leases.
+package queue
+
+type Queue struct{}
+```
+
+```
+queue.go:1:1: TS-L15: this package comment runs past one paragraph — tiger expects it to say only why the package exists — keep the first paragraph and move the rest into a test or a doc, or delete it
+```
+
+The compliant rewrite keeps the first paragraph:
+
+```go
+// Package queue holds work until a worker leases it.
+package queue
+
+type Queue struct{}
+```
+
+Test files, generated files and directories under `comments.allow` are exempt, as for TS-L14.
+`tiger check` writes no fix (ADR-0008).
+
+**Known miss:** a comment separated from the `package` clause by a blank line is not the package
+comment, so it may run to any length. That is how a licence header stays legal. A file that uses
+cgo is not checked, for the reason TS-L14 gives, and neither its package comment nor a generated
+file's counts toward the package's total, though `go doc` prints both.
+
+
+<!-- rule: TS-L16 -->
+### TS-L16 — no production file holds only comments
+
+**Severity:** blocking — a finding fails the run.
+
+A file with no declarations exists only to carry prose, usually a `doc.go` with a long package
+comment. A file holding only the `package` clause and comments is a finding, reported at the
+`package` line, whatever the file is named. A licence header is a comment, so a file with a
+licence header, a package comment and the `package` clause fires too.
+
+Code that fires it, in `doc.go`:
+
+```go
+// Package queue holds work until a worker leases it.
+package queue
+```
+
+```
+doc.go:2:1: TS-L16: this file holds only comments and the package clause — tiger expects every production file to carry code — move any package comment above the package clause of a file with code, then delete this file
+```
+
+The compliant rewrite moves the package comment into a file with code, any file the author
+picks, and deletes `doc.go`:
+
+```go
+// Package queue holds work until a worker leases it.
+package queue
+
+type Queue struct{}
+```
+
+A file with an import and nothing else has a declaration, so it passes. A file holding only
+the `package` clause, with no comment at all, carries no prose and passes. Go directives
+(`//go:build` with its old `// +build` form, `//go:generate` and the others TS-L14 lists),
+tiger directives and `//nolint` lines are not prose either, so a file holding only directives and the `package` clause passes.
+A licence header or package comment beside the directives still fires. In a
+package that uses cgo, the Go toolchain also hands tiger an import stub from its build cache,
+holding only the `package` clause and `//go:cgo_import_dynamic` lines; tiger skips it, along
+with any other file whose name does not end in `.go`. Test files, generated
+files and directories under `comments.allow` are exempt, as for TS-L14. `tiger check` writes no
+fix (ADR-0008).
+
+**Known miss:** tiger reads only the files that build on the platform it runs on, so a
+comment-only file behind a build constraint, such as `//go:build windows` above a package
+comment, fires on Windows and passes everywhere else.
 
 ## Memory and IO
 
@@ -2042,6 +2153,10 @@ TS-S02 accepts a loop whose variant this rule verified.
 Known miss: a `goto` back above a counted loop restarts it with the counter reset, and
 neither TS-S02 nor TS-V01 fires. TS-S09 blocks every `goto`, so this matters only where
 TS-S09 is waived.
+
+A `//tiger:variant` pin that tiger cannot verify is a finding even when the loop plausibly
+ends. The pin states that tiger checked the ranking, so a pin that fails the check is a
+broken claim, not a weaker one than leaving the loop unpinned.
 
 A `//tiger:variant` comment on a loop that ends on its own, a range or a counted loop,
 is a finding too, because it says nothing: `TS-V01: this loop has a //tiger:variant

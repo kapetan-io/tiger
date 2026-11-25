@@ -1,42 +1,6 @@
 // Package nogoroutine enforces TS-C02, TS-C03 and TS-C09: every goroutine
 // starts through a group that waits for it, packages that start goroutines
 // check for leaks in their tests, and loops don't spawn per item.
-//
-// TS-C02. A bare go statement is always a finding. A goroutine starts through
-// errgroup.Group.Go or sync.WaitGroup.Go, and then the group's Wait must be
-// reached (see internal/analyzers/internal/ownership). For a group the
-// function holds, the Wait must follow the start in that function. A function
-// literal, such as a t.Run body, counts as a function, and so does any
-// function around it, whoever calls the literal. A literal passed to Go or
-// TryGo on the same group is that group's goroutine, so neither it nor any
-// literal inside it counts. A Wait after the start may also sit in a literal
-// the call at that point runs before it returns (called where it is written,
-// saved in a local that holds only that literal, or a t.Run body that does
-// not call t.Parallel), when the literal waits on all its success paths. For
-// a group held in a struct field, the Wait goes in an exported method of the
-// owning type (or a method one reaches). A select case receiving from
-// ctx.Done() is the early return of a Shutdown whose caller gave up, so it is
-// not the success path: a path through it needs no Wait, and a Wait inside it
-// covers a path only when the case also holds the start. The case is exempt
-// only when the path reaches it after the start, no such case holds the
-// start, and the function calls Wait on the group anywhere, that case
-// included. A group received as a parameter is the caller's to wait on, which
-// this check does not follow. There is no allowlist of supervisor functions,
-// because a function listed there would have every go statement inside it
-// exempted — a per-site deviation in config shape, which ADR-0003/0005 gate.
-//
-// TS-C03. A package whose non-test files start goroutines through go,
-// wg.Go or errgroup.Go needs a goleak check in a TestMain of its tests (see
-// harness.go).
-//
-// TS-C09. A go statement, a sync.WaitGroup.Go call, or an errgroup.Group.Go
-// or TryGo call, lexically inside a for or range loop body is the reactive
-// anti-pattern TS-C09 warns about — work started in direct response to each
-// event or item, with no back pressure. A group with SetLimit is still
-// reported, because SetLimit caps how many goroutines run at once but not how
-// many the loop starts. The rule skips _test.go files (ADR-0019): a
-// concurrency test starts one goroutine per request on purpose. A spawn in a
-// test loop is silent; a spawn outside a loop in a test still fires TS-C02.
 package nogoroutine
 
 import (

@@ -1,15 +1,5 @@
 // Package limitrelate enforces TS-S21: every limit constant participates in
 // a compile-time relational assertion.
-//
-// Whether a Max or Min constant holds the right number is arithmetic about
-// the world and no analyzer can check it. Whether the author related it to
-// anything else is checkable: every package-level constant whose name ends
-// in Max or Min must appear inside a package-level `const _ = uint(...)`
-// expression somewhere in the package, the compile-time relational
-// assertion pattern from TS-S17. An unexported limit must also be used
-// somewhere outside such expressions, or it bounds nothing the program
-// does. The analyzer matches names and does not judge whether a relation
-// is a meaningful one.
 package limitrelate
 
 import (

@@ -1,32 +1,4 @@
 // Package ioinloop enforces TS-M10: no IO call inside a loop body.
-//
-// A call is IO when its callee, function or method, resolves through
-// pass.TypesInfo to a *types.Func that stdlibio lists as IO, never by name
-// or by the interface it happens to satisfy. An io.Writer implementer
-// includes the in-memory bytes.Buffer, and flagging it would break the
-// exact-tier invariant (blocking findings are true by construction). A call
-// stdlibio does not list as IO is silent: net.SplitHostPort, os.Getpid,
-// (*sql.Rows).Scan and http.Header.Set do no IO, and an interface method
-// such as http.ResponseWriter.Write may be backed by memory.
-//
-// The -ioinloop.packages flag and ioinloop.packages entries in tiger.yaml
-// add whole packages per repo: every call into one counts as IO, except a
-// method on a map-, slice-, or basic-underlying receiver, because a pure
-// container or value holds no connection or descriptor. Naming a standard
-// library package there overrides the IO list for that package.
-//
-// Init, Cond, Post, and a RangeStmt's X each run once per loop, not once
-// per iteration, so IO there is deliberately unflagged — this is what
-// keeps idiomatic cursor-advance conditions (for rows.Next()) out of scope.
-// A FuncLit is a frame boundary, consistent with deferdistance: IO inside a
-// closure defined in the loop is not attributed to the loop.
-//
-// //tiger:batched waives TS-M10 in a loop's own body only: an inner loop
-// under an outer-only-annotated directive still fires, so accounting stays
-// per decision. Directive validation (a known verb, a reason) stays solely
-// in the directives analyzer; this package parses but never reports
-// TS-L09, so the TS-L09-escape standing advisory is never suppressed by
-// consumption.
 package ioinloop
 
 import (
