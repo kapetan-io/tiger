@@ -1,12 +1,14 @@
 package changedtests
 
 import (
+	"errors"
 	"fmt"
 	"go/ast"
 	"go/doc"
 	"go/parser"
 	"go/scanner"
 	"go/token"
+	"io/fs"
 	"maps"
 	"os"
 	"path"
@@ -36,23 +38,68 @@ type definition struct {
 
 var testPrefixes = []string{"Test", "Benchmark", "Fuzz", "Example"}
 
-func readTests(dir string) (testFunctions, error) {
-	modulePath, err := module.PathOf(dir)
-	if err != nil {
-		return nil, err
+type revisionTests struct {
+	tests   testFunctions
+	modules module.Modules
+}
+
+type runDir struct {
+	path      string
+	enclosing bool
+}
+
+func readTests(run runDir) (revisionTests, error) {
+	dir := run.path
+	modules, err := module.ReadModules(dir)
+	if err == nil && run.enclosing {
+		modules, err = modules.Enclosed(dir)
 	}
-	files, err := module.GoFiles(dir)
+	if err != nil {
+		return revisionTests{}, err
+	}
+	read := revisionTests{tests: testFunctions{}, modules: module.Modules{Unread: modules.Unread}}
+	for _, mod := range modules.Read {
+		tests, err := moduleTests(dir, mod)
+		if err != nil && mod.Dir == "." {
+			return revisionTests{}, err
+		}
+		if err != nil {
+			read.modules.Unread = append(read.modules.Unread,
+				module.Unread{Dir: mod.Dir, Reason: unreadReason(dir, err)})
+			continue
+		}
+		read.modules.Read = append(read.modules.Read, mod)
+		maps.Copy(read.tests, tests)
+	}
+	return read, nil
+}
+
+func unreadReason(dir string, err error) string {
+	var pathErr *fs.PathError
+	if !errors.As(err, &pathErr) {
+		return err.Error()
+	}
+	rel, relErr := filepath.Rel(dir, pathErr.Path)
+	if relErr != nil {
+		return err.Error()
+	}
+	return fmt.Sprintf("cannot read %s: %v", filepath.ToSlash(rel), pathErr.Err)
+}
+
+func moduleTests(dir string, mod module.Module) (testFunctions, error) {
+	files, err := module.GoFiles(filepath.Join(dir, filepath.FromSlash(mod.Dir)))
 	if err != nil {
 		return nil, err
 	}
 	tests := testFunctions{}
 	for _, pkgDir := range slices.Sorted(maps.Keys(files)) {
-		pkg := path.Join(string(modulePath), pkgDir)
+		pkg := path.Join(string(mod.ImportPath), pkgDir)
 		for _, rel := range files[pkgDir] {
 			if !strings.HasSuffix(rel, "_test.go") {
 				continue
 			}
-			if err := tests.read(testFile{dir: dir, rel: rel}, pkg); err != nil {
+			file := testFile{dir: dir, rel: path.Join(mod.Dir, rel)}
+			if err := tests.read(file, pkg); err != nil {
 				return nil, err
 			}
 		}
@@ -195,4 +242,36 @@ func (t testFunctions) packages() int {
 		}
 	}
 	return len(seen)
+}
+
+func (t testFunctions) outside(modules *moduleSides) testFunctions {
+	kept := testFunctions{}
+	for _, name := range slices.SortedFunc(maps.Keys(t), testName.order) {
+		if !name.inUnreadModule(modules.base) && !name.inUnreadModule(modules.head) {
+			kept[name] = t[name]
+		}
+	}
+	return kept
+}
+
+func (n testName) inUnreadModule(modules module.Modules) bool {
+	depth, unread := -1, false
+	for _, mod := range modules.Read {
+		if d, ok := n.depthIn(mod.Dir); ok && d > depth {
+			depth, unread = d, false
+		}
+	}
+	for _, mod := range modules.Unread {
+		if d, ok := n.depthIn(mod.Dir); ok && d > depth {
+			depth, unread = d, true
+		}
+	}
+	return unread
+}
+
+func (n testName) depthIn(root string) (int, bool) {
+	if root == "." {
+		return 0, true
+	}
+	return strings.Count(root, "/") + 1, n.dir == root || strings.HasPrefix(n.dir, root+"/")
 }

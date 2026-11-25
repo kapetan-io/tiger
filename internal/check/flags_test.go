@@ -9,7 +9,7 @@ import (
 	"github.com/kapetan-io/tiger/internal/command"
 )
 
-// TestCheckDrivesIoinloopPackagesFlag covers the per-repo IO allowlist
+// TestCheckDrivesIoinloopPackagesFlag covers the per-repo -ioinloop.packages
 // extension: a local subpackage standing in for third-party IO is silent
 // by default and only becomes a TS-M10 finding once its import path is
 // named on -ioinloop.packages.

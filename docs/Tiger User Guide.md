@@ -129,6 +129,24 @@ deletes, with its package and file. A pull request that changes an existing test
 behavior that test guarded, so those are the tests a reviewer reads first. It exits 0 for any
 report and 2 when no report can be produced, and flags go before `<base>`.
 
+It reads every module at and below the run directory: the module the run directory sits in, each
+nested module (a directory below it with its own `go.mod`), and modules nested inside those. One
+run at the repository root covers them all, even when the root has no `go.mod` of its own. A
+test's `file` is relative to the run directory and its `package` is the import path in its own
+module, so `tools/lint/lint_test.go` in module `example.com/tools` reports package
+`example.com/tools/lint`. A branch that removes a nested module reports its tests deleted.
+Directories that `go test ./...` skips (`testdata`, `vendor`, and names starting with `.` or `_`)
+are not searched for modules, and a module inside one is neither read nor named. A `go.work` file
+is ignored: modules are found from the `go.mod` files in the tree alone.
+
+A nested module that cannot be read is named in the report with the reason and the revision, and
+its tests are not compared at either revision, so an empty list never means "nothing changed" in a
+module that was not read. That covers a `go.mod` with no `module` line or one the run cannot open,
+a directory inside the module that cannot be listed, and a test file that cannot be opened or does
+not parse. A module unread at both revisions for different reasons is listed once per revision, each row
+naming its revision. A module nested inside an unread one is still read. When any of these happen in the
+module the run directory sits in, no report is produced.
+
 - Only top-level `Test`, `Benchmark`, `Fuzz` and `Example` functions in `_test.go` files count.
   Test methods on suite types, helpers and testdata are not reported.
 - A test counts as modified when its signature or body differs in its Go tokens. An edit to
@@ -139,24 +157,25 @@ report and 2 when no report can be produced, and flags go before `<base>`.
   module reports a modified test under the new path and a deleted one under the path it had.
 - Tests added since the merge base are never listed, so a branch that only adds tests reports
   nothing.
-- It reads the test files without type-checking them, and a test file that does not parse at
-  either revision exits 2 rather than reporting the tests inside it as deleted.
+- It reads the test files without type-checking them. A test file in the run directory's module
+  that does not parse at either revision exits 2 rather than reporting the tests inside it as
+  deleted, and one in a nested module names that module as unread.
 
 What it does not report:
 
-- Tests in a nested module, a directory below the run directory with its own `go.mod`. They are
-  skipped without a word, the same way `go test ./...` skips them. Run it once per module with
-  `-C`, as in `tiger changed-tests -C sub main`, to cover them.
 - A change to a file's `//go:build` line alone, which changes where its tests run.
 - Two build-tagged copies of one test whose bodies are swapped, say `TestOS` in `a_test.go`
   (`linux`) and `b_test.go` (`!linux`). Each body still matches a copy on the other side.
 - A test the branch moves into a gitignored `_test.go` file reads as unchanged in a local run,
   because the working tree still has it; CI's checkout does not, so CI reports it deleted.
-- Any test when the merge base has no `go.mod`, the same as `tiger changed`.
+- Any test when the merge base has no `go.mod` at, above or below the run directory. Only the
+  repository's files count at the merge base, so a `go.mod` above the repository is read at head
+  only.
 
 `tiger changed-tests --format json <base>` prints one JSON object (`tiger.changed-tests/v1`).
 Its `changes_existing_tests` field is true when the list is not empty, so a script can decide from
-one field:
+one field. `unread_modules` lists each nested module left unread, as above, and is `[]` when every
+module was read:
 
 ```json
 {
@@ -167,6 +186,9 @@ one field:
   "tests": [
     {"package": "example.com/shop/cart", "file": "cart/cart_test.go",
      "function": "TestTotal", "change": "modified"}
+  ],
+  "unread_modules": [
+    {"dir": "tools", "reason": "go.mod has no module line at head"}
   ]
 }
 ```

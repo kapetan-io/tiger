@@ -9,10 +9,9 @@ import (
 	"golang.org/x/tools/go/analysis"
 
 	"github.com/kapetan-io/tiger/internal/analyzers/internal/attach"
+	"github.com/kapetan-io/tiger/internal/analyzers/ioinloop/stdlibio"
 	"github.com/kapetan-io/tiger/internal/config"
 )
-
-var seedPackages = []string{"os", "net", "net/http", "database/sql", "syscall"}
 
 const msg = "TS-M10: this call does IO (network, disk, or database) and runs once per loop " +
 	"iteration — move it above the loop, or if each item genuinely needs its own IO, mark " +
@@ -27,26 +26,23 @@ func newAnalyzer() *analysis.Analyzer {
 		Run:  run,
 	}
 	built.Flags.StringVar(&packagesFlag, "packages", "",
-		"comma-separated import paths appended to the seed IO allowlist")
+		"comma-separated import paths whose every call counts as IO")
 	return built
 }
 
 var Analyzer = newAnalyzer()
 
 func run(pass *analysis.Pass) (any, error) {
-	allowed := allowlist(pass)
+	packages := ioPackages(pass)
 	for _, file := range pass.Files {
-		w := walker{pass: pass, file: file, allowed: allowed}
+		w := walker{pass: pass, file: file, ioPackages: packages}
 		w.walk(file, nil)
 	}
 	return nil, nil
 }
 
-func allowlist(pass *analysis.Pass) map[string]bool {
-	allowed := map[string]bool{}
-	for _, path := range seedPackages {
-		allowed[path] = true
-	}
+func ioPackages(pass *analysis.Pass) map[string]bool {
+	packages := map[string]bool{}
 	paths := strings.Split(packagesFlag, ",")
 	paths = append(paths, config.Values(
 		pass.Pkg.Path(), config.Key{Analyzer: "ioinloop", Flag: "packages"},
@@ -54,16 +50,16 @@ func allowlist(pass *analysis.Pass) map[string]bool {
 	for _, path := range paths {
 		path = strings.TrimSpace(path)
 		if path != "" {
-			allowed[path] = true
+			packages[path] = true
 		}
 	}
-	return allowed
+	return packages
 }
 
 type walker struct {
-	pass    *analysis.Pass
-	file    *ast.File
-	allowed map[string]bool
+	pass       *analysis.Pass
+	file       *ast.File
+	ioPackages map[string]bool
 }
 
 func (w *walker) walk(root ast.Node, frame []bool) {
@@ -108,7 +104,10 @@ func (w *walker) isIO(call *ast.CallExpr) bool {
 	if fn == nil || fn.Pkg() == nil {
 		return false
 	}
-	return w.allowed[fn.Pkg().Path()] && !containerMethod(fn)
+	if stdlibio.Classify(fn.Origin().FullName()) == stdlibio.IO {
+		return true
+	}
+	return w.ioPackages[fn.Pkg().Path()] && !containerMethod(fn)
 }
 
 func containerMethod(fn *types.Func) bool {

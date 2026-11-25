@@ -72,6 +72,16 @@ The analyzer-computed summary of what a function does, and the set of locations 
 removed both, with their pins, the stdlib effects table, and the `effects` and `frames` analyzers,
 because they missed every call through an interface or a library.
 
+**IO list**:
+Tiger's list of standard library calls that do IO, used only by TS-M10 to decide whether a call in
+a loop body is IO. It classifies every exported call in `os`, `net`, `net/http` and `database/sql`
+as IO, no IO, or unproven (silent because the call site cannot tell), plus a short list of raw
+`syscall` calls. Unlike the effect table ADR-0026 removed, it classifies every exported call in
+those four packages, enforced by a test, and decides one rule's verdict on direct calls, not
+effects along a call chain. A repo adds a third-party client by package through
+`ioinloop.packages` in the **config file**.
+_Avoid_: effect table
+
 **`tiger changed`**:
 The report, not a rule, that lists for each **function** the **calls added** and **calls removed**
 between the merge base of a base revision and the working tree; it replaces effect and frame pins
@@ -80,8 +90,10 @@ _Avoid_: diff, effect report
 
 **`tiger changed-tests`**:
 The report, not a rule, that lists each **changed test**, with its package and file, between the
-merge base of a base revision and the working tree. It reads `_test.go` files without type-checking,
-and it is separate from `tiger changed`, whose report skips every test file.
+merge base of a base revision and the working tree. It reads `_test.go` files without type-checking
+in the **module (Go)** the run directory sits in and every nested module below it, except under
+directories `go test ./...` skips, and names each nested module it could not read, from its
+`go.mod` to its test files. It is separate from `tiger changed`, whose report skips every test file and nested modules.
 _Avoid_: test diff
 
 **Changed test**:
@@ -274,8 +286,11 @@ Tiger's own continuous integration (CI) workflow, `.github/workflows/ci.yml`: th
 every PR and the rules that skip jobs a change cannot affect. `internal/ci` holds only tests of it.
 
 **Module (Go)**:
-The Go module a run sits in: its module path, module-relative package paths, directory layout and
-Go files. Read once per run; not the config file.
+The Go files governed by one `go.mod`, the nearest one at or above them, leaving out directories
+below that hold their own `go.mod` (nested modules). Its facts are its module path, module-relative
+package paths, directory layout and Go files. Most commands read the one module a run sits in, and
+`tiger changed-tests` reads that module and every nested module below the run directory. Not the
+config file.
 
 **Check run**:
 Everything `tiger check` does from arguments to exit code: run setup, the driver call, the severity

@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 
 	"github.com/kapetan-io/tiger/internal/command"
@@ -17,8 +18,10 @@ const synopsis = "tiger changed-tests [-C dir] [--format text|json] <base>"
 
 const Usage = "  " + synopsis + `
       list the test functions that existed at the merge base of <base> and
-      HEAD and are modified or deleted in the working tree; flags go before
-      <base>; exit 0 for any report, 2 when no report can be produced
+      HEAD and are modified or deleted in the working tree, in the module at
+      the run directory and every nested module below it; a nested module it
+      cannot read is named; flags go before <base>; exit 0 for any report, 2
+      when no report can be produced
 `
 
 func Run(args []string, streams command.Streams) int {
@@ -73,7 +76,10 @@ func Run(args []string, streams command.Streams) int {
 }
 
 func compareRevisions(dir string, rev *revision.Comparison) (Report, error) {
-	head, err := readTests(dir)
+	head, err := readTests(runDir{path: dir, enclosing: true})
+	if err == nil && len(head.modules.Read) == 0 && len(head.modules.Unread) == 0 {
+		err = fmt.Errorf("no go.mod in %s, any directory above it or any directory below it", dir)
+	}
 	if err != nil {
 		return Report{}, fmt.Errorf("cannot read the tests at head (%s): %w",
 			revision.Short(rev.Head), err)
@@ -82,24 +88,30 @@ func compareRevisions(dir string, rev *revision.Comparison) (Report, error) {
 	if err != nil {
 		return Report{}, err
 	}
-	return changedTests(sides{base: base, head: head}), nil
+	modules := moduleSides{base: base.modules, head: head.modules}
+	report := changedTests(sides{
+		base: base.tests.outside(&modules),
+		head: head.tests.outside(&modules),
+	})
+	report.Unread = modules.unread()
+	return report, nil
 }
 
-func readBase(rev *revision.Comparison) (tests testFunctions, err error) {
-	tree, err := rev.Extract()
+func readBase(rev *revision.Comparison) (read revisionTests, err error) {
+	extracted, err := rev.Extract()
 	if err != nil {
-		return tests, err
+		return read, err
 	}
-	defer func() { err = errors.Join(err, tree.Close()) }()
-	if !tree.Present {
-		return tests, nil
+	defer func() { err = errors.Join(err, extracted.Close()) }()
+	if info, err := os.Stat(extracted.Dir); err != nil || !info.IsDir() {
+		return read, nil
 	}
-	tests, err = readTests(tree.Dir)
+	read, err = readTests(runDir{path: extracted.Dir, enclosing: extracted.Present})
 	if err != nil {
-		return tests, fmt.Errorf("cannot read the tests at base (%s): %w",
+		return read, fmt.Errorf("cannot read the tests at base (%s): %w",
 			revision.Short(rev.MergeBase), err)
 	}
-	return tests, nil
+	return read, nil
 }
 
 func failure(streams command.Streams, err error) int {
