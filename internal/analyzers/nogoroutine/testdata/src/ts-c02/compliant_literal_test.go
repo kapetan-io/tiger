@@ -2,8 +2,8 @@
 // literal around it, or in a function around that, waits for it, whoever
 // calls the literal. So does a Wait after the Go in a literal that runs before
 // the call holding it returns: a literal called where it is written, a saved
-// literal that is called, or a t.Run or b.Run body that does not call
-// t.Parallel.
+// literal that is called while the variable holds it, a t.Run or b.Run body
+// that does not call t.Parallel, or a parallel subtest of such a body.
 package fixture
 
 import (
@@ -494,4 +494,70 @@ func TestStartAndSubtestWaitInExpired(t *testing.T) {
 		t.Run("x", func(t *testing.T) { wg.Wait() })
 	default:
 	}
+}
+
+// TestWaitInParallelSubtestOneLevelDown waits in a parallel subtest of a
+// subtest. The parallel subtest runs after "x" returns, but t.Run("x") does
+// not return until it finishes, so the Wait runs before the test goes on.
+func TestWaitInParallelSubtestOneLevelDown(t *testing.T) {
+	var wg sync.WaitGroup
+	wg.Go(func() {})
+	t.Run("x", func(t *testing.T) {
+		t.Run("y", func(t *testing.T) {
+			t.Parallel()
+			wg.Wait()
+		})
+	})
+}
+
+// TestSavedWaitReassignedAfterCall replaces the saved literal only after it
+// was called, so the call runs the literal that waits.
+func TestSavedWaitReassignedAfterCall(t *testing.T) {
+	var wg sync.WaitGroup
+	wait := func() { wg.Wait() }
+	wg.Go(func() {})
+	wait()
+	wait = func() {}
+	_ = wait
+}
+
+// TestWaitInParallelSubtestTwoLevelsDown waits in a parallel subtest of a
+// parallel subtest of a plain subtest. t.Run("x") waits for both.
+func TestWaitInParallelSubtestTwoLevelsDown(t *testing.T) {
+	var wg sync.WaitGroup
+	wg.Go(func() {})
+	t.Run("x", func(t *testing.T) {
+		t.Run("y", func(t *testing.T) {
+			t.Parallel()
+			t.Run("z", func(t *testing.T) {
+				t.Parallel()
+				wg.Wait()
+			})
+		})
+	})
+}
+
+// TestWaitInParallelSubtestFromCalledLiteral starts the parallel subtest on
+// the plain subtest's t from a literal called where it is written.
+func TestWaitInParallelSubtestFromCalledLiteral(t *testing.T) {
+	var wg sync.WaitGroup
+	wg.Go(func() {})
+	t.Run("x", func(t *testing.T) {
+		func() {
+			t.Run("y", func(t *testing.T) {
+				t.Parallel()
+				wg.Wait()
+			})
+		}()
+	})
+}
+
+// TestSavedWaitAssignedLast replaces a literal that does not wait with one
+// that does before the call.
+func TestSavedWaitAssignedLast(t *testing.T) {
+	var wg sync.WaitGroup
+	wait := func() {}
+	wait = func() { wg.Wait() }
+	wg.Go(func() {})
+	wait()
 }

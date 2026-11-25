@@ -38,12 +38,16 @@ import (
 // any literal or declaration around it, whoever calls the literal
 // (compliant_literal_test.go). A Wait after the start also counts inside a
 // literal that runs before the call holding it returns (a literal called
-// where it is written, a call to a local variable whose only definition is a
-// literal and that is never reached through & or rebound by a range clause,
-// or a t.Run or b.Run body that does not call t.Parallel) when that literal
-// waits on every success path. A Wait in a literal saved and never called, in a literal
-// passed to another function, in a parallel subtest or in t.Cleanup does not
-// count (failure_literal_test.go). The goroutine literal of the same group,
+// where it is written, a call to a local variable that is never reached
+// through & or rebound by a range clause and whose only definition is a
+// literal, or whose last assignment on every path to the call in the same
+// function body is one, or a t.Run or b.Run body that does not call
+// t.Parallel or is started on the t of a subtest that counts) when that
+// literal waits on every success path. A Wait in a literal saved and never
+// called, in a literal passed to another function, in a literal the variable
+// may hold in place of another on some path to the call, in a parallel
+// subtest started on the t of the function holding the start or in t.Cleanup
+// does not count (failure_literal_test.go). The goroutine literal of the same group,
 // and any literal inside it, is not a place to Wait, because a Wait there
 // waits on itself (failure_literal_test.go). A Go inside a literal that runs
 // after the outer Wait or alongside it (a parallel subtest, a saved literal

@@ -891,8 +891,14 @@ calls. The `Wait` must follow the start on every success path.
 
 A `Wait` may sit in a literal that a call after the start runs before it returns. It
 counts when the literal waits on every one of its own success paths. Such a call is a
-literal called where it is written, a call to a local variable that only ever holds one
-literal, or `t.Run` or `b.Run` with a body that does not call `t.Parallel`. A body calls
+literal called where it is written, a call to a local variable that holds that literal
+there, or `t.Run` or `b.Run` with a body that does not call `t.Parallel`. A local
+variable holds the literal there when it is assigned only that literal, or when it is
+declared, assigned and called in one function body, no `&` or range clause reaches it,
+and the last assignment on every path to the call is that literal. A replacement after
+the call does not matter, but one that a loop brings back to the call does. A parallel
+subtest counts too when it is started on the `t` of a subtest that already counts: Go runs it after that subtest's body returns, and the
+`t.Run` that started the outer subtest waits for it. A body calls
 `t.Parallel` when it calls it on its own `t`, on a copy of that `t`, through a struct
 literal that embeds it, or through a function or method of the same package that it
 hands `t` to. A call through a helper in another package, a method value, an interface,
@@ -900,7 +906,8 @@ a struct field or a called literal's parameter is not seen, so that body counts 
 running before `t.Run` returns. A body `t.Run` skips under `-run` or `-skip` does not run
 at all, and its `Wait` still counts. These do not count: a `Wait` after a `return`, on
 one branch only, in a literal saved and never called, in a literal passed to another
-function, in a parallel subtest, in a `t.Cleanup` literal, or inside the goroutine it
+function, in a parallel subtest started on the `t` of the function that holds the start
+(it runs after that function returns), in a `t.Cleanup` literal, or inside the goroutine it
 waits for.
 
 A path that returns a non-nil error is not a success path, so a `Shutdown` that returns
