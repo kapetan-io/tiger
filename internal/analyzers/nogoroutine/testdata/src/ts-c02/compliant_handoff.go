@@ -73,17 +73,41 @@ func (r *remoteClose) Close() error {
 	return r.err
 }
 
-// onceNilClose waits once, inside sync.Once.Do, and succeeds.
-type onceNilClose struct {
-	wg   sync.WaitGroup
-	once sync.Once
+// variadicClose hands its group to a variadic helper.
+type variadicClose struct {
+	other, wg sync.WaitGroup
+	err       error
 }
 
 // Start runs the worker.
-func (o *onceNilClose) Start() { o.wg.Go(work) }
+func (v *variadicClose) Start() { v.wg.Go(work) }
 
-// Close waits inside once.Do, which returns only after the literal has run.
-func (o *onceNilClose) Close() error {
-	o.once.Do(func() { o.wg.Wait() })
-	return nil
+// Close waits through waitEach and returns the stored error.
+func (v *variadicClose) Close() error {
+	waitEach(&v.other, &v.wg)
+	return v.err
 }
+
+func waitEach(groups ...*sync.WaitGroup) {
+	for _, group := range groups {
+		group.Wait()
+	}
+}
+
+// secondArgClose hands its group to the second parameter of a helper whose
+// first parameter never waits.
+type secondArgClose struct {
+	wg  sync.WaitGroup
+	err error
+}
+
+// Start runs the worker.
+func (s *secondArgClose) Start() { s.wg.Go(work) }
+
+// Close waits through waitSecond and returns the stored error.
+func (s *secondArgClose) Close() error {
+	waitSecond(&s.wg, &s.wg)
+	return s.err
+}
+
+func waitSecond(_, second *sync.WaitGroup) { second.Wait() }

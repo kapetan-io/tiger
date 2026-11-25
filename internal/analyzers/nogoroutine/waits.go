@@ -53,7 +53,7 @@ func (o *owners) summary(group *types.Var) waiters {
 	for round := 0; round <= len(decls); round++ {
 		changed := false
 		for _, decl := range decls {
-			if always[decl] || !o.mayWait(decl.Body, group, always, map[*ast.BlockStmt]bool{}) {
+			if always[decl] || !o.mayWait(decl.Body, group, always, searchedBodies{}) {
 				continue
 			}
 			unwaited, _ := o.uncovered(functionOf(decl), flowQuery{group: group}, always)
@@ -72,13 +72,21 @@ func (o *owners) summary(group *types.Var) waiters {
 	return always
 }
 
+type searchedBody struct {
+	body  *ast.BlockStmt
+	group *types.Var
+}
+
+type searchedBodies map[searchedBody]bool
+
 func (o *owners) mayWait(
-	body *ast.BlockStmt, group *types.Var, always waiters, seen map[*ast.BlockStmt]bool,
+	body *ast.BlockStmt, group *types.Var, always waiters, seen searchedBodies,
 ) bool {
-	if seen[body] {
+	key := searchedBody{body: body, group: group}
+	if seen[key] {
 		return false
 	}
-	seen[body] = true
+	seen[key] = true
 	found := false
 	for _, block := range o.graph(body).Blocks {
 		if !block.Live {
@@ -106,12 +114,15 @@ func (o *owners) mayWait(
 }
 
 func (o *owners) callMayWait(
-	call *ast.CallExpr, group *types.Var, always waiters, seen map[*ast.BlockStmt]bool,
+	call *ast.CallExpr, group *types.Var, always waiters, seen searchedBodies,
 ) bool {
 	if o.helperWaits(call, always) {
 		return true
 	}
 	literal := o.literalRunBy(call)
+	if literal == nil {
+		literal = o.onceLiteral(call)
+	}
 	if literal != nil && o.mayWait(literal.Body, group, always, seen) {
 		return true
 	}
@@ -123,7 +134,7 @@ func (o *owners) callMayWait(
 	return false
 }
 
-func (o *owners) handedWait(call *ast.CallExpr, arg int, seen map[*ast.BlockStmt]bool) bool {
+func (o *owners) handedWait(call *ast.CallExpr, arg int, seen searchedBodies) bool {
 	decl := o.calledDecl(call)
 	if decl == nil {
 		return true
@@ -133,10 +144,26 @@ func (o *owners) handedWait(call *ast.CallExpr, arg int, seen map[*ast.BlockStmt
 		arg--
 	}
 	params := paramNames(decl)
+	if decl.Type.Params != nil && arg >= len(params)-1 && o.variadic(decl) {
+		return true
+	}
 	if arg < 0 || arg >= len(params) || params[arg] == nil {
 		return false
 	}
 	return o.mayWait(decl.Body, o.index.Object(params[arg]), waiters{}, seen)
+}
+
+func (o *owners) variadic(decl *ast.FuncDecl) bool {
+	fn, ok := o.pass.TypesInfo.Defs[decl.Name].(*types.Func)
+	return ok && fn.Signature().Variadic()
+}
+
+func (o *owners) onceLiteral(call *ast.CallExpr) *ast.FuncLit {
+	selector, ok := ast.Unparen(call.Fun).(*ast.SelectorExpr)
+	if !ok || len(call.Args) != 1 || o.calleeName(selector) != "(*sync.Once).Do" {
+		return nil
+	}
+	return o.literalOf(call.Args[0])
 }
 
 func (o *owners) names(arg ast.Expr, group *types.Var) bool {
@@ -282,13 +309,7 @@ func (o *owners) literalRunBy(call *ast.CallExpr) *ast.FuncLit {
 		return literal
 	}
 	selector, ok := ast.Unparen(call.Fun).(*ast.SelectorExpr)
-	if !ok {
-		return nil
-	}
-	if len(call.Args) == 1 && o.calleeName(selector) == "(*sync.Once).Do" {
-		return o.literalOf(call.Args[0])
-	}
-	if len(call.Args) != 2 || !subtestRuns[o.calleeName(selector)] {
+	if !ok || len(call.Args) != 2 || !subtestRuns[o.calleeName(selector)] {
 		return nil
 	}
 	body := o.literalOf(call.Args[1])

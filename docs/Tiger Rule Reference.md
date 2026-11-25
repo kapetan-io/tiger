@@ -892,8 +892,7 @@ calls. The `Wait` must follow the start on every success path.
 A `Wait` may sit in a literal that a call after the start runs before it returns. It
 counts when the literal waits on every one of its own success paths. Such a call is a
 literal called where it is written, a call to a local variable that only ever holds one
-literal, `sync.Once.Do` with a literal, or `t.Run` or `b.Run` with a body that does not
-call `t.Parallel`. A body calls
+literal, or `t.Run` or `b.Run` with a body that does not call `t.Parallel`. A body calls
 `t.Parallel` when it calls it on its own `t`, on a copy of that `t`, through a struct
 literal that embeds it, or through a function or method of the same package that it
 hands `t` to. A call through a helper in another package, a method value, an interface,
@@ -912,9 +911,10 @@ only ever set to nil, and a return of a call, such as `return flush()`, counts a
 A function that loops forever or returns only a non-nil error has no success path to
 check. It counts as a `Wait` on a group when code it runs before returning may wait on
 that group: it calls `Wait` on the group or a function that counts, takes the group's
-`Wait` method as a value, runs a literal that does one of these (as listed above), or hands
-the group to a function of the same package that may wait on it the same way, or to any
-call the check cannot follow, such as a function of another package. A `Wait` inside a
+`Wait` method as a value, runs a literal that does one of these (as listed above, or
+through `sync.Once.Do`), or hands the group to a function of the same package that may
+wait on it the same way, or to any call the check cannot follow, such as a function of
+another package or a variadic parameter. A `Wait` inside a
 goroutine, in a literal saved and never called, or in a literal handed to a call that runs
 it later, such as `time.AfterFunc`, does not count. So a `Close` that waits in `once.Do`
 and returns `s.err` counts. Such a function that does none of these satisfies

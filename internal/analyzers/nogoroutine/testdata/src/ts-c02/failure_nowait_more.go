@@ -111,3 +111,22 @@ func (l *laterWait) Closed() error {
 	time.AfterFunc(time.Second, func() { l.wg.Wait() })
 	return errClosed
 }
+
+// onceFired waits in a once.Do whose Once its Start already fired, so the Wait
+// never runs.
+type onceFired struct {
+	wg   sync.WaitGroup
+	once sync.Once
+}
+
+// Start fires the Once, then runs the worker.
+func (o *onceFired) Start() {
+	o.once.Do(func() {})
+	o.wg.Go(work) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+}
+
+// Close waits inside once.Do, which no longer runs its literal.
+func (o *onceFired) Close() error {
+	o.once.Do(func() { o.wg.Wait() })
+	return nil
+}
