@@ -899,12 +899,13 @@ A path that returns a non-nil error is not a success path, so a `Shutdown` that 
 its flush error before it waits is accepted. A function that loops forever or returns
 only a non-nil error has no success path, so it counts as a `Wait` only when it reaches
 one: a call to `Wait` on the group, or to a function that counts, outside a goroutine and
-outside any literal it does not run. A call to such a function that reaches no `Wait`
-satisfies nothing, whether it follows the start or is an exported method of the owning
-type or function of the package. Such a function whose `Wait` sits on one branch only, or
-in a `defer` that never runs, still counts as a `Wait`, and that gap is not caught. A `Wait` that only runs in the branch where the caller's context expired does
-not count. That branch is a `Shutdown` giving up
-early, and the early return is exempt from the check. The exemption needs a `Wait` on
+outside any literal it does not run. Such a function that reaches no `Wait` satisfies
+nothing, whether it is called after the start or exported as a method of the owning type
+or a function of the package. Such a function whose `Wait` sits on one branch only, or in
+a `defer` that never runs, still counts as a `Wait`, and that gap is not caught.
+
+A `Wait` that only runs in the branch where the caller's context expired does not count.
+That branch is a `Shutdown` giving up early, and the early return is exempt from the check. The exemption needs a `Wait` on
 the group somewhere in the same function, that branch included, and covers only a
 branch the path reaches after the start. A branch the path passes before the start, a
 branch the start itself sits in, and a function that never calls `Wait` exempt nothing.

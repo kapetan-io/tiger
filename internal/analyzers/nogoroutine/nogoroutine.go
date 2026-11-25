@@ -18,8 +18,9 @@
 // when it reaches a call to Wait on the group, or to a function that counts,
 // outside a goroutine and outside any literal it does not run: one that loops
 // forever or returns only a non-nil error has no success exit to check, and
-// would otherwise pass for a Wait on every group. A select case receiving from
-// ctx.Done() is the early return of a Shutdown whose caller gave up, so it is
+// would otherwise pass for a Wait on every group. In such a function a Wait on
+// one branch, or in a defer that never runs, still counts (ENG-980). A select
+// case receiving from ctx.Done() is the early return of a Shutdown whose caller gave up, so it is
 // not the success path: a path through it needs no Wait, and a Wait inside it
 // covers a path only when the case also holds the start. The case is exempt
 // only when the path reaches it after the start, no such case holds the
