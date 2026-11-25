@@ -31,9 +31,11 @@ import (
 // path after it, since the path where it returned false started nothing
 // (tryGoWaited); a return of a non-nil error is the failure path, so it
 // needs no Wait (startThenOnlyError), but a function that loops forever or
-// returns only a non-nil error counts as a Wait only when it does something with
-// the group that may wait on it, outside a goroutine and outside a literal it
-// does not run (failure_nowait.go, failure_nowait_more.go, compliant_nowait.go,
+// returns only a non-nil error counts as a Wait only when code it runs before
+// returning may wait on the group: a Wait or a method value of it, a literal it
+// runs (including through sync.Once.Do), a same-package function it hands the
+// group that may wait on it, or a call into another package it hands the group
+// (failure_nowait.go, failure_nowait_more.go, compliant_nowait.go,
 // compliant_handoff.go); such a function whose Wait sits on one branch or in a
 // defer is a documented gap (knownmiss.go, ENG-980), and so is a Wait after a
 // call that never returns (knownmiss.go); a path ending
@@ -47,7 +49,8 @@ import (
 // literal that runs before the call holding it returns (a literal called
 // where it is written, a call to a local variable whose only definition is a
 // literal and that is never reached through & or rebound by a range clause,
-// or a t.Run or b.Run body that does not call t.Parallel) when that literal
+// a sync.Once.Do literal (onceNilClose), or a t.Run or b.Run body that does
+// not call t.Parallel) when that literal
 // waits on every success path. A Wait in a literal saved and never called, in a literal
 // passed to another function, in a parallel subtest or in t.Cleanup does not
 // count (failure_literal_test.go). The goroutine literal of the same group,

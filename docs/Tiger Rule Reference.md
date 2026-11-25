@@ -892,7 +892,8 @@ calls. The `Wait` must follow the start on every success path.
 A `Wait` may sit in a literal that a call after the start runs before it returns. It
 counts when the literal waits on every one of its own success paths. Such a call is a
 literal called where it is written, a call to a local variable that only ever holds one
-literal, or `t.Run` or `b.Run` with a body that does not call `t.Parallel`. A body calls
+literal, `sync.Once.Do` with a literal, or `t.Run` or `b.Run` with a body that does not
+call `t.Parallel`. A body calls
 `t.Parallel` when it calls it on its own `t`, on a copy of that `t`, through a struct
 literal that embeds it, or through a function or method of the same package that it
 hands `t` to. A call through a helper in another package, a method value, an interface,
@@ -906,14 +907,17 @@ waits for.
 A path that returns a non-nil error is not a success path, so a `Shutdown` that returns
 its flush error before it waits is accepted. A return of an error variable or field, such
 as `return err` or `return s.err`, counts as a non-nil error unless it is a named result
-never set, and a return of a call, such as `return flush()`, counts as success.
+only ever set to nil, and a return of a call, such as `return flush()`, counts as success.
 
 A function that loops forever or returns only a non-nil error has no success path to
-check. It counts as a `Wait` on a group when it does something with that group that may
-wait on it, outside a goroutine and outside any literal it saves and never runs: calls
-`Wait` on it or a function that counts, takes its `Wait` method as a value, hands the group
-to a call, or hands a call a literal that does one of these. So a `Close` that waits in
-`once.Do` and returns `s.err` counts. Such a function that does none of these satisfies
+check. It counts as a `Wait` on a group when code it runs before returning may wait on
+that group: it calls `Wait` on the group or a function that counts, takes the group's
+`Wait` method as a value, runs a literal that does one of these (as listed above), or hands
+the group to a function of the same package that may wait on it the same way, or to any
+call the check cannot follow, such as a function of another package. A `Wait` inside a
+goroutine, in a literal saved and never called, or in a literal handed to a call that runs
+it later, such as `time.AfterFunc`, does not count. So a `Close` that waits in `once.Do`
+and returns `s.err` counts. Such a function that does none of these satisfies
 nothing, whether it is called after the start or exported as a method of the owning type
 or a function of the package. Such a function whose `Wait` sits on one branch only, or in
 a `defer` that never runs, still counts, and that gap is not caught.

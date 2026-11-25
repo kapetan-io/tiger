@@ -1,6 +1,6 @@
-// A Close that waits in a way the check cannot follow, then returns a stored
-// error, keeps counting as a Wait: through sync.Once.Do, a method value of
-// Wait, a helper handed the group, or a helper in another package.
+// A Close that waits through sync.Once.Do, a method value of Wait, a helper
+// handed the group, or a helper in another package counts as a Wait, also when
+// it then returns a stored error.
 package fixture
 
 import (
@@ -71,4 +71,19 @@ func (r *remoteClose) Start() { r.wg.Go(work) }
 func (r *remoteClose) Close() error {
 	stophelp.Wait(&r.wg)
 	return r.err
+}
+
+// onceNilClose waits once, inside sync.Once.Do, and succeeds.
+type onceNilClose struct {
+	wg   sync.WaitGroup
+	once sync.Once
+}
+
+// Start runs the worker.
+func (o *onceNilClose) Start() { o.wg.Go(work) }
+
+// Close waits inside once.Do, which returns only after the literal has run.
+func (o *onceNilClose) Close() error {
+	o.once.Do(func() { o.wg.Wait() })
+	return nil
 }

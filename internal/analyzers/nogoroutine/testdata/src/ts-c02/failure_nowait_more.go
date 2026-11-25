@@ -3,7 +3,10 @@
 // on nothing, even when it has no success exit.
 package fixture
 
-import "sync"
+import (
+	"sync"
+	"time"
+)
 
 // goWaitSpin waits only inside a goroutine, then loops forever.
 type goWaitSpin struct{ wg sync.WaitGroup }
@@ -57,4 +60,54 @@ func startThenSpin() {
 	var wg sync.WaitGroup
 	wg.Go(work) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
 	Spin()
+}
+
+// otherGroupWait waits only inside a goroutine of another group, then loops
+// forever.
+type otherGroupWait struct{ a, b sync.WaitGroup }
+
+// Start runs the worker.
+func (o *otherGroupWait) Start() {
+	o.a.Go(work) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+}
+
+// Run waits on a inside b's goroutine and loops forever, so b needs no Wait.
+func (o *otherGroupWait) Run() {
+	o.b.Go(func() { o.a.Wait() })
+	for {
+	}
+}
+
+// trackedForever hands its group to a helper that never waits on it.
+type trackedForever struct{ wg sync.WaitGroup }
+
+// Start runs the worker.
+func (t *trackedForever) Start() {
+	t.wg.Go(work) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+}
+
+// Serve tracks the group forever and never waits.
+func (t *trackedForever) Serve() {
+	for {
+		track(&t.wg)
+	}
+}
+
+func track(wg *sync.WaitGroup) {
+	wg.Add(1)
+	wg.Done()
+}
+
+// laterWait waits only in a literal time.AfterFunc runs after Closed returns.
+type laterWait struct{ wg sync.WaitGroup }
+
+// Start runs the worker.
+func (l *laterWait) Start() {
+	l.wg.Go(work) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+}
+
+// Closed schedules a Wait for later and reports the group closed.
+func (l *laterWait) Closed() error {
+	time.AfterFunc(time.Second, func() { l.wg.Wait() })
+	return errClosed
 }

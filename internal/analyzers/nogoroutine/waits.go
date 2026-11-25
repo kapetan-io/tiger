@@ -53,7 +53,7 @@ func (o *owners) summary(group *types.Var) waiters {
 	for round := 0; round <= len(decls); round++ {
 		changed := false
 		for _, decl := range decls {
-			if always[decl] || !o.mayWait(decl.Body, group, always, map[*ast.FuncLit]bool{}) {
+			if always[decl] || !o.mayWait(decl.Body, group, always, map[*ast.BlockStmt]bool{}) {
 				continue
 			}
 			unwaited, _ := o.uncovered(functionOf(decl), flowQuery{group: group}, always)
@@ -73,8 +73,12 @@ func (o *owners) summary(group *types.Var) waiters {
 }
 
 func (o *owners) mayWait(
-	body *ast.BlockStmt, group *types.Var, always waiters, seen map[*ast.FuncLit]bool,
+	body *ast.BlockStmt, group *types.Var, always waiters, seen map[*ast.BlockStmt]bool,
 ) bool {
+	if seen[body] {
+		return false
+	}
+	seen[body] = true
 	found := false
 	for _, block := range o.graph(body).Blocks {
 		if !block.Live {
@@ -102,28 +106,37 @@ func (o *owners) mayWait(
 }
 
 func (o *owners) callMayWait(
-	call *ast.CallExpr, group *types.Var, always waiters, seen map[*ast.FuncLit]bool,
+	call *ast.CallExpr, group *types.Var, always waiters, seen map[*ast.BlockStmt]bool,
 ) bool {
 	if o.helperWaits(call, always) {
 		return true
 	}
-	literals := []*ast.FuncLit{o.literalRunBy(call)}
-	for _, arg := range call.Args {
-		if o.names(arg, group) {
-			return true
-		}
-		literals = append(literals, o.literalOf(arg))
+	literal := o.literalRunBy(call)
+	if literal != nil && o.mayWait(literal.Body, group, always, seen) {
+		return true
 	}
-	for _, literal := range literals {
-		if literal == nil || seen[literal] {
-			continue
-		}
-		seen[literal] = true
-		if o.mayWait(literal.Body, group, always, seen) {
+	for i, arg := range call.Args {
+		if o.names(arg, group) && o.handedWait(call, i, seen) {
 			return true
 		}
 	}
 	return false
+}
+
+func (o *owners) handedWait(call *ast.CallExpr, arg int, seen map[*ast.BlockStmt]bool) bool {
+	decl := o.calledDecl(call)
+	if decl == nil {
+		return true
+	}
+	selector, isSelector := ast.Unparen(call.Fun).(*ast.SelectorExpr)
+	if isSelector && o.pass.TypesInfo.Types[selector.X].IsType() {
+		arg--
+	}
+	params := paramNames(decl)
+	if arg < 0 || arg >= len(params) || params[arg] == nil {
+		return false
+	}
+	return o.mayWait(decl.Body, o.index.Object(params[arg]), waiters{}, seen)
 }
 
 func (o *owners) names(arg ast.Expr, group *types.Var) bool {
@@ -269,7 +282,13 @@ func (o *owners) literalRunBy(call *ast.CallExpr) *ast.FuncLit {
 		return literal
 	}
 	selector, ok := ast.Unparen(call.Fun).(*ast.SelectorExpr)
-	if !ok || len(call.Args) != 2 || !subtestRuns[o.calleeName(selector)] {
+	if !ok {
+		return nil
+	}
+	if len(call.Args) == 1 && o.calleeName(selector) == "(*sync.Once).Do" {
+		return o.literalOf(call.Args[0])
+	}
+	if len(call.Args) != 2 || !subtestRuns[o.calleeName(selector)] {
 		return nil
 	}
 	body := o.literalOf(call.Args[1])
