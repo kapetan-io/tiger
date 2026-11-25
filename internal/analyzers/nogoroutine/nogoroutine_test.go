@@ -34,7 +34,7 @@ import (
 // returns only a non-nil error counts as a Wait only when it reaches a Wait
 // outside a goroutine and outside a literal it does not run (failure_nowait.go,
 // failure_nowait_more.go, compliant_nowait.go); such a function whose Wait sits
-// on one branch or in a defer is a documented gap (knownmiss.go); a path ending
+// on one branch or in a defer is a documented gap (knownmiss.go, ENG-980); a path ending
 // in panic never returns and needs none either, though no corpus case covers
 // panic.
 //

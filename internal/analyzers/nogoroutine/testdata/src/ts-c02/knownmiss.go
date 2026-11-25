@@ -73,7 +73,7 @@ type branchWaitSentinel struct{ wg sync.WaitGroup }
 // Start runs the worker.
 //
 // known-miss: Closed returns only a non-nil error, so it has no success path
-// to check, and its Wait on one branch makes it count as a Wait on every path.
+// to check, and its Wait on one branch makes it count as a Wait on every path (ENG-980).
 func (b *branchWaitSentinel) Start() { b.wg.Go(work) }
 
 // Closed waits only when asked to, then reports the group closed.
@@ -90,7 +90,7 @@ type deferForever struct{ wg sync.WaitGroup }
 // Start runs the worker.
 //
 // known-miss: Run has no success path to check, and its deferred Wait makes it
-// count as a Wait though the Wait never runs.
+// count as a Wait though the Wait never runs (ENG-980).
 func (d *deferForever) Start() { d.wg.Go(work) }
 
 // Run defers a Wait and loops forever.

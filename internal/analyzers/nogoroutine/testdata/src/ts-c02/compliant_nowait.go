@@ -1,8 +1,7 @@
 // A function counts as a Wait when it calls Wait on the group, directly,
-// through a chain of helpers that wait, inside a literal it calls, or inside a
-// t.Run body or a saved literal it calls, including when it then returns a
-// stored error or only an error, or loops forever
-// after the Wait.
+// through a chain of helpers that wait, inside a literal it calls, inside a
+// t.Run body or inside a saved literal it calls, including when it then
+// returns a stored error or only an error, or loops forever after the Wait.
 package fixture
 
 import (
