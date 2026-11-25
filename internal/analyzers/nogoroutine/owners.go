@@ -27,7 +27,7 @@ type owners struct {
 	index     *ownership.Index
 	stops     *stopcase.Finder
 	expired   []span
-	graphs    map[graphKey]*cfg.CFG
+	graphs    map[*ast.BlockStmt]*cfg.CFG
 	summaries map[*types.Var]waiters
 	outside   map[*types.Var]bool
 	walking   map[*ast.FuncLit]bool
@@ -43,7 +43,7 @@ func newOwners(pass *analysis.Pass) *owners {
 	stops := stopcase.New(pass)
 	o := &owners{
 		pass: pass, index: stops.Index(), stops: stops,
-		graphs:    map[graphKey]*cfg.CFG{},
+		graphs:    map[*ast.BlockStmt]*cfg.CFG{},
 		summaries: map[*types.Var]waiters{},
 		outside:   map[*types.Var]bool{},
 		walking:   map[*ast.FuncLit]bool{},
@@ -195,7 +195,8 @@ func (o *owners) waited(group *types.Var, sel *ast.SelectorExpr) bool {
 		return o.outside[group]
 	}
 	always := o.summary(group)
-	query := flowQuery{group: group, start: sel, anyPath: sel.Sel.Name == "TryGo"}
+	tryGo := sel.Sel.Name == "TryGo"
+	query := flowQuery{group: group, start: sel, anyPath: tryGo, failNowEnds: !tryGo}
 	for _, literal := range o.literalsAround(decl, group, sel) {
 		if unwaited, exits := o.uncovered(literal, query, always); exits && !unwaited {
 			return true

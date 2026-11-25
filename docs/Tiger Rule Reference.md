@@ -911,7 +911,11 @@ its flush error before it waits is accepted. A path that ends in `t.Fatal`, `t.F
 outlive that failed test, and this is not caught. `t.Fatal` stops the test but runs its
 deferred calls, so a deferred `Wait` still waits on such a path. A call to a helper that
 fails the test, such as `requireReady(t)`, is a call that returns, so the path goes on
-past it, and a helper that only fails the test waits for no group.
+past it, and a helper that only fails the test waits for no group. A literal that a call
+runs, such as a `t.Run` body, reads the same way: a subtest that fails returns from
+`t.Run` to a parent that goes on, so the literal waits only when every path through it
+waits, `t.Fatal` paths included. A `TryGo` needs a `Wait` on some path, and a path
+through `t.Fatal` still goes on to it.
 
 A `Wait` that only runs in the branch where the caller's context expired does not count.
 That branch is a `Shutdown` giving up early, and the early return is exempt from the

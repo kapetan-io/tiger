@@ -8,6 +8,8 @@ package fixture
 import (
 	"sync"
 	"testing"
+
+	"golang.org/x/sync/errgroup"
 )
 
 func TestWaitThenFatal(t *testing.T) {
@@ -145,4 +147,20 @@ func TestSubtestWaitsThenFatal(t *testing.T) {
 		wg.Wait()
 		t.Fatal("after wait")
 	})
+}
+
+func TestFatalBeforeStartInSubtest(t *testing.T) {
+	var wg sync.WaitGroup
+	t.Run("x", func(t *testing.T) {
+		t.Fatal("always")
+		wg.Go(work)
+		wg.Wait()
+	})
+}
+
+func TestTryGoFailNowBeforeWait(t *testing.T) {
+	var g errgroup.Group
+	g.TryGo(func() error { return nil })
+	t.FailNow()
+	_ = g.Wait()
 }
