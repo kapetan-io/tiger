@@ -202,6 +202,9 @@ func (o *owners) literalWaits(run literalRun, query flowQuery, always waiters) b
 	defer delete(o.walking, literal)
 	fn := function{decl: o.index.DeclOf(literal), typ: literal.Type, body: literal.Body}
 	subtests := query.subtests
+	if run.saved != nil {
+		subtests = declaredAround(subtests, run.saved)
+	}
 	switch {
 	case run.subtest == nil:
 	case run.parallel:
@@ -216,13 +219,14 @@ func (o *owners) literalWaits(run literalRun, query flowQuery, always waiters) b
 
 type literalRun struct {
 	literal  *ast.FuncLit
+	saved    *types.Var
 	subtest  *types.Var
 	parallel bool
 }
 
 func (o *owners) literalRunBy(call *ast.CallExpr, subtests []*types.Var) literalRun {
 	if literal := o.literalOf(call.Fun); literal != nil {
-		return literalRun{literal: literal}
+		return literalRun{literal: literal, saved: o.savedIn(call.Fun)}
 	}
 	selector, ok := ast.Unparen(call.Fun).(*ast.SelectorExpr)
 	if !ok || len(call.Args) != 2 || !subtestRuns[o.calleeName(selector)] {
@@ -236,7 +240,26 @@ func (o *owners) literalRunBy(call *ast.CallExpr, subtests []*types.Var) literal
 	if parallel && !o.runsOn(selector, subtests) {
 		return literalRun{}
 	}
-	return literalRun{literal: body, subtest: o.subtestOf(body), parallel: parallel}
+	return literalRun{
+		literal: body, saved: o.savedIn(call.Args[1]), subtest: o.subtestOf(body), parallel: parallel,
+	}
+}
+
+func (o *owners) savedIn(expr ast.Expr) *types.Var {
+	if _, written := ast.Unparen(expr).(*ast.FuncLit); written {
+		return nil
+	}
+	return o.index.Object(expr)
+}
+
+func declaredAround(subtests []*types.Var, local *types.Var) []*types.Var {
+	var kept []*types.Var
+	for _, subtest := range subtests {
+		if subtest.Parent().Contains(local.Pos()) {
+			kept = append(kept, subtest)
+		}
+	}
+	return kept
 }
 
 func (o *owners) runsOn(selector *ast.SelectorExpr, subtests []*types.Var) bool {
@@ -245,14 +268,18 @@ func (o *owners) runsOn(selector *ast.SelectorExpr, subtests []*types.Var) bool 
 		return false
 	}
 	holder := o.index.Object(selector.X)
+	var aliases []*types.Var
 	for range aliasHopsMax {
 		if holder == nil || holder.IsField() || o.rebound(holder, decl) {
 			return false
 		}
 		defs := o.index.Definitions(holder, decl)
 		if slices.Contains(subtests, holder) {
-			return len(defs) == 0
+			return len(defs) == 0 && !slices.ContainsFunc(aliases, func(alias *types.Var) bool {
+				return !holder.Parent().Contains(alias.Pos())
+			})
 		}
+		aliases = append(aliases, holder)
 		if len(defs) != 1 {
 			return false
 		}

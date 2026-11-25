@@ -3,9 +3,8 @@
 // calls the literal. So does a Wait after the Go in a literal that runs before
 // the call holding it returns: a literal called where it is written, a saved
 // literal that is called while the variable holds it, a t.Run or b.Run body
-// that does not call t.Parallel, or a parallel subtest started from one of
-// these bodies on the t of a subtest that is not parallel itself or of a
-// parallel subtest started from its own body.
+// that does not call t.Parallel, or a parallel subtest that a subtest's body
+// starts on that subtest's own t.
 package fixture
 
 import (
@@ -640,4 +639,20 @@ func TestDeferredSavedWaitReplacedAfterDefer(t *testing.T) {
 	wait = func() {}
 	_ = wait
 	wg.Go(func() {})
+}
+
+// TestWaitInParallelSubtestFromSavedLiteralInSubtest saves the literal inside
+// the subtest body, so each run's literal holds that run's t.
+func TestWaitInParallelSubtestFromSavedLiteralInSubtest(t *testing.T) {
+	var wg sync.WaitGroup
+	wg.Go(func() {})
+	t.Run("x", func(t *testing.T) {
+		start := func() {
+			t.Run("y", func(t *testing.T) {
+				t.Parallel()
+				wg.Wait()
+			})
+		}
+		start()
+	})
 }

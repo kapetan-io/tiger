@@ -3,8 +3,7 @@
 // the group's own goroutine, or the Wait sits in a literal that may not run
 // before the call holding it returns (saved and never called, replaced on
 // some path before the call, passed to another function, a parallel subtest
-// on a t whose body has already returned when the subtest starts, or
-// t.Cleanup).
+// that no t.Run the function holding the Go calls waits for, or t.Cleanup).
 package fixture
 
 import (
@@ -956,4 +955,46 @@ func TestParallelSubtestOnAliasReplacedThroughPointer(t *testing.T) {
 			wg.Wait()
 		})
 	})
+}
+
+// TestParallelSubtestOnStaleAlias keeps the first run's t in a variable
+// declared outside the subtest body, so the second run starts its parallel
+// subtest on a subtest that has already finished.
+func TestParallelSubtestOnStaleAlias(t *testing.T) {
+	var wg sync.WaitGroup
+	var keep *testing.T
+	body := func(t *testing.T) {
+		if keep == nil {
+			keep = t
+		}
+		keep.Run("y", func(t *testing.T) {
+			t.Parallel()
+			wg.Wait()
+		})
+	}
+	t.Run("x", body)
+	wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+	t.Run("x2", body)
+}
+
+// TestParallelSubtestInStaleSavedLiteral saves a literal holding the first
+// run's t in a variable declared outside the subtest body, so the second run
+// calls it on a subtest that has already finished.
+func TestParallelSubtestInStaleSavedLiteral(t *testing.T) {
+	var wg sync.WaitGroup
+	var saved func()
+	body := func(t *testing.T) {
+		if saved == nil {
+			saved = func() {
+				t.Run("y", func(t *testing.T) {
+					t.Parallel()
+					wg.Wait()
+				})
+			}
+		}
+		saved()
+	}
+	t.Run("x", body)
+	wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+	t.Run("x2", body)
 }

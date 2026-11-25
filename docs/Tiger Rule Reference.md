@@ -899,10 +899,12 @@ function body and the last assignment on every path to the call is that literal.
 replacement after the call does not matter, but one that a loop brings back to the call
 does. A body that calls `t.Parallel` also counts when it is started on the `t` of a
 subtest whose body counts as running before its `t.Run` returns, from inside that
-subtest's body. The testing package runs it after that body returns, and the `t.Run`
-that started the subtest waits for it. A parallel subtest only runs after the body of
-the subtest above it has returned, so one it starts on that outer `t` does not count;
-one it starts on its own `t` does. A body calls
+subtest's body, and through no variable declared outside it. The testing package runs
+it after that body returns, and the `t.Run` that started the subtest waits for it. A
+parallel subtest only runs after the body of the subtest above it has returned, so one
+it starts on that outer `t` does not count; one it starts on its own `t` does. A `t`
+kept in a variable declared outside the body may be an earlier run's, whose `t.Run` has
+already returned, so it does not count either. A body calls
 `t.Parallel` when it calls it on its own `t`, on a copy of that `t`, through a struct
 literal that embeds it, or through a function or method of the same package that it
 hands `t` to. A call through a helper in another package, a method value, an interface,
@@ -910,9 +912,9 @@ a struct field or a called literal's parameter is not seen, so that body counts 
 running before `t.Run` returns. A body `t.Run` skips under `-run` or `-skip` does not run
 at all, and its `Wait` still counts. These do not count: a `Wait` after a `return`, on
 one branch only, in a literal saved and never called, in a literal passed to another
-function, in a parallel subtest started on any other `t` (it runs after the function
-that started it returns), in a `t.Cleanup` literal, or inside the goroutine it waits
-for.
+function, in a parallel subtest started on any other `t` (no `t.Run` the function
+holding the start calls waits for it), in a `t.Cleanup` literal, or inside the goroutine
+it waits for.
 
 A path that returns a non-nil error is not a success path, so a `Shutdown` that returns
 its flush error before it waits is accepted. A `Wait` that only runs in the branch where
