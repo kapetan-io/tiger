@@ -1626,9 +1626,36 @@ for count := 0; count < opts.Limit && rows.Next(); count++ {
 
 A loop that filters rows takes the page limit and scan limit form shown under TS-S02.
 
-**Known miss:** IO hidden behind a same-package helper is invisible. The analyzer checks
-direct calls, not a call graph, so a loop calling a local helper that itself calls
-`os.ReadFile` is missed.
+**What counts as IO:** a call is IO when tiger's list of standard library IO calls names it.
+The list covers every exported function and method in `os`, `net`, `net/http` and
+`database/sql`, plus a short list of raw system calls in `syscall` (`Read`, `Write`, `Open`,
+`Stat`, `Rename`, `Socket`, `Connect` and similar). It names
+`os.ReadFile`, `net.Dial`, `net.LookupHost`, `(*http.Client).Do`, `(*sql.DB).Query`,
+`(*sql.Rows).Close`, `(*os.File).Read` and `net.Conn.Write`, among others. A call the list
+marks as doing no IO is silent in a loop, such as `net.SplitHostPort`, `net.ParseIP`,
+`os.Getenv`, `os.Getpid`, `sql.Named`, `rows.Scan` inside a `rows.Next()` loop,
+`http.Header.Set` and `net.Conn.SetDeadline`. A finding therefore names a call that reaches
+a disk, a network peer, a database or a process table; it is not a guess from the package
+name.
+
+The `ioinloop.packages` entries in `tiger.yaml` widen detection by whole package. Every call
+into a listed package counts as IO, except a method on a map, slice or basic-typed value,
+so a repo that calls a database client such as `github.com/jackc/pgx/v5` names it there to
+get its per-item calls reported. Naming a standard library package there adds to the list for
+that package. A call into it counts as IO when the list marks it IO or when it is not one of those
+container methods.
+
+**Known misses:** a call the list does not mark as IO is silent, even when it may do IO.
+Interface methods other than `net.Conn.Write` are silent, such as `net.Conn.Read`,
+`http.ResponseWriter.Write` and `http.RoundTripper.RoundTrip`, because an in-memory value
+(`net.Pipe`, `httptest.ResponseRecorder`) can implement them. Calls whose cost depends on
+the database driver are silent too, such as `sql.Open`, `(*sql.Rows).Next` and
+`(*sql.Row).Scan`, and so are `sql.DB.Conn` and `sql.Conn.Close`, which reuse and release
+pooled connections. Calls that skip the lookup for some arguments are silent, such as
+`net.ResolveTCPAddr` on `":8080"` or an IP literal and `net.LookupPort` on a port number,
+and so is every `syscall` call outside the short list. IO hidden behind a
+same-package helper is invisible. The analyzer checks direct calls, not a call graph, so a loop
+calling a local helper that itself calls `os.ReadFile` is missed.
 
 
 ## Naming

@@ -5,6 +5,13 @@ Date: 2026-08-17
 ## Status
 
 Accepted
+Amended by ADR 0034
+
+## Related decisions
+
+Amended by [ADR-0034](0034-ts-m10-decides-io-from-a-list-of-standard-library-calls.md): for the
+standard library, a list of IO calls replaces the allowlist of unconditionally-IO packages. The
+packages a repository adds count as IO by package.
 
 ## Context
 

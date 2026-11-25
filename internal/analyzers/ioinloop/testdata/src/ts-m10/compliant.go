@@ -45,7 +45,7 @@ func readOne(path string) ([]byte, error) {
 }
 
 // bufferAll writes to an in-memory bytes.Buffer inside a loop: Buffer.Write
-// resolves to package "bytes", never to the allowlist, and is not matched
+// resolves to package "bytes", never to the IO list, and is not matched
 // by name or by the io.Writer interface it happens to satisfy.
 func bufferAll(chunks [][]byte) []byte {
 	buf := &bytes.Buffer{}
@@ -55,11 +55,10 @@ func bufferAll(chunks [][]byte) []byte {
 	return buf.Bytes()
 }
 
-// setHeaders calls http.Header.Set in a loop: the callee lives in net/http
-// (an allowlist package), but its receiver's underlying type is a map — a
-// pure container that cannot hold a connection or descriptor — so the
-// call is an in-memory write, not IO. Only struct-backed receivers and
-// package-level functions from an allowlist package are flagged.
+// setHeaders calls http.Header.Set in a loop: the callee lives in net/http,
+// but its receiver's underlying type is a map — a pure container that
+// cannot hold a connection or descriptor — so the call is an in-memory
+// write, not IO, and the IO list marks it no IO.
 func setHeaders(req *http.Request, headers map[string]string) {
 	for k, v := range headers {
 		req.Header.Set(k, v)

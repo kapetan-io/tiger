@@ -72,6 +72,16 @@ The analyzer-computed summary of what a function does, and the set of locations 
 removed both, with their pins, the stdlib effects table, and the `effects` and `frames` analyzers,
 because they missed every call through an interface or a library.
 
+**IO list**:
+Tiger's list of standard library calls that do IO, used only by TS-M10 to decide whether a call in
+a loop body is IO. It classifies every exported call in `os`, `net`, `net/http` and `database/sql`
+as IO, no IO, or unproven (silent because the call site cannot tell), plus a short list of raw
+`syscall` calls. Unlike the effect table ADR-0026 removed, it classifies every exported call in
+those four packages, enforced by a test, and decides one rule's verdict on direct calls, not
+effects along a call chain. A repo adds a third-party client by package through
+`ioinloop.packages` in the **config file**.
+_Avoid_: effect table
+
 **`tiger changed`**:
 The report, not a rule, that lists for each **function** the **calls added** and **calls removed**
 between the merge base of a base revision and the working tree; it replaces effect and frame pins
