@@ -241,7 +241,10 @@ func (o *owners) literalRunBy(call *ast.CallExpr, subtests []*types.Var) literal
 		return literalRun{}
 	}
 	return literalRun{
-		literal: body, saved: o.savedIn(call.Args[1]), subtest: o.subtestOf(body), parallel: parallel,
+		literal:  body,
+		saved:    o.savedIn(call.Args[1]),
+		subtest:  o.subtestOf(body),
+		parallel: parallel,
 	}
 }
 
