@@ -1,6 +1,6 @@
-// Package storage stands in for a third-party client library: from
-// ioinloop's package-identity classifier's perspective it is exactly like
-// database/sql or net/http, just not on the seed allowlist by default.
+// Package storage stands in for a third-party client library: its calls do
+// IO, but it is not on the standard library IO list, so ioinloop reports
+// them only when its package is named on -ioinloop.packages.
 package storage
 
 

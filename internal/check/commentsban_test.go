@@ -36,7 +36,11 @@ func TestCommentsBanFlagsProse(t *testing.T) {
 		{name: "InsideBody", source: head + "func F() {\n\t// x\n}\n", want: "p.go:4:2: TS-L14: "},
 		{name: "BlockComment", source: head + "/* x */\n" + decl, want: top},
 		{name: "BareSlashes", source: head + "//\n" + decl, want: top},
-		{name: "TrailingOnPackageLine", source: "package p // x\n", want: "p.go:1:11: TS-L14: "},
+		{
+			name:   "TrailingOnPackageLine",
+			source: "package p // x\n\n" + decl,
+			want:   "p.go:1:11: TS-L14: ",
+		},
 		{name: "EasyjsonDirective", source: head + "//easyjson:json\n" + decl, want: top},
 		{name: "WhyDirective", source: head + "//why:x\n" + decl, want: top},
 		{name: "LintIgnore", source: head + "//lint:ignore SA1000 x\n" + decl, want: top},
@@ -80,7 +84,7 @@ func TestCommentsBanKeepsMeaningfulComments(t *testing.T) {
 		{
 			name:   "PackageComment",
 			file:   "p.go",
-			source: "// Package p is above the line.\npackage p\n",
+			source: "// Package p is above the line.\npackage p\n\ntype T struct{}\n",
 		},
 		{
 			name: "GoDirectives",

@@ -5,12 +5,6 @@
 // one of its imports is listed. Coverage compares the file with the packages
 // a module really has, which only the tiger CLI reports. Every TS-X03 message
 // is worded here.
-//
-// Naming the impure packages a package may import keeps most IO and all
-// randomness behind interfaces passed in. It is not a proof: a few pure
-// standard library packages reach the file system or the network on their
-// own (crypto/tls). Calls to the standard library functions that read the
-// file system or the working directory need the entry to name os.
 package layerfile
 
 import (

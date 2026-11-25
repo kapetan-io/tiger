@@ -1,14 +1,4 @@
 // Package errignore enforces TS-E02: an error discarded with _ is a finding.
-//
-// No comment clears it, because tiger cannot tell a reason from `// x`
-// (ADR-0031). Only a change to the code does.
-//
-// Discards inside the function literal a defer statement calls, or a
-// function literal passed to a testing Cleanup method, are exempt
-// (ADR-0017). Arguments evaluated at the defer or Cleanup call run
-// immediately and are still checked. Closing something on the way out has
-// no better answer than dropping the error. Cleanup that is not deferred
-// is still a finding.
 package errignore
 
 import (

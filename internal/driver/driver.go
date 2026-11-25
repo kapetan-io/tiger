@@ -1,20 +1,5 @@
 // Package driver loads Go packages and runs the registered analyzers over
 // them, producing position-sorted findings.
-//
-// The driver owns no severity or exit-code policy — it reports what fired
-// and where; the CLI applies the registry's severity (ADR-0002). What the
-// driver does own is correctness constraint 5: a package that fails to load
-// or an analyzer that fails to run is a terminal error for the whole run,
-// never a silent shrink of the rule set. This wave adds two more driver
-// responsibilities, both still in service of constraint 5: resolving
-// analyzer `Requires` (buildssa and its own dependencies) and propagating
-// `go/analysis` facts across packages in a stable, module-local order — so
-// fact content, like findings, never depends on map iteration or
-// scheduling. The cross-package wave adds the finish step (ADR-0010): after
-// every package has been visited, each registered finish function reads
-// every fact its analyzer exported and reports on the whole module — the
-// one place a whole-program rule can see both the declaring package and
-// the packages that reference it.
 package driver
 
 import (

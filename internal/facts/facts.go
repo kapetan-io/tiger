@@ -1,13 +1,6 @@
 // Package facts owns the reported-fact message contract: one format site
 // and one extract site for the messages that carry a computed fact's
 // directive from an analyzer to a consumer.
-//
-// A fact message says what tiger found in plain words, that there is
-// nothing to fix, and ends with the directive that would freeze the fact.
-// The directive substring is byte-exact directive.Format output and is
-// always the tail of the line, so extraction ends in directive.Parse and a
-// message that does not yield a parseable directive is an error for the
-// caller to surface, never a silent skip.
 package facts
 
 import (

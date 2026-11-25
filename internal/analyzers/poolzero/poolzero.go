@@ -2,38 +2,6 @@
 // zeroing the exact value put, with *b = T{}, on every control-flow path
 // reaching it. A Reset method does not count, because nothing makes it clear
 // anything: an empty Reset passes any check that trusts the name.
-//
-// Why. Go zeroes every make, so the classic buffer-bleed case is already
-// gone — but a sync.Pool exists specifically to skip that zeroing on reuse.
-// Reuse resurrects the bleed Go's allocator otherwise prevents: a struct or
-// byte slice that held one caller's sensitive data comes back, unzeroed,
-// for the next caller who never touched it. Zeroing on acquire only
-// protects the *next* holder; the data already sat resident, reachable
-// through whoever kept a reference after Put returned. Zeroing on release
-// is the only point that bounds the leak to the owner who knew what was
-// sensitive.
-//
-// SSA dominance turns "preceded by" from a code-review judgment call into
-// an exact, per-path fact. A forward must-reach dataflow over the
-// function's blocks — one round per block, to a bounded fixpoint — proves a
-// reset happens on every control-flow path from entry to the Put, not just
-// the one path a reviewer happened to trace; an if with a reset in only one
-// branch is caught even though a single-dominator check would miss it.
-//
-// Known-miss boundary. The analysis is intraprocedural and identity-exact:
-// a zeroing counts only when its store address is the SAME ssa.Value as the
-// argument boxed into Put, chased through *ssa.MakeInterface with no alias
-// analysis. Three shapes fall outside what this can prove, and all three stay
-// silent rather than risk a false positive on a blocking rule: a pooled value
-// zeroed in one function and put in another (the zeroing is invisible from the
-// Put's function alone, so a function containing no zeroing or Reset call for
-// the Put's exact value is treated as this shape and never fires — unless the
-// value provably came from this pool's own Get, which no caller could have
-// cleaned, so a Put of it with no zeroing is the rule's primary failure mode
-// and fires); the same split read backward — zeroing in the callee, put in
-// the caller — is a real bleed this analyzer also cannot see; and an aliased
-// pooled value, zeroed through one SSA-level name and put through a different
-// one that happens to hold the same object at runtime.
 package poolzero
 
 import (

@@ -4,6 +4,8 @@ import (
 	"cmp"
 	"maps"
 	"slices"
+
+	"github.com/kapetan-io/tiger/internal/module"
 )
 
 type Change string
@@ -17,6 +19,12 @@ type Report struct {
 	Changed      []ChangedTest
 	BaseTests    int
 	BasePackages int
+	Unread       []UnreadModule
+}
+
+type UnreadModule struct {
+	Dir    string
+	Reason string
 }
 
 type ChangedTest struct {
@@ -77,4 +85,30 @@ func (r Report) count(change Change) int {
 		}
 	}
 	return n
+}
+
+type moduleSides struct {
+	base module.Modules
+	head module.Modules
+}
+
+func (m *moduleSides) unread() []UnreadModule {
+	unread := []UnreadModule{}
+	for _, mod := range m.head.Unread {
+		reason := mod.Reason + " at head"
+		if slices.Contains(m.base.Unread, mod) {
+			reason += " and the merge base"
+		}
+		unread = append(unread, UnreadModule{Dir: mod.Dir, Reason: reason})
+	}
+	for _, mod := range m.base.Unread {
+		if !slices.Contains(m.head.Unread, mod) {
+			unread = append(unread,
+				UnreadModule{Dir: mod.Dir, Reason: mod.Reason + " at the merge base"})
+		}
+	}
+	slices.SortFunc(unread, func(a, b UnreadModule) int {
+		return cmp.Or(cmp.Compare(a.Dir, b.Dir), cmp.Compare(a.Reason, b.Reason))
+	})
+	return unread
 }

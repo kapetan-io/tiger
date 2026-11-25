@@ -1,4 +1,4 @@
-// known-miss: three documented gaps in the package-identity classifier.
+// known-miss: three documented gaps in how TS-M10 decides a call is IO.
 package fixture
 
 import (
@@ -8,8 +8,8 @@ import (
 )
 
 // callAllRPC calls an unlisted package's client once per id. rpcclient is
-// not on the seed or per-repo allowlist, so its IO stays silent; a project
-// using it would extend -ioinloop.packages=rpcclient.
+// not on the standard library IO list or named in -ioinloop.packages, so its
+// IO stays silent; a project using it would set -ioinloop.packages=rpcclient.
 func callAllRPC(ids []string) error {
 	for _, id := range ids {
 		if err := rpcclient.Call(id); err != nil {

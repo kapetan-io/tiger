@@ -1,9 +1,5 @@
 // Package returnarity enforces TS-E06: at most two results, and when there
 // are exactly two, the second is error or bool.
-//
-// The spec's preference order is nothing, T, (T, bool), (T, error) — never
-// (T, bool, error). The check covers every function signature in the
-// package: func declarations, func literals, and interface methods.
 package returnarity
 
 import (

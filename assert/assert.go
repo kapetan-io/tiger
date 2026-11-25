@@ -1,21 +1,4 @@
 // Package assert provides always-on assertions for programmer errors.
-//
-// Assertions are not error handling. An error is an expected operating
-// condition that the caller must handle. An assertion failure means the code
-// itself is wrong, and the only correct response to wrong code is to crash
-// before it corrupts anything.
-//
-// Assertions stay enabled in production builds. They downgrade correctness
-// bugs into liveness bugs, which is the trade we want. The fast path is a
-// predictable branch and inlines away to almost nothing.
-//
-// Import it as github.com/kapetan-io/tiger/assert. Tiger recognizes the
-// package by that import path alone, so a copy under another path is
-// treated as an ordinary package.
-//
-// The package is its own module (assert/go.mod) and requires nothing, so a
-// project that requires it does not inherit Tiger's own dependencies such as
-// golang.org/x/tools.
 package assert
 
 import (

@@ -1,13 +1,4 @@
 // Package directives enforces TS-L09 over the //tiger: namespace.
-//
-// Two halves at two severities. Blocking: a directive that does not parse —
-// an unknown verb (including every //tiger:bounded and //tiger:<rule-id>
-// dismissal attempt) or an escape with no reason — because a directive that
-// does not parse is an error, never a loophole. With nolint.forbid on in
-// tiger.yaml, every //nolint is a blocking finding too, reported at the
-// file's package line. Advisory: every well-formed
-// escape directive surfaces on every run, so an unverified claim about the
-// outside world stays permanently in view instead of sinking into the tree.
 package directives
 
 import (
