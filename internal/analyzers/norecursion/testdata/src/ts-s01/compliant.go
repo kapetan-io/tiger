@@ -73,3 +73,18 @@ func runAIterative() {
 func genFirst[T any](x T) T { return genIdentity(x) }
 
 func genIdentity[T any](x T) T { return x }
+
+// Leaf is a type whose method value is called without any cycle.
+type Leaf struct{ n int }
+
+func (l *Leaf) Size() int { return l.n }
+
+func leafSize(l *Leaf) int {
+	f := l.Size
+	return f()
+}
+
+func leafSizeExpr(l *Leaf) int {
+	f := (*Leaf).Size
+	return f(l)
+}
