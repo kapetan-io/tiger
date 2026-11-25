@@ -45,7 +45,7 @@ driver runs once after every package has been visited (ADR-0010).
 | `internal/budget/` | `tiger.budget.yaml`: loading, comparing counts against rows, and the lowering-only write (ADR-0011). |
 | `internal/layerfile/` | `tiger.layers.yaml`: loading and validation, the process-wide install the drivers do and the analyzer queries, the exact import judgment, the coverage comparison `tiger check` uses to report entries that match no package directory, and the wording of every TS-X03 message (ADR-0029). |
 | `internal/config/` | `tiger.yaml`: loading and validation, and the process-wide install the drivers do and the analyzers query. |
-| `internal/module/` | The Go module a run sits in: the module path from `go.mod`, module-relative package paths, the package directories and nested modules, and the Go files. |
+| `internal/module/` | The Go module a run sits in: the module path from `go.mod`, module-relative package paths, the package directories and nested modules, and the Go files; and every module at and below a run directory, with each nested `go.mod` it could not read. |
 | `internal/pin/` | `tiger pin`: freezes computed facts into pins. |
 | `internal/placement/` | Placement: collecting `//tiger:` directives and the one insertion writer (ADR-0008). |
 | `internal/directive/` | The `//tiger:` grammar: closed verb vocabulary, per-verb pin argument grammars (variant expressions and contract predicates), canonical printing, and the round-trip contract `Parse(Format(d)) == d`. |
