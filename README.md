@@ -39,7 +39,9 @@ change does instead of how it's built.
 ## Why the rules exist
 
 Each rule stops one shape of bug. The left of each picture is code tiger reports, and the right
-is the rewrite that passes. The rules are in the
+is the rewrite that passes. The pictures show the changed lines, not whole files, so a rewrite
+can still draw a finding from another rule, such as TS-S21 asking that a new limit constant be
+related to another quantity. The rules are in the
 [Tiger Rule Reference](docs/Tiger%20Rule%20Reference.md).
 
 ### TS-S01: no recursion
