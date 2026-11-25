@@ -100,7 +100,7 @@ func checkRequires(pass *analysis.Pass, funcs map[types.Object]pinnedFunc, call 
 	params := fieldNames(callee.decl.Type.Params)
 	for _, pin := range callee.requires {
 		pred := mustPredicate(pin)
-		reason, proven := proveViolation(pass, pred, params, call.Args)
+		reason, proven := proveViolation(pass, &pred, params, call.Args)
 		if !proven {
 			continue
 		}
@@ -151,7 +151,7 @@ func checkReturn(
 	}
 	for _, pin := range ensures {
 		pred := mustPredicate(pin)
-		reason, proven := proveViolation(pass, pred, results, ret.Results)
+		reason, proven := proveViolation(pass, &pred, results, ret.Results)
 		if !proven {
 			continue
 		}
@@ -171,7 +171,7 @@ func mustPredicate(pin placement.Pin) directive.Predicate {
 }
 
 func proveViolation(
-	pass *analysis.Pass, pred directive.Predicate, names []string, exprs []ast.Expr,
+	pass *analysis.Pass, pred *directive.Predicate, names []string, exprs []ast.Expr,
 ) (string, bool) {
 	if pred.Invariant != "" {
 		return "", false
@@ -183,7 +183,7 @@ func proveViolation(
 }
 
 func proveNilViolation(
-	pass *analysis.Pass, pred directive.Predicate, names []string, exprs []ast.Expr,
+	pass *analysis.Pass, pred *directive.Predicate, names []string, exprs []ast.Expr,
 ) (string, bool) {
 	ref := pred.Left
 	if ref.Kind == directive.AtomNil {
@@ -214,7 +214,7 @@ func isAddressOf(expr ast.Expr) bool {
 }
 
 func proveIntViolation(
-	pass *analysis.Pass, pred directive.Predicate, names []string, exprs []ast.Expr,
+	pass *analysis.Pass, pred *directive.Predicate, names []string, exprs []ast.Expr,
 ) (string, bool) {
 	left, leftOK := resolveConstant(pass, pred.Left, names, exprs)
 	right, rightOK := resolveConstant(pass, pred.Right, names, exprs)

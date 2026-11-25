@@ -13,7 +13,8 @@ func layerCoverage(setup setup, blocking []driver.Finding) []driver.Finding {
 	}
 	coverage := setup.layers.Coverage()
 	reported := map[string]bool{}
-	for _, finding := range blocking {
+	for i := range blocking {
+		finding := &blocking[i]
 		rel, inModule := setup.module.Relative(finding.Package)
 		if finding.Category == layerfile.RuleID && inModule {
 			reported[rel] = true

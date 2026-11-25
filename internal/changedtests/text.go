@@ -20,7 +20,7 @@ const (
 		"spacing alone is not a change, except an Example's Output comment."
 )
 
-func (r Report) Text(rev revision.Comparison) string {
+func (r Report) Text(rev *revision.Comparison) string {
 	var out strings.Builder
 	fmt.Fprintf(&out, "tiger changed-tests: %s -> %s\n", rev.BaseLabel(), rev.HeadLabel())
 	out.WriteString(purpose + "\n\n")

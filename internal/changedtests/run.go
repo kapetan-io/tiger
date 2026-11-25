@@ -57,12 +57,12 @@ func Run(args []string, streams command.Streams) int {
 	if err != nil {
 		return failure(streams, err)
 	}
-	report, err := compareRevisions(*chdir, rev)
+	report, err := compareRevisions(*chdir, &rev)
 	if err != nil {
 		return failure(streams, err)
 	}
 	if *format == "json" {
-		data, err := report.JSON(rev)
+		data, err := report.JSON(&rev)
 		if err != nil {
 			return failure(streams, err)
 		}
@@ -71,11 +71,11 @@ func Run(args []string, streams command.Streams) int {
 		}
 		return command.ExitClean
 	}
-	fmt.Fprint(streams.Stdout, report.Text(rev))
+	fmt.Fprint(streams.Stdout, report.Text(&rev))
 	return command.ExitClean
 }
 
-func compareRevisions(dir string, rev revision.Comparison) (Report, error) {
+func compareRevisions(dir string, rev *revision.Comparison) (Report, error) {
 	head, err := readTests(runDir{path: dir, enclosing: true})
 	if err == nil && len(head.modules.Read) == 0 && len(head.modules.Unread) == 0 {
 		err = fmt.Errorf("no go.mod in %s, any directory above it or any directory below it", dir)
@@ -90,14 +90,14 @@ func compareRevisions(dir string, rev revision.Comparison) (Report, error) {
 	}
 	modules := moduleSides{base: base.modules, head: head.modules}
 	report := changedTests(sides{
-		base: base.tests.outside(modules),
-		head: head.tests.outside(modules),
+		base: base.tests.outside(&modules),
+		head: head.tests.outside(&modules),
 	})
 	report.Unread = modules.unread()
 	return report, nil
 }
 
-func readBase(rev revision.Comparison) (read revisionTests, err error) {
+func readBase(rev *revision.Comparison) (read revisionTests, err error) {
 	extracted, err := rev.Extract()
 	if err != nil {
 		return read, err

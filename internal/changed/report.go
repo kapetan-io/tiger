@@ -65,14 +65,14 @@ type NewPackage struct {
 	Functions []Function
 }
 
-func (p NewPackage) calls() int {
+func (p *NewPackage) calls() int {
 	return callTotal(p.Functions)
 }
 
 func callTotal(functions []Function) int {
 	total := 0
-	for _, fn := range functions {
-		total += len(fn.Calls)
+	for i := range functions {
+		total += len(functions[i].Calls)
 	}
 	return total
 }
@@ -105,19 +105,20 @@ type Scope struct {
 	NotCompared []string
 }
 
-func (r Report) added() int {
-	return r.count(func(call Call) bool { return call.Added })
+func (r *Report) added() int {
+	return r.count(func(call *Call) bool { return call.Added })
 }
 
-func (r Report) removed() int {
-	return r.count(func(call Call) bool { return !call.Added })
+func (r *Report) removed() int {
+	return r.count(func(call *Call) bool { return !call.Added })
 }
 
-func (r Report) count(match func(Call) bool) int {
+func (r *Report) count(match func(*Call) bool) int {
 	total := 0
-	for _, fn := range r.Functions {
-		for _, call := range fn.Calls {
-			if match(call) {
+	for i := range r.Functions {
+		fn := &r.Functions[i]
+		for j := range fn.Calls {
+			if match(&fn.Calls[j]) {
 				total++
 			}
 		}
@@ -125,7 +126,7 @@ func (r Report) count(match func(Call) bool) int {
 	return total
 }
 
-func (r Report) empty() bool {
+func (r *Report) empty() bool {
 	return len(r.Functions) == 0 && len(r.Renamed) == 0 &&
 		len(r.NewPackages) == 0 && len(r.RemovedPackages) == 0
 }
@@ -147,7 +148,7 @@ type comparison struct {
 	head side
 }
 
-func Compare(sides Sides) Report {
+func Compare(sides *Sides) Report {
 	notCompared := slices.Concat(sides.Base.NotCompared, sides.Head.NotCompared)
 	slices.Sort(notCompared)
 	notCompared = slices.Compact(notCompared)
@@ -157,12 +158,12 @@ func Compare(sides Sides) Report {
 	}
 	roots := rootNames(sides)
 	c := comparison{
-		base: newSide(qualify(without(sides.Base, skip), roots)),
-		head: newSide(qualify(without(sides.Head, skip), roots)),
+		base: newSide(qualify(without(&sides.Base, skip), roots)),
+		head: newSide(qualify(without(&sides.Head, skip), roots)),
 	}
 
-	newPackages := c.head.onlyHere(c.base)
-	gonePackages := c.base.onlyHere(c.head)
+	newPackages := c.head.onlyHere(&c.base)
+	gonePackages := c.base.onlyHere(&c.head)
 	renamed := c.renames()
 	renamedOwners := map[string]bool{}
 	for _, rename := range renamed {
@@ -211,8 +212,8 @@ func Compare(sides Sides) Report {
 	return report
 }
 
-func without(inv callinventory.Inventory, skip map[string]bool) callinventory.Inventory {
-	kept := callinventory.Inventory{
+func without(inv *callinventory.Inventory, skip map[string]bool) *callinventory.Inventory {
+	kept := &callinventory.Inventory{
 		Functions: map[string]callinventory.Function{},
 		Packages:  map[string]bool{},
 		Roots:     map[string]string{},
@@ -239,9 +240,9 @@ func without(inv callinventory.Inventory, skip map[string]bool) callinventory.In
 	return kept
 }
 
-func newSide(inv callinventory.Inventory) side {
+func newSide(inv *callinventory.Inventory) side {
 	s := side{
-		inv: inv, owners: map[string]owner{}, count: map[string]int{},
+		inv: *inv, owners: map[string]owner{}, count: map[string]int{},
 		reached: map[string]map[string]bool{},
 	}
 	for _, name := range slices.Sorted(maps.Keys(inv.Functions)) {
@@ -272,7 +273,7 @@ func newSide(inv callinventory.Inventory) side {
 	return s
 }
 
-func (s side) onlyHere(other side) []string {
+func (s *side) onlyHere(other *side) []string {
 	var only []string
 	for _, pkg := range slices.Sorted(maps.Keys(s.count)) {
 		if !other.inv.Packages[pkg] {
@@ -282,7 +283,7 @@ func (s side) onlyHere(other side) []string {
 	return only
 }
 
-func (s side) ownersMissingFrom(other side, pkg string) []string {
+func (s *side) ownersMissingFrom(other *side, pkg string) []string {
 	var missing []string
 	for _, name := range slices.Sorted(maps.Keys(s.owners)) {
 		if _, ok := other.owners[name]; !ok && s.owners[name].pkg == pkg {
@@ -292,14 +293,14 @@ func (s side) ownersMissingFrom(other side, pkg string) []string {
 	return missing
 }
 
-func (c comparison) renames() []Rename {
+func (c *comparison) renames() []Rename {
 	var found []Rename
 	for _, pkg := range slices.Sorted(maps.Keys(c.base.inv.Packages)) {
 		if !c.head.inv.Packages[pkg] {
 			continue
 		}
-		gone := c.base.ownersMissingFrom(c.head, pkg)
-		fresh := c.head.ownersMissingFrom(c.base, pkg)
+		gone := c.base.ownersMissingFrom(&c.head, pkg)
+		fresh := c.head.ownersMissingFrom(&c.base, pkg)
 		if len(gone) != 1 || len(fresh) != 1 {
 			continue
 		}
@@ -313,7 +314,7 @@ func (c comparison) renames() []Rename {
 	return found
 }
 
-func (c comparison) functionNames() []string {
+func (c *comparison) functionNames() []string {
 	names := slices.Concat(
 		slices.Sorted(maps.Keys(c.base.inv.Functions)),
 		slices.Sorted(maps.Keys(c.head.inv.Functions)),
@@ -322,20 +323,22 @@ func (c comparison) functionNames() []string {
 	return slices.Compact(names)
 }
 
-func (c comparison) function(name string) Function {
+func (c *comparison) function(name string) Function {
 	before, after := c.base.inv.Functions[name], c.head.inv.Functions[name]
 	fn := Function{Name: name, Package: after.Package, Owner: after.Owner}
 	if _, ok := c.head.inv.Functions[name]; !ok {
 		fn.Package, fn.Owner = before.Package, before.Owner
 	}
 	for _, key := range slices.Sorted(maps.Keys(before.Calls)) {
-		if _, kept := after.Calls[key]; !kept && counts(before.Calls[key], c.base.inv) {
-			fn.Calls = append(fn.Calls, c.call(before.Calls[key], removal, fn.Owner))
+		call := before.Calls[key]
+		if _, kept := after.Calls[key]; !kept && counts(&call, &c.base.inv) {
+			fn.Calls = append(fn.Calls, c.call(&call, removal, fn.Owner))
 		}
 	}
 	for _, key := range slices.Sorted(maps.Keys(after.Calls)) {
-		if _, was := before.Calls[key]; !was && counts(after.Calls[key], c.head.inv) {
-			fn.Calls = append(fn.Calls, c.call(after.Calls[key], addition, fn.Owner))
+		call := after.Calls[key]
+		if _, was := before.Calls[key]; !was && counts(&call, &c.head.inv) {
+			fn.Calls = append(fn.Calls, c.call(&call, addition, fn.Owner))
 		}
 	}
 	slices.SortFunc(fn.Calls, func(a, b Call) int {
@@ -357,7 +360,7 @@ const (
 	addition
 )
 
-func (c comparison) call(found callinventory.Call, change direction, owner string) Call {
+func (c *comparison) call(found *callinventory.Call, change direction, owner string) Call {
 	call := Call{
 		Added:         change == addition,
 		Callee:        found.Callee,
@@ -371,10 +374,10 @@ func (c comparison) call(found callinventory.Call, change direction, owner strin
 	if found.SamePackage {
 		return call
 	}
-	other := c.head
+	other := &c.head
 	call.Dependency = DependencyDropped
 	if change == addition {
-		other = c.base
+		other = &c.base
 		call.Dependency = DependencyNew
 	}
 	if other.reached[owner][found.Package] {
@@ -383,11 +386,11 @@ func (c comparison) call(found callinventory.Call, change direction, owner strin
 	return call
 }
 
-func counts(call callinventory.Call, inv callinventory.Inventory) bool {
+func counts(call *callinventory.Call, inv *callinventory.Inventory) bool {
 	return !call.SamePackage || inv.Functions[call.Callee].CallsOut
 }
 
-func (c comparison) usesOf(pkg string) Uses {
+func (c *comparison) usesOf(pkg string) Uses {
 	symbols := map[string]map[string]bool{}
 	inModule := map[string]bool{}
 	for _, name := range slices.Sorted(maps.Keys(c.head.inv.Functions)) {

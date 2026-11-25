@@ -65,23 +65,23 @@ func Run(args []string, streams command.Streams) int {
 		return command.ExitOperational
 	}
 	if *checklist {
-		printChecklist(found, streams)
+		printChecklist(&found, streams)
 		return command.ExitClean
 	}
-	printPattern(found, streams)
+	printPattern(&found, streams)
 	return command.ExitClean
 }
 
 func printIndex(all []Pattern, streams command.Streams) {
-	for _, each := range all {
-		printSummary(each, streams)
+	for i := range all {
+		printSummary(&all[i], streams)
 	}
 }
 
 func printBehind(
 	all []Pattern,
 	code string,
-	show func(Pattern, command.Streams),
+	show func(*Pattern, command.Streams),
 	streams command.Streams,
 ) int {
 	found := Behind(all, code)
@@ -89,25 +89,25 @@ func printBehind(
 		fmt.Fprintf(streams.Stderr, "tiger pattern: no pattern backs %s\n", code)
 		return command.ExitOperational
 	}
-	for _, each := range found {
-		show(each, streams)
+	for i := range found {
+		show(&found[i], streams)
 	}
 	return command.ExitClean
 }
 
-func printSummary(each Pattern, streams command.Streams) {
+func printSummary(each *Pattern, streams command.Streams) {
 	summary := strings.Join(strings.Fields(each.Summary), " ")
 	fmt.Fprintf(streams.Stdout, "%s\t%s\n", each.Name, summary)
 }
 
-func printChecklist(each Pattern, streams command.Streams) {
+func printChecklist(each *Pattern, streams command.Streams) {
 	fmt.Fprintf(streams.Stdout, "%s\n", each.Name)
 	for _, item := range each.Checklist {
 		fmt.Fprintf(streams.Stdout, "- %s\n", item)
 	}
 }
 
-func printPattern(each Pattern, streams command.Streams) {
+func printPattern(each *Pattern, streams command.Streams) {
 	fmt.Fprintf(streams.Stdout, "# %s\n\n%s\n\nRules: %s\n\nGap: %s\n\nBug: %s\n\nChecklist:\n",
 		each.Name, each.Summary, strings.Join(each.Rules, ", "), each.Gap, each.Bug)
 	for _, item := range each.Checklist {

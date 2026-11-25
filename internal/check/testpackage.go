@@ -21,7 +21,8 @@ func testPackageCoverage(
 		return nil, err
 	}
 	reported := map[string]bool{}
-	for _, finding := range blocking {
+	for i := range blocking {
+		finding := &blocking[i]
 		if finding.Category == "TS-T12" {
 			reported[filepath.ToSlash(finding.Position.Filename)] = true
 		}

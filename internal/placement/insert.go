@@ -22,6 +22,7 @@ type Target struct {
 	Directives []directive.Directive
 }
 
+//nolint:gocritic // 80-byte Target, one copy per call; a pointer would let callers pass nil.
 func Insert(target Target) Insertion {
 	assert.Ok(len(target.Directives) > 0, "Insert needs at least one directive")
 	assert.Ok(

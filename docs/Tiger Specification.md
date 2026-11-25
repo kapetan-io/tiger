@@ -613,7 +613,12 @@ Why. Whether `BatchMax = 8189` is correct is arithmetic about your hardware and 
 Whether you believe it relates to anything else is checkable, and a limit that relates to nothing is a
 limit nobody reasoned about.
 Enforce. `limitrelate` (custom). Every `Max`/`Min` constant must appear in at least one `const _ =
-uint(...)` expression in its package.
+uint(...)` expression in its package, and an unexported one must also appear outside any such
+expression. A limit that depends on nothing else is guarded against the smallest value at which the
+code still works, written as a literal.
+*(Amended 2026-11-24: an unexported `Max`/`Min` constant mentioned only inside such expressions is a
+finding, because a constant invented for the comparison satisfied the rule and checked nothing. An
+exported one is skipped, since another package may use it.)*
 
 **`TS-S22` Write a limit as an expression of its named inputs.**
 Why. A limit written as `8189` hides where it came from, so nobody can tell it went stale when an
@@ -1822,7 +1827,7 @@ changes what it checks), or **not built**.
 | `ioinloop` | TS-M10 | `types`, IO calls inside loop bodies | built |
 | `poolzero` | TS-M05 | `buildssa`, the `sync.Pool.Put` argument must be zeroed with `*b = T{}` | built |
 | `outptr` | TS-M04 | `types`, constructors returning oversized value types | not built |
-| `limitrelate` | TS-S21 | AST, every Max/Min constant appears in a relational assertion | built |
+| `limitrelate` | TS-S21 | AST, every Max/Min constant appears in a relational assertion and, unexported, outside one | built |
 | `passthrough` | TS-X02 | AST, body is a single forwarding call | not built |
 | `layers` | TS-X03, D01 | AST, each non-test import judged exactly against the package's `tiger.layers.yaml` entry; stale entries and packages the run did not load are checked by `tiger check` over the whole module | built (ADR-0029) |
 | `adapters` | TS-I06 | Deleted with TS-I06 | deleted |

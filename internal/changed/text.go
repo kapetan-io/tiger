@@ -28,7 +28,7 @@ const (
 
 const maxNamed = 5
 
-func (r Report) Text(rev revision.Comparison) string {
+func (r *Report) Text(rev *revision.Comparison) string {
 	var out strings.Builder
 	fmt.Fprintf(&out, "tiger changed: %s -> %s\n", rev.BaseLabel(), rev.HeadLabel())
 	out.WriteString(purposeText + "\n\n")
@@ -47,8 +47,8 @@ func (r Report) Text(rev revision.Comparison) string {
 			"it calls the same %d types and functions in other packages\n\n",
 			rename.From, rename.To, rename.Callees)
 	}
-	for _, pkg := range r.NewPackages {
-		writeNewPackage(&out, pkg)
+	for i := range r.NewPackages {
+		writeNewPackage(&out, &r.NewPackages[i])
 	}
 	for _, pkg := range r.RemovedPackages {
 		fmt.Fprintf(&out, "Removed package %s: %d types and functions\n\n", pkg.Name, pkg.Owners)
@@ -57,7 +57,7 @@ func (r Report) Text(rev revision.Comparison) string {
 	return out.String()
 }
 
-func (r Report) countsLine() string {
+func (r *Report) countsLine() string {
 	parts := r.countParts()
 	labels := make([]string, len(parts))
 	for i, part := range parts {
@@ -73,7 +73,7 @@ type countPart struct {
 
 func (c countPart) label() string { return fmt.Sprintf("%s: %d", c.name, c.count) }
 
-func (r Report) countParts() []countPart {
+func (r *Report) countParts() []countPart {
 	parts := []countPart{{"Calls added", r.added()}, {"Calls removed", r.removed()}}
 	for _, extra := range []countPart{
 		{"New packages", len(r.NewPackages)},
@@ -88,9 +88,11 @@ func (r Report) countParts() []countPart {
 }
 
 func writeList(out *strings.Builder, functions []Function, indent string) {
-	for _, fn := range functions {
+	for i := range functions {
+		fn := &functions[i]
 		out.WriteString(indent + fn.Name + "\n")
-		for _, call := range fn.Calls {
+		for j := range fn.Calls {
+			call := &fn.Calls[j]
 			sign := "-"
 			if call.Added {
 				sign = "+"
@@ -100,7 +102,7 @@ func writeList(out *strings.Builder, functions []Function, indent string) {
 	}
 }
 
-func writeNewPackage(out *strings.Builder, pkg NewPackage) {
+func writeNewPackage(out *strings.Builder, pkg *NewPackage) {
 	fmt.Fprintf(out, "New package %s: %d types and functions, %d calls\n",
 		pkg.Name, pkg.Owners, pkg.calls())
 	fmt.Fprintf(out, "  Uses existing packages: %s\n", usesText(pkg.Uses.Prior, ""))

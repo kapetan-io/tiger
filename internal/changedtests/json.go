@@ -9,7 +9,7 @@ import (
 
 const schema = "tiger.changed-tests/v1"
 
-func (r Report) JSON(rev revision.Comparison) ([]byte, error) {
+func (r Report) JSON(rev *revision.Comparison) ([]byte, error) {
 	doc := document{
 		Schema:               schema,
 		Base:                 baseDoc{Ref: rev.BaseRef, Commit: rev.MergeBase, MergeBase: true},
