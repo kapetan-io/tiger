@@ -1,6 +1,7 @@
 // The TS-S01 failure modes: direct self-recursion, mutual recursion, method
 // recursion on a concrete type, and recursion through a statically-known
-// function literal.
+// function literal, each also written with type parameters or through a
+// method value.
 package fixture
 
 // Node is one node of a tree walked by chase and chaseIterative.
@@ -113,4 +114,32 @@ type Nest[T any] struct{}
 
 func (n Nest[T]) Down(depth int) { // want `TS-S01: Down → Down`
 	Nest[int]{}.Down(depth - 1)
+}
+
+// MV is a plain type whose method recurses through a method value.
+type MV struct{ next *MV }
+
+func (b *MV) Depth() int { // want `TS-S01: Depth → Depth`
+	f := b.next.Depth
+	return f()
+}
+
+// GenMV is the same shape on a generic type.
+type GenMV[T any] struct{ next *GenMV[T] }
+
+func (b *GenMV[T]) Depth() int { // want `TS-S01: Depth → Depth`
+	f := b.next.Depth
+	return f()
+}
+
+// MVPair.Ping and MVPair.Pong recurse through a method value across two methods.
+type MVPair struct{ other *MVPair }
+
+func (p *MVPair) Ping() { // want `TS-S01: Ping → Pong → Ping`
+	f := p.other.Pong
+	f()
+}
+
+func (p *MVPair) Pong() {
+	p.other.Ping()
 }

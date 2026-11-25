@@ -85,3 +85,14 @@ func visitWalker[T Walker](w T, n int) {
 type Tree struct{}
 
 func (t Tree) Walk(n int) { visitWalker(t, n-1) }
+
+type Visitor interface{ Visit(v Visitor, n int) }
+
+type Deep struct{}
+
+// known-miss: a method value taken from an interface forwards through an
+// interface call, so there is no static callee and the cycle stays silent.
+func (Deep) Visit(v Visitor, n int) {
+	f := v.Visit
+	f(v, n-1)
+}

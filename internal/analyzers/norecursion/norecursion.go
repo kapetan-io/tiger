@@ -15,17 +15,18 @@
 // constraint 7 defines as a bug in the analyzer, not the code. This analyzer
 // builds the static call graph instead, from ssalib.StaticCalls: direct
 // calls, concrete-method calls, and calls through a function literal whose
-// callee is immediately known. A call to a generic function targets an
-// instance such as F[int], a different *ssa.Function from F, so each callee is
-// mapped back to its source function (sourceFunc) before the cycle search.
+// callee is immediately known, plus calls through a method value of a concrete
+// type (boundTarget maps its wrapper back to the method). A call to a generic
+// function targets an instance such as F[int], a different *ssa.Function from
+// F, so each callee is mapped back to its source function (sourceFunc) before the cycle search.
 // Every edge in that graph is a call that provably happens, so every reported
 // cycle is real.
 //
 // Known-miss boundary. Four call shapes fall outside the static call graph
 // and so outside this analyzer's reach: recursion through an interface
-// method (the receiver's dynamic type decides the callee), recursion through
-// a method called on a type-parameter value (SSA gives the call no static
-// callee), recursion through a function value whose target is not statically
+// method, called directly or through a method value (the receiver's dynamic
+// type decides the callee), recursion through a method called on a
+// type-parameter value (SSA gives the call no static callee), recursion through a function value whose target is not statically
 // known (assigned behind a branch or a Phi), and recursion whose cycle spans
 // package boundaries (this analyzer's node set is one package's functions;
 // the facts plumbing a later wave builds is the natural way to close this
@@ -68,7 +69,7 @@ func run(pass *analysis.Pass) (any, error) {
 	for _, fn := range nodes {
 		called := []*ssa.Function{}
 		for _, call := range ssalib.StaticCalls(fn) {
-			called = append(called, sourceFunc(call.Callee))
+			called = append(called, sourceFunc(boundTarget(call.Callee)))
 		}
 		callees[fn] = called
 	}
@@ -82,6 +83,17 @@ func run(pass *analysis.Pass) (any, error) {
 		}
 	}
 	return nil, nil
+}
+
+func boundTarget(fn *ssa.Function) *ssa.Function {
+	if !strings.HasPrefix(fn.Synthetic, "bound method wrapper") {
+		return fn
+	}
+	forwarded := ssalib.StaticCalls(fn)
+	if len(forwarded) != 1 {
+		return fn
+	}
+	return forwarded[0].Callee
 }
 
 func sourceFunc(fn *ssa.Function) *ssa.Function {

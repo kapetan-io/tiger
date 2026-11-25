@@ -171,7 +171,8 @@ accept the capped one. The report is `i == nodesMax && i < len(stack)`: a graph 
 exactly `nodesMax` nodes ends here too, with nothing left to visit, and must pass.
 
 **Known misses:** Four call shapes sit outside the static call graph and are not reported:
-recursion through an interface method (the receiver's dynamic type decides the callee),
+recursion through an interface method, called directly or through a method value such as
+`f := v.Visit; f()` (the receiver's dynamic type decides the callee),
 recursion through a method called on a type-parameter value (`func Visit[T Walker](w T) { w.Walk() }`
 where `Tree.Walk` calls `Visit` again), recursion through a function value whose target is
 chosen behind a branch, and a cycle that spans package boundaries.
