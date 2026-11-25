@@ -1,6 +1,6 @@
 # Tiger Go
 
-A static analyzer that holds Go written by AI agents to the rules NASA wrote for flight software.
+A static analyzer that holds Go written by AI agents to the rules NASA and TigerBeetle wrote for flight and database software.
 Every loop has a bound, every goroutine starts through a group that waits for it, and code takes
 the clock as an input instead of reading it.
 
@@ -39,14 +39,16 @@ change does instead of how it's built.
 ## Why the rules exist
 
 Each rule stops one shape of bug. The left of each picture is code tiger reports, and the right
-is the rewrite that passes. The pictures show the changed lines, not whole files, so a rewrite
-can still draw a finding from another rule, such as TS-S21 asking that a new limit constant be
-related to another quantity. The rules are in the
+is the rewrite that passes. The pictures show the changed lines, not whole files. Dropped into a
+file as drawn, the rewrites also draw two TS-S21 findings (a new limit constant needs a
+compile-time relation to another quantity) and one TS-C03 finding (a package that starts
+goroutines needs a `goleak` check in its tests). With those two lines added, `tiger check` prints
+nothing. The rules are in the
 [Tiger Rule Reference](docs/Tiger%20Rule%20Reference.md).
 
 ### TS-S01: no recursion
 
-![TS-S01 recursion: before, chase calls itself, so stack depth follows the input and a deep input grows the stack toward 1 GB; after, a loop over a stack of nodes stops at nodesMax and returns errTooManyNodes](docs/recursion.svg)
+![TS-S01 recursion: before, chase calls itself, so stack depth follows the input and a deep input grows the stack toward 1 GB; after, a loop visits stack[i] and appends its children, counts i up to nodesMax and returns errTooManyNodes if nodes are left](docs/recursion.svg)
 
 ### TS-S02: every loop has an upper bound
 
@@ -54,19 +56,21 @@ related to another quantity. The rules are in the
 
 ### TS-C02: every goroutine starts through a group that waits for it
 
-![TS-C02 goroutine group: before, Launch starts a goroutine with a bare go statement and returns, so nothing waits for it and it can outlive its caller; after, Start launches it with wg.Go and Shutdown closes stop and calls wg.Wait until it exits](docs/goroutine-group.svg)
+![TS-C02 goroutine group: before, Launch starts a goroutine with a bare go statement and returns, so nothing waits for it and it can outlive its caller; after, Start launches it with wg.Go and Shutdown closes stop and calls wg.Wait on the same group until it exits](docs/goroutine-group.svg)
 
 ### TS-S08: a switch over a closed set ends in assert.Unreachable
 
-![TS-S08 closed switch: before, a switch over Status handles Active and Inactive with no default arm, so a new StatusArchived falls out and returns an empty string; after, a default arm calls assert.Unreachable so the new value crashes loudly](docs/closed-switch.svg)
+![TS-S08 closed switch: before, a switch over Status handles Active and Inactive with no default arm, so a new StatusArchived falls out and returns an empty string with no error; after, golangci-lint's exhaustive check reports the missing StatusArchived case, and a default arm that calls assert.Unreachable crashes if the value still arrives at run time](docs/closed-switch.svg)
 
 ## At a glance
 
 **What tiger enforces**
 
 - Loops that provably end, or stop at a cap that reports when it is hit
-- Goroutines started through a group that waits for them, and blocking waits that have a stop case
-- A switch over a closed set ends in `assert.Unreachable`, so a new value fails loudly
+- Goroutines started through a group that waits for them, and blocking waits that have a stop case (a
+  `select` case that ends the wait on cancellation or shutdown)
+- Switches over a closed set that handle every value, with golangci-lint's `exhaustive` reporting a
+  missing case and a default arm ending in `assert.Unreachable` as the backstop
 - No direct calls to the clock, through golangci-lint
 - With a layer file, randomness and IO packages only where the file allows them
 - Named invariants, asserted in code and violated on purpose in a test
@@ -135,8 +139,11 @@ tiger check ./...
 tiger changed main
 ```
 
-A first run on an existing codebase reports a lot. Tiger keeps no list of old findings to ignore,
-so a codebase adopts it by fixing what it reports.
+A first run on an existing codebase reports a lot. Tiger keeps no baseline of old findings. A
+codebase adopts it by fixing what it reports, with two documented aids described in the
+[User Guide](docs/Tiger%20User%20Guide.md#the-committed-files). `comments.allow` in `tiger.yaml`
+exempts a directory from the ban on prose comments, and `tiger budget --write` records the
+escapes and skipped tests a package already carries.
 
 ## Docs
 
