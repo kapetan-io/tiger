@@ -884,8 +884,8 @@ function. A function literal is a function: a start inside a literal is waited w
 `Wait` follows it in that literal or in a function around it, whoever calls the literal.
 A start inside a literal that runs after that outer `Wait` or alongside it is not
 caught: a parallel subtest, a literal saved and called later, a deferred or `t.Cleanup`
-literal, or a goroutine of another group. A `t.Fatal`, `t.FailNow` or `t.Skip` between the
-start and the `Wait` skips the `Wait`, and is not caught either. For a group held in a struct field, it
+literal, or a goroutine of another group. A `t.Skip` between the start and the `Wait`
+skips the `Wait`, and is not caught either. For a group held in a struct field, it
 must be reached in an exported method of the owning type, or in a method such a method
 calls. The `Wait` must follow the start on every success path.
 
@@ -904,7 +904,11 @@ function, in a parallel subtest, in a `t.Cleanup` literal, or inside the gorouti
 waits for.
 
 A path that returns a non-nil error is not a success path, so a `Shutdown` that returns
-its flush error before it waits is accepted. A `Wait` that only runs in the branch where
+its flush error before it waits is accepted. A path that ends in `t.Fatal`, `t.Fatalf` or
+`t.FailNow` is not a success path either, since it fails the test. The goroutine can
+outlive that failed test, and this is not caught. A deferred `Wait` still runs on such a
+path. A call to a helper that fails the test, such as `requireReady(t)`, is a call that
+returns, so the path goes on past it. A `Wait` that only runs in the branch where
 the caller's context expired does not count. That branch is a `Shutdown` giving up
 early, and the early return is exempt from the check. The exemption needs a `Wait` on
 the group somewhere in the same function, that branch included, and covers only a

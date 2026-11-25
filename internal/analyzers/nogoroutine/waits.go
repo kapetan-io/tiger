@@ -441,6 +441,9 @@ func (o *owners) graph(body *ast.BlockStmt) *cfg.CFG {
 }
 
 func (o *owners) mayReturn(call *ast.CallExpr) bool {
+	if o.failsTest(call) {
+		return false
+	}
 	ident, ok := call.Fun.(*ast.Ident)
 	if !ok || ident.Name != "panic" {
 		return true
@@ -449,9 +452,28 @@ func (o *owners) mayReturn(call *ast.CallExpr) bool {
 	return !builtin
 }
 
+var testFailures = map[string]bool{
+	"(*testing.common).Fatal":   true,
+	"(*testing.common).Fatalf":  true,
+	"(*testing.common).FailNow": true,
+	"(testing.TB).Fatal":        true,
+	"(testing.TB).Fatalf":       true,
+	"(testing.TB).FailNow":      true,
+}
+
+func (o *owners) failsTest(call *ast.CallExpr) bool {
+	selector, ok := ast.Unparen(call.Fun).(*ast.SelectorExpr)
+	return ok && testFailures[o.calleeName(selector)]
+}
+
 func (o *owners) successExit(fn function, block *cfg.Block) bool {
 	if len(block.Nodes) == 0 {
 		return true
+	}
+	if stmt, ok := block.Nodes[len(block.Nodes)-1].(*ast.ExprStmt); ok {
+		if call, isCall := stmt.X.(*ast.CallExpr); isCall && o.failsTest(call) {
+			return false
+		}
 	}
 	ret, ok := block.Nodes[len(block.Nodes)-1].(*ast.ReturnStmt)
 	if !ok || len(ret.Results) == 0 || fn.typ.Results == nil {
