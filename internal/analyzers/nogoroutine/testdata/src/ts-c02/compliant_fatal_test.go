@@ -166,3 +166,27 @@ func TestTryGoFailNowBeforeWait(t *testing.T) {
 	t.FailNow()
 	_ = g.Wait()
 }
+
+func TestFatalInsideCleanupAfterStart(t *testing.T) {
+	var wg sync.WaitGroup
+	t.Cleanup(func() {
+		wg.Go(work)
+		t.Fatal("cleanup failed")
+	})
+}
+
+func TestFatalInsideDeferAfterStart(t *testing.T) {
+	var wg sync.WaitGroup
+	defer func() {
+		wg.Go(work)
+		t.Fatal("deferred failed")
+	}()
+}
+
+func TestFatalInsideSubtestAfterStart(t *testing.T) {
+	var wg sync.WaitGroup
+	t.Run("x", func(t *testing.T) {
+		wg.Go(work)
+		t.Fatal("subtest failed")
+	})
+}

@@ -11,7 +11,7 @@ import (
 // TestFatalBeforeWait leaks the goroutine when the test fails.
 //
 // known-miss: a path ending in t.Fatal is a failure path and needs no Wait,
-// though the goroutine outlives the failed test.
+// though the goroutine outlives the failed test (ENG-987).
 func TestFatalBeforeWait(t *testing.T) {
 	var wg sync.WaitGroup
 	wg.Go(work)
@@ -24,7 +24,7 @@ func TestFatalBeforeWait(t *testing.T) {
 // TestSkipBeforeWait leaks the goroutine when the test skips.
 //
 // known-miss: t.Skip ends the test, so the Wait after it never runs, but the
-// check treats t.Skip as returning.
+// check treats t.Skip as returning (ENG-988).
 func TestSkipBeforeWait(t *testing.T) {
 	var wg sync.WaitGroup
 	wg.Go(work)
@@ -44,7 +44,7 @@ func requireLong(t *testing.T) {
 // test.
 //
 // known-miss: the helper fails the test on only some of its paths, so its call
-// is a call that returns and the Wait after it counts.
+// is a call that returns and the Wait after it counts (ENG-987).
 func TestHelperFatalBeforeWait(t *testing.T) {
 	var wg sync.WaitGroup
 	wg.Go(work)

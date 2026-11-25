@@ -910,7 +910,9 @@ its flush error before it waits is accepted. A path that ends in `t.Fatal`, `t.F
 `t.FailNow` is not a success path either, since it fails the test. The goroutine can
 outlive that failed test, and this is not caught. `t.Fatal` stops the test but runs its
 deferred calls, so a deferred `Wait` still waits on such a path, and a start in a
-deferred or `t.Cleanup` literal runs after the `t.Fatal`, which then excuses nothing. A call to a helper that
+deferred or `t.Cleanup` literal runs after a `t.Fatal` outside that literal, which then
+excuses nothing. A `t.Fatal` after the start inside the same literal, a `t.Run` body
+included, ends that literal's path and excuses the start the same way. A call to a helper that
 fails the test, such as `requireReady(t)`, is a call that returns, so the path goes on
 past it, and a helper that only fails the test never counts as waiting on a group. A
 literal that holds the `Wait` and that a call runs, such as a `t.Run` body, is read like
