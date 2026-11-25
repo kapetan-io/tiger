@@ -42,8 +42,9 @@ Each rule stops one shape of bug. The left of each picture is code tiger reports
 is the rewrite that passes. The pictures show the changed lines, not whole files. Dropped into a
 file as drawn, the rewrites also draw two TS-S21 findings (a new limit constant needs a
 compile-time relation to another quantity) and one TS-C03 finding (a package that starts
-goroutines needs a `goleak` check in its tests). Adding a relation for each limit constant (for example `const _ = uint(1<<31 - 1 - nodesMax)`) and a
-`TestMain` that calls `goleak.VerifyTestMain(m)` in a test file makes `tiger check` print nothing. The rules are in the
+goroutines needs a `goleak` check in its tests). Adding a relation for each limit constant (for
+example `const _ = uint(1<<31 - 1 - nodesMax)`) and a `TestMain` that calls
+`goleak.VerifyTestMain(m)` in a test file makes `tiger check` print nothing. The rules are in the
 [Tiger Rule Reference](docs/Tiger%20Rule%20Reference.md).
 
 ### TS-S01: no recursion
