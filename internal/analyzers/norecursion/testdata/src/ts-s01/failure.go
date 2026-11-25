@@ -60,3 +60,57 @@ func runA() { // want `TS-S01: runA → runA\$1 → runA`
 	}
 	helper()
 }
+
+// genSelf calls itself with a type parameter. The call targets an instance,
+// a different function object from genSelf.
+func genSelf[T any](x T) { // want `TS-S01: genSelf → genSelf`
+	genSelf(x)
+}
+
+// genPing and genPong are a generic mutual cycle.
+func genPing[T any](x T) { // want `TS-S01: genPing → genPong → genPing`
+	genPong(x)
+}
+
+func genPong[T any](x T) {
+	genPing(x)
+}
+
+// plainCaller and genCallee form a cycle through an explicit instantiation.
+// The finding lists members in name order, so genCallee comes first.
+func plainCaller() { // want `TS-S01: genCallee → plainCaller → genCallee`
+	genCallee[int](1)
+}
+
+func genCallee[T any](x T) {
+	plainCaller()
+}
+
+// GenBox is a generic type whose method recurses.
+type GenBox[T any] struct{ next *GenBox[T] }
+
+func (b *GenBox[T]) Depth() int { // want `TS-S01: Depth → Depth`
+	if b == nil {
+		return 0
+	}
+	return 1 + b.next.Depth()
+}
+
+// genClosure reaches itself through a closure inside a generic function.
+func genClosure[T any](x T) { // want `TS-S01: genClosure → genClosure\$1 → genClosure`
+	helper := func() { genClosure(x) }
+	helper()
+}
+
+// genValue calls its own instance through a function value.
+func genValue[T any](x T) { // want `TS-S01: genValue → genValue`
+	next := genValue[int]
+	next(1)
+}
+
+// Nest is a generic type whose method calls itself at another instantiation.
+type Nest[T any] struct{}
+
+func (n Nest[T]) Down(depth int) { // want `TS-S01: Down → Down`
+	Nest[int]{}.Down(depth - 1)
+}
