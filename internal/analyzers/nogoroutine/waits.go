@@ -177,7 +177,7 @@ func (o *owners) waitsIn(node ast.Node, query flowQuery, always waiters) bool {
 		case *ast.CallExpr:
 			counted := !o.givesUp(found.Pos(), start)
 			waits = waits || counted && o.waitCall(found, query.group, always)
-			if run := o.literalRunBy(found, query.subtests); !waits && run.body != nil {
+			if run := o.literalRunBy(found, query.subtests); !waits && run.literal != nil {
 				waits = o.literalWaits(run, query, always)
 			}
 		}
@@ -187,7 +187,7 @@ func (o *owners) waitsIn(node ast.Node, query flowQuery, always waiters) bool {
 }
 
 func (o *owners) literalWaits(run literalRun, query flowQuery, always waiters) bool {
-	literal := run.body
+	literal := run.literal
 	if o.walking[literal] {
 		return false
 	}
@@ -202,7 +202,11 @@ func (o *owners) literalWaits(run literalRun, query flowQuery, always waiters) b
 	defer delete(o.walking, literal)
 	fn := function{decl: o.index.DeclOf(literal), typ: literal.Type, body: literal.Body}
 	subtests := query.subtests
-	if run.subtest != nil {
+	switch {
+	case run.subtest == nil:
+	case run.parallel:
+		subtests = []*types.Var{run.subtest}
+	default:
 		subtests = append(slices.Clip(subtests), run.subtest)
 	}
 	inner := flowQuery{group: query.group, held: held, subtests: subtests}
@@ -211,13 +215,14 @@ func (o *owners) literalWaits(run literalRun, query flowQuery, always waiters) b
 }
 
 type literalRun struct {
-	body    *ast.FuncLit
-	subtest *types.Var
+	literal  *ast.FuncLit
+	subtest  *types.Var
+	parallel bool
 }
 
 func (o *owners) literalRunBy(call *ast.CallExpr, subtests []*types.Var) literalRun {
 	if literal := o.literalOf(call.Fun); literal != nil {
-		return literalRun{body: literal}
+		return literalRun{literal: literal}
 	}
 	selector, ok := ast.Unparen(call.Fun).(*ast.SelectorExpr)
 	if !ok || len(call.Args) != 2 || !subtestRuns[o.calleeName(selector)] {
@@ -227,11 +232,33 @@ func (o *owners) literalRunBy(call *ast.CallExpr, subtests []*types.Var) literal
 	if body == nil {
 		return literalRun{}
 	}
-	parent := o.unalias(o.index.Object(selector.X), selector)
-	if o.callsParallel(body) && !slices.Contains(subtests, parent) {
+	parallel := o.callsParallel(body)
+	if parallel && !o.runsOn(selector, subtests) {
 		return literalRun{}
 	}
-	return literalRun{body: body, subtest: o.subtestOf(body)}
+	return literalRun{literal: body, subtest: o.subtestOf(body), parallel: parallel}
+}
+
+func (o *owners) runsOn(selector *ast.SelectorExpr, subtests []*types.Var) bool {
+	decl := o.index.DeclOf(selector)
+	if decl == nil {
+		return false
+	}
+	holder := o.index.Object(selector.X)
+	for range aliasHopsMax {
+		if holder == nil || holder.IsField() || o.rebound(holder, decl) {
+			return false
+		}
+		defs := o.index.Definitions(holder, decl)
+		if slices.Contains(subtests, holder) {
+			return len(defs) == 0
+		}
+		if len(defs) != 1 {
+			return false
+		}
+		holder = o.index.Object(defs[0])
+	}
+	return false
 }
 
 func (o *owners) subtestOf(body *ast.FuncLit) *types.Var {
@@ -271,14 +298,16 @@ func (o *owners) literalOf(expr ast.Expr) *ast.FuncLit {
 	return literal
 }
 
-type reachState struct {
-	block *cfg.Block
+type reaching struct {
 	value ast.Expr
+	many  bool
 }
 
-type reachKey struct {
-	block int32
-	value ast.Expr
+func (r reaching) join(other reaching) reaching {
+	if r.many || other.many || r.value != other.value {
+		return reaching{many: true}
+	}
+	return r
 }
 
 func (o *owners) reachingLiteral(
@@ -302,35 +331,39 @@ func (o *owners) reachingLiteral(
 			return nil
 		}
 	}
-	var reached []ast.Expr
-	seen := map[reachKey]bool{}
-	work := []reachState{{block: graph.Blocks[0]}}
+	entry := map[*cfg.Block]reaching{graph.Blocks[0]: {}}
+	work := []*cfg.Block{graph.Blocks[0]}
+	var found *reaching
 	i := 0
 	for ; i < len(work) && i < worklist.NodesMax; i++ {
-		state := work[i]
-		key := reachKey{block: state.block.Index, value: state.value}
-		if seen[key] {
-			continue
-		}
-		seen[key] = true
-		for _, node := range state.block.Nodes {
-			holds := node.Pos() <= use.Pos() && use.End() <= node.End()
-			if holds && !slices.Contains(reached, state.value) {
-				reached = append(reached, state.value)
+		block := work[i]
+		state := entry[block]
+		for _, node := range block.Nodes {
+			if node.Pos() <= use.Pos() && use.End() <= node.End() {
+				at := state
+				found = &at
 			}
 			for _, value := range o.assignments(node, local) {
-				state.value = value
+				state = reaching{value: value}
 			}
 		}
-		for _, next := range state.block.Succs {
-			work = append(work, reachState{block: next, value: state.value})
+		for _, next := range block.Succs {
+			before, seen := entry[next]
+			after := state
+			if seen {
+				after = before.join(state)
+			}
+			if !seen || after != before {
+				entry[next] = after
+				work = append(work, next)
+			}
 		}
 	}
 	assert.Ok(i == len(work), "reachingLiteral: worklist reached worklist.NodesMax")
-	if len(reached) != 1 {
+	if found == nil || found.many {
 		return nil
 	}
-	literal, ok := ast.Unparen(reached[0]).(*ast.FuncLit)
+	literal, ok := ast.Unparen(found.value).(*ast.FuncLit)
 	if !ok {
 		return nil
 	}

@@ -3,7 +3,8 @@
 // the group's own goroutine, or the Wait sits in a literal that may not run
 // before the call holding it returns (saved and never called, replaced on
 // some path before the call, passed to another function, a parallel subtest
-// of the function holding the Go, or t.Cleanup).
+// on a t whose body has already returned when the subtest starts, or
+// t.Cleanup).
 package fixture
 
 import (
@@ -790,13 +791,169 @@ func TestSavedWaitReplacedBeforeNextPass(t *testing.T) {
 	}
 }
 
-// TestSavedWaitReplacedInCalledLiteral replaces the saved literal from a
-// literal called before the saved one is.
+// TestSavedWaitReplacedInCalledLiteral replaces the saved literal inside
+// another literal. An assignment in another literal is not followed, so the
+// call may run the literal that does not wait.
 func TestSavedWaitReplacedInCalledLiteral(t *testing.T) {
 	var wg sync.WaitGroup
 	wait := func() { wg.Wait() }
 	func() { wait = func() {} }()
 	wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
 	wait()
+}
+
+// TestParallelSubtestOnOuterSubtestFromParallelSubtest starts a parallel
+// subtest on the outer subtest's t from inside a parallel subtest. "x" has
+// already stopped waiting for its parallel subtests, so t.Run("x") returns
+// before the Wait runs.
+func TestParallelSubtestOnOuterSubtestFromParallelSubtest(t *testing.T) {
+	var wg sync.WaitGroup
+	wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+	t.Run("x", func(outer *testing.T) {
+		outer.Run("y", func(t *testing.T) {
+			t.Parallel()
+			outer.Run("z", func(t *testing.T) {
+				t.Parallel()
+				wg.Wait()
+			})
+		})
+	})
+}
+
+// TestSavedWaitReplacedInGoroutine replaces the saved literal from a
+// goroutine of another group, which may run before the call.
+func TestSavedWaitReplacedInGoroutine(t *testing.T) {
+	var wg, other sync.WaitGroup
+	wait := func() { wg.Wait() }
+	other.Go(func() { wait = func() {} })
+	wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+	wait()
+	other.Wait()
+}
+
+// TestSavedWaitReplacedInSelectCase replaces the saved literal in one select
+// case before the call.
+func TestSavedWaitReplacedInSelectCase(t *testing.T) {
+	var wg sync.WaitGroup
+	ready := make(chan struct{})
+	wait := func() { wg.Wait() }
+	select {
+	case <-ready:
+		wait = func() {}
+	default:
+	}
+	wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+	wait()
+}
+
+// TestSavedWaitReplacedBeforeContinueOuter replaces the saved literal and
+// continues a labeled outer loop, so the call after the loops may run the
+// literal that does not wait.
+func TestSavedWaitReplacedBeforeContinueOuter(t *testing.T) {
+	var wg sync.WaitGroup
+	wait := func() { wg.Wait() }
+	wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+outer:
+	for range 2 {
+		for {
+			if testing.Short() {
+				wait = func() {}
+				continue outer
+			}
+			break
+		}
+	}
+	wait()
+}
+
+// TestSavedWaitAssignmentSkippedByGoto jumps over the assignment of the
+// waiting literal, so the call runs the one that does not wait.
+func TestSavedWaitAssignmentSkippedByGoto(t *testing.T) {
+	var wg sync.WaitGroup
+	wait := func() {}
+	wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+	goto call
+	wait = func() { wg.Wait() }
+call:
+	wait()
+}
+
+// TestDeferredSavedNoWaitReplacedAfterDefer defers the saved literal while it
+// does not wait. The defer keeps that value, so replacing it later does not
+// help.
+func TestDeferredSavedNoWaitReplacedAfterDefer(t *testing.T) {
+	var wg sync.WaitGroup
+	wait := func() {}
+	defer wait()
+	wait = func() { wg.Wait() }
+	wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+}
+
+// TestSavedWaitReplacedThenShadowed replaces the saved literal on one branch,
+// then declares a shadowing variable that holds a waiting literal.
+func TestSavedWaitReplacedThenShadowed(t *testing.T) {
+	var wg sync.WaitGroup
+	wait := func() { wg.Wait() }
+	if testing.Short() {
+		wait = func() {}
+	}
+	{
+		wait := func() { wg.Wait() }
+		_ = wait
+	}
+	wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+	wait()
+}
+
+// TestSavedWaitReplacedThenCalledInLiteral replaces the saved literal before
+// a literal called where it is written calls it.
+func TestSavedWaitReplacedThenCalledInLiteral(t *testing.T) {
+	var wg sync.WaitGroup
+	wait := func() { wg.Wait() }
 	wait = func() {}
+	wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+	func() { wait() }()
+}
+
+// TestGoInSubtestWaitInItsParallelSubtest starts in a plain subtest and waits
+// in a parallel subtest of it, which runs after that subtest's body returns.
+func TestGoInSubtestWaitInItsParallelSubtest(t *testing.T) {
+	t.Run("x", func(t *testing.T) {
+		var wg sync.WaitGroup
+		wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+		t.Run("y", func(t *testing.T) {
+			t.Parallel()
+			wg.Wait()
+		})
+	})
+}
+
+// TestParallelSubtestOnReassignedSubtestParam replaces the subtest's t with
+// the test's own before starting the parallel subtest on it.
+func TestParallelSubtestOnReassignedSubtestParam(t *testing.T) {
+	var wg sync.WaitGroup
+	wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+	t.Run("x", func(st *testing.T) {
+		st = t
+		st.Run("y", func(t *testing.T) {
+			t.Parallel()
+			wg.Wait()
+		})
+	})
+}
+
+// TestParallelSubtestOnAliasReplacedThroughPointer replaces a copy of the
+// subtest's t with the test's own through a pointer.
+func TestParallelSubtestOnAliasReplacedThroughPointer(t *testing.T) {
+	var wg sync.WaitGroup
+	wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+	t.Run("x", func(st *testing.T) {
+		alias := st
+		slot := &alias
+		*slot = t
+		alias.Run("y", func(t *testing.T) {
+			t.Parallel()
+			wg.Wait()
+		})
+	})
 }

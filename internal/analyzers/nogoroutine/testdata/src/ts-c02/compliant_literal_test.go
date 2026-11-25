@@ -3,7 +3,9 @@
 // calls the literal. So does a Wait after the Go in a literal that runs before
 // the call holding it returns: a literal called where it is written, a saved
 // literal that is called while the variable holds it, a t.Run or b.Run body
-// that does not call t.Parallel, or a parallel subtest of such a body.
+// that does not call t.Parallel, or a parallel subtest started from one of
+// these bodies on the t of a subtest that is not parallel itself or of a
+// parallel subtest started from its own body.
 package fixture
 
 import (
@@ -560,4 +562,82 @@ func TestSavedWaitAssignedLast(t *testing.T) {
 	wait = func() { wg.Wait() }
 	wg.Go(func() {})
 	wait()
+}
+
+// TestWaitInParallelSubtestOnAliasOfSubtest starts the parallel subtest on a
+// copy of the plain subtest's t, which is the same subtest.
+func TestWaitInParallelSubtestOnAliasOfSubtest(t *testing.T) {
+	var wg sync.WaitGroup
+	wg.Go(func() {})
+	t.Run("x", func(t *testing.T) {
+		inner := t
+		inner.Run("y", func(t *testing.T) {
+			t.Parallel()
+			wg.Wait()
+		})
+	})
+}
+
+// TestWaitInParallelSubtestStartedFromPlainSubtest starts the parallel
+// subtest on the outer subtest's t from inside a plain subtest of it.
+// t.Run("x") still waits for it.
+func TestWaitInParallelSubtestStartedFromPlainSubtest(t *testing.T) {
+	var wg sync.WaitGroup
+	wg.Go(func() {})
+	t.Run("x", func(outer *testing.T) {
+		outer.Run("z", func(t *testing.T) {
+			outer.Run("y", func(t *testing.T) {
+				t.Parallel()
+				wg.Wait()
+			})
+		})
+	})
+}
+
+// TestWaitInDeferredParallelSubtest defers t.Run of a parallel subtest in a
+// plain subtest. The deferred call starts it before "x" returns.
+func TestWaitInDeferredParallelSubtest(t *testing.T) {
+	var wg sync.WaitGroup
+	wg.Go(func() {})
+	t.Run("x", func(t *testing.T) {
+		defer t.Run("y", func(t *testing.T) {
+			t.Parallel()
+			wg.Wait()
+		})
+	})
+}
+
+// TestSavedWaitReplacementSkippedByGoto jumps over the replacement, so the
+// call runs the literal that waits.
+func TestSavedWaitReplacementSkippedByGoto(t *testing.T) {
+	var wg sync.WaitGroup
+	wait := func() { wg.Wait() }
+	wg.Go(func() {})
+	goto call
+	wait = func() {}
+call:
+	wait()
+}
+
+// TestSavedWaitDeclaredWithoutValue declares the variable with no value,
+// assigns the waiting literal, and replaces it only after the call.
+func TestSavedWaitDeclaredWithoutValue(t *testing.T) {
+	var wg sync.WaitGroup
+	var wait func()
+	wait = func() { wg.Wait() }
+	wg.Go(func() {})
+	wait()
+	wait = func() {}
+	_ = wait
+}
+
+// TestDeferredSavedWaitReplacedAfterDefer defers the saved literal while it
+// waits. The defer keeps that value, so replacing it later does not matter.
+func TestDeferredSavedWaitReplacedAfterDefer(t *testing.T) {
+	var wg sync.WaitGroup
+	wait := func() { wg.Wait() }
+	defer wait()
+	wait = func() {}
+	_ = wait
+	wg.Go(func() {})
 }
