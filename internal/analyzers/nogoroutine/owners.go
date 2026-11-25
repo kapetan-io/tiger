@@ -27,7 +27,7 @@ type owners struct {
 	index     *ownership.Index
 	stops     *stopcase.Finder
 	expired   []span
-	graphs    map[*ast.BlockStmt]*cfg.CFG
+	graphs    map[graphKey]*cfg.CFG
 	summaries map[*types.Var]waiters
 	outside   map[*types.Var]bool
 	walking   map[*ast.FuncLit]bool
@@ -43,7 +43,7 @@ func newOwners(pass *analysis.Pass) *owners {
 	stops := stopcase.New(pass)
 	o := &owners{
 		pass: pass, index: stops.Index(), stops: stops,
-		graphs:    map[*ast.BlockStmt]*cfg.CFG{},
+		graphs:    map[graphKey]*cfg.CFG{},
 		summaries: map[*types.Var]waiters{},
 		outside:   map[*types.Var]bool{},
 		walking:   map[*ast.FuncLit]bool{},

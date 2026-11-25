@@ -1,6 +1,8 @@
 // Paths that end in t.Fatal, t.Fatalf or t.FailNow fail the test, like a
-// returned non-nil error fails a function, so they need no Wait. Every success
-// path still waits.
+// returned non-nil error fails a function, so they need no Wait. The calls
+// count on a *testing.T, *testing.B, *testing.F, testing.TB or a struct
+// embedding one, in a test, a helper or a subtest. Every success path still
+// waits, and a deferred Wait still runs when the test fails.
 package fixture
 
 import (
@@ -75,4 +77,72 @@ func (s fatalSuite) waitThenFatal() {
 func TestFatalHelpers(t *testing.T) {
 	waitThenFatalTB(t)
 	fatalSuite{T: t}.waitThenFatal()
+}
+
+func FuzzWaitThenFatal(f *testing.F) {
+	var wg sync.WaitGroup
+	wg.Go(work)
+	if testing.Short() {
+		wg.Wait()
+		return
+	}
+	f.Fatal("not short")
+}
+
+func waitThenFailNowTB(tb testing.TB) {
+	var wg sync.WaitGroup
+	wg.Go(work)
+	if testing.Short() {
+		wg.Wait()
+		return
+	}
+	tb.FailNow()
+}
+
+func waitThenFatalfTB(tb testing.TB) {
+	var wg sync.WaitGroup
+	wg.Go(work)
+	if testing.Short() {
+		wg.Wait()
+		return
+	}
+	tb.Fatalf("mode %v", testing.Verbose())
+}
+
+type fatalTBSuite struct {
+	testing.TB
+}
+
+func (s fatalTBSuite) waitThenFatal() {
+	var wg sync.WaitGroup
+	wg.Go(work)
+	if testing.Short() {
+		wg.Wait()
+		return
+	}
+	s.Fatal("not short")
+}
+
+func TestFatalInSubtest(t *testing.T) {
+	waitThenFailNowTB(t)
+	waitThenFatalfTB(t)
+	fatalTBSuite{TB: t}.waitThenFatal()
+	t.Run("fatal", func(t *testing.T) {
+		var wg sync.WaitGroup
+		wg.Go(work)
+		if testing.Short() {
+			wg.Wait()
+			return
+		}
+		t.Fatal("not short")
+	})
+}
+
+func TestSubtestWaitsThenFatal(t *testing.T) {
+	t.Run("fatal", func(t *testing.T) {
+		var wg sync.WaitGroup
+		wg.Go(work)
+		wg.Wait()
+		t.Fatal("after wait")
+	})
 }

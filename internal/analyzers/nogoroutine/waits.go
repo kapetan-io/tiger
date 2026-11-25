@@ -17,6 +17,12 @@ type flowQuery struct {
 	held     *ast.SelectorExpr
 	anyPath  bool
 	shutdown bool
+	helper   bool
+}
+
+type graphKey struct {
+	body   *ast.BlockStmt
+	helper bool
 }
 
 type flowState struct {
@@ -56,7 +62,7 @@ func (o *owners) summary(group *types.Var) waiters {
 			if always[decl] {
 				continue
 			}
-			unwaited, _ := o.uncovered(functionOf(decl), flowQuery{group: group}, always)
+			unwaited, _ := o.uncovered(functionOf(decl), flowQuery{group: group, helper: true}, always)
 			if !unwaited {
 				always[decl] = true
 				changed = true
@@ -73,7 +79,7 @@ func (o *owners) summary(group *types.Var) waiters {
 }
 
 func (o *owners) uncovered(fn function, query flowQuery, always waiters) (unwaited, exits bool) {
-	graph := o.graph(fn.body)
+	graph := o.graph(graphKey{body: fn.body, helper: query.helper})
 	if len(graph.Blocks) == 0 {
 		return false, false
 	}
@@ -98,7 +104,14 @@ func (o *owners) uncovered(fn function, query flowQuery, always waiters) (unwait
 			if state.block.Kind == cfg.KindSelectAfterCase {
 				continue
 			}
-			if !state.passed || !o.successExit(fn, state.block) {
+			if !state.passed {
+				continue
+			}
+			if !query.helper && o.failsNowAt(state.block) {
+				exits = true
+				continue
+			}
+			if !o.successExit(fn, state.block) {
 				continue
 			}
 			exits = true
@@ -198,7 +211,7 @@ func (o *owners) literalWaits(literal *ast.FuncLit, query flowQuery, always wait
 	o.walking[literal] = true
 	defer delete(o.walking, literal)
 	fn := function{decl: o.index.DeclOf(literal), typ: literal.Type, body: literal.Body}
-	unwaited, _ := o.uncovered(fn, flowQuery{group: query.group, held: held}, always)
+	unwaited, _ := o.uncovered(fn, flowQuery{group: query.group, held: held, helper: query.helper}, always)
 	return !unwaited
 }
 
@@ -431,28 +444,29 @@ func (o *owners) helperWaits(call *ast.CallExpr, always waiters) bool {
 	return decl != nil && always[decl]
 }
 
-func (o *owners) graph(body *ast.BlockStmt) *cfg.CFG {
-	if built, ok := o.graphs[body]; ok {
+func (o *owners) graph(key graphKey) *cfg.CFG {
+	if built, ok := o.graphs[key]; ok {
 		return built
 	}
-	built := cfg.New(body, o.mayReturn)
-	o.graphs[body] = built
+	mayReturn := func(call *ast.CallExpr) bool { return !o.panics(call) && !o.failsNow(call) }
+	if key.helper {
+		mayReturn = func(call *ast.CallExpr) bool { return !o.panics(call) }
+	}
+	built := cfg.New(key.body, mayReturn)
+	o.graphs[key] = built
 	return built
 }
 
-func (o *owners) mayReturn(call *ast.CallExpr) bool {
-	if o.failsTest(call) {
-		return false
-	}
+func (o *owners) panics(call *ast.CallExpr) bool {
 	ident, ok := call.Fun.(*ast.Ident)
 	if !ok || ident.Name != "panic" {
-		return true
+		return false
 	}
 	_, builtin := o.pass.TypesInfo.Uses[ident].(*types.Builtin)
-	return !builtin
+	return builtin
 }
 
-var testFailures = map[string]bool{
+var failNowCalls = map[string]bool{
 	"(*testing.common).Fatal":   true,
 	"(*testing.common).Fatalf":  true,
 	"(*testing.common).FailNow": true,
@@ -461,19 +475,26 @@ var testFailures = map[string]bool{
 	"(testing.TB).FailNow":      true,
 }
 
-func (o *owners) failsTest(call *ast.CallExpr) bool {
+func (o *owners) failsNow(call *ast.CallExpr) bool {
 	selector, ok := ast.Unparen(call.Fun).(*ast.SelectorExpr)
-	return ok && testFailures[o.calleeName(selector)]
+	return ok && failNowCalls[o.calleeName(selector)]
+}
+
+func (o *owners) failsNowAt(block *cfg.Block) bool {
+	if len(block.Nodes) == 0 {
+		return false
+	}
+	stmt, ok := block.Nodes[len(block.Nodes)-1].(*ast.ExprStmt)
+	if !ok {
+		return false
+	}
+	call, isCall := stmt.X.(*ast.CallExpr)
+	return isCall && o.failsNow(call)
 }
 
 func (o *owners) successExit(fn function, block *cfg.Block) bool {
 	if len(block.Nodes) == 0 {
 		return true
-	}
-	if stmt, ok := block.Nodes[len(block.Nodes)-1].(*ast.ExprStmt); ok {
-		if call, isCall := stmt.X.(*ast.CallExpr); isCall && o.failsTest(call) {
-			return false
-		}
 	}
 	ret, ok := block.Nodes[len(block.Nodes)-1].(*ast.ReturnStmt)
 	if !ok || len(ret.Results) == 0 || fn.typ.Results == nil {
