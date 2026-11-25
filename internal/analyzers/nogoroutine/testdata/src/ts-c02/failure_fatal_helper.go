@@ -1,5 +1,5 @@
 // A function that only fails the test is a call that returns to its caller,
-// not a Wait, so it excuses no group it can reach. These test-support types
+// not a Wait, so it never counts as waiting on a group it can reach. These test-support types
 // sit in a file that is not a test, where a field or package-level group can
 // be waited by any function that reaches it.
 package fixture

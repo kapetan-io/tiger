@@ -1,8 +1,10 @@
 // Paths that end in t.Fatal, t.Fatalf or t.FailNow fail the test, like a
 // returned non-nil error fails a function, so they need no Wait. The calls
 // count on a *testing.T, *testing.B, *testing.F, testing.TB or a struct
-// embedding one, in a test, a helper or a subtest. Every success path still
-// waits, and a deferred Wait still runs when the test fails.
+// embedding one, in a test, a helper or a subtest. Every success path waits,
+// and a deferred Wait runs when the test fails. A t.Fatal before the start
+// ends nothing, since nothing has started, and a TryGo reads t.FailNow as a
+// call that returns, so its path goes on to the Wait.
 package fixture
 
 import (

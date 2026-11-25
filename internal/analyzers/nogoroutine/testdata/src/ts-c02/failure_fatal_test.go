@@ -1,7 +1,9 @@
 // A t.Fatal on one path does not excuse the other paths: a start that no path
 // waits on is still reported. A helper that fails the test is a call that
 // returns, so the path goes on past it, and a subtest that fails ends only the
-// subtest, so t.Run returns and its parent goes on without waiting.
+// subtest, so t.Run returns and its parent goes on without waiting. A start in
+// a deferred or t.Cleanup literal runs after the t.Fatal, so that t.Fatal
+// excuses nothing.
 package fixture
 
 import (
@@ -35,4 +37,20 @@ func TestSubtestFailsInsteadOfWaiting(t *testing.T) {
 			wg.Wait()
 		}
 	})
+}
+
+func TestDeferredStartThenFatal(t *testing.T) {
+	var wg sync.WaitGroup
+	defer func() {
+		wg.Go(work) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+	}()
+	t.Fatal("before the deferred start runs")
+}
+
+func TestCleanupStartThenFatal(t *testing.T) {
+	var wg sync.WaitGroup
+	t.Cleanup(func() {
+		wg.Go(work) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+	})
+	t.Fatal("before the cleanup start runs")
 }

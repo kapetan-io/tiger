@@ -52,8 +52,8 @@ import (
 // called later, a deferred or t.Cleanup literal, another group's goroutine),
 // a t.Fatal that skips the Wait, and a literal inside a function that returns
 // only a non-nil error are documented gaps (knownmiss_literal_test.go), and so
-// are a t.Fatal or t.Skip that skips the Wait in a named test function and a
-// helper that fails the test on some of its paths (knownmiss_fatal_test.go).
+// are a t.Fatal or t.Skip that skips the Wait outside any subtest and a helper
+// that fails the test on some of its paths (knownmiss_fatal_test.go).
 func TestCorpus(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), nogoroutine.Analyzer,
 		"ts-c02", "ts-c03", "ts-c03eg", "ts-c03go", "ts-c03ignore", "ts-c03ok",
