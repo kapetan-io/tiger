@@ -116,7 +116,8 @@ lets a single call stack grow up to one gigabyte before it gives up. So a bad in
 not fail fast. It quietly eats memory and crashes far from the real cause.
 
 Tiger builds the call graph from calls whose target is known: direct calls, calls to a
-concrete type's method, and calls through a function literal. It does not use class
+concrete type's method, calls to a generic function, and calls through a function literal.
+It does not use class
 hierarchy analysis, which treats an interface method call as a call to every type that
 implements it. That would report cycles that never run, and a false finding from a blocking
 rule is a bug in the analyzer.
@@ -175,6 +176,12 @@ The worklist grows the slice it walks, so on a graph with a cycle it never ends.
 TS-S02 and TS-V01 both block the uncapped form `for i := 0; i < len(stack); i++`, and
 accept the capped one. The report is `i == nodesMax && i < len(stack)`: a graph with
 exactly `nodesMax` nodes ends here too, with nothing left to visit, and must pass.
+
+**Known misses:** Four call shapes sit outside the static call graph and are not reported:
+recursion through an interface method (the receiver's dynamic type decides the callee),
+recursion through a method called on a type-parameter value (`func Visit[T Walker](w T) { w.Walk() }`
+where `Tree.Walk` calls `Visit` again), recursion through a function value whose target is
+chosen behind a branch, and a cycle that spans package boundaries.
 
 <!-- rule: TS-S02 -->
 ### TS-S02 — every loop has an upper bound

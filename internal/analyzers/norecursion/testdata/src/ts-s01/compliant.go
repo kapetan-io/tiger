@@ -67,3 +67,9 @@ func runAIterative() {
 		steps = append(steps, process(steps[i])...)
 	}
 }
+
+// genFirst is generic and calls a different generic function that does not
+// call back, so there is no cycle.
+func genFirst[T any](x T) T { return genIdentity(x) }
+
+func genIdentity[T any](x T) T { return x }

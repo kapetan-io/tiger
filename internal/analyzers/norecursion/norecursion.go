@@ -36,7 +36,7 @@ func run(pass *analysis.Pass) (any, error) {
 	for _, fn := range nodes {
 		called := []*ssa.Function{}
 		for _, call := range ssalib.StaticCalls(fn) {
-			called = append(called, call.Callee)
+			called = append(called, sourceFunc(call.Callee))
 		}
 		callees[fn] = called
 	}
@@ -50,6 +50,13 @@ func run(pass *analysis.Pass) (any, error) {
 		}
 	}
 	return nil, nil
+}
+
+func sourceFunc(fn *ssa.Function) *ssa.Function {
+	if origin := fn.Origin(); origin != nil {
+		return origin
+	}
+	return fn
 }
 
 func collectFunctions(sourceFuncs []*ssa.Function) []*ssa.Function {

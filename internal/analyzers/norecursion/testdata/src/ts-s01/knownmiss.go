@@ -3,10 +3,10 @@
 // not resolvable from the call instruction alone.
 //
 // known-miss: interface dispatch (the receiver's dynamic type decides the
-// callee), an unresolved function value (the callee is chosen behind a
-// branch), and a cycle spanning a package boundary are all outside the
-// static call graph this analyzer builds from ssalib.StaticCalls. None of
-// the three is reported here; each is flagged for spec amendment alongside
+// callee), a method called on a type-parameter value, an unresolved function
+// value (the callee is chosen behind a branch), and a cycle spanning a
+// package boundary are all outside the static call graph this analyzer builds
+// from ssalib.StaticCalls. None of the four is reported here; each is flagged for spec amendment alongside
 // the wave-1 TS-S02 amendment rather than approximated into a maybe-finding.
 package fixture
 
@@ -65,3 +65,23 @@ func branchedRecurseA(flag bool, n int) int {
 func branchedRecurseB(flag bool, n int) int {
 	return branchedRecurse(flag, n-1)
 }
+
+// Walker is satisfied by Tree. visitWalker calls it through a type-parameter
+// value, and Tree.Walk calls visitWalker back.
+type Walker interface{ Walk(n int) }
+
+// visitWalker and Tree.Walk recurse into each other, but the call w.Walk is
+// made on a type-parameter value.
+//
+// known-miss: SSA builds w.Walk as a call with no static callee, so the cycle
+// never closes and stays silent.
+func visitWalker[T Walker](w T, n int) {
+	if n == 0 {
+		return
+	}
+	w.Walk(n)
+}
+
+type Tree struct{}
+
+func (t Tree) Walk(n int) { visitWalker(t, n-1) }
