@@ -60,7 +60,7 @@ type toolchain struct {
 	tiger  string
 }
 
-func (t toolchain) key() string {
+func (t *toolchain) key() string {
 	parts := []string{reachFileMagic, "tiger=" + t.tiger}
 	for _, name := range keyedEnv {
 		parts = append(parts, fmt.Sprintf("%s=%q", name, t.env[name]))
@@ -68,7 +68,7 @@ func (t toolchain) key() string {
 	return strings.Join(parts, " ")
 }
 
-func (t toolchain) entry() (string, error) {
+func (t *toolchain) entry() (string, error) {
 	if !filepath.IsAbs(t.cache) {
 		return "", fmt.Errorf("GOCACHE is %q, not an absolute path", t.cache)
 	}
@@ -169,16 +169,16 @@ func (t *ReachFile) resolve() error {
 	}
 	path, pathErr := chain.entry()
 	if pathErr == nil {
-		if data, err := os.ReadFile(path); err == nil && t.parse(string(data), chain) == nil {
+		if data, err := os.ReadFile(path); err == nil && t.parse(string(data), &chain) == nil {
 			markUsed(path)
 			return nil
 		}
 	}
 	var text bytes.Buffer
-	if err := writeReachFile(&text, t.dir, chain); err != nil {
+	if err := writeReachFile(&text, t.dir, &chain); err != nil {
 		return err
 	}
-	if err := t.parse(text.String(), chain); err != nil {
+	if err := t.parse(text.String(), &chain); err != nil {
 		return err
 	}
 	t.saveErr = pathErr
@@ -221,7 +221,7 @@ func writeFileAtomic(path string, data []byte) error {
 	return nil
 }
 
-func (t *ReachFile) parse(text string, chain toolchain) error {
+func (t *ReachFile) parse(text string, chain *toolchain) error {
 	first, rest, _ := strings.Cut(text, "\n")
 	if first != chain.key() {
 		return fmt.Errorf("reach file is for %q, not %q", first, chain.key())
@@ -297,7 +297,7 @@ func memberKey(obj *types.Func) string {
 	return key
 }
 
-func (t toolchain) loadEnv() []string {
+func (t *toolchain) loadEnv() []string {
 	return append(os.Environ(), "GOOS="+t.goos, "GOARCH="+t.goarch, "CGO_ENABLED="+t.cgo)
 }
 
@@ -323,7 +323,7 @@ func loadWithGo(
 	return packages.Load(config, patterns...)
 }
 
-func writeReachFile(w io.Writer, dir string, chain toolchain) error {
+func writeReachFile(w io.Writer, dir string, chain *toolchain) error {
 	pkgs, err := loadWithGo(chain.goroot, &packages.Config{
 		Mode: packages.LoadAllSyntax,
 		Dir:  dir,

@@ -19,7 +19,7 @@ func (t Tree) Close() error {
 	return os.RemoveAll(t.root)
 }
 
-func (c Comparison) Extract() (Tree, error) {
+func (c *Comparison) Extract() (Tree, error) {
 	root, err := os.MkdirTemp("", "tiger-changed-*")
 	if err != nil {
 		return Tree{}, err
@@ -34,7 +34,7 @@ func (c Comparison) Extract() (Tree, error) {
 	return tree, nil
 }
 
-func (c Comparison) write(scratch string) error {
+func (c *Comparison) write(scratch string) error {
 	top := filepath.Join(scratch, "tree")
 	env := environ{"GIT_INDEX_FILE=" + filepath.Join(scratch, "index")}
 	if err := os.Mkdir(top, 0o755); err != nil {

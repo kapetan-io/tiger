@@ -183,14 +183,14 @@ func (s *state) round() bool {
 				continue
 			}
 			result := s.trace(fn, candidate.expr, candidate.mode)
-			grew = s.learn(fn, result) || grew
+			grew = s.learn(fn, &result) || grew
 		}
 		grew = s.learnResult(fn) || grew
 	}
 	return grew
 }
 
-func (s *state) learn(fn *function, result traceResult) bool {
+func (s *state) learn(fn *function, result *traceResult) bool {
 	grew := false
 	for _, index := range result.params {
 		if s.limitParams[fn.obj] == nil {

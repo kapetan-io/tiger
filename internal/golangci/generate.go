@@ -32,8 +32,11 @@ func Generate(module string) ([]byte, error) {
 			"max-same-issues":       0,
 		},
 	}
-	for _, rule := range auto.AutoRules() {
-		for _, setting := range rule.Settings {
+	autoRules := auto.AutoRules()
+	for i := range autoRules {
+		settings := autoRules[i].Settings
+		for j := range settings {
+			setting := &settings[j]
 			insert(document, setting.Path, auto.SubstituteModule(setting.Want, module))
 		}
 	}
@@ -74,7 +77,9 @@ func Init(dir string) (string, error) {
 func enabledLinters(section string) []any {
 	seen := map[string]bool{}
 	names := []string{}
-	for _, rule := range auto.AutoRules() {
+	autoRules := auto.AutoRules()
+	for i := range autoRules {
+		rule := &autoRules[i]
 		if rule.Section != section || seen[rule.Linter] {
 			continue
 		}

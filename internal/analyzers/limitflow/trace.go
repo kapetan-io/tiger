@@ -21,7 +21,7 @@ type traceResult struct {
 	fields []*types.Var
 }
 
-func (r traceResult) bounded() bool {
+func (r *traceResult) bounded() bool {
 	return len(r.bad) == 0 && len(r.huge) == 0
 }
 
@@ -533,7 +533,7 @@ func (t *tracer) resolveNode(index int) {
 func (t *tracer) joinAll(children []int) traceResult {
 	var merged traceResult
 	for _, child := range children {
-		merged = merged.merge(t.nodes[child].found)
+		merged = merged.merge(&t.nodes[child].found)
 	}
 	return merged
 }
@@ -555,7 +555,7 @@ func (t *tracer) joinAny(children []int) traceResult {
 	return t.joinAll(children)
 }
 
-func (r traceResult) merge(other traceResult) traceResult {
+func (r *traceResult) merge(other *traceResult) traceResult {
 	return traceResult{
 		bad:    append(slices.Clone(r.bad), other.bad...),
 		huge:   append(slices.Clone(r.huge), other.huge...),

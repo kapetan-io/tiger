@@ -12,7 +12,7 @@ type BaseName struct {
 	Note string
 }
 
-func (c Comparison) BaseName() BaseName {
+func (c *Comparison) BaseName() BaseName {
 	tip := Short(c.BaseTip)
 	prefix := strings.HasPrefix(c.BaseTip, strings.ToLower(c.BaseRef))
 	byName := len(c.BaseRef) < minPrefix || !prefix
@@ -27,7 +27,7 @@ func (c Comparison) BaseName() BaseName {
 	return BaseName{Name: tip}
 }
 
-func (c Comparison) BaseLabel() string {
+func (c *Comparison) BaseLabel() string {
 	base := c.BaseName()
 	if base.Note == "" {
 		return base.Name
@@ -35,7 +35,7 @@ func (c Comparison) BaseLabel() string {
 	return fmt.Sprintf("%s (%s)", base.Name, base.Note)
 }
 
-func (c Comparison) HeadLabel() string {
+func (c *Comparison) HeadLabel() string {
 	label := Short(c.Head)
 	if c.Dirty {
 		label += " + uncommitted changes"

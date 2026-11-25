@@ -242,6 +242,7 @@ func findOperator(text string) (operatorMatch, bool) {
 	return operatorMatch{}, false
 }
 
+//nolint:gocritic // 96-byte Predicate, one copy per call; a pointer would let callers pass nil.
 func FormatPredicate(parsed Predicate) string {
 	if parsed.Invariant != "" {
 		return parsed.Invariant
