@@ -1,6 +1,6 @@
 // Package fixture holds TS-S21 failure-mode cases: Max/Min constants that
 // participate in no compile-time relational assertion anywhere in the
-// package.
+// package, or that appear only inside one (see failure_companion.go).
 package fixture
 
 // batchMax bounds how many entries one batch may hold.
