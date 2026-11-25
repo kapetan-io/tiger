@@ -116,7 +116,8 @@ lets a single call stack grow up to one gigabyte before it gives up. So a bad in
 not fail fast. It quietly eats memory and crashes far from the real cause.
 
 Tiger builds the call graph from calls whose target is known: direct calls, calls to a
-concrete type's method, calls to a generic function, and calls through a function literal.
+concrete type's method, directly or through a method value, calls to a generic function,
+and calls through a function literal.
 It does not use class
 hierarchy analysis, which treats an interface method call as a call to every type that
 implements it. That would report cycles that never run, and a false finding from a blocking
@@ -178,7 +179,9 @@ accept the capped one. The report is `i == nodesMax && i < len(stack)`: a graph 
 exactly `nodesMax` nodes ends here too, with nothing left to visit, and must pass.
 
 **Known misses:** Four call shapes sit outside the static call graph and are not reported:
-recursion through an interface method (the receiver's dynamic type decides the callee),
+recursion through an interface method, called directly or through a method value or method
+expression such as `f := v.Visit; f()` or `f := Visitor.Visit; f(v)` (the receiver's dynamic
+type decides the callee),
 recursion through a method called on a type-parameter value (`func Visit[T Walker](w T) { w.Walk() }`
 where `Tree.Walk` calls `Visit` again), recursion through a function value whose target is
 chosen behind a branch, and a cycle that spans package boundaries.
@@ -809,7 +812,7 @@ const batchMax = 8189
 ```
 
 ```
-limits.go:1:7: TS-S21: batchMax is a limit that no assertion relates to any other quantity, so nothing checks it makes sense — add a compile-time relation such as const _ = uint(bufferSize - batchMax), which stops compiling once batchMax outgrows what bounds it
+limits.go:1:7: TS-S21: batchMax is a limit that no assertion relates to any other quantity — add a compile-time relation such as const _ = uint(bufferSize - batchMax), or if it depends on nothing, const _ = uint(batchMax - 1)
 ```
 
 The compliant rewrite:
@@ -824,6 +827,40 @@ const batchMax = 8189
 // Stops compiling if batchMax outgrows the buffer that must hold a batch.
 const _ = uint((writeBufferSize - headerSizeBytes) - batchMax*entrySize)
 ```
+
+A limit that depends on no other quantity has nothing honest to relate to, and a second
+constant invented for the comparison proves nothing. Guard it against the smallest value
+at which the code still works, written as a literal. If a tag chain of fewer than 1 link
+means the lookup refuses everything, write `const _ = uint(tagChainMax - 1)`. The guard
+stops compiling if the limit drops below that value. Tiger checks that the guard exists,
+not that the literal is the true minimum.
+
+An unexported `Max` or `Min` constant that appears only inside a `const _` guard is also a
+finding. It bounds nothing the program does, so use it where the limit applies or delete it.
+
+```go
+const nestedMin = 2
+const _ = uint(tagChainMax - nestedMin)
+```
+
+```
+tags.go:1:7: TS-S21: nestedMin is a limit that only appears inside a relational assertion, so it bounds nothing — use it where the limit applies, or delete it
+```
+
+**Known misses:** A guard that only casts the limit, such as `const _ = uint(queueMax)`,
+passes while `queueMax` has a second use, because tiger collects every name inside a
+`const _ = uint(...)` expression and does not judge the relation. The guard-only finding
+reaches only constants whose names end in `Max` or `Min`. A companion constant with any
+other name, such as `const itemFloor = 1` with `const _ = uint(itemMax - itemFloor)`, passes,
+because tiger cannot tell an invented companion from a real input such as `writeBufferSize`
+in the example above, which is also mentioned only in the guard. A companion with a `Max` or
+`Min` name passes when something else mentions it, even a constant nothing reads. An
+exported limit used only in its guard passes, because another package may use it and tiger
+sees one package at a time.
+
+Tiger matches names, not objects, so a local variable, struct field or method with a
+limit's name counts as a use of the limit. A blank `var _ = x`, `const _ = x` or `_ = x`
+does not count.
 
 ## Concurrency
 
@@ -847,23 +884,37 @@ function. A function literal is a function: a start inside a literal is waited w
 `Wait` follows it in that literal or in a function around it, whoever calls the literal.
 A start inside a literal that runs after that outer `Wait` or alongside it is not
 caught: a parallel subtest, a literal saved and called later, a deferred or `t.Cleanup`
-literal, or a goroutine of another group. A `t.Fatal` or `t.FailNow` between the start
-and the `Wait` skips the `Wait`, and is not caught either. For a group held in a struct field, it
+literal, or a goroutine of another group. A `t.Fatal`, `t.FailNow` or `t.Skip` between the
+start and the `Wait` skips the `Wait`, and is not caught either. For a group held in a struct field, it
 must be reached in an exported method of the owning type, or in a method such a method
-calls. The `Wait` must follow the start on every success path. A `Wait` after a
-`return`, on one branch only, in a different function literal that is not called where it
-is written, or inside the goroutine it waits for does not count. A path that returns a
-non-nil error is not a success path, so a `Shutdown` that returns its flush error before it
-waits is accepted. A `Wait` that only runs in the
-branch where the caller's context expired does not count. That branch is a `Shutdown`
-giving up early, and the early return is exempt from the check. The exemption needs a
-`Wait` on the group somewhere in the same function, that branch included, and covers only
-a branch the path reaches after the start. A branch the path passes before the start, a
-branch the start itself sits in, and a function that never calls `Wait` exempt nothing. A
-`Wait` after the start inside the branch that holds the start counts as usual. Any `Wait`
-on the group in the function satisfies the exemption, even one the path never reaches or
-reaches only before the start, and that gap is not caught. A group handed in as a
-parameter is the caller's to wait on, and this check does not follow it.
+calls. The `Wait` must follow the start on every success path.
+
+A `Wait` may sit in a literal that a call after the start runs before it returns. It
+counts when the literal waits on every one of its own success paths. Such a call is a
+literal called where it is written, a call to a local variable that only ever holds one
+literal, or `t.Run` or `b.Run` with a body that does not call `t.Parallel`. A body calls
+`t.Parallel` when it calls it on its own `t`, on a copy of that `t`, through a struct
+literal that embeds it, or through a function or method of the same package that it
+hands `t` to. A call through a helper in another package, a method value, an interface,
+a struct field or a called literal's parameter is not seen, so that body counts as
+running before `t.Run` returns. A body `t.Run` skips under `-run` or `-skip` does not run
+at all, and its `Wait` still counts. These do not count: a `Wait` after a `return`, on
+one branch only, in a literal saved and never called, in a literal passed to another
+function, in a parallel subtest, in a `t.Cleanup` literal, or inside the goroutine it
+waits for.
+
+A path that returns a non-nil error is not a success path, so a `Shutdown` that returns
+its flush error before it waits is accepted. A `Wait` that only runs in the branch where
+the caller's context expired does not count. That branch is a `Shutdown` giving up
+early, and the early return is exempt from the check. The exemption needs a `Wait` on
+the group somewhere in the same function, that branch included, and covers only a
+branch the path reaches after the start. A branch the path passes before the start, a
+branch the start itself sits in, and a function that never calls `Wait` exempt nothing.
+A `Wait` after the start inside the branch that holds the start counts as usual, also
+when it sits in a literal called there. Any `Wait` on the group in the function
+satisfies the exemption, even one the path never reaches or reaches only before the
+start, and that gap is not caught. A group handed in as a parameter is the caller's to
+wait on, and this check does not follow it.
 
 Code that fires it:
 

@@ -41,7 +41,7 @@ func changedTests(both sides) Report {
 }
 
 func changesTo(name testName, both sides) []ChangedTest {
-	unchanged := matching{base: both.base[name], head: both.head[name]}.
+	unchanged := (&matching{base: both.base[name], head: both.head[name]}).
 		next(sameFileAndTokens).
 		next(sameTokens)
 	edited := unchanged.next(sameFile)

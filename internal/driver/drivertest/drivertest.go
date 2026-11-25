@@ -47,7 +47,8 @@ func Run(t Reporter, root string, finisher finish.Finisher) []driver.Finding {
 		t.Errorf("drivertest: %s: %v", root, err)
 		return findings
 	}
-	for _, finding := range findings {
+	for i := range findings {
+		finding := &findings[i]
 		if !match(expectations, finding) {
 			t.Errorf("drivertest: %s: unexpected diagnostic at %s: %s",
 				root, finding.Position, finding.Message)
@@ -62,7 +63,7 @@ func Run(t Reporter, root string, finisher finish.Finisher) []driver.Finding {
 	return findings
 }
 
-func match(expectations []*expectation, finding driver.Finding) bool {
+func match(expectations []*expectation, finding *driver.Finding) bool {
 	for _, want := range expectations {
 		if want.matched || want.file != finding.Position.Filename ||
 			want.line != finding.Position.Line {

@@ -67,7 +67,7 @@ type CustomRule struct {
 	Patterns []string
 }
 
-func (r CustomRule) CountedNoun(n int) string {
+func (r *CustomRule) CountedNoun(n int) string {
 	if n == 1 {
 		return strings.TrimSuffix(r.Counted, "s")
 	}
@@ -324,9 +324,9 @@ func CustomRules() []CustomRule {
 }
 
 func ByCategory(category string) (CustomRule, bool) {
-	for _, rule := range customRules {
-		if rule.Category == category {
-			return rule, true
+	for i := range customRules {
+		if customRules[i].Category == category {
+			return customRules[i], true
 		}
 	}
 	return CustomRule{}, false
@@ -334,7 +334,8 @@ func ByCategory(category string) (CustomRule, bool) {
 
 func Analyzers() []*analysis.Analyzer {
 	byName := map[string]*analysis.Analyzer{}
-	for _, rule := range customRules {
+	for i := range customRules {
+		rule := &customRules[i]
 		if rule.Analyzer == nil {
 			continue
 		}
@@ -350,7 +351,8 @@ func Analyzers() []*analysis.Analyzer {
 
 func Finishers() []finish.Finisher {
 	byName := map[string]finish.Finisher{}
-	for _, rule := range customRules {
+	for i := range customRules {
+		rule := &customRules[i]
 		if rule.Finish == nil {
 			continue
 		}
@@ -367,7 +369,8 @@ func Finishers() []finish.Finisher {
 }
 
 func WholeProgram(analyzerName string) bool {
-	for _, rule := range customRules {
+	for i := range customRules {
+		rule := &customRules[i]
 		if rule.Analyzer != nil && rule.Analyzer.Name == analyzerName && rule.Finish != nil {
 			return true
 		}
@@ -378,7 +381,8 @@ func WholeProgram(analyzerName string) bool {
 func RuleIDs() []string {
 	seen := map[string]bool{}
 	ids := make([]string, 0, len(customRules))
-	for _, rule := range customRules {
+	for i := range customRules {
+		rule := &customRules[i]
 		if rule.Analyzer != nil && !seen[rule.RuleID] {
 			seen[rule.RuleID] = true
 			ids = append(ids, rule.RuleID)
@@ -390,7 +394,8 @@ func RuleIDs() []string {
 
 func CountedCodes() map[string]bool {
 	codes := map[string]bool{}
-	for _, rule := range customRules {
+	for i := range customRules {
+		rule := &customRules[i]
 		if rule.Severity == SeverityAdvisory {
 			codes[rule.RuleID] = true
 		}

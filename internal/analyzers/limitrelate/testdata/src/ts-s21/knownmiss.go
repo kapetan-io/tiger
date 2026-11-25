@@ -8,7 +8,12 @@ package fixture
 // never fail and proves nothing about a relation. TS-S21 collects every
 // identifier that appears inside a `const _ = uint(...)` expression without
 // judging whether the expression relates the limit to anything else, so
-// this tautology counts as participation and the rule stays silent.
+// this tautology counts as participation and, because queueMax is also used
+// by enqueue, the rule stays silent.
 const queueMax = 100
 
 const _ = uint(queueMax)
+
+func enqueue(pending int) bool {
+	return pending < queueMax
+}

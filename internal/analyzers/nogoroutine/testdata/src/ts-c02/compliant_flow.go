@@ -298,3 +298,17 @@ func fanOutOnExpiry(ctx context.Context, conns []func()) error {
 		return ctx.Err()
 	}
 }
+
+// startAndCalledWaitInExpired starts and waits inside the ctx.Done() case,
+// with the Wait in a literal called there, so that case waits as usual.
+func startAndCalledWaitInExpired(ctx context.Context) error {
+	var wg sync.WaitGroup
+	select {
+	case <-ctx.Done():
+		wg.Go(work)
+		func() { wg.Wait() }()
+		return ctx.Err()
+	default:
+	}
+	return nil
+}

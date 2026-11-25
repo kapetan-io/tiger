@@ -201,7 +201,8 @@ func Undefended(
 	invariantTypes := map[Const]bool{}
 	defended := map[Const]bool{}
 	for _, contribution := range contributions {
-		for _, call := range contribution.Calls {
+		for i := range contribution.Calls {
+			call := &contribution.Calls[i]
 			invariantTypes[Const{TypePkg: call.TypePkg, TypeName: call.TypeName}] = true
 			if call.Kind != demanded.Kind || call.In != demanded.In || call.ConstName == "" {
 				continue

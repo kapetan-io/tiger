@@ -393,7 +393,8 @@ func onTarget(
 ) []driver.Finding {
 	span := target.span()
 	matched := []driver.Finding{}
-	for _, finding := range found {
+	for i := range found {
+		finding := &found[i]
 		if finding.Position.Filename != relFile {
 			continue
 		}
@@ -403,7 +404,7 @@ func onTarget(
 		if !keep(finding.Category) {
 			continue
 		}
-		matched = append(matched, finding)
+		matched = append(matched, *finding)
 	}
 	return matched
 }
@@ -411,8 +412,8 @@ func onTarget(
 func refusalBlock(target *resolved, relFile string, blocking []driver.Finding) string {
 	pinned := existingPins(target)
 	disagreement := false
-	for _, finding := range blocking {
-		entry, _ := rules.ByCategory(finding.Category)
+	for i := range blocking {
+		entry, _ := rules.ByCategory(blocking[i].Category)
 		if pinRule(entry.RuleID) && len(pinned) > 0 {
 			disagreement = true
 		}
@@ -429,8 +430,8 @@ func refusalBlock(target *resolved, relFile string, blocking []driver.Finding) s
 			fmt.Fprintf(&block, "  pinned: %s\n", directive.Format(pin))
 		}
 	}
-	for _, finding := range blocking {
-		fmt.Fprintf(&block, "  %s: %s\n", finding.Position, finding.Message)
+	for i := range blocking {
+		fmt.Fprintf(&block, "  %s: %s\n", blocking[i].Position, blocking[i].Message)
 	}
 	if disagreement {
 		block.WriteString("  change the code, or edit the pin by hand\n")
@@ -456,7 +457,8 @@ func targetWrites(
 	target *resolved, relFile string, factFindings []driver.Finding,
 ) ([]write, error) {
 	writes := []write{}
-	for _, finding := range factFindings {
+	for i := range factFindings {
+		finding := &factFindings[i]
 		if finding.Category != catVariant {
 			continue
 		}
@@ -501,15 +503,16 @@ func loopAtLine(target *resolved, line int) ast.Node {
 func sourceFiles(writes []write) (map[string][]byte, error) {
 	files := map[string][]byte{}
 	//tiger:batched the filesystem offers no batch read; each target file is read once
-	for _, w := range writes {
-		if _, done := files[w.absFile]; done {
+	for i := range writes {
+		absFile := writes[i].absFile
+		if _, done := files[absFile]; done {
 			continue
 		}
-		content, err := os.ReadFile(w.absFile)
+		content, err := os.ReadFile(absFile)
 		if err != nil {
 			return nil, err
 		}
-		files[w.absFile] = content
+		files[absFile] = content
 	}
 	return files, nil
 }
@@ -554,8 +557,9 @@ func (w *write) nodeAtOrigin() ast.Node {
 
 func apply(writes []write, sources map[string][]byte, streams command.Streams) error {
 	byFile := map[string][]write{}
-	for _, w := range writes {
-		byFile[w.absFile] = append(byFile[w.absFile], w)
+	for i := range writes {
+		absFile := writes[i].absFile
+		byFile[absFile] = append(byFile[absFile], writes[i])
 	}
 	written := []string{}
 	for _, file := range slices.Sorted(maps.Keys(byFile)) {
@@ -564,7 +568,8 @@ func apply(writes []write, sources map[string][]byte, streams command.Streams) e
 			return group[i].insert.Offset > group[j].insert.Offset
 		})
 		updated := append([]byte{}, sources[file]...)
-		for _, w := range group {
+		for i := range group {
+			w := &group[i]
 			updated = append(updated[:w.insert.Offset],
 				append([]byte(w.insert.Text), updated[w.insert.Offset:]...)...)
 		}
@@ -612,9 +617,9 @@ func report(streams command.Streams, targets []resolved, writes []write, refused
 			}
 		}
 		lines := []string{}
-		for _, w := range writes {
-			if w.target == target {
-				lines = append(lines, w.printed...)
+		for i := range writes {
+			if writes[i].target == target {
+				lines = append(lines, writes[i].printed...)
 			}
 		}
 		sort.Strings(lines)

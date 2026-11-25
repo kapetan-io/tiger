@@ -1,6 +1,8 @@
 # Tiger repository lint: the Stage 0 set from the Tiger Go Specification's
 # adoption ladder (gofumpt, godot, errcheck, errorlint, nakedret,
-# gochecknoinits, decorder, lll) plus golangci-lint's standard defaults.
+# gochecknoinits, decorder, lll) plus golangci-lint's standard defaults,
+# plus gocritic's hugeParam and rangeValCopy (TS-M03) so Tiger passes large
+# structs by pointer the way it tells adopters to.
 # The custom rules are enforced by this repository dogfooding its own
 # `tiger check ./...` in CI; config/golangci.yml stays the full baseline
 # template that `tiger golangci --init` derives for adopters.
@@ -13,6 +15,7 @@ linters:
     - decorder        # TS-L03
     - errorlint       # TS-E03
     - gochecknoinits  # TS-S10
+    - gocritic        # TS-M03
     - godot           # TS-L06
     - lll             # TS-L02
     - nakedret        # TS-E08
@@ -28,6 +31,20 @@ linters:
         - fmt.Fprint
         - fmt.Fprintf
         - fmt.Fprintln
+
+    gocritic:
+      # TS-M03. Only the two checks, not the performance, diagnostic and
+      # style tags the generated baseline turns on. Matches the sizeThreshold
+      # in config/golangci.yml: gocritic flags a size at or above it.
+      disable-all: true
+      enabled-checks:
+        - hugeParam
+        - rangeValCopy
+      settings:
+        hugeParam:
+          sizeThreshold: 65
+        rangeValCopy:
+          sizeThreshold: 65
 
     godot:
       # TS-L06. Comments are sentences.
@@ -45,6 +62,14 @@ linters:
 
   exclusions:
     generated: strict
+    rules:
+      # TS-M03 is about copying large structs in code that adopters run. A
+      # table loop in a test copies once per case. The generated baseline
+      # does not exclude tests.
+      - path: _test\.go
+        text: "(hugeParam|rangeValCopy)"
+        linters:
+          - gocritic
     presets:
       - common-false-positives
 

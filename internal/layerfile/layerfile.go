@@ -318,7 +318,7 @@ type Verdict struct {
 	call     string
 }
 
-func (v Verdict) Allowed() bool {
+func (v *Verdict) Allowed() bool {
 	return v.breach == noBreach
 }
 

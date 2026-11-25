@@ -77,18 +77,19 @@ func Run(args []string, streams command.Streams) int {
 		return command.ExitOperational
 	}
 	blocking = append(blocking, unloaded...)
-	sort.SliceStable(blocking, func(i, j int) bool { return blocking[i].Before(blocking[j]) })
+	sort.SliceStable(blocking, func(i, j int) bool { return blocking[i].Before(&blocking[j]) })
 	printed := 0
-	for _, finding := range blocking {
+	for i := range blocking {
 		printed++
-		fmt.Fprintf(streams.Stdout, "%s: %s\n", finding.Position, finding.Message)
+		fmt.Fprintf(streams.Stdout, "%s: %s\n", blocking[i].Position, blocking[i].Message)
 	}
 	if *showFacts {
-		for _, finding := range sorted.facts {
-			fmt.Fprintf(streams.Stdout, "%s: %s\n", finding.Position, finding.Message)
+		for i := range sorted.facts {
+			fact := &sorted.facts[i]
+			fmt.Fprintf(streams.Stdout, "%s: %s\n", fact.Position, fact.Message)
 		}
 	}
-	printed += printRatchet(streams, setup.budgets, sorted)
+	printed += printRatchet(streams, setup.budgets, &sorted)
 	if printed > 0 {
 		fmt.Fprintf(streams.Stdout, "tiger: %d blocking\n", printed)
 		return command.ExitFindings
@@ -114,7 +115,8 @@ type partitioned struct {
 
 func partition(modulePath module.Path, findings []driver.Finding) (partitioned, error) {
 	sorted := partitioned{counts: newBudgetCounts()}
-	for _, finding := range findings {
+	for i := range findings {
+		finding := findings[i]
 		if _, isFact := rules.ByFact(finding.Category); isFact {
 			sorted.facts = append(sorted.facts, finding)
 			continue
@@ -129,7 +131,7 @@ func partition(modulePath module.Path, findings []driver.Finding) (partitioned, 
 		case rules.SeverityBlocking:
 			sorted.blocking = append(sorted.blocking, finding)
 		case rules.SeverityAdvisory:
-			sorted.counts.add(packageKey(modulePath, finding.Package), entry, finding)
+			sorted.counts.add(packageKey(modulePath, finding.Package), &entry, &finding)
 		default:
 			assert.Unreachable("severity outside the registry's closed set")
 		}

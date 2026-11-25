@@ -4,7 +4,11 @@ package limitrelate
 
 import (
 	"go/ast"
+	"go/parser"
 	"go/token"
+	"os"
+	"path/filepath"
+	"slices"
 	"strings"
 
 	"golang.org/x/tools/go/analysis"
@@ -22,14 +26,28 @@ var unsignedConversions = map[string]bool{
 
 func run(pass *analysis.Pass) (any, error) {
 	participating := map[string]bool{}
+	used := map[string]bool{}
 	var limits []*ast.Ident
 	for _, file := range pass.Files {
 		for name := range assertionIdentifiers(file) {
 			participating[name] = true
 		}
+		for name := range usesOutsideAssertions(file) {
+			used[name] = true
+		}
 		limits = append(limits, limitConstants(file)...)
 	}
+	for name := range usesInExcludedFiles(pass) {
+		used[name] = true
+	}
 	reportUnrelated(pass, limits, participating)
+	guardOnly := map[string]bool{}
+	for name := range participating {
+		if !used[name] {
+			guardOnly[name] = true
+		}
+	}
+	reportGuardOnly(pass, limits, guardOnly)
 	return nil, nil
 }
 
@@ -49,6 +67,160 @@ func assertionIdentifiers(file *ast.File) map[string]bool {
 		}
 	}
 	return found
+}
+
+func usesInExcludedFiles(pass *analysis.Pass) map[string]bool {
+	found := map[string]bool{}
+	if len(pass.Files) == 0 {
+		return found
+	}
+	loaded := map[string]bool{}
+	var dirs []string
+	for _, file := range pass.Files {
+		name := pass.Fset.File(file.Pos()).Name()
+		loaded[name] = true
+		dirs = append(dirs, filepath.Dir(name))
+	}
+	slices.Sort(dirs)
+	for _, dir := range slices.Compact(dirs) {
+		for name := range unloadedUses(pass, dir, loaded) {
+			found[name] = true
+		}
+	}
+	return found
+}
+
+func unloadedUses(pass *analysis.Pass, dir string, loaded map[string]bool) map[string]bool {
+	found := map[string]bool{}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return found
+	}
+	for _, entry := range entries {
+		path := filepath.Join(dir, entry.Name())
+		if entry.IsDir() || !strings.HasSuffix(path, ".go") || loaded[path] {
+			continue
+		}
+		file, err := parser.ParseFile(token.NewFileSet(), path, nil, 0)
+		if err != nil || file.Name.Name != pass.Pkg.Name() {
+			continue
+		}
+		for name := range usesOutsideAssertions(file) {
+			found[name] = true
+		}
+	}
+	return found
+}
+
+func usesOutsideAssertions(file *ast.File) map[string]bool {
+	skip := map[ast.Node]bool{}
+	for _, decl := range file.Decls {
+		genDecl, ok := decl.(*ast.GenDecl)
+		if !ok || genDecl.Tok != token.CONST {
+			continue
+		}
+		for _, spec := range genDecl.Specs {
+			constSpec, ok := spec.(*ast.ValueSpec)
+			if !ok {
+				continue
+			}
+			for _, name := range constSpec.Names {
+				skip[name] = true
+			}
+			for i, name := range constSpec.Names {
+				if name.Name != "_" || i >= len(constSpec.Values) {
+					continue
+				}
+				if hasUnsignedConversion(constSpec.Values[i]) {
+					skip[constSpec.Values[i]] = true
+				}
+			}
+		}
+	}
+	skipBlankBindings(file, skip)
+	found := map[string]bool{}
+	ast.Inspect(file, func(node ast.Node) bool {
+		if node == nil || skip[node] {
+			return false
+		}
+		if ident, ok := node.(*ast.Ident); ok {
+			found[ident.Name] = true
+		}
+		return true
+	})
+	return found
+}
+
+func skipBlankBindings(file *ast.File, skip map[ast.Node]bool) {
+	repeated := repeatedSpecs(file)
+	ast.Inspect(file, func(node ast.Node) bool {
+		switch bind := node.(type) {
+		case *ast.ValueSpec:
+			if allBlank(bind.Names) && allIdents(bind.Values) && !repeated[bind] {
+				for _, value := range bind.Values {
+					skip[value] = true
+				}
+			}
+		case *ast.AssignStmt:
+			if bind.Tok == token.ASSIGN && allIdents(bind.Rhs) &&
+				blankLhs(bind.Lhs) {
+				for _, value := range bind.Rhs {
+					skip[value] = true
+				}
+			}
+		}
+		return true
+	})
+}
+
+func repeatedSpecs(file *ast.File) map[*ast.ValueSpec]bool {
+	repeated := map[*ast.ValueSpec]bool{}
+	for _, decl := range file.Decls {
+		genDecl, ok := decl.(*ast.GenDecl)
+		if !ok || genDecl.Tok != token.CONST {
+			continue
+		}
+		var last *ast.ValueSpec
+		for _, spec := range genDecl.Specs {
+			constSpec, ok := spec.(*ast.ValueSpec)
+			if !ok {
+				continue
+			}
+			if len(constSpec.Values) > 0 {
+				last = constSpec
+			} else if last != nil {
+				repeated[last] = true
+			}
+		}
+	}
+	return repeated
+}
+
+func allBlank(names []*ast.Ident) bool {
+	for _, name := range names {
+		if name.Name != "_" {
+			return false
+		}
+	}
+	return true
+}
+
+func blankLhs(exprs []ast.Expr) bool {
+	for _, expr := range exprs {
+		if ident, ok := expr.(*ast.Ident); !ok || ident.Name != "_" {
+			return false
+		}
+	}
+	return true
+}
+
+func allIdents(exprs []ast.Expr) bool {
+	for _, expr := range exprs {
+		if _, ok := expr.(*ast.Ident); !ok {
+			return false
+		}
+	}
+	return len(exprs) > 0
 }
 
 func collectAssertion(spec *ast.ValueSpec, found map[string]bool) {
@@ -127,9 +299,23 @@ func reportUnrelated(pass *analysis.Pass, limits []*ast.Ident, participating map
 			Pos:      name.Pos(),
 			Category: "TS-S21",
 			Message: "TS-S21: " + name.Name + " is a limit that no assertion relates to any " +
-				"other quantity, so nothing checks it makes sense — add a compile-time relation " +
-				"such as const _ = uint(bufferSize - " + name.Name + "), which stops compiling " +
-				"once " + name.Name + " outgrows what bounds it",
+				"other quantity — add a compile-time relation such as " +
+				"const _ = uint(bufferSize - " + name.Name + "), or if it depends on nothing, " +
+				"const _ = uint(" + name.Name + " - 1)",
+		})
+	}
+}
+
+func reportGuardOnly(pass *analysis.Pass, limits []*ast.Ident, guardOnly map[string]bool) {
+	for _, name := range limits {
+		if !guardOnly[name.Name] || name.IsExported() {
+			continue
+		}
+		pass.Report(analysis.Diagnostic{
+			Pos:      name.Pos(),
+			Category: "TS-S21",
+			Message: "TS-S21: " + name.Name + " is a limit that only appears inside a relational " +
+				"assertion, so it bounds nothing — use it where the limit applies, or delete it",
 		})
 	}
 }

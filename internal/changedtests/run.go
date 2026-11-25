@@ -54,12 +54,12 @@ func Run(args []string, streams command.Streams) int {
 	if err != nil {
 		return failure(streams, err)
 	}
-	report, err := compareRevisions(*chdir, rev)
+	report, err := compareRevisions(*chdir, &rev)
 	if err != nil {
 		return failure(streams, err)
 	}
 	if *format == "json" {
-		data, err := report.JSON(rev)
+		data, err := report.JSON(&rev)
 		if err != nil {
 			return failure(streams, err)
 		}
@@ -68,11 +68,11 @@ func Run(args []string, streams command.Streams) int {
 		}
 		return command.ExitClean
 	}
-	fmt.Fprint(streams.Stdout, report.Text(rev))
+	fmt.Fprint(streams.Stdout, report.Text(&rev))
 	return command.ExitClean
 }
 
-func compareRevisions(dir string, rev revision.Comparison) (Report, error) {
+func compareRevisions(dir string, rev *revision.Comparison) (Report, error) {
 	head, err := readTests(dir)
 	if err != nil {
 		return Report{}, fmt.Errorf("cannot read the tests at head (%s): %w",
@@ -85,7 +85,7 @@ func compareRevisions(dir string, rev revision.Comparison) (Report, error) {
 	return changedTests(sides{base: base, head: head}), nil
 }
 
-func readBase(rev revision.Comparison) (tests testFunctions, err error) {
+func readBase(rev *revision.Comparison) (tests testFunctions, err error) {
 	tree, err := rev.Extract()
 	if err != nil {
 		return tests, err

@@ -36,7 +36,7 @@ func run(pass *analysis.Pass) (any, error) {
 	for _, fn := range nodes {
 		called := []*ssa.Function{}
 		for _, call := range ssalib.StaticCalls(fn) {
-			called = append(called, sourceFunc(call.Callee))
+			called = append(called, sourceFunc(forwardedTarget(call.Callee)))
 		}
 		callees[fn] = called
 	}
@@ -50,6 +50,18 @@ func run(pass *analysis.Pass) (any, error) {
 		}
 	}
 	return nil, nil
+}
+
+func forwardedTarget(fn *ssa.Function) *ssa.Function {
+	if !strings.HasPrefix(fn.Synthetic, "bound method wrapper") &&
+		!strings.HasPrefix(fn.Synthetic, "thunk for") {
+		return fn
+	}
+	forwarded := ssalib.StaticCalls(fn)
+	if len(forwarded) != 1 {
+		return fn
+	}
+	return forwarded[0].Callee
 }
 
 func sourceFunc(fn *ssa.Function) *ssa.Function {
