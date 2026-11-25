@@ -1,7 +1,7 @@
 // The TS-S01 failure modes: direct self-recursion, mutual recursion, method
 // recursion on a concrete type, and recursion through a statically-known
-// function literal, each also written with type parameters or through a
-// method value.
+// function literal. The corpus also holds the same recursion on generic
+// types and through a method value or method expression.
 package fixture
 
 // Node is one node of a tree walked by chase and chaseIterative.
@@ -142,4 +142,19 @@ func (p *MVPair) Ping() { // want `TS-S01: Ping → Pong → Ping`
 
 func (p *MVPair) Pong() {
 	p.other.Ping()
+}
+
+type ME struct{}
+
+func (m *ME) Go(n int) { // want `TS-S01: Go → Go`
+	f := (*ME).Go
+	f(m, n-1)
+}
+
+// GenME is the method-expression shape on a generic type.
+type GenME[T any] struct{}
+
+func (m *GenME[T]) Go(n int) { // want `TS-S01: Go → Go`
+	f := (*GenME[T]).Go
+	f(m, n-1)
 }

@@ -83,3 +83,8 @@ func leafSize(l *Leaf) int {
 	f := l.Size
 	return f()
 }
+
+func leafSizeExpr(l *Leaf) int {
+	f := (*Leaf).Size
+	return f(l)
+}
