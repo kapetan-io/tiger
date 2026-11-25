@@ -200,3 +200,19 @@ func (v *variadicLogged) Closed() error {
 }
 
 func logf(format string, args ...any) { _ = fmt.Sprintf(format, args...) }
+
+// otherInstance waits on the group of a different value of its own type, which
+// counts because a group is matched by its field, not by the value holding it.
+type otherInstance struct{ wg sync.WaitGroup }
+
+// Start runs the worker. Not reported.
+func (o *otherInstance) Start() { o.wg.Go(work) }
+
+// Closed stops a fresh value and reports the group closed.
+func (o *otherInstance) Closed() error {
+	var fresh otherInstance
+	fresh.stop()
+	return errClosed
+}
+
+func (o *otherInstance) stop() { o.wg.Wait() }

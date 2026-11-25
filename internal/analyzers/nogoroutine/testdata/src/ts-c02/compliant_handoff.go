@@ -190,3 +190,23 @@ func (s *stopRemoteClose) Close() error {
 func (s *stopRemoteClose) stop() {
 	stophelp.Wait(&s.wg)
 }
+
+// boundStopClose calls its stop method through a local bound to the method
+// value.
+type boundStopClose struct {
+	wg   sync.WaitGroup
+	once sync.Once
+	err  error
+}
+
+// Start runs the worker.
+func (b *boundStopClose) Start() { b.wg.Go(work) }
+
+// Close stops through the bound method value and returns the stored error.
+func (b *boundStopClose) Close() error {
+	stop := b.stop
+	stop()
+	return b.err
+}
+
+func (b *boundStopClose) stop() { b.once.Do(func() { b.wg.Wait() }) }

@@ -42,9 +42,8 @@ import (
 // defer is a documented gap (knownmiss.go, ENG-980), and so are a Wait after a
 // call that never returns, a Wait in a sync.Once that already fired, and a
 // group handed to a call it cannot follow that never waits (knownmiss.go); a
-// path ending
-// in panic never returns and needs none either, though no corpus case covers
-// panic.
+// path ending in panic never returns and needs none either, though no corpus
+// case covers panic.
 //
 // Goal, TS-C02: a function literal is a function. A start inside a literal is
 // waited when a Wait follows it on every success path of that literal, or of

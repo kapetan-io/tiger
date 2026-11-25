@@ -117,6 +117,9 @@ func (o *owners) callMayWait(
 		return true
 	}
 	decl := o.calledDecl(call)
+	if bound, ok := o.soleDefinition(call.Fun).(*ast.SelectorExpr); ok && decl == nil {
+		decl = o.calledDecl(&ast.CallExpr{Fun: bound})
+	}
 	if decl != nil && o.mayWait(decl.Body, group, always, seen) {
 		return true
 	}
