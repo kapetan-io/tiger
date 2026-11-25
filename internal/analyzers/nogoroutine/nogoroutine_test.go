@@ -30,7 +30,9 @@ import (
 // own group never finishes (waitsOnItself); TryGo needs a Wait on only some
 // path after it, since the path where it returned false started nothing
 // (tryGoWaited); a return of a non-nil error is the failure path, so it
-// needs no Wait; a path ending in panic never returns and needs none either,
+// needs no Wait (startThenOnlyError), but a function that never calls Wait
+// waits on nothing, even when it loops forever or returns only a non-nil error
+// (failure_nowait.go); a path ending in panic never returns and needs none either,
 // though no corpus case covers panic.
 //
 // Goal, TS-C02: a function literal is a function. A start inside a literal is

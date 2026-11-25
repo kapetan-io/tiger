@@ -896,7 +896,10 @@ function, in a parallel subtest, in a `t.Cleanup` literal, or inside the gorouti
 waits for.
 
 A path that returns a non-nil error is not a success path, so a `Shutdown` that returns
-its flush error before it waits is accepted. A `Wait` that only runs in the branch where
+its flush error before it waits is accepted. A function that never calls `Wait` on the
+group, itself or through a function that does, waits on nothing, even when it loops
+forever or returns only a non-nil error, so calling it or exporting it beside the start
+satisfies nothing. A `Wait` that only runs in the branch where
 the caller's context expired does not count. That branch is a `Shutdown` giving up
 early, and the early return is exempt from the check. The exemption needs a `Wait` on
 the group somewhere in the same function, that branch included, and covers only a

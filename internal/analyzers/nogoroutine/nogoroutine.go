@@ -14,7 +14,10 @@
 // saved in a local that holds only that literal, or a t.Run body that does
 // not call t.Parallel), when the literal waits on all its success paths. For
 // a group held in a struct field, the Wait goes in an exported method of the
-// owning type (or a method one reaches). A select case receiving from
+// owning type (or a method one reaches). A function counts as a Wait only
+// when it calls Wait on the group, itself or through a function that does: one
+// that loops forever or returns only a non-nil error has no success exit to
+// check, and would otherwise pass for a Wait on every group. A select case receiving from
 // ctx.Done() is the early return of a Shutdown whose caller gave up, so it is
 // not the success path: a path through it needs no Wait, and a Wait inside it
 // covers a path only when the case also holds the start. The case is exempt

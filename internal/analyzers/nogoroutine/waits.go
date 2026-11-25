@@ -53,7 +53,7 @@ func (o *owners) summary(group *types.Var) waiters {
 	for round := 0; round <= len(decls); round++ {
 		changed := false
 		for _, decl := range decls {
-			if always[decl] {
+			if always[decl] || !o.callsWait(decl, group, always) {
 				continue
 			}
 			unwaited, _ := o.uncovered(functionOf(decl), flowQuery{group: group}, always)
@@ -70,6 +70,17 @@ func (o *owners) summary(group *types.Var) waiters {
 	assert.Ok(settled, "summary: no fixpoint within len(decls)+1 rounds")
 	o.summaries[group] = always
 	return always
+}
+
+func (o *owners) callsWait(decl *ast.FuncDecl, group *types.Var, always waiters) bool {
+	found := false
+	ast.Inspect(decl.Body, func(node ast.Node) bool {
+		if call, ok := node.(*ast.CallExpr); ok {
+			found = found || o.waitCall(call, group, always)
+		}
+		return !found
+	})
+	return found
 }
 
 func (o *owners) uncovered(fn function, query flowQuery, always waiters) (unwaited, exits bool) {
