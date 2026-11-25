@@ -1,7 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 360" width="800" height="360" role="img" aria-label="TS-C02 goroutine group: before, Launch starts a goroutine with a bare go statement and returns, so nothing waits for it and it can outlive its caller; after, Start launches it with wg.Go and Shutdown closes stop and calls wg.Wait on the same group until it exits">
   <title>TS-C02 goroutine group: before, Launch starts a goroutine with a bare go statement and returns, so nothing waits for it and it can outlive its caller; after, Start launches it with wg.Go and Shutdown closes stop and calls wg.Wait on the same group until it exits</title>
   <style>
-    svg { --ink: #24292f; --dim: #6a737d; --paper: #ffffff; --well: #f3f4f6; --rim: #d4d8dd;
+    svg { --ink: #24292f; --dim: #5d656e; --paper: #ffffff; --well: #f3f4f6; --rim: #d4d8dd;
           --cell: #ffffff; --cellrim: #8a929b; --wire: #57606a;
           --fail: #c4242f; --failfill: #fde8e8; --pass: #1b7a38; --passfill: #def7e5; }
     @media (prefers-color-scheme: dark) {
@@ -9,25 +9,25 @@
             --cell: #0e1116; --cellrim: #707982; --wire: #99a2ac;
             --fail: #ff6a62; --failfill: #3b1719; --pass: #46c15d; --passfill: #11271b; }
     }
-    text { fill: var(--ink); font: 13px -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; }
+    text { fill: #24292f; fill: var(--ink); font: 13px -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; }
     .m { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; }
     .src { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11px; white-space: pre; }
     .s { font-size: 12px; }
     .b { font-weight: 600; }
-    .dim { fill: var(--dim); }
-    .rf { fill: var(--fail); }
-    .rp { fill: var(--pass); }
-    .page { fill: var(--paper); stroke: var(--rim); }
-    .well { fill: var(--well); }
-    .srcbox { fill: var(--paper); stroke: var(--rim); }
-    .cell { fill: var(--cell); stroke: var(--cellrim); stroke-width: 1.2; }
-    .ghost { fill: none; stroke: var(--cellrim); stroke-width: 1.2; stroke-dasharray: 4 3; }
-    .cellfail { fill: var(--failfill); stroke: var(--fail); stroke-width: 1.2; }
-    .cellpass { fill: var(--passfill); stroke: var(--pass); stroke-width: 1.2; }
-    .wire { fill: none; stroke: var(--wire); stroke-width: 1.5; }
-    .wfail { fill: none; stroke: var(--fail); stroke-width: 1.8; }
-    .wpass { fill: none; stroke: var(--pass); stroke-width: 2; }
-    .tw { fill: var(--wire); } .tf { fill: var(--fail); } .tp { fill: var(--pass); }
+    .dim { fill: #5d656e; fill: var(--dim); }
+    .rf { fill: #c4242f; fill: var(--fail); }
+    .rp { fill: #1b7a38; fill: var(--pass); }
+    .page { fill: #ffffff; fill: var(--paper); stroke: #d4d8dd; stroke: var(--rim); }
+    .well { fill: #f3f4f6; fill: var(--well); }
+    .srcbox { fill: #ffffff; fill: var(--paper); stroke: #d4d8dd; stroke: var(--rim); }
+    .cell { fill: #ffffff; fill: var(--cell); stroke: #8a929b; stroke: var(--cellrim); stroke-width: 1.2; }
+    .ghost { fill: none; stroke: #8a929b; stroke: var(--cellrim); stroke-width: 1.2; stroke-dasharray: 4 3; }
+    .cellfail { fill: #fde8e8; fill: var(--failfill); stroke: #c4242f; stroke: var(--fail); stroke-width: 1.2; }
+    .cellpass { fill: #def7e5; fill: var(--passfill); stroke: #1b7a38; stroke: var(--pass); stroke-width: 1.2; }
+    .wire { fill: none; stroke: #57606a; stroke: var(--wire); stroke-width: 1.5; }
+    .wfail { fill: none; stroke: #c4242f; stroke: var(--fail); stroke-width: 1.8; }
+    .wpass { fill: none; stroke: #1b7a38; stroke: var(--pass); stroke-width: 2; }
+    .tw { fill: #57606a; fill: var(--wire); } .tf { fill: #c4242f; fill: var(--fail); } .tp { fill: #1b7a38; fill: var(--pass); }
   </style>
   <defs>
     <marker id="headWire" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="tw"/></marker>
