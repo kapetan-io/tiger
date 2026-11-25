@@ -1,6 +1,7 @@
 // A Close that waits through sync.Once.Do, a method value of Wait, a helper
 // handed the group, or a helper in another package counts as a Wait, also when
-// it then returns a stored error.
+// it then returns a stored error and when it reaches the Wait through a
+// same-package method.
 package fixture
 
 import (
@@ -111,3 +112,81 @@ func (s *secondArgClose) Close() error {
 }
 
 func waitSecond(_, second *sync.WaitGroup) { second.Wait() }
+
+// stopOnceClose waits inside stop, a method with a success path.
+type stopOnceClose struct {
+	wg   sync.WaitGroup
+	once sync.Once
+	err  error
+}
+
+// Start runs the worker.
+func (s *stopOnceClose) Start() { s.wg.Go(work) }
+
+// Close stops and returns the stored error.
+func (s *stopOnceClose) Close() error {
+	s.stop()
+	return s.err
+}
+
+func (s *stopOnceClose) stop() {
+	s.once.Do(func() { s.wg.Wait() })
+}
+
+// stopValueClose waits inside stop, a method with a success path.
+type stopValueClose struct {
+	wg  sync.WaitGroup
+	err error
+}
+
+// Start runs the worker.
+func (s *stopValueClose) Start() { s.wg.Go(work) }
+
+// Close stops and returns the stored error.
+func (s *stopValueClose) Close() error {
+	s.stop()
+	return s.err
+}
+
+func (s *stopValueClose) stop() {
+	wait := s.wg.Wait
+	wait()
+}
+
+// stopHandedClose waits inside stop, a method with a success path.
+type stopHandedClose struct {
+	wg  sync.WaitGroup
+	err error
+}
+
+// Start runs the worker.
+func (s *stopHandedClose) Start() { s.wg.Go(work) }
+
+// Close stops and returns the stored error.
+func (s *stopHandedClose) Close() error {
+	s.stop()
+	return s.err
+}
+
+func (s *stopHandedClose) stop() {
+	waitAll(&s.wg)
+}
+
+// stopRemoteClose waits inside stop, a method with a success path.
+type stopRemoteClose struct {
+	wg  sync.WaitGroup
+	err error
+}
+
+// Start runs the worker.
+func (s *stopRemoteClose) Start() { s.wg.Go(work) }
+
+// Close stops and returns the stored error.
+func (s *stopRemoteClose) Close() error {
+	s.stop()
+	return s.err
+}
+
+func (s *stopRemoteClose) stop() {
+	stophelp.Wait(&s.wg)
+}

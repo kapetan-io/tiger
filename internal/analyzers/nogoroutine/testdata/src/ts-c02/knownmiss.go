@@ -3,6 +3,7 @@ package fixture
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"sync"
 )
@@ -135,3 +136,67 @@ func (e *exitBeforeWait) Stop() {
 	os.Exit(1)
 	e.wg.Wait()
 }
+
+// onceAlreadyFired waits inside a once.Do whose Once its Start already fired,
+// so the Wait never runs. Nothing tracks whether a Once has fired.
+type onceAlreadyFired struct {
+	wg   sync.WaitGroup
+	once sync.Once
+	err  error
+}
+
+// Start fires the Once, then runs the worker. Not reported.
+func (o *onceAlreadyFired) Start() {
+	o.once.Do(func() {})
+	o.wg.Go(work)
+}
+
+// Close waits inside once.Do, which no longer runs its literal.
+func (o *onceAlreadyFired) Close() error {
+	o.once.Do(func() { o.wg.Wait() })
+	return o.err
+}
+
+// printedForever hands its group to fmt.Println, a call the check cannot
+// follow, so it counts as a Wait though Println never waits.
+type printedForever struct{ wg sync.WaitGroup }
+
+// Start runs the worker. Not reported.
+func (p *printedForever) Start() { p.wg.Go(work) }
+
+// Run prints the group, then loops forever.
+func (p *printedForever) Run() {
+	fmt.Println(&p.wg)
+	for {
+	}
+}
+
+// addOnlyValue hands its group to a func value that only calls Add.
+type addOnlyValue struct {
+	wg    sync.WaitGroup
+	touch func(*sync.WaitGroup)
+}
+
+// Start runs the worker. Not reported.
+func (a *addOnlyValue) Start() { a.wg.Go(work) }
+
+// Closed touches the group and reports the group closed.
+func (a *addOnlyValue) Closed() error {
+	a.touch(&a.wg)
+	return errClosed
+}
+
+// variadicLogged hands its group to a same-package variadic function that
+// never waits; a variadic parameter is not followed.
+type variadicLogged struct{ wg sync.WaitGroup }
+
+// Start runs the worker. Not reported.
+func (v *variadicLogged) Start() { v.wg.Go(work) }
+
+// Closed logs the group and reports the group closed.
+func (v *variadicLogged) Closed() error {
+	logf("closing %v", &v.wg)
+	return errClosed
+}
+
+func logf(format string, args ...any) { _ = fmt.Sprintf(format, args...) }

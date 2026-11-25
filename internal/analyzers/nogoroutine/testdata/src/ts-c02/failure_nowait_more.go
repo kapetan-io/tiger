@@ -1,6 +1,6 @@
 // A function whose only Wait does not run before it returns (in a goroutine,
-// in a literal saved and never called, or after a loop that never ends) waits
-// on nothing, even when it has no success exit.
+// in a literal or method value saved and never called, or after a loop that
+// never ends) waits on nothing, even when it has no success exit.
 package fixture
 
 import (
@@ -112,21 +112,82 @@ func (l *laterWait) Closed() error {
 	return errClosed
 }
 
-// onceFired waits in a once.Do whose Once its Start already fired, so the Wait
-// never runs.
-type onceFired struct {
+// onceSuccessClose has a success path, so its once.Do literal is not followed
+// and its Close waits on nothing.
+type onceSuccessClose struct {
 	wg   sync.WaitGroup
 	once sync.Once
 }
 
-// Start fires the Once, then runs the worker.
-func (o *onceFired) Start() {
-	o.once.Do(func() {})
+// Start runs the worker.
+func (o *onceSuccessClose) Start() {
 	o.wg.Go(work) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
 }
 
-// Close waits inside once.Do, which no longer runs its literal.
-func (o *onceFired) Close() error {
+// Close waits inside once.Do and returns nil.
+func (o *onceSuccessClose) Close() error {
 	o.once.Do(func() { o.wg.Wait() })
 	return nil
+}
+
+// laterValue hands its Wait method value to time.AfterFunc, which calls it
+// later.
+type laterValue struct{ wg sync.WaitGroup }
+
+// Start runs the worker.
+func (l *laterValue) Start() { l.wg.Go(work) } // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+
+// Closed schedules the Wait and reports the group closed.
+func (l *laterValue) Closed() error {
+	time.AfterFunc(time.Second, l.wg.Wait)
+	return errClosed
+}
+
+// otherGroupValue runs its Wait method value in another group's goroutine.
+type otherGroupValue struct{ a, b sync.WaitGroup }
+
+// Start runs the worker.
+func (o *otherGroupValue) Start() { o.a.Go(work) } // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+
+// Run waits on a inside b's goroutine, then loops forever.
+func (o *otherGroupValue) Run() {
+	o.b.Go(o.a.Wait)
+	for {
+	}
+}
+
+// savedValue takes its Wait method value and never calls it.
+type savedValue struct{ wg sync.WaitGroup }
+
+// Start runs the worker.
+func (s *savedValue) Start() { s.wg.Go(work) } // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+
+// Closed discards the method value and reports the group closed.
+func (s *savedValue) Closed() error {
+	_ = s.wg.Wait
+	return errClosed
+}
+
+// panicHanded hands its group to panic, which never waits.
+type panicHanded struct{ wg sync.WaitGroup }
+
+// Start runs the worker.
+func (p *panicHanded) Start() { p.wg.Go(work) } // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+
+// Run panics with the group.
+func (p *panicHanded) Run() { panic(&p.wg) }
+
+// appendHanded hands its group to append, which never waits.
+type appendHanded struct {
+	wg  sync.WaitGroup
+	all []*sync.WaitGroup
+}
+
+// Start runs the worker.
+func (a *appendHanded) Start() { a.wg.Go(work) } // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+
+// Closed records the group and reports the group closed.
+func (a *appendHanded) Closed() error {
+	a.all = append(a.all, &a.wg)
+	return errClosed
 }

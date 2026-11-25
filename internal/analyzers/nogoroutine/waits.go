@@ -97,9 +97,6 @@ func (o *owners) mayWait(
 				switch expr := inner.(type) {
 				case *ast.FuncLit, *ast.GoStmt:
 					return false
-				case *ast.SelectorExpr:
-					waited, isWait := o.groupMethod(expr, "Wait")
-					found = found || isWait && waited == group
 				case *ast.CallExpr:
 					found = found || o.callMayWait(expr, group, always, seen)
 				}
@@ -116,7 +113,11 @@ func (o *owners) mayWait(
 func (o *owners) callMayWait(
 	call *ast.CallExpr, group *types.Var, always waiters, seen searchedBodies,
 ) bool {
-	if o.helperWaits(call, always) {
+	if o.callsWait(call.Fun, group) || o.helperWaits(call, always) {
+		return true
+	}
+	decl := o.calledDecl(call)
+	if decl != nil && o.mayWait(decl.Body, group, always, seen) {
 		return true
 	}
 	literal := o.literalRunBy(call)
@@ -126,12 +127,28 @@ func (o *owners) callMayWait(
 	if literal != nil && o.mayWait(literal.Body, group, always, seen) {
 		return true
 	}
+	callee := o.pass.TypesInfo.Types[ast.Unparen(call.Fun)]
+	if callee.IsBuiltin() || callee.IsType() {
+		return false
+	}
 	for i, arg := range call.Args {
 		if o.names(arg, group) && o.handedWait(call, i, seen) {
 			return true
 		}
 	}
 	return false
+}
+
+func (o *owners) callsWait(fun ast.Expr, group *types.Var) bool {
+	selector, ok := ast.Unparen(fun).(*ast.SelectorExpr)
+	if !ok {
+		selector, ok = o.soleDefinition(fun).(*ast.SelectorExpr)
+	}
+	if !ok {
+		return false
+	}
+	waited, isWait := o.groupMethod(selector, "Wait")
+	return isWait && waited == group
 }
 
 func (o *owners) handedWait(call *ast.CallExpr, arg int, seen searchedBodies) bool {
@@ -322,10 +339,17 @@ func (o *owners) literalRunBy(call *ast.CallExpr) *ast.FuncLit {
 var subtestRuns = map[string]bool{"(*testing.T).Run": true, "(*testing.B).Run": true}
 
 func (o *owners) literalOf(expr ast.Expr) *ast.FuncLit {
-	expr = ast.Unparen(expr)
-	if literal, ok := expr.(*ast.FuncLit); ok {
+	if literal, ok := ast.Unparen(expr).(*ast.FuncLit); ok {
 		return literal
 	}
+	if literal, ok := o.soleDefinition(expr).(*ast.FuncLit); ok {
+		return literal
+	}
+	return nil
+}
+
+func (o *owners) soleDefinition(expr ast.Expr) ast.Expr {
+	expr = ast.Unparen(expr)
 	local := o.index.Object(expr)
 	if _, isIdent := expr.(*ast.Ident); !isIdent || local == nil || local.IsField() {
 		return nil
@@ -338,11 +362,7 @@ func (o *owners) literalOf(expr ast.Expr) *ast.FuncLit {
 	if len(defs) != 1 || o.rebound(local, decl) {
 		return nil
 	}
-	literal, ok := ast.Unparen(defs[0]).(*ast.FuncLit)
-	if !ok {
-		return nil
-	}
-	return literal
+	return ast.Unparen(defs[0])
 }
 
 func (o *owners) rebound(local *types.Var, decl *ast.FuncDecl) bool {
