@@ -53,7 +53,7 @@ func (o *owners) summary(group *types.Var) waiters {
 	for round := 0; round <= len(decls); round++ {
 		changed := false
 		for _, decl := range decls {
-			if always[decl] || !o.callsWait(decl, group, always) {
+			if always[decl] || !o.callsWait(decl.Body, group, always, map[*ast.FuncLit]bool{}) {
 				continue
 			}
 			unwaited, _ := o.uncovered(functionOf(decl), flowQuery{group: group}, always)
@@ -72,15 +72,34 @@ func (o *owners) summary(group *types.Var) waiters {
 	return always
 }
 
-func (o *owners) callsWait(decl *ast.FuncDecl, group *types.Var, always waiters) bool {
+func (o *owners) callsWait(
+	body *ast.BlockStmt, group *types.Var, always waiters, seen map[*ast.FuncLit]bool,
+) bool {
 	found := false
-	ast.Inspect(decl.Body, func(node ast.Node) bool {
-		if call, ok := node.(*ast.CallExpr); ok {
-			found = found || o.waitCall(call, group, always)
+	for _, block := range o.graph(body).Blocks {
+		if !block.Live {
+			continue
 		}
-		return !found
-	})
-	return found
+		for _, node := range block.Nodes {
+			ast.Inspect(node, func(inner ast.Node) bool {
+				switch expr := inner.(type) {
+				case *ast.FuncLit, *ast.GoStmt:
+					return false
+				case *ast.CallExpr:
+					found = found || o.waitCall(expr, group, always)
+					if literal := o.literalRunBy(expr); !found && literal != nil && !seen[literal] {
+						seen[literal] = true
+						found = o.callsWait(literal.Body, group, always, seen)
+					}
+				}
+				return !found
+			})
+			if found {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func (o *owners) uncovered(fn function, query flowQuery, always waiters) (unwaited, exits bool) {
