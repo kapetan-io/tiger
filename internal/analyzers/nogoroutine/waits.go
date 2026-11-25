@@ -53,7 +53,7 @@ func (o *owners) summary(group *types.Var) waiters {
 	for round := 0; round <= len(decls); round++ {
 		changed := false
 		for _, decl := range decls {
-			if always[decl] || !o.callsWait(decl.Body, group, always, map[*ast.FuncLit]bool{}) {
+			if always[decl] || !o.mayWait(decl.Body, group, always, map[*ast.FuncLit]bool{}) {
 				continue
 			}
 			unwaited, _ := o.uncovered(functionOf(decl), flowQuery{group: group}, always)
@@ -72,7 +72,7 @@ func (o *owners) summary(group *types.Var) waiters {
 	return always
 }
 
-func (o *owners) callsWait(
+func (o *owners) mayWait(
 	body *ast.BlockStmt, group *types.Var, always waiters, seen map[*ast.FuncLit]bool,
 ) bool {
 	found := false
@@ -85,12 +85,11 @@ func (o *owners) callsWait(
 				switch expr := inner.(type) {
 				case *ast.FuncLit, *ast.GoStmt:
 					return false
+				case *ast.SelectorExpr:
+					waited, isWait := o.groupMethod(expr, "Wait")
+					found = found || isWait && waited == group
 				case *ast.CallExpr:
-					found = found || o.waitCall(expr, group, always)
-					if literal := o.literalRunBy(expr); !found && literal != nil && !seen[literal] {
-						seen[literal] = true
-						found = o.callsWait(literal.Body, group, always, seen)
-					}
+					found = found || o.callMayWait(expr, group, always, seen)
 				}
 				return !found
 			})
@@ -100,6 +99,39 @@ func (o *owners) callsWait(
 		}
 	}
 	return false
+}
+
+func (o *owners) callMayWait(
+	call *ast.CallExpr, group *types.Var, always waiters, seen map[*ast.FuncLit]bool,
+) bool {
+	if o.helperWaits(call, always) {
+		return true
+	}
+	literals := []*ast.FuncLit{o.literalRunBy(call)}
+	for _, arg := range call.Args {
+		if o.names(arg, group) {
+			return true
+		}
+		literals = append(literals, o.literalOf(arg))
+	}
+	for _, literal := range literals {
+		if literal == nil || seen[literal] {
+			continue
+		}
+		seen[literal] = true
+		if o.mayWait(literal.Body, group, always, seen) {
+			return true
+		}
+	}
+	return false
+}
+
+func (o *owners) names(arg ast.Expr, group *types.Var) bool {
+	arg = ast.Unparen(arg)
+	if address, ok := arg.(*ast.UnaryExpr); ok && address.Op == token.AND {
+		arg = ast.Unparen(address.X)
+	}
+	return o.unalias(o.index.Object(arg), arg) == group
 }
 
 func (o *owners) uncovered(fn function, query flowQuery, always waiters) (unwaited, exits bool) {

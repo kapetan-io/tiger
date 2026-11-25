@@ -904,13 +904,24 @@ function, in a parallel subtest, in a `t.Cleanup` literal, or inside the gorouti
 waits for.
 
 A path that returns a non-nil error is not a success path, so a `Shutdown` that returns
-its flush error before it waits is accepted. A function that loops forever or returns
-only a non-nil error has no success path, so it counts as a `Wait` only when it reaches
-one: a call to `Wait` on the group, or to a function that counts, outside a goroutine and
-outside any literal it does not run. Such a function that reaches no `Wait` satisfies
+its flush error before it waits is accepted. A return of an error variable or field, such
+as `return err` or `return s.err`, counts as a non-nil error unless it is a named result
+never set, and a return of a call, such as `return flush()`, counts as success.
+
+A function that loops forever or returns only a non-nil error has no success path to
+check. It counts as a `Wait` on a group when it does something with that group that may
+wait on it, outside a goroutine and outside any literal it saves and never runs: calls
+`Wait` on it or a function that counts, takes its `Wait` method as a value, hands the group
+to a call, or hands a call a literal that does one of these. So a `Close` that waits in
+`once.Do` and returns `s.err` counts. Such a function that does none of these satisfies
 nothing, whether it is called after the start or exported as a method of the owning type
 or a function of the package. Such a function whose `Wait` sits on one branch only, or in
-a `defer` that never runs, still counts as a `Wait`, and that gap is not caught.
+a `defer` that never runs, still counts, and that gap is not caught.
+
+A call is treated as returning unless it is to the builtin `panic`. A start followed by a
+call to a function that loops forever still needs its `Wait`, though the same loop written
+in place needs none, and a `Wait` after a call to `os.Exit`, `log.Fatal` or such a
+function counts though it never runs. That gap is not caught.
 
 A `Wait` that only runs in the branch where the caller's context expired does not count.
 That branch is a `Shutdown` giving up early, and the early return is exempt from the check. The exemption needs a `Wait` on

@@ -3,6 +3,7 @@ package fixture
 
 import (
 	"context"
+	"os"
 	"sync"
 )
 
@@ -98,4 +99,39 @@ func (d *deferForever) Run() {
 	defer d.wg.Wait()
 	for {
 	}
+}
+
+// spinBeforeWait never reaches its Wait, because spin never returns.
+type spinBeforeWait struct{ wg sync.WaitGroup }
+
+// Start runs the worker.
+//
+// known-miss: a call is treated as returning unless it is the builtin panic,
+// so the Wait after spin counts though it never runs.
+func (s *spinBeforeWait) Start() { s.wg.Go(work) }
+
+// Run spins forever before it waits.
+func (s *spinBeforeWait) Run() {
+	spin()
+	s.wg.Wait()
+}
+
+func spin() {
+	for {
+	}
+}
+
+// exitBeforeWait never reaches its Wait, because os.Exit never returns.
+type exitBeforeWait struct{ wg sync.WaitGroup }
+
+// Start runs the worker.
+//
+// known-miss: os.Exit is treated as returning, so the Wait after it counts
+// though it never runs.
+func (e *exitBeforeWait) Start() { e.wg.Go(work) }
+
+// Stop exits the process before it waits.
+func (e *exitBeforeWait) Stop() {
+	os.Exit(1)
+	e.wg.Wait()
 }
