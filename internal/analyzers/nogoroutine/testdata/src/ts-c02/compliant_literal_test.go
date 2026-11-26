@@ -1259,3 +1259,54 @@ func literalErrorCopiedTwice() error {
 	}
 	return nil
 }
+
+// TestSavedWaitReplacedBeforeNextPass replaces the saved literal only after
+// the first pass called it, so every path out of the loop has run the
+// literal that waits.
+func TestSavedWaitReplacedBeforeNextPass(t *testing.T) {
+	var wg sync.WaitGroup
+	wait := func() { wg.Wait() }
+	wg.Go(func() {})
+	for {
+		wait()
+		wait = func() {}
+		if testing.Short() {
+			break
+		}
+	}
+}
+
+// TestSavedWaitCalledFromCalledLiteral calls the saved literal from a literal
+// called where it is written, after the last assignment.
+func TestSavedWaitCalledFromCalledLiteral(t *testing.T) {
+	var wg sync.WaitGroup
+	wait := func() {}
+	wait = func() { wg.Wait() }
+	wg.Go(func() {})
+	func() { wait() }()
+}
+
+// TestSavedWaitReplacedInDeferredLiteral replaces the saved literal in a
+// deferred literal, which runs only after the call.
+func TestSavedWaitReplacedInDeferredLiteral(t *testing.T) {
+	var wg sync.WaitGroup
+	wait := func() { wg.Wait() }
+	defer func() { wait = func() {} }()
+	wg.Go(func() {})
+	wait()
+}
+
+type step func() step
+
+// TestSavedWaitCalledInItsReplacement replaces the saved literal with the
+// value its own call returns, so the call runs the literal that waits.
+func TestSavedWaitCalledInItsReplacement(t *testing.T) {
+	var wg sync.WaitGroup
+	var wait step = func() step {
+		wg.Wait()
+		return nil
+	}
+	wg.Go(func() {})
+	wait = wait()
+	_ = wait
+}

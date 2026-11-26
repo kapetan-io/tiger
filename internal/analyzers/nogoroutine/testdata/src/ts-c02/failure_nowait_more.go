@@ -191,3 +191,21 @@ func (a *appendHanded) Closed() error {
 	a.all = append(a.all, &a.wg)
 	return errClosed
 }
+
+// replacedWaitSpin replaces its waiting literal before the loop that calls
+// it forever.
+type replacedWaitSpin struct{ wg sync.WaitGroup }
+
+// Start runs the worker.
+func (r *replacedWaitSpin) Start() {
+	r.wg.Go(work) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+}
+
+// Run calls only the replacement, forever.
+func (r *replacedWaitSpin) Run() {
+	wait := func() { r.wg.Wait() }
+	wait = func() {}
+	for {
+		wait()
+	}
+}

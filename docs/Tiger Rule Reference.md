@@ -896,12 +896,18 @@ counts when the literal waits on every one of its own success paths. Such a call
 literal called where it is written, a call to a local variable that holds that literal
 at the call, or `t.Run` or `b.Run` with a body that does not call `t.Parallel`. A local
 variable holds the literal at the call when no `&` or range clause reaches it and
-either it is assigned only that literal, or it is declared, assigned and called in one
-function body and the last assignment on every path to the call is that literal. A
-replacement after the call does not matter, but one that a loop brings back to the call
-does. Known gap: three safe shapes are reported. They are a call made from a nested
-literal, a replacement inside a deferred literal, and a loop whose first pass always
-calls the literal that waits before replacing it (ENG-989). A body that calls `t.Parallel` also counts when it is started on the `t` of a
+either it is assigned only that literal, or it is declared and assigned in one function
+body and the last assignment on the path to the call is that literal. Every assignment
+must sit in that body itself or in a literal it defers where it is written, which runs
+as the body returns, after every call in it. A call inside a literal that is called where
+it is written counts as made where that literal is called; one inside a deferred
+literal or a goroutine does not. Each path is followed on its own, so a loop that calls
+the waiting literal on its first pass and replaces it afterwards waits on every path,
+while a replacement that reaches the call on a path that has not waited yet does not.
+Known gap: a call from a nested literal counts only when the waiting literal reaches it
+on every path, so that loop is reported when its call sits in a nested literal
+(ENG-1043). Past four such variables in one function, the rest count only where the
+same literal reaches the call on every path. A body that calls `t.Parallel` also counts when it is started on the `t` of a
 subtest whose body counts as running before its `t.Run` returns, from inside that
 subtest's body, and through no variable declared outside it. The testing package runs
 it after that body returns, and the `t.Run` that started the subtest waits for it. A

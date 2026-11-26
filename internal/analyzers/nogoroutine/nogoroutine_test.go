@@ -54,8 +54,10 @@ import (
 // literal that runs before the call holding it returns (a literal called
 // where it is written, a call to a local variable that is never reached
 // through & or rebound by a range clause and whose only definition is a
-// literal, or that is declared, assigned and called in one function body
-// and whose last assignment on every path to that call is a literal, or a
+// literal, or that is declared and assigned in one function body or a
+// literal it defers, and whose last assignment on the path to that call is a
+// literal, called in that body or from a literal it calls where it is
+// written, or a
 // t.Run or b.Run body that does not call t.Parallel or is started on the t
 // of a subtest whose body counts, from inside that subtest's body and
 // through no variable declared outside it) when that literal waits on every
@@ -64,17 +66,18 @@ import (
 // the call's result; a caller that drops the error or goes on after it is
 // reported (compliant_literal_test.go, failure_literal_test.go). A Wait in a
 // literal saved and never called, in a literal passed to another function,
-// in a saved literal that another assignment may replace on some path to the
-// call, in a parallel subtest started on any other t or in t.Cleanup does not
-// count (failure_literal_test.go). Three
-// safe shapes of a reassigned literal are reported as expected false
-// positives (ENG-989). The goroutine literal of the same group, and any
-// literal inside it, is not a place to Wait, because a Wait there waits on
-// itself (failure_literal_test.go). A Go inside a literal that runs
-// after the outer Wait or alongside it (a parallel subtest, a saved literal
-// called later, a deferred or t.Cleanup literal, another group's goroutine),
-// a t.Fatal that skips the Wait, and a literal inside a function that returns
-// only a non-nil error are documented gaps (knownmiss_literal_test.go), and so
+// in a saved literal that another assignment may replace on a path to the
+// call that has not waited yet, in a parallel subtest started on any other t
+// or in t.Cleanup does not count (failure_literal_test.go). A saved literal
+// called from a nested literal in a loop that replaces it after the first
+// pass is reported as an expected false positive (ENG-1043). The goroutine
+// literal of the same group, and any literal inside it, is not a place to
+// Wait, because a Wait there waits on itself (failure_literal_test.go). A Go
+// inside a literal that runs after the outer Wait or alongside it (a parallel
+// subtest, a saved literal called later, a deferred or t.Cleanup literal,
+// another group's goroutine), a t.Fatal that skips the Wait, and a literal
+// inside a function that returns only a non-nil error are documented gaps
+// (knownmiss_literal_test.go), and so
 // are a t.Fatal or t.Skip that skips the Wait outside any subtest and a helper
 // that fails the test on some of its paths (knownmiss_fatal_test.go).
 func TestCorpus(t *testing.T) {

@@ -778,24 +778,6 @@ func TestParallelSubtestInParallelSubtest(t *testing.T) {
 	})
 }
 
-// TestSavedWaitReplacedBeforeNextPass is an expected false positive
-// (ENG-989): the first pass always runs the literal that waits, and every path
-// out of the loop passes that call, but a later pass reaches the call holding
-// the replacement, and the check does not count a call that holds more than
-// one literal.
-func TestSavedWaitReplacedBeforeNextPass(t *testing.T) {
-	var wg sync.WaitGroup
-	wait := func() { wg.Wait() }
-	wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
-	for {
-		wait()
-		wait = func() {}
-		if testing.Short() {
-			break
-		}
-	}
-}
-
 // TestSavedWaitReplacedInCalledLiteral replaces the saved literal inside
 // another literal. An assignment in another literal is not followed, so the
 // call may run the literal that does not wait.
@@ -1003,29 +985,6 @@ func TestParallelSubtestInStaleSavedLiteral(t *testing.T) {
 	t.Run("x", body)
 	wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
 	t.Run("x2", body)
-}
-
-// TestSavedWaitCalledFromCalledLiteral is an expected false positive
-// (ENG-989): the call sits in a literal called where it is written, after the
-// last assignment, so it runs the literal that waits, but the check follows a
-// literal assigned more than once only within one function body.
-func TestSavedWaitCalledFromCalledLiteral(t *testing.T) {
-	var wg sync.WaitGroup
-	wait := func() {}
-	wait = func() { wg.Wait() }
-	wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
-	func() { wait() }()
-}
-
-// TestSavedWaitReplacedInDeferredLiteral is an expected false positive
-// (ENG-989): the deferred literal replaces the saved one only after the call,
-// but the check does not follow an assignment inside another literal.
-func TestSavedWaitReplacedInDeferredLiteral(t *testing.T) {
-	var wg sync.WaitGroup
-	wait := func() { wg.Wait() }
-	defer func() { wait = func() {} }()
-	wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
-	wait()
 }
 
 // TestCalledLiteralErrorSkipsWait leaks the goroutine: the literal returns an
@@ -1559,4 +1518,71 @@ func literalErrorExceptEOF() error {
 		return err
 	}
 	return nil
+}
+
+// TestSavedWaitReplacedBeforeGoInLoop calls the waiting literal on the first
+// pass before the Go, and later passes hold the replacement.
+func TestSavedWaitReplacedBeforeGoInLoop(t *testing.T) {
+	var wg sync.WaitGroup
+	wait := func() { wg.Wait() }
+	for {
+		wait()
+		wait = func() {}
+		wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+		if testing.Short() {
+			break
+		}
+	}
+}
+
+// TestSavedWaitReplacedThenCalledInsideLiteral replaces the saved literal
+// inside a called literal just before that literal calls it.
+func TestSavedWaitReplacedThenCalledInsideLiteral(t *testing.T) {
+	var wg sync.WaitGroup
+	wait := func() { wg.Wait() }
+	wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+	func() {
+		wait = func() {}
+		wait()
+	}()
+}
+
+// TestSavedWaitCalledFromDeferredLiteral calls the saved literal from a
+// deferred literal, which runs after the replacement.
+func TestSavedWaitCalledFromDeferredLiteral(t *testing.T) {
+	var wg sync.WaitGroup
+	wait := func() { wg.Wait() }
+	defer func() { wait() }()
+	wait = func() {}
+	wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+}
+
+// TestSavedWaitReplacedInLiteralDeferredByCalledLiteral defers the
+// replacement inside a called literal, so it runs when that literal returns,
+// before the call.
+func TestSavedWaitReplacedInLiteralDeferredByCalledLiteral(t *testing.T) {
+	var wg sync.WaitGroup
+	wait := func() { wg.Wait() }
+	func() {
+		defer func() { wait = func() {} }()
+	}()
+	wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+	wait()
+}
+
+// TestSavedWaitCalledFromLiteralBeforeNextPass is an expected false positive
+// (ENG-1043): the first pass always calls the literal that waits, but the call
+// sits in a nested literal, which counts only when the waiting literal reaches
+// it on every path, and a later pass reaches it holding the replacement.
+func TestSavedWaitCalledFromLiteralBeforeNextPass(t *testing.T) {
+	var wg sync.WaitGroup
+	wait := func() { wg.Wait() }
+	wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+	for {
+		func() { wait() }()
+		wait = func() {}
+		if testing.Short() {
+			break
+		}
+	}
 }
