@@ -365,7 +365,8 @@ func (o *owners) waitsIn(node ast.Node, query flowQuery, always waiters) bool {
 		case *ast.CallExpr:
 			counted := !o.givesUp(found.Pos(), start)
 			if query.noSuccess {
-				waits = waits || counted && o.searchFor(always).callMayWait(found, query.group, query.subtests)
+				search := o.searchFor(always)
+				waits = waits || counted && search.callMayWait(found, query.group, query.subtests)
 				return !waits
 			}
 			waits = waits || counted && o.waitCall(found, query.group, always)
