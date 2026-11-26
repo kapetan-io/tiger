@@ -32,7 +32,7 @@ type flowState struct {
 	passed    bool
 	covered   bool
 	failed    bool
-	literals  heldIndexes
+	holding   heldIndexes
 	unchecked literalError
 	nonNil    nonNilError
 }
@@ -43,7 +43,7 @@ type stateKey struct {
 	covered   bool
 	unchecked literalError
 	nonNil    nonNilError
-	literals  heldIndexes
+	holding   heldIndexes
 }
 
 type literalError struct {
@@ -295,7 +295,7 @@ func (o *owners) walkPaths(
 		state := work[i]
 		key := stateKey{
 			block: state.block.Index, passed: state.passed, covered: state.covered,
-			unchecked: state.unchecked, nonNil: state.nonNil, literals: state.literals,
+			unchecked: state.unchecked, nonNil: state.nonNil, holding: state.holding,
 		}
 		if seen[key] {
 			continue
@@ -330,7 +330,7 @@ func (o *owners) walkPaths(
 		for branch, next := range state.block.Succs {
 			following := flowState{
 				block: next, passed: state.passed, covered: state.covered,
-				unchecked: state.unchecked, nonNil: state.nonNil, literals: state.literals,
+				unchecked: state.unchecked, nonNil: state.nonNil, holding: state.holding,
 			}
 			isNil, compared := o.errorNilOn(state, branch)
 			switch {
@@ -364,8 +364,8 @@ func (o *owners) walk(fn function, state flowState, query flowQuery, always wait
 		}
 		state.unchecked = o.reassigned(node, state.unchecked)
 		state.nonNil = o.carried(fn, node, state.nonNil)
-		erring, waits := o.waitsIn(node, query, heldOnPath{fn.followed, state.literals}, always)
-		state.literals = o.heldAfter(node, fn.followed, state.literals)
+		erring, waits := o.waitsIn(node, query, heldOnPath{fn.followed, state.holding}, always)
+		state.holding = o.heldAfter(node, fn.followed, state.holding)
 		if !waits && erring != nil && state.passed {
 			state = o.followError(fn, state, errorSite{node: node, call: erring}, query)
 			continue

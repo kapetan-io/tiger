@@ -33,7 +33,7 @@ type followedLocal struct {
 
 type heldOnPath struct {
 	followed []followedLocal
-	held     heldIndexes
+	holding  heldIndexes
 }
 
 func (o *owners) literalOnPath(expr ast.Expr, onPath heldOnPath) *ast.FuncLit {
@@ -43,10 +43,10 @@ func (o *owners) literalOnPath(expr ast.Expr, onPath heldOnPath) *ast.FuncLit {
 			if local == nil || followed.local != local {
 				continue
 			}
-			if onPath.held[i] == 0 {
+			if onPath.holding[i] == 0 {
 				return nil
 			}
-			return followed.literals[onPath.held[i]-1]
+			return followed.literals[onPath.holding[i]-1]
 		}
 	}
 	return o.literalOf(expr)

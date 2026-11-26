@@ -1377,9 +1377,9 @@ func TestSavedWaitReplacedBeforeNextPassInCalledLiteral(t *testing.T) {
 	}()
 }
 
-// TestSavedWaitReplacedBeforeNextPassBesideOther follows a second reassigned
-// waiting literal declared first, so each variable keeps the literal it last
-// held.
+// TestSavedWaitReplacedBeforeNextPassBesideOther follows a second variable,
+// declared first, that is reassigned and holds a literal that may wait. Each
+// variable keeps the literal it last held.
 func TestSavedWaitReplacedBeforeNextPassBesideOther(t *testing.T) {
 	var wg sync.WaitGroup
 	other := func() { wg.Wait() }
@@ -1396,9 +1396,9 @@ func TestSavedWaitReplacedBeforeNextPassBesideOther(t *testing.T) {
 	}
 }
 
-// TestSavedWaitReplacedBeforeNextPassFourth follows the waiting literal as the
-// fourth reassigned variable in the function, the last one followed path by
-// path.
+// TestSavedWaitReplacedBeforeNextPassFourth follows the waiting variable as
+// the fourth reassigned variable with a literal that may wait, the last one
+// followed path by path.
 func TestSavedWaitReplacedBeforeNextPassFourth(t *testing.T) {
 	var wg sync.WaitGroup
 	first := func() { wg.Wait() }

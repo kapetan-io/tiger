@@ -5,8 +5,9 @@
 // path to the call that has not waited yet, passed to another function, a
 // parallel subtest that no t.Run the function holding the Go calls waits
 // for, or t.Cleanup), or the literal returns an error before its Wait and the
-// caller drops that error or goes on. One saved literal called from a nested
-// literal in a loop is an expected false positive (ENG-1043).
+// caller drops that error or goes on. A saved literal called from a nested
+// literal in a loop (ENG-1043), and one followed after four others, are
+// expected false positives.
 package fixture
 
 import (
@@ -1697,10 +1698,11 @@ func TestSavedWaitAssignedLastCalledInParallelSubtest(t *testing.T) {
 	})
 }
 
-// TestSavedWaitReplacedBeforeNextPassAfterFourFollowed replaces the waiting
-// literal as the fifth variable with a literal that may wait. Only four are
-// followed path by path, and the rest count only where the same literal
-// reaches the call on every path, so the safe loop is reported.
+// TestSavedWaitReplacedBeforeNextPassAfterFourFollowed is an expected false
+// positive: four variables with a literal that may wait come before the
+// waiting variable, and only four are followed path by path. The rest count
+// only where the same literal reaches the call on every path, so the loop is
+// reported though its first pass waits.
 func TestSavedWaitReplacedBeforeNextPassAfterFourFollowed(t *testing.T) {
 	var wg sync.WaitGroup
 	first := func() { wg.Wait() }
