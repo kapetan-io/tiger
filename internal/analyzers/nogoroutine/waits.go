@@ -12,17 +12,19 @@ import (
 )
 
 type flowQuery struct {
-	group    *types.Var
-	start    *ast.SelectorExpr
-	held     *ast.SelectorExpr
-	anyPath  bool
-	shutdown bool
+	group       *types.Var
+	start       *ast.SelectorExpr
+	held        *ast.SelectorExpr
+	anyPath     bool
+	shutdown    bool
+	failNowEnds bool
 }
 
 type flowState struct {
 	block   *cfg.Block
 	passed  bool
 	covered bool
+	failed  bool
 }
 
 type stateKey struct {
@@ -91,6 +93,10 @@ func (o *owners) uncovered(fn function, query flowQuery, always waiters) (unwait
 		}
 		seen[key] = true
 		state = o.walk(state, query, always)
+		if state.failed {
+			exits = true
+			continue
+		}
 		if query.anyPath && state.passed && state.covered {
 			return false, true
 		}
@@ -124,6 +130,10 @@ func (o *owners) walk(state flowState, query flowQuery, always waiters) flowStat
 		}
 		if query.start != nil && covers(node, query.start) {
 			state.passed = true
+		}
+		if query.failNowEnds && state.passed && o.failsNow(node) {
+			state.failed = true
+			return state
 		}
 		if !o.waitsIn(node, query, always) {
 			continue
@@ -447,6 +457,28 @@ func (o *owners) mayReturn(call *ast.CallExpr) bool {
 	}
 	_, builtin := o.pass.TypesInfo.Uses[ident].(*types.Builtin)
 	return !builtin
+}
+
+var failNowCalls = map[string]bool{
+	"(*testing.common).Fatal":   true,
+	"(*testing.common).Fatalf":  true,
+	"(*testing.common).FailNow": true,
+	"(testing.TB).Fatal":        true,
+	"(testing.TB).Fatalf":       true,
+	"(testing.TB).FailNow":      true,
+}
+
+func (o *owners) failsNow(node ast.Node) bool {
+	stmt, ok := node.(*ast.ExprStmt)
+	if !ok {
+		return false
+	}
+	call, isCall := stmt.X.(*ast.CallExpr)
+	if !isCall {
+		return false
+	}
+	selector, isSelector := ast.Unparen(call.Fun).(*ast.SelectorExpr)
+	return isSelector && failNowCalls[o.calleeName(selector)]
 }
 
 func (o *owners) successExit(fn function, block *cfg.Block) bool {
