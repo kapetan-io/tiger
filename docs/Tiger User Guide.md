@@ -75,7 +75,9 @@ Outside the `linters.settings` and `formatters.settings` blocks, the audit compa
 with the baseline and names the one that differs. A config may change only the two `enable`
 lists, `linters.default`, `issues.uniq-by-line` and `linters.exclusions.rules`, and may add
 `linters.exclusions.generated: strict` or `disable`, or the `common-false-positives` preset, which
-hide nothing the baseline reports. Any other key that differs is a finding. Some of those keys,
+hide nothing the baseline reports. A baseline linter listed under `linters.disable` is reported
+under each rule it enforces, like a linter missing from `linters.enable`. Any other key that
+differs is a finding. Some of those keys,
 such as `linters.exclusions.paths` or `run.tests: false`, hide findings while every linter still
 looks turned on.
 

@@ -59,7 +59,12 @@ func Verify(dir string, off ...string) ([]Finding, error) {
 		}
 		findings = append(findings, verifyRule(document, rule, module)...)
 	}
+	findings = append(findings, verifyKeys(document, module, off)...)
 	sort.Slice(findings, func(i, j int) bool {
+		coded := findings[i].RuleID != ""
+		if coded != (findings[j].RuleID != "") {
+			return coded
+		}
 		if findings[i].RuleID != findings[j].RuleID {
 			return findings[i].RuleID < findings[j].RuleID
 		}
@@ -68,7 +73,7 @@ func Verify(dir string, off ...string) ([]Finding, error) {
 		}
 		return findings[i].Message < findings[j].Message
 	})
-	return append(findings, verifyKeys(document, module)...), nil
+	return findings, nil
 }
 
 func rejectUnknownLinters(off []string) error {

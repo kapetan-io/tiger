@@ -37,11 +37,12 @@ type keyTask struct {
 type keyAudit struct {
 	work     []keyTask
 	owned    map[string]bool
+	off      []string
 	findings []Finding
 }
 
-func verifyKeys(document map[string]any, module string) []Finding {
-	audit := &keyAudit{owned: ruleOwnedKeys()}
+func verifyKeys(document map[string]any, module string, off []string) []Finding {
+	audit := &keyAudit{owned: ruleOwnedKeys(), off: off}
 	audit.work = []keyTask{{
 		want: baselineDocument(module), got: document, wanted: true, present: true,
 	}}
@@ -70,6 +71,10 @@ func (a *keyAudit) expand(task keyTask) {
 		return
 	}
 	task.present = task.present && task.got != nil
+	if joined == "linters.disable" {
+		a.disabledLinters(task)
+		return
+	}
 	if a.owned[joined] {
 		a.addedElements(task, joined)
 		return
@@ -142,6 +147,29 @@ func (a *keyAudit) addedElements(task keyTask, joined string) {
 		}
 		a.report(fmt.Sprintf("%[1]s lists %[2]s, which tiger's baseline doesn't — "+
 			"remove %[2]s from %[1]s", joined, describe(element)))
+	}
+}
+
+func (a *keyAudit) disabledLinters(task keyTask) {
+	listed, _ := task.got.([]any)
+	autoRules := auto.AutoRules()
+	for _, name := range listed {
+		if slices.Contains(a.off, fmt.Sprint(name)) {
+			continue
+		}
+		for i := range autoRules {
+			rule := &autoRules[i]
+			if rule.Section != auto.SectionLinters || rule.Linter != name {
+				continue
+			}
+			a.findings = append(a.findings, Finding{
+				RuleID: rule.RuleID,
+				Linter: rule.Linter,
+				Message: fmt.Sprintf("%[1]s: linters.disable lists %[2]s, which switches off the "+
+					"rule %[3]q — remove %[2]s from linters.disable",
+					rule.RuleID, rule.Linter, rule.Title),
+			})
+		}
 	}
 }
 
