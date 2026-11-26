@@ -286,26 +286,6 @@ again:
 	goto again
 }
 
-// waitOnGiveUpOnly loops forever and waits only in its ctx.Done() case.
-type waitOnGiveUpOnly struct {
-	wg   sync.WaitGroup
-	tick chan struct{}
-}
-
-// Start runs the worker. Not reported.
-func (w *waitOnGiveUpOnly) Start() { w.wg.Go(work) }
-
-// Run waits only once ctx is done, and keeps looping on ticks.
-func (w *waitOnGiveUpOnly) Run(ctx context.Context) {
-	for {
-		select {
-		case <-ctx.Done():
-			w.wg.Wait()
-		case <-w.tick:
-		}
-	}
-}
-
 // selectDefaultSkipsWait waits in one select case, and its default skips it.
 type selectDefaultSkipsWait struct {
 	wg   sync.WaitGroup
@@ -361,8 +341,7 @@ outer:
 	}
 }
 
-// exitIntoSpin may spin in its outer loop forever, since its only way out
-// leads into another loop that never ends.
+// exitIntoSpin waits only on the branch that enters its inner loop.
 type exitIntoSpin struct{ wg sync.WaitGroup }
 
 // Start runs the worker. Not reported.

@@ -341,3 +341,17 @@ func (r *gotoRetryThenWait) Run(ok func() bool) {
 		r.wg.Wait()
 	}
 }
+
+// waitInDeferArgument waits while the defer statement evaluates its argument,
+// which runs at the defer, before the loop.
+type waitInDeferArgument struct{ wg sync.WaitGroup }
+
+// Start runs the worker.
+func (w *waitInDeferArgument) Start() { w.wg.Go(work) }
+
+// Run waits as it defers use, then loops forever.
+func (w *waitInDeferArgument) Run(use func(error)) {
+	defer use(func() error { w.wg.Wait(); return nil }())
+	for {
+	}
+}

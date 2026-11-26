@@ -3,7 +3,10 @@
 // reach such code outside a defer, since a deferred Wait never runs there.
 package fixture
 
-import "sync"
+import (
+	"context"
+	"sync"
+)
 
 // branchWaitSentinel leaks the goroutine when Closed is called with false.
 type branchWaitSentinel struct{ wg sync.WaitGroup }
@@ -145,4 +148,50 @@ func (r *rangeThenError) Closed() error {
 		r.wg.Wait()
 	}
 	return errClosed
+}
+
+// deferGiveUpForever defers its Wait and loops forever, though one case of
+// its loop watches ctx.Done().
+type deferGiveUpForever struct {
+	wg   sync.WaitGroup
+	tick chan struct{}
+}
+
+// Start runs the worker.
+func (d *deferGiveUpForever) Start() {
+	d.wg.Go(work) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+}
+
+// Run notes an expired ctx and keeps looping; the deferred Wait never runs.
+func (d *deferGiveUpForever) Run(ctx context.Context, note func()) {
+	defer d.wg.Wait()
+	for {
+		select {
+		case <-ctx.Done():
+			note()
+		case <-d.tick:
+		}
+	}
+}
+
+// waitOnGiveUpOnly loops forever and waits only in its ctx.Done() case.
+type waitOnGiveUpOnly struct {
+	wg   sync.WaitGroup
+	tick chan struct{}
+}
+
+// Start runs the worker.
+func (w *waitOnGiveUpOnly) Start() {
+	w.wg.Go(work) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+}
+
+// Run waits only once ctx is done, and keeps looping on ticks.
+func (w *waitOnGiveUpOnly) Run(ctx context.Context) {
+	for {
+		select {
+		case <-ctx.Done():
+			w.wg.Wait()
+		case <-w.tick:
+		}
+	}
 }

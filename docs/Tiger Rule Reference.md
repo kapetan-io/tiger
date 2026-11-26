@@ -944,28 +944,29 @@ on a group when every return first runs code that may wait on that group. A defe
 `Wait` covers the returns after its `defer`. Only the returns are judged, so a loop that
 waits before it returns its stop error counts, even when a pass through the loop never
 waits. If it never returns, it counts when some path may reach such code outside a
-`defer`, since a deferred call never runs. Code may wait on the group when it calls
-`Wait` on the group, directly or through a local bound once to the group's `Wait` method,
-calls a function of the same package that may wait on the group the same way, runs a
-literal that does one of these (as listed above, or through `sync.Once.Do`), or hands the
-group to a function of the same package that may wait on it the same way, or to any call
-the check cannot follow: a function of another package, a func value, an interface method
-or a variadic parameter. Handing the group to a builtin such as `append` or `panic`, or
-to a type conversion, does not count. A `Wait` inside a goroutine, in a literal or method
-value saved and never called, or in a literal or method value handed to a call that runs
-it later, such as `time.AfterFunc`, does not count. So a `Close` that waits in `once.Do`
-and returns `s.err` counts, while one that waits in `once.Do` and returns `nil` has a
-success path and is judged as above, where `once.Do` is not followed. Such a function
-that does none of these satisfies nothing, whether it is called after the start or
-exported as a method of the owning type or a function of the package. Such a function
-that returns and whose `Wait` sits on one branch only or in a `defer` it does not reach
-first does not count, and neither does one that never returns and whose only `Wait` is
-deferred. One that never returns and waits on one branch, case or pass of its loop only,
-or whose `Wait` sits in a `once.Do` that already ran, that hands the group to a call the
-check cannot follow that never waits, or that calls a same-package function or runs a
-literal whose `Wait` sits on one branch only, still counts. So does one with a path that
-ends in `panic` or `select {}`, which is read as a success path, so a `defer` covers it
-though the function never returns (ENG-998). Those gaps are not caught.
+`defer`, since a deferred call never runs, though its arguments run at the `defer`. Code
+may wait on the group when it calls `Wait` on the group, directly or through a local
+bound once to the group's `Wait` method, calls a function of the same package that may
+wait on the group the same way, runs a literal that does one of these (as listed above,
+or through `sync.Once.Do`), or hands the group to a function of the same package that may
+wait on it the same way, or to any call the check cannot follow: a function of another
+package, a func value, an interface method or a variadic parameter. Handing the group to
+a builtin such as `append` or `panic`, or to a type conversion, does not count. A `Wait`
+inside a goroutine, in a literal or method value saved and never called, or in a literal
+or method value handed to a call that runs it later, such as `time.AfterFunc`, does not
+count. So a `Close` that waits in `once.Do` and returns `s.err` counts, while one that
+waits in `once.Do` and returns `nil` has a success path and is judged as above, where
+`once.Do` is not followed. Such a function that does none of these satisfies nothing,
+whether it is called after the start or exported as a method of the owning type or a
+function of the package. Such a function that returns and whose `Wait` sits on one branch
+only or in a `defer` it does not reach first does not count, and neither does one that
+never returns and whose only `Wait` is deferred. One that never returns and waits on one
+branch, case or pass of its loop only, or whose `Wait` sits in a `once.Do` that already
+ran, that hands the group to a call the check cannot follow that never waits, or that
+calls a same-package function or runs a literal whose `Wait` sits on one branch only,
+still counts. So does one with a path that ends in `panic` or `select {}`, which is read
+as a success path, so a `defer` covers it though the function never returns (ENG-998).
+Those gaps are not caught.
 
 A call is treated as returning unless it is to the builtin `panic`. A start followed by a
 call to a function that loops forever still needs its `Wait`, though the same loop written

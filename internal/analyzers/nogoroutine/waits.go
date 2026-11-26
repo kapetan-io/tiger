@@ -273,6 +273,9 @@ func (o *owners) uncovered(fn function, query flowQuery, always waiters) (unwait
 }
 
 func (o *owners) withShutdown(fn function, query flowQuery, always waiters) flowQuery {
+	if query.endless {
+		return query
+	}
 	query.shutdown = o.givesUpIn(fn.body) && o.callsIn(fn.body, func(call *ast.CallExpr) bool {
 		return o.waitCall(call, query.group, always)
 	})
@@ -301,18 +304,25 @@ func (o *owners) walk(state flowState, query flowQuery, always waiters) flowStat
 			state.failed = true
 			return state
 		}
-		_, deferred := node.(*ast.DeferStmt)
-		if deferred && query.endless {
+		deferred, isDefer := node.(*ast.DeferStmt)
+		if isDefer && query.endless {
+			state.covered = state.covered || o.argsWait(deferred.Call, query, always)
 			continue
 		}
 		if !o.waitsIn(node, query, always) {
 			continue
 		}
-		if deferred || state.passed {
+		if isDefer || state.passed {
 			state.covered = true
 		}
 	}
 	return state
+}
+
+func (o *owners) argsWait(call *ast.CallExpr, query flowQuery, always waiters) bool {
+	return slices.ContainsFunc(call.Args, func(arg ast.Expr) bool {
+		return o.waitsIn(arg, query, always)
+	})
 }
 
 func covers(node ast.Node, start *ast.SelectorExpr) bool {
