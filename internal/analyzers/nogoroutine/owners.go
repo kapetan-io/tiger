@@ -195,12 +195,15 @@ func (o *owners) waited(group *types.Var, sel *ast.SelectorExpr) bool {
 		return o.outside[group]
 	}
 	always := o.summary(group)
-	query := flowQuery{group: group, start: sel, anyPath: sel.Sel.Name == "TryGo"}
+	tryGo := sel.Sel.Name == "TryGo"
+	query := flowQuery{group: group, start: sel, anyPath: tryGo}
 	for _, literal := range o.literalsAround(decl, group, sel) {
+		query.failNowEnds = !tryGo && startsInPlace(literal.body, sel)
 		if unwaited, exits := o.uncovered(literal, query, always); exits && !unwaited {
 			return true
 		}
 	}
+	query.failNowEnds = !tryGo && startsInPlace(decl.Body, sel)
 	if unwaited, _ := o.uncovered(functionOf(decl), query, always); !unwaited {
 		return true
 	}
@@ -213,6 +216,21 @@ func (o *owners) waited(group *types.Var, sel *ast.SelectorExpr) bool {
 		}
 	}
 	return false
+}
+
+func startsInPlace(body *ast.BlockStmt, sel *ast.SelectorExpr) bool {
+	inPlace := true
+	ast.Inspect(body, func(node ast.Node) bool {
+		switch node.(type) {
+		case *ast.FuncLit, *ast.DeferStmt, *ast.GoStmt:
+			if covers(node, sel) {
+				inPlace = false
+			}
+			return false
+		}
+		return inPlace
+	})
+	return inPlace
 }
 
 func (o *owners) literalsAround(
