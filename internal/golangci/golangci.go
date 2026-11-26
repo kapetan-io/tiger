@@ -38,7 +38,10 @@ type baseline struct {
 	want any
 }
 
-func Verify(dir string) ([]Finding, error) {
+func Verify(dir string, off ...string) ([]Finding, error) {
+	if err := checkOff(off); err != nil {
+		return nil, err
+	}
 	document, err := readConfig(dir)
 	if err != nil {
 		return nil, err
@@ -50,7 +53,11 @@ func Verify(dir string) ([]Finding, error) {
 	findings := []Finding{}
 	autoRules := auto.AutoRules()
 	for i := range autoRules {
-		findings = append(findings, verifyRule(document, &autoRules[i], module)...)
+		rule := &autoRules[i]
+		if slices.Contains(off, rule.Linter) && !enabled(document, rule) {
+			continue
+		}
+		findings = append(findings, verifyRule(document, rule, module)...)
 	}
 	sort.Slice(findings, func(i, j int) bool {
 		if findings[i].RuleID != findings[j].RuleID {
@@ -61,7 +68,22 @@ func Verify(dir string) ([]Finding, error) {
 		}
 		return findings[i].Message < findings[j].Message
 	})
-	return findings, nil
+	return append(findings, verifyKeys(document, module)...), nil
+}
+
+func checkOff(off []string) error {
+	known := map[string]bool{}
+	autoRules := auto.AutoRules()
+	for i := range autoRules {
+		known[autoRules[i].Linter] = true
+	}
+	for _, name := range off {
+		if !known[name] {
+			return fmt.Errorf("--off names %s, which is not a linter in tiger's baseline — "+
+				"name one of %s", name, strings.Join(slices.Sorted(maps.Keys(known)), ", "))
+		}
+	}
+	return nil
 }
 
 func verifyRule(document map[string]any, rule *auto.AutoRule, module string) []Finding {

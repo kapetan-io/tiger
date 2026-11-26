@@ -1939,7 +1939,11 @@ length cap.
 The rules marked auto run in golangci-lint from a config tiger generates. `tiger golangci --init`
 writes that config for a project that has none, `tiger golangci --print` writes it to stdout for
 merging into an existing one, and `tiger golangci` audits the project's config against it. The audit
-compares exactly, so a looser value and a stricter one both fail.
+compares exactly, so a looser value and a stricter one both fail. It compares the settings each
+rule names, and every key outside the settings blocks, the `enable` lists, `linters.default`,
+`issues.uniq-by-line` and `linters.exclusions.rules`, so a key that hides findings, such as
+`linters.exclusions.paths`, is reported by name. `--off` names linters a project leaves off on
+purpose, and the audit does not report them missing.
 
 `tiger.yaml` carries the facts a repository tells the analyzers about its world. It is versioned,
 and each entry is a value, a reason a reviewer accepted, and an optional list of packages it applies

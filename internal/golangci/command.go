@@ -3,11 +3,12 @@ package golangci
 import (
 	"flag"
 	"fmt"
+	"strings"
 
 	"github.com/kapetan-io/tiger/internal/command"
 )
 
-const Usage = `  tiger golangci [-C dir] [--init | --print]
+const Usage = `  tiger golangci [-C dir] [--off linter,...] [--init | --print]
       audit the project golangci-lint config against the auto-rule baseline,
       generate it with --init, or write it to stdout with --print
 `
@@ -21,6 +22,13 @@ func Run(args []string, streams command.Streams) int {
 		"write the baseline config for a project that has none; refuses to touch an existing one")
 	printConfig := flags.Bool("print", false,
 		"write the baseline config to stdout, whether or not a config exists")
+	off := []string{}
+	flags.Func("off", "comma-separated linters left off on purpose; "+
+		"the audit does not report them missing from the enable lists",
+		func(value string) error {
+			off = append(off, strings.Split(value, ",")...)
+			return nil
+		})
 	if err := flags.Parse(args); err != nil {
 		return command.ExitOperational
 	}
@@ -32,6 +40,14 @@ func Run(args []string, streams command.Streams) int {
 		fmt.Fprint(streams.Stderr, "tiger golangci: --init and --print are exclusive — "+
 			"use --init to write a file or --print to write to stdout\n")
 		return command.ExitOperational
+	}
+
+	if len(off) > 0 {
+		if *initConfig || *printConfig {
+			fmt.Fprint(streams.Stderr, "tiger golangci: --off applies only to the audit — "+
+				"drop --off, or drop --init and --print\n")
+			return command.ExitOperational
+		}
 	}
 
 	if *printConfig {
@@ -57,7 +73,7 @@ func Run(args []string, streams command.Streams) int {
 		return command.ExitClean
 	}
 
-	findings, err := Verify(*chdir)
+	findings, err := Verify(*chdir, off...)
 	if err != nil {
 		fmt.Fprintf(streams.Stderr, "tiger golangci: %v\n", err)
 		return command.ExitOperational

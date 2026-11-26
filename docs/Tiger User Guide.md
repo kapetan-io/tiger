@@ -44,6 +44,7 @@ tiger check --show-facts ./...  # also print computed facts in pin syntax
 tiger budget ./...              # report packages over their budget rows
 tiger budget --write ./...      # lower tiger.budget.yaml to the current counts
 tiger golangci                  # audit .golangci.yml against the auto-rule baseline
+tiger golangci --off lll,mnd    # the same audit, with lll and mnd left off on purpose
 tiger golangci --init           # generate the baseline config for a new project
 tiger golangci --print          # write the baseline to stdout for hand merging
 tiger pattern                   # list every pattern
@@ -65,6 +66,21 @@ passed or ranged by value. `tiger golangci` compares the thresholds exactly (65)
 config that names `hugeParam` or `rangeValCopy` in `disabled-checks`, or `performance` in
 `disabled-tags`, since either switches the check off. To silence one finding, use
 `//nolint:gocritic` at its site.
+
+The baseline sets govet's `enable-all` for the shadow check TS-S14 needs and disables
+`fieldalignment`, which orders struct fields by size, a thing no Tiger rule asks for.
+`tiger golangci` reports a `govet.disable` list that is missing or names any other analyzer.
+
+Outside the `linters.settings` and `formatters.settings` blocks, the audit compares every key
+with the baseline and names the one that differs. A config may change only the two `enable`
+lists, `linters.default`, `issues.uniq-by-line` and `linters.exclusions.rules`, and may add
+`linters.exclusions.generated: strict` or the `common-false-positives` preset, which hide nothing
+the baseline reports. Anything else, such as `linters.exclusions.paths` or `run.tests: false`,
+is a finding, because it hides findings while every linter still looks turned on.
+
+A project that turns linters on one at a time names the ones still off with `--off`, comma
+separated or repeated. The audit then prints only real problems, so any output is a failure.
+A name that is not a linter in the baseline exits 2, so a typo can't hide a missing linter.
 
 The analysis is deterministic static analysis and never a language model (ADR-0015). Tiger
 itself calls no outside service. It loads packages through the `go` command, which fetches a
