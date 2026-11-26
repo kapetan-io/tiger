@@ -1,8 +1,9 @@
 // TS-C02 findings inside function literals: no Wait follows the Go on every
 // success path of the literal or a function around it, the Wait runs inside
 // the group's own goroutine, or the Wait sits in a literal that may not run
-// before the call holding it returns (saved and never called, passed to
-// another function, a parallel subtest, or t.Cleanup).
+// before the call holding it returns (saved and never called, replaced on
+// some path before the call, passed to another function, a parallel subtest
+// that no t.Run the function holding the Go calls waits for, or t.Cleanup).
 package fixture
 
 import (
@@ -384,21 +385,6 @@ func TestWaitOnlyInParallelSubtest(t *testing.T) {
 	})
 }
 
-// TestWaitInParallelSubtestOneLevelDown is an expected false positive
-// (ENG-965): t.Run("x") does not return until the parallel subtest "y"
-// finishes, so the Wait runs, but the check treats any subtest that calls
-// t.Parallel as not run.
-func TestWaitInParallelSubtestOneLevelDown(t *testing.T) {
-	var wg sync.WaitGroup
-	wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
-	t.Run("x", func(t *testing.T) {
-		t.Run("y", func(t *testing.T) {
-			t.Parallel()
-			wg.Wait()
-		})
-	})
-}
-
 // TestWaitInPassedLiteral passes the waiting literal to a function that may
 // not call it.
 func TestWaitInPassedLiteral(t *testing.T) {
@@ -641,18 +627,6 @@ func TestDeferredLiteralWaitsOnOneBranch(t *testing.T) {
 	wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
 }
 
-// TestSavedWaitReassignedAfterCall is an expected false positive (ENG-965):
-// the literal is replaced only after it was called, but the check follows a
-// saved literal only when the variable is assigned once.
-func TestSavedWaitReassignedAfterCall(t *testing.T) {
-	var wg sync.WaitGroup
-	wait := func() { wg.Wait() }
-	wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
-	wait()
-	wait = func() {}
-	_ = wait
-}
-
 // TestSavedWaitReplacedThroughPointerBeforeRange replaces the saved literal
 // through a pointer, with a range statement after it.
 func TestSavedWaitReplacedThroughPointerBeforeRange(t *testing.T) {
@@ -769,4 +743,283 @@ func TestParallelThroughEmbeddingInSubtest(t *testing.T) {
 		suite.Parallel()
 		wg.Wait()
 	})
+}
+
+// TestParallelSubtestOnTestFromSubtest starts the parallel subtest on the
+// test's own t from inside a plain subtest, so it runs after the test
+// function returns.
+func TestParallelSubtestOnTestFromSubtest(t *testing.T) {
+	var wg sync.WaitGroup
+	outer := t
+	wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+	t.Run("x", func(t *testing.T) {
+		outer.Run("y", func(t *testing.T) {
+			t.Parallel()
+			wg.Wait()
+		})
+	})
+}
+
+// TestParallelSubtestInParallelSubtest waits two levels down, but the outer
+// subtest is parallel too, so both run after the test function returns.
+func TestParallelSubtestInParallelSubtest(t *testing.T) {
+	var wg sync.WaitGroup
+	wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+	t.Run("x", func(t *testing.T) {
+		t.Parallel()
+		t.Run("y", func(t *testing.T) {
+			t.Parallel()
+			wg.Wait()
+		})
+	})
+}
+
+// TestSavedWaitReplacedBeforeNextPass is an expected false positive
+// (ENG-989): the first pass always runs the literal that waits, and every path
+// out of the loop passes that call, but a later pass reaches the call holding
+// the replacement, and the check does not count a call that holds more than
+// one literal.
+func TestSavedWaitReplacedBeforeNextPass(t *testing.T) {
+	var wg sync.WaitGroup
+	wait := func() { wg.Wait() }
+	wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+	for {
+		wait()
+		wait = func() {}
+		if testing.Short() {
+			break
+		}
+	}
+}
+
+// TestSavedWaitReplacedInCalledLiteral replaces the saved literal inside
+// another literal. An assignment in another literal is not followed, so the
+// call may run the literal that does not wait.
+func TestSavedWaitReplacedInCalledLiteral(t *testing.T) {
+	var wg sync.WaitGroup
+	wait := func() { wg.Wait() }
+	func() { wait = func() {} }()
+	wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+	wait()
+}
+
+// TestParallelSubtestOnOuterSubtestFromParallelSubtest starts a parallel
+// subtest on the outer subtest's t from inside a parallel subtest. "x" has
+// already stopped waiting for its parallel subtests, so t.Run("x") returns
+// before the Wait runs.
+func TestParallelSubtestOnOuterSubtestFromParallelSubtest(t *testing.T) {
+	var wg sync.WaitGroup
+	wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+	t.Run("x", func(outer *testing.T) {
+		outer.Run("y", func(t *testing.T) {
+			t.Parallel()
+			outer.Run("z", func(t *testing.T) {
+				t.Parallel()
+				wg.Wait()
+			})
+		})
+	})
+}
+
+// TestSavedWaitReplacedInGoroutine replaces the saved literal from a
+// goroutine of another group, which may run before the call.
+func TestSavedWaitReplacedInGoroutine(t *testing.T) {
+	var wg, other sync.WaitGroup
+	wait := func() { wg.Wait() }
+	other.Go(func() { wait = func() {} })
+	wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+	wait()
+	other.Wait()
+}
+
+// TestSavedWaitReplacedInSelectCase replaces the saved literal in one select
+// case before the call.
+func TestSavedWaitReplacedInSelectCase(t *testing.T) {
+	var wg sync.WaitGroup
+	ready := make(chan struct{})
+	wait := func() { wg.Wait() }
+	select {
+	case <-ready:
+		wait = func() {}
+	default:
+	}
+	wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+	wait()
+}
+
+// TestSavedWaitReplacedBeforeContinueOuter replaces the saved literal and
+// continues a labeled outer loop, so the call after the loops may run the
+// literal that does not wait.
+func TestSavedWaitReplacedBeforeContinueOuter(t *testing.T) {
+	var wg sync.WaitGroup
+	wait := func() { wg.Wait() }
+	wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+outer:
+	for range 2 {
+		for {
+			if testing.Short() {
+				wait = func() {}
+				continue outer
+			}
+			break
+		}
+	}
+	wait()
+}
+
+// TestSavedWaitAssignmentSkippedByGoto jumps over the assignment of the
+// waiting literal, so the call runs the one that does not wait.
+func TestSavedWaitAssignmentSkippedByGoto(t *testing.T) {
+	var wg sync.WaitGroup
+	wait := func() {}
+	wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+	goto call
+	wait = func() { wg.Wait() }
+call:
+	wait()
+}
+
+// TestDeferredSavedNoWaitReplacedAfterDefer defers the saved literal while it
+// does not wait. The defer keeps that value, so replacing it later does not
+// help.
+func TestDeferredSavedNoWaitReplacedAfterDefer(t *testing.T) {
+	var wg sync.WaitGroup
+	wait := func() {}
+	defer wait()
+	wait = func() { wg.Wait() }
+	wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+}
+
+// TestSavedWaitReplacedThenShadowed replaces the saved literal on one branch,
+// then declares a shadowing variable that holds a waiting literal.
+func TestSavedWaitReplacedThenShadowed(t *testing.T) {
+	var wg sync.WaitGroup
+	wait := func() { wg.Wait() }
+	if testing.Short() {
+		wait = func() {}
+	}
+	{
+		wait := func() { wg.Wait() }
+		_ = wait
+	}
+	wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+	wait()
+}
+
+// TestSavedWaitReplacedThenCalledInLiteral replaces the saved literal before
+// a literal called where it is written calls it.
+func TestSavedWaitReplacedThenCalledInLiteral(t *testing.T) {
+	var wg sync.WaitGroup
+	wait := func() { wg.Wait() }
+	wait = func() {}
+	wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+	func() { wait() }()
+}
+
+// TestGoInSubtestWaitInItsParallelSubtest starts in a plain subtest and waits
+// in a parallel subtest of it, which runs after that subtest's body returns.
+func TestGoInSubtestWaitInItsParallelSubtest(t *testing.T) {
+	t.Run("x", func(t *testing.T) {
+		var wg sync.WaitGroup
+		wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+		t.Run("y", func(t *testing.T) {
+			t.Parallel()
+			wg.Wait()
+		})
+	})
+}
+
+// TestParallelSubtestOnReassignedSubtestParam replaces the subtest's t with
+// the test's own before starting the parallel subtest on it.
+func TestParallelSubtestOnReassignedSubtestParam(t *testing.T) {
+	var wg sync.WaitGroup
+	wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+	t.Run("x", func(st *testing.T) {
+		st = t
+		st.Run("y", func(t *testing.T) {
+			t.Parallel()
+			wg.Wait()
+		})
+	})
+}
+
+// TestParallelSubtestOnAliasReplacedThroughPointer replaces a copy of the
+// subtest's t with the test's own through a pointer.
+func TestParallelSubtestOnAliasReplacedThroughPointer(t *testing.T) {
+	var wg sync.WaitGroup
+	wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+	t.Run("x", func(st *testing.T) {
+		alias := st
+		slot := &alias
+		*slot = t
+		alias.Run("y", func(t *testing.T) {
+			t.Parallel()
+			wg.Wait()
+		})
+	})
+}
+
+// TestParallelSubtestOnStaleAlias keeps the first run's t in a variable
+// declared outside the subtest body, so the second run starts its parallel
+// subtest on a subtest that has already finished.
+func TestParallelSubtestOnStaleAlias(t *testing.T) {
+	var wg sync.WaitGroup
+	var keep *testing.T
+	body := func(t *testing.T) {
+		if keep == nil {
+			keep = t
+		}
+		keep.Run("y", func(t *testing.T) {
+			t.Parallel()
+			wg.Wait()
+		})
+	}
+	t.Run("x", body)
+	wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+	t.Run("x2", body)
+}
+
+// TestParallelSubtestInStaleSavedLiteral saves a literal holding the first
+// run's t in a variable declared outside the subtest body, so the second run
+// calls it on a subtest that has already finished.
+func TestParallelSubtestInStaleSavedLiteral(t *testing.T) {
+	var wg sync.WaitGroup
+	var saved func()
+	body := func(t *testing.T) {
+		if saved == nil {
+			saved = func() {
+				t.Run("y", func(t *testing.T) {
+					t.Parallel()
+					wg.Wait()
+				})
+			}
+		}
+		saved()
+	}
+	t.Run("x", body)
+	wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+	t.Run("x2", body)
+}
+
+// TestSavedWaitCalledFromCalledLiteral is an expected false positive
+// (ENG-989): the call sits in a literal called where it is written, after the
+// last assignment, so it runs the literal that waits, but the check follows a
+// literal assigned more than once only within one function body.
+func TestSavedWaitCalledFromCalledLiteral(t *testing.T) {
+	var wg sync.WaitGroup
+	wait := func() {}
+	wait = func() { wg.Wait() }
+	wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+	func() { wait() }()
+}
+
+// TestSavedWaitReplacedInDeferredLiteral is an expected false positive
+// (ENG-989): the deferred literal replaces the saved one only after the call,
+// but the check does not follow an assignment inside another literal.
+func TestSavedWaitReplacedInDeferredLiteral(t *testing.T) {
+	var wg sync.WaitGroup
+	wait := func() { wg.Wait() }
+	defer func() { wait = func() {} }()
+	wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+	wait()
 }

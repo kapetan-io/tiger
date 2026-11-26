@@ -103,3 +103,20 @@ func (s *savedWaitCalled) Closed() error {
 	wait()
 	return errClosed
 }
+
+var drainPool sync.WaitGroup
+
+// StartDrainPool runs the worker on drainPool.
+func StartDrainPool() { drainPool.Go(work) }
+
+// Drain waits in a parallel subtest started on a plain subtest's t, which
+// finishes before the plain subtest returns, then fails.
+func Drain(t *testing.T) error {
+	t.Run("outer", func(t *testing.T) {
+		t.Run("inner", func(t *testing.T) {
+			t.Parallel()
+			drainPool.Wait()
+		})
+	})
+	return errClosed
+}

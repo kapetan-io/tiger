@@ -1,9 +1,12 @@
 package nogoroutine
 
 import (
+	"fmt"
 	"go/ast"
 	"go/token"
 	"go/types"
+	"slices"
+	"strings"
 
 	"golang.org/x/tools/go/cfg"
 
@@ -18,6 +21,7 @@ type flowQuery struct {
 	anyPath     bool
 	shutdown    bool
 	failNowEnds bool
+	subtests    []*types.Var
 }
 
 type flowState struct {
@@ -55,7 +59,7 @@ func (o *owners) summary(group *types.Var) waiters {
 	for round := 0; round <= len(decls); round++ {
 		changed := false
 		for _, decl := range decls {
-			if always[decl] || !o.mayWait(decl.Body, group, always, searchedBodies{}) {
+			if always[decl] || !o.searchFor(always).mayWait(decl.Body, group, nil) {
 				continue
 			}
 			unwaited, _ := o.uncovered(functionOf(decl), flowQuery{group: group}, always)
@@ -75,22 +79,39 @@ func (o *owners) summary(group *types.Var) waiters {
 }
 
 type searchedBody struct {
-	body  *ast.BlockStmt
-	group *types.Var
+	body     *ast.BlockStmt
+	group    *types.Var
+	subtests string
 }
 
 type searchedBodies map[searchedBody]bool
 
-func (o *owners) mayWait(
-	body *ast.BlockStmt, group *types.Var, always waiters, seen searchedBodies,
-) bool {
-	key := searchedBody{body: body, group: group}
-	if seen[key] {
+func subtestKey(subtests []*types.Var) string {
+	var key strings.Builder
+	for _, subtest := range subtests {
+		fmt.Fprintf(&key, "%p,", subtest)
+	}
+	return key.String()
+}
+
+type waitSearch struct {
+	*owners
+	always waiters
+	seen   searchedBodies
+}
+
+func (o *owners) searchFor(always waiters) waitSearch {
+	return waitSearch{owners: o, always: always, seen: searchedBodies{}}
+}
+
+func (w waitSearch) mayWait(body *ast.BlockStmt, group *types.Var, subtests []*types.Var) bool {
+	key := searchedBody{body: body, group: group, subtests: subtestKey(subtests)}
+	if w.seen[key] {
 		return false
 	}
-	seen[key] = true
+	w.seen[key] = true
 	found := false
-	for _, block := range o.graph(body).Blocks {
+	for _, block := range w.graph(body).Blocks {
 		if !block.Live {
 			continue
 		}
@@ -100,7 +121,7 @@ func (o *owners) mayWait(
 				case *ast.FuncLit, *ast.GoStmt:
 					return false
 				case *ast.CallExpr:
-					found = found || o.callMayWait(expr, group, always, seen)
+					found = found || w.callMayWait(expr, group, subtests)
 				}
 				return !found
 			})
@@ -112,32 +133,31 @@ func (o *owners) mayWait(
 	return false
 }
 
-func (o *owners) callMayWait(
-	call *ast.CallExpr, group *types.Var, always waiters, seen searchedBodies,
-) bool {
-	if o.callsWait(call.Fun, group) || o.helperWaits(call, always) {
+func (w waitSearch) callMayWait(call *ast.CallExpr, group *types.Var, subtests []*types.Var) bool {
+	if w.callsWait(call.Fun, group) || w.helperWaits(call, w.always) {
 		return true
 	}
-	decl := o.calledDecl(call)
-	if bound, ok := o.soleDefinition(call.Fun).(*ast.SelectorExpr); ok && decl == nil {
-		decl = o.calledDecl(&ast.CallExpr{Fun: bound})
+	decl := w.calledDecl(call)
+	if bound, ok := w.soleDefinition(call.Fun).(*ast.SelectorExpr); ok && decl == nil {
+		decl = w.calledDecl(&ast.CallExpr{Fun: bound})
 	}
-	if decl != nil && o.mayWait(decl.Body, group, always, seen) {
+	if decl != nil && w.mayWait(decl.Body, group, nil) {
 		return true
 	}
-	literal := o.literalRunBy(call)
-	if literal == nil {
-		literal = o.onceLiteral(call)
-	}
-	if literal != nil && o.mayWait(literal.Body, group, always, seen) {
+	run := w.literalRunBy(call, subtests)
+	if run.literal != nil && w.mayWait(run.literal.Body, group, run.within(subtests)) {
 		return true
 	}
-	callee := o.pass.TypesInfo.Types[ast.Unparen(call.Fun)]
+	once := w.onceLiteral(call)
+	if once != nil && w.mayWait(once.Body, group, subtests) {
+		return true
+	}
+	callee := w.pass.TypesInfo.Types[ast.Unparen(call.Fun)]
 	if callee.IsBuiltin() || callee.IsType() {
 		return false
 	}
 	for i, arg := range call.Args {
-		if o.names(arg, group) && o.handedWait(call, i, seen) {
+		if w.names(arg, group) && w.handedWait(call, i) {
 			return true
 		}
 	}
@@ -156,23 +176,24 @@ func (o *owners) callsWait(fun ast.Expr, group *types.Var) bool {
 	return isWait && waited == group
 }
 
-func (o *owners) handedWait(call *ast.CallExpr, arg int, seen searchedBodies) bool {
-	decl := o.calledDecl(call)
+func (w waitSearch) handedWait(call *ast.CallExpr, arg int) bool {
+	decl := w.calledDecl(call)
 	if decl == nil {
 		return true
 	}
 	selector, isSelector := ast.Unparen(call.Fun).(*ast.SelectorExpr)
-	if isSelector && o.pass.TypesInfo.Types[selector.X].IsType() {
+	if isSelector && w.pass.TypesInfo.Types[selector.X].IsType() {
 		arg--
 	}
 	params := paramNames(decl)
-	if decl.Type.Params != nil && arg >= len(params)-1 && o.variadic(decl) {
+	if decl.Type.Params != nil && arg >= len(params)-1 && w.variadic(decl) {
 		return true
 	}
 	if arg < 0 || arg >= len(params) || params[arg] == nil {
 		return false
 	}
-	return o.mayWait(decl.Body, o.index.Object(params[arg]), waiters{}, seen)
+	handed := waitSearch{owners: w.owners, always: waiters{}, seen: w.seen}
+	return handed.mayWait(decl.Body, w.index.Object(params[arg]), nil)
 }
 
 func (o *owners) variadic(decl *ast.FuncDecl) bool {
@@ -307,8 +328,8 @@ func (o *owners) waitsIn(node ast.Node, query flowQuery, always waiters) bool {
 		case *ast.CallExpr:
 			counted := !o.givesUp(found.Pos(), start)
 			waits = waits || counted && o.waitCall(found, query.group, always)
-			if literal := o.literalRunBy(found); !waits && literal != nil {
-				waits = o.literalWaits(literal, query, always)
+			if run := o.literalRunBy(found, query.subtests); !waits && run.literal != nil {
+				waits = o.literalWaits(run, query, always)
 			}
 		}
 		return !waits
@@ -316,7 +337,8 @@ func (o *owners) waitsIn(node ast.Node, query flowQuery, always waiters) bool {
 	return waits
 }
 
-func (o *owners) literalWaits(literal *ast.FuncLit, query flowQuery, always waiters) bool {
+func (o *owners) literalWaits(run literalRun, query flowQuery, always waiters) bool {
+	literal := run.literal
 	if o.walking[literal] {
 		return false
 	}
@@ -330,35 +352,134 @@ func (o *owners) literalWaits(literal *ast.FuncLit, query flowQuery, always wait
 	o.walking[literal] = true
 	defer delete(o.walking, literal)
 	fn := function{decl: o.index.DeclOf(literal), typ: literal.Type, body: literal.Body}
-	unwaited, _ := o.uncovered(fn, flowQuery{group: query.group, held: held}, always)
+	inner := flowQuery{group: query.group, held: held, subtests: run.within(query.subtests)}
+	unwaited, _ := o.uncovered(fn, inner, always)
 	return !unwaited
 }
 
-func (o *owners) literalRunBy(call *ast.CallExpr) *ast.FuncLit {
+type literalRun struct {
+	literal  *ast.FuncLit
+	saved    *types.Var
+	subtest  *types.Var
+	parallel bool
+}
+
+func (o *owners) literalRunBy(call *ast.CallExpr, subtests []*types.Var) literalRun {
 	if literal := o.literalOf(call.Fun); literal != nil {
-		return literal
+		return literalRun{literal: literal, saved: o.savedIn(call.Fun)}
 	}
 	selector, ok := ast.Unparen(call.Fun).(*ast.SelectorExpr)
 	if !ok || len(call.Args) != 2 || !subtestRuns[o.calleeName(selector)] {
-		return nil
+		return literalRun{}
 	}
 	body := o.literalOf(call.Args[1])
-	if body == nil || o.callsParallel(body) {
+	if body == nil {
+		return literalRun{}
+	}
+	parallel := o.callsParallel(body)
+	if parallel && !o.runsOn(selector, subtests) {
+		return literalRun{}
+	}
+	return literalRun{
+		literal:  body,
+		saved:    o.savedIn(call.Args[1]),
+		subtest:  o.subtestOf(body),
+		parallel: parallel,
+	}
+}
+
+func (run literalRun) within(subtests []*types.Var) []*types.Var {
+	if run.saved != nil {
+		subtests = declaredAround(subtests, run.saved)
+	}
+	switch {
+	case run.subtest == nil:
+	case run.parallel:
+		subtests = []*types.Var{run.subtest}
+	default:
+		subtests = append(slices.Clip(subtests), run.subtest)
+	}
+	return subtests
+}
+
+func (o *owners) savedIn(expr ast.Expr) *types.Var {
+	if _, written := ast.Unparen(expr).(*ast.FuncLit); written {
 		return nil
 	}
-	return body
+	return o.index.Object(expr)
+}
+
+func declaredAround(subtests []*types.Var, local *types.Var) []*types.Var {
+	var kept []*types.Var
+	for _, subtest := range subtests {
+		if subtest.Parent().Contains(local.Pos()) {
+			kept = append(kept, subtest)
+		}
+	}
+	return kept
+}
+
+func (o *owners) runsOn(selector *ast.SelectorExpr, subtests []*types.Var) bool {
+	decl := o.index.DeclOf(selector)
+	if decl == nil {
+		return false
+	}
+	holder := o.index.Object(selector.X)
+	var aliases []*types.Var
+	for range aliasHopsMax {
+		if holder == nil || holder.IsField() || o.rebound(holder, decl) {
+			return false
+		}
+		defs := o.index.Definitions(holder, decl)
+		if slices.Contains(subtests, holder) {
+			return len(defs) == 0 && !slices.ContainsFunc(aliases, func(alias *types.Var) bool {
+				return !holder.Parent().Contains(alias.Pos())
+			})
+		}
+		aliases = append(aliases, holder)
+		if len(defs) != 1 {
+			return false
+		}
+		holder = o.index.Object(defs[0])
+	}
+	return false
+}
+
+func (o *owners) subtestOf(body *ast.FuncLit) *types.Var {
+	params := body.Type.Params.List
+	if len(params) == 0 || len(params[0].Names) == 0 {
+		return nil
+	}
+	return o.index.Object(params[0].Names[0])
 }
 
 var subtestRuns = map[string]bool{"(*testing.T).Run": true, "(*testing.B).Run": true}
 
 func (o *owners) literalOf(expr ast.Expr) *ast.FuncLit {
-	if literal, ok := ast.Unparen(expr).(*ast.FuncLit); ok {
+	expr = ast.Unparen(expr)
+	if literal, ok := expr.(*ast.FuncLit); ok {
 		return literal
 	}
-	if literal, ok := o.soleDefinition(expr).(*ast.FuncLit); ok {
-		return literal
+	local := o.index.Object(expr)
+	if _, isIdent := expr.(*ast.Ident); !isIdent || local == nil || local.IsField() {
+		return nil
 	}
-	return nil
+	if o.index.IsParameter(local) || local.Parent() == local.Pkg().Scope() {
+		return nil
+	}
+	decl := o.index.DeclOf(expr)
+	if decl == nil || o.rebound(local, decl) {
+		return nil
+	}
+	defs := o.index.Definitions(local, decl)
+	if len(defs) != 1 {
+		return o.reachingLiteral(local, expr, decl, defs)
+	}
+	literal, ok := ast.Unparen(defs[0]).(*ast.FuncLit)
+	if !ok {
+		return nil
+	}
+	return literal
 }
 
 func (o *owners) soleDefinition(expr ast.Expr) ast.Expr {
@@ -371,11 +492,139 @@ func (o *owners) soleDefinition(expr ast.Expr) ast.Expr {
 		return nil
 	}
 	decl := o.index.DeclOf(expr)
+	if decl == nil || o.rebound(local, decl) {
+		return nil
+	}
 	defs := o.index.Definitions(local, decl)
-	if len(defs) != 1 || o.rebound(local, decl) {
+	if len(defs) != 1 {
 		return nil
 	}
 	return ast.Unparen(defs[0])
+}
+
+type reaching struct {
+	value ast.Expr
+	many  bool
+}
+
+func (r reaching) join(other reaching) reaching {
+	if r.many || other.many || r.value != other.value {
+		return reaching{many: true}
+	}
+	return r
+}
+
+func (o *owners) reachingLiteral(
+	local *types.Var, use ast.Expr, decl *ast.FuncDecl, defs []ast.Expr,
+) *ast.FuncLit {
+	body := innermostBody(decl, use.Pos())
+	if innermostBody(decl, local.Pos()) != body {
+		return nil
+	}
+	graph := o.graph(body)
+	placed := map[ast.Expr]bool{}
+	for _, block := range graph.Blocks {
+		for _, node := range block.Nodes {
+			for _, value := range o.assignments(node, local) {
+				placed[value] = true
+			}
+		}
+	}
+	for _, def := range defs {
+		if !placed[def] {
+			return nil
+		}
+	}
+	entry := map[*cfg.Block]reaching{graph.Blocks[0]: {}}
+	work := []*cfg.Block{graph.Blocks[0]}
+	var found *reaching
+	i := 0
+	for ; i < len(work) && i < worklist.NodesMax; i++ {
+		block := work[i]
+		state := entry[block]
+		for _, node := range block.Nodes {
+			if node.Pos() <= use.Pos() && use.End() <= node.End() {
+				at := state
+				found = &at
+			}
+			for _, value := range o.assignments(node, local) {
+				state = reaching{value: value}
+			}
+		}
+		for _, next := range block.Succs {
+			before, seen := entry[next]
+			after := state
+			if seen {
+				after = before.join(state)
+			}
+			if !seen || after != before {
+				entry[next] = after
+				work = append(work, next)
+			}
+		}
+	}
+	assert.Ok(i == len(work), "reachingLiteral: worklist reached worklist.NodesMax")
+	if found == nil || found.many {
+		return nil
+	}
+	literal, ok := ast.Unparen(found.value).(*ast.FuncLit)
+	if !ok {
+		return nil
+	}
+	return literal
+}
+
+func (o *owners) assignments(node ast.Node, local *types.Var) []ast.Expr {
+	var out []ast.Expr
+	assign := func(targets, values []ast.Expr) {
+		for i, target := range targets {
+			if o.index.Object(target) != local {
+				continue
+			}
+			switch {
+			case len(targets) == len(values):
+				out = append(out, values[i])
+			case len(values) == 0:
+				out = append(out, nil)
+			default:
+				out = append(out, values[0])
+			}
+		}
+	}
+	ast.Inspect(node, func(inner ast.Node) bool {
+		switch stmt := inner.(type) {
+		case *ast.FuncLit:
+			return false
+		case *ast.AssignStmt:
+			if stmt.Tok == token.ASSIGN || stmt.Tok == token.DEFINE {
+				assign(stmt.Lhs, stmt.Rhs)
+			}
+		case *ast.ValueSpec:
+			names := make([]ast.Expr, len(stmt.Names))
+			for i, name := range stmt.Names {
+				names[i] = name
+			}
+			assign(names, stmt.Values)
+		}
+		return true
+	})
+	return out
+}
+
+func innermostBody(decl *ast.FuncDecl, pos token.Pos) *ast.BlockStmt {
+	body := decl.Body
+	ast.Inspect(decl.Body, func(node ast.Node) bool {
+		literal, ok := node.(*ast.FuncLit)
+		if !ok {
+			return true
+		}
+		if pos < literal.Pos() || literal.End() <= pos {
+			return false
+		}
+		body = literal.Body
+		return true
+	})
+	return body
 }
 
 func (o *owners) rebound(local *types.Var, decl *ast.FuncDecl) bool {
@@ -397,11 +646,7 @@ func (o *owners) rangeTarget(target ast.Expr, local *types.Var) bool {
 }
 
 func (o *owners) callsParallel(literal *ast.FuncLit) bool {
-	params := literal.Type.Params.List
-	if len(params) == 0 || len(params[0].Names) == 0 {
-		return false
-	}
-	return o.parallelOn(literal.Body, o.index.Object(params[0].Names[0]), searched{})
+	return o.parallelOn(literal.Body, o.subtestOf(literal), searched{})
 }
 
 type searched map[*types.Var]bool
