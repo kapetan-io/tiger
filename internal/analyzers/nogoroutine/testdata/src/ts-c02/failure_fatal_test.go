@@ -183,3 +183,21 @@ func BenchmarkUnnamedSubCallsParentFatalOrWait(b *testing.B) {
 		}
 	})
 }
+
+// TestStartInCalledLiteralThenFatal is an expected false positive (ENG-1001):
+// the literal holding the start runs at once on the test's goroutine, so the
+// t.Fatal ends the test, but a start inside any literal is not read as
+// written in place.
+func TestStartInCalledLiteralThenFatal(t *testing.T) {
+	var wg sync.WaitGroup
+	func() {
+		wg.Go(work) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+	}()
+	func() {
+		if testing.Short() {
+			t.Fatal("short")
+		} else {
+			wg.Wait()
+		}
+	}()
+}

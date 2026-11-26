@@ -32,13 +32,13 @@ import (
 // (tryGoWaited); a return of a non-nil error is the failure path, so it
 // needs no Wait (startThenOnlyError), and neither does a path ending in
 // t.Fatal, t.Fatalf or t.FailNow, which fails the test, including one in a
-// literal the test calls (compliant_fatal_test.go), but a function that loops forever or
-// returns only a non-nil error counts as a Wait only when code it runs before
-// returning may wait on the group: a Wait called directly or through a local
-// bound to the Wait method value, a same-package function that may wait on
-// it, a literal it runs (including through sync.Once.Do), a same-package
-// function it hands the group that may wait on it, or a call it cannot follow
-// that it hands the group, but not a builtin or a conversion
+// literal the test calls (compliant_fatal_test.go), but a function that loops
+// forever or returns only a non-nil error counts as a Wait only when code it
+// runs before returning may wait on the group: a Wait called directly or
+// through a local bound to the Wait method value, a same-package function that
+// may wait on it, a literal it runs (including through sync.Once.Do), a
+// same-package function it hands the group that may wait on it, or a call it
+// cannot follow that it hands the group, but not a builtin or a conversion
 // (failure_nowait.go, failure_nowait_more.go, compliant_nowait.go,
 // compliant_handoff.go); such a function whose Wait sits on one branch or in a
 // defer is a documented gap (knownmiss.go, ENG-980), and so are a Wait after a
