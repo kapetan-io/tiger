@@ -49,17 +49,57 @@ example `const _ = uint(1<<31 - 1 - nodesMax)`) and a `TestMain` that calls
 
 ### TS-S01: no recursion
 
+**From:** both sources. Rule 1 of NASA's [Power of Ten](https://spinroot.com/gerard/pdf/P10.pdf) bans
+"direct or indirect recursion", and the
+[Safety section of TigerStyle](https://github.com/tigerbeetle/tigerbeetle/blob/main/docs/TIGER_STYLE.md#safety) says
+"Do not use recursion".
+
+A recursive function's stack depth follows its input, and the input comes from outside. Go lets
+one stack grow to 1 GB before it gives up, so a deep input does not fail fast. The process quietly
+eats a gigabyte and dies far from the cause.
+
 ![TS-S01 recursion: before, chase calls itself, so stack depth follows the input and a deep input grows the stack toward 1 GB; after, a loop visits stack[i] and appends its children, counts i up to nodesMax and returns errTooManyNodes if nodes are left](docs/recursion.svg)
 
 ### TS-S02: every loop has an upper bound
+
+**From:** both sources. Rule 2 of [Power of Ten](https://spinroot.com/gerard/pdf/P10.pdf) says
+"All loops must have a fixed upper-bound", and the
+[Safety section of TigerStyle](https://github.com/tigerbeetle/tigerbeetle/blob/main/docs/TIGER_STYLE.md#safety) says
+"all loops and all queues must have a fixed upper bound".
+
+A loop with no stated limit assumes its input is always well-formed. When it is not, the loop
+hangs and reports nothing. [In trials](docs/Tiger%20Rule%20Reference.md#ts-s02--every-loop-has-an-upper-bound) on two real codebases, two git tags pointing at each other spun a git server's
+worker goroutine at full speed forever, a denial of service that could be triggered remotely.
 
 ![TS-S02 loop bound: before, a for loop runs until converged returns true, so if refine stalls it never ends and reports nothing; after, the loop counts tries up to triesMax and returns errNoConvergence when it runs out](docs/loop-bound.svg)
 
 ### TS-C02: every goroutine starts through a group that waits for it
 
+**From:** TigerStyle's general guidance. Its [Safety section](https://github.com/tigerbeetle/tigerbeetle/blob/main/docs/TIGER_STYLE.md#safety) says
+"Put a limit on everything", and Tiger applies that to goroutines, so every goroutine has an end its
+caller waits for. TigerStyle has no goroutine rule of its own because TigerBeetle runs on a
+single-threaded event loop, while Go starts a goroutine with a two-letter keyword.
+
+A goroutine that nothing waits for keeps running after its caller moves on. A server's memory
+climbs for no clear reason, and a shutdown can finish while the goroutine is still working.
+[In trials](docs/Tiger%20Rule%20Reference.md#ts-c02--every-goroutine-starts-through-a-group-that-waits-for-it), a daemon's
+`WaitGroup` went unwaited, so its `Shutdown` could return before its HTTP goroutines exited.
+
 ![TS-C02 goroutine group: before, Launch starts a goroutine with a bare go statement and returns, so nothing waits for it and it can outlive its caller; after, Start launches it with wg.Go and Shutdown closes stop and calls wg.Wait on the same group until it exits](docs/goroutine-group.svg)
 
 ### TS-S08: a switch over a closed set ends in assert.Unreachable
+
+**From:** TigerStyle's general guidance. Its [Safety section](https://github.com/tigerbeetle/tigerbeetle/blob/main/docs/TIGER_STYLE.md#safety) asks
+whether an `if` needs "a matching `else` branch, to ensure that the positive and negative spaces
+are handled or asserted", and Tiger applies that to a switch. The default arm asserts every value
+no case handles. Go has no enum type, so the compiler cannot check that a switch covers every
+constant.
+
+Adding a value to a type should break every switch that has not handled it. Without a default arm,
+the new value falls out of the switch and the code carries on as if nothing happened, with no error.
+[In trials](docs/Tiger%20Rule%20Reference.md#ts-s08--a-switch-over-a-closed-set-ends-in-assertunreachable), two storage
+backends silently dropped an action this way, and a pack writer wrote an invalid type code for a
+value it did not expect.
 
 ![TS-S08 closed switch: before, a switch over Status handles Active and Inactive with no default arm, so a new StatusArchived falls out and returns an empty string with no error; after, golangci-lint's exhaustive check reports the missing StatusArchived case, and a default arm that calls assert.Unreachable crashes if the value still arrives at run time](docs/closed-switch.svg)
 
