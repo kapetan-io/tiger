@@ -687,3 +687,75 @@ func TestGolangciAuditRejectsBareStringBan(t *testing.T) {
 	assert.Equal(t, command.ExitFindings, got.code)
 	assert.Contains(t, got.stdout, `doesn't include ^time\.Now$`)
 }
+
+// TestGolangciGeneratedConfigLeavesFieldAlignmentOff covers the generated baseline.
+//
+// Goal: govet keeps enable-all for the shadow check TS-S14 needs, and names
+// fieldalignment as its one exception, since no Tiger rule orders struct
+// fields by size.
+func TestGolangciGeneratedConfigLeavesFieldAlignmentOff(t *testing.T) {
+	dir := t.TempDir()
+	moduleFile{dir: dir, module: "aligned.example/project"}.write(t)
+	require.Equal(t, command.ExitClean, run(t, "golangci", "-C", dir, "--init").code)
+
+	var document struct {
+		Linters struct {
+			Settings struct {
+				Govet struct {
+					EnableAll bool     `yaml:"enable-all"`
+					Disable   []string `yaml:"disable"`
+				} `yaml:"govet"`
+			} `yaml:"settings"`
+		} `yaml:"linters"`
+	}
+	generated := readFile(t, filepath.Join(dir, ".golangci.yml"))
+	require.NoError(t, yaml.Unmarshal([]byte(generated), &document))
+	assert.True(t, document.Linters.Settings.Govet.EnableAll)
+	assert.Equal(t, []string{"fieldalignment"}, document.Linters.Settings.Govet.Disable)
+}
+
+// TestGolangciGovetDisableOtherThanFieldAlignmentFindsTheAutoRule covers the audit contract.
+//
+// Goal: a config must leave govet's disable list at exactly fieldalignment.
+// Dropping the line turns fieldalignment back on, and naming another
+// analyzer, such as shadow, switches off a check a Tiger rule needs.
+func TestGolangciGovetDisableOtherThanFieldAlignmentFindsTheAutoRule(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		replace string
+		want    string
+	}{
+		{
+			name:    "missing",
+			replace: "",
+			want:    "TS-S14: linters.settings.govet.disable isn't set",
+		},
+		{
+			name:    "shadow added",
+			replace: "            disable:\n                - fieldalignment\n                - shadow\n",
+			want:    "TS-S14: linters.settings.govet.disable is [fieldalignment, shadow]",
+		},
+		{
+			name:    "empty",
+			replace: "            disable: []\n",
+			want:    "TS-S14: linters.settings.govet.disable is []",
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			dir := t.TempDir()
+			moduleFile{dir: dir, module: "govet.example/project"}.write(t)
+			require.Equal(t, command.ExitClean, run(t, "golangci", "-C", dir, "--init").code)
+
+			path := filepath.Join(dir, ".golangci.yml")
+			config := readFile(t, path)
+			const line = "            disable:\n                - fieldalignment\n"
+			require.Contains(t, config, line)
+			config = strings.Replace(config, line, test.replace, 1)
+			require.NoError(t, os.WriteFile(path, []byte(config), 0o644))
+
+			got := run(t, "golangci", "-C", dir)
+			assert.Equal(t, command.ExitFindings, got.code)
+			assert.Contains(t, got.stdout, test.want)
+		})
+	}
+}

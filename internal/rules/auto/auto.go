@@ -123,6 +123,11 @@ var autoRules = []AutoRule{
 		Settings: []Setting{
 			{Path: []string{"linters", "settings", "govet", "enable-all"}, Want: true},
 			{
+				Path:   []string{"linters", "settings", "govet", "disable"},
+				Want:   []any{"fieldalignment"},
+				Reason: "no Tiger rule orders fields by size",
+			},
+			{
 				Path: []string{"linters", "settings", "govet", "settings", "shadow", "strict"},
 				Want: true,
 			},
