@@ -74,13 +74,14 @@ The baseline sets govet's `enable-all` for the shadow check TS-S14 needs and dis
 Outside the `linters.settings` and `formatters.settings` blocks, the audit compares every key
 with the baseline and names the one that differs. A config may change only the two `enable`
 lists, `linters.default`, `issues.uniq-by-line` and `linters.exclusions.rules`, and may add
-`linters.exclusions.generated: strict` or the `common-false-positives` preset, which hide nothing
-the baseline reports. Anything else, such as `linters.exclusions.paths` or `run.tests: false`,
-is a finding, because it hides findings while every linter still looks turned on.
+`linters.exclusions.generated: strict` or `disable`, or the `common-false-positives` preset, which
+hide nothing the baseline reports. Any other key that differs is a finding. Some of those keys,
+such as `linters.exclusions.paths` or `run.tests: false`, hide findings while every linter still
+looks turned on.
 
 A project that turns linters on one at a time names the ones still off with `--off`, comma
-separated or repeated. The audit then prints only real problems, so any output is a failure.
-A name that is not a linter in the baseline exits 2, so a typo can't hide a missing linter.
+separated or repeated. Every line the audit prints is then something to fix. A name that is not
+a linter in the baseline exits 2, so a typo can't hide a missing linter.
 
 The analysis is deterministic static analysis and never a language model (ADR-0015). Tiger
 itself calls no outside service. It loads packages through the `go` command, which fetches a

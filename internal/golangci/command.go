@@ -10,7 +10,8 @@ import (
 
 const Usage = `  tiger golangci [-C dir] [--off linter,...] [--init | --print]
       audit the project golangci-lint config against the auto-rule baseline,
-      generate it with --init, or write it to stdout with --print
+      not reporting the linters --off names as missing; generate the baseline
+      with --init, or write it to stdout with --print
 `
 
 func Run(args []string, streams command.Streams) int {
@@ -26,7 +27,9 @@ func Run(args []string, streams command.Streams) int {
 	flags.Func("off", "comma-separated linters left off on purpose; "+
 		"the audit does not report them missing from the enable lists",
 		func(value string) error {
-			off = append(off, strings.Split(value, ",")...)
+			for name := range strings.SplitSeq(value, ",") {
+				off = append(off, strings.TrimSpace(name))
+			}
 			return nil
 		})
 	if err := flags.Parse(args); err != nil {

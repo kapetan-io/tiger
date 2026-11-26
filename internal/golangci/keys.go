@@ -11,7 +11,7 @@ import (
 	"github.com/kapetan-io/tiger/internal/worklist"
 )
 
-var freeKeys = []string{
+var changeableKeys = []string{
 	"linters.enable",
 	"formatters.enable",
 	"linters.default",
@@ -66,11 +66,12 @@ func ruleOwnedKeys() map[string]bool {
 
 func (a *keyAudit) expand(task keyTask) {
 	joined := strings.Join(task.path, ".")
-	if slices.Contains(freeKeys, joined) {
+	if slices.Contains(changeableKeys, joined) {
 		return
 	}
+	task.present = task.present && task.got != nil
 	if a.owned[joined] {
-		a.extraElements(task, joined)
+		a.addedElements(task, joined)
 		return
 	}
 	wantMap, wantIsMap := task.want.(map[string]any)
@@ -80,32 +81,57 @@ func (a *keyAudit) expand(task keyTask) {
 	if wantBranches && gotBranches {
 		for _, key := range slices.Sorted(maps.Keys(union(wantMap, gotMap))) {
 			want, wanted := wantMap[key]
-			got, present := gotMap[key]
+			got, held := gotMap[key]
 			a.work = append(a.work, keyTask{
 				path: append(slices.Clone(task.path), key),
-				want: want, got: got, wanted: wanted, present: present,
+				want: want, got: got, wanted: wanted, present: held,
 			})
 		}
 		return
 	}
+	a.compareLeaf(task, joined)
+}
+
+func (a *keyAudit) compareLeaf(task keyTask, joined string) {
+	_, wantIsMap := task.want.(map[string]any)
 	switch {
 	case !task.wanted && slices.Contains(harmlessValues[joined], task.got):
 		return
 	case !task.wanted:
-		a.report(fmt.Sprintf("%[1]s is set, but tiger's baseline has no such key, and it can "+
-			"hide findings — remove %[1]s", joined))
+		a.report(fmt.Sprintf("%[1]s is set, but tiger's baseline doesn't set it — remove %[1]s",
+			joined))
 	case !task.present:
 		a.report(fmt.Sprintf("%[1]s isn't set, but tiger's baseline sets it — set %[1]s to %[2]v",
 			joined, formatWant(task.want)))
-	case !(baseline{want: task.want}).matches(task.got):
+	case wantIsMap:
+		a.report(fmt.Sprintf("%[1]s isn't laid out as in tiger's baseline, which holds keys "+
+			"under it — copy %[1]s from tiger golangci --print", joined))
+	case !(baseline{want: task.want}).sameLeaf(task.got):
 		a.report(fmt.Sprintf("%s is %v, but tiger's baseline is %v — set it to %v",
-			joined, formatWant(task.got), formatWant(task.want), formatWant(task.want)))
+			joined, describe(task.got), formatWant(task.want), formatWant(task.want)))
 	}
 }
 
-func (a *keyAudit) extraElements(task keyTask, joined string) {
+func (b baseline) sameLeaf(got any) bool {
+	if b.matches(got) {
+		return true
+	}
+	text, isText := b.want.(string)
+	return isText && text == fmt.Sprint(got)
+}
+
+func describe(got any) string {
+	switch got.(type) {
+	case map[string]any, map[any]any:
+		return "a block of keys"
+	default:
+		return formatWant(got)
+	}
+}
+
+func (a *keyAudit) addedElements(task keyTask, joined string) {
 	listed, ok := task.got.([]any)
-	if !task.present || !ok {
+	if !ok {
 		return
 	}
 	wanted, _ := task.want.([]any)
@@ -113,8 +139,8 @@ func (a *keyAudit) extraElements(task keyTask, joined string) {
 		if slices.Contains(wanted, element) || slices.Contains(harmlessValues[joined], element) {
 			continue
 		}
-		a.report(fmt.Sprintf("%[1]s lists %[2]v, which tiger's baseline doesn't, and it can "+
-			"hide findings — remove %[2]v from %[1]s", joined, element))
+		a.report(fmt.Sprintf("%[1]s lists %[2]v, which tiger's baseline doesn't — "+
+			"remove %[2]v from %[1]s", joined, element))
 	}
 }
 

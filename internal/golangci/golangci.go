@@ -39,7 +39,7 @@ type baseline struct {
 }
 
 func Verify(dir string, off ...string) ([]Finding, error) {
-	if err := checkOff(off); err != nil {
+	if err := rejectUnknownLinters(off); err != nil {
 		return nil, err
 	}
 	document, err := readConfig(dir)
@@ -71,7 +71,7 @@ func Verify(dir string, off ...string) ([]Finding, error) {
 	return append(findings, verifyKeys(document, module)...), nil
 }
 
-func checkOff(off []string) error {
+func rejectUnknownLinters(off []string) error {
 	known := map[string]bool{}
 	autoRules := auto.AutoRules()
 	for i := range autoRules {
@@ -79,7 +79,7 @@ func checkOff(off []string) error {
 	}
 	for _, name := range off {
 		if !known[name] {
-			return fmt.Errorf("--off names %s, which is not a linter in tiger's baseline — "+
+			return fmt.Errorf("--off names %q, which is not a linter in tiger's baseline — "+
 				"name one of %s", name, strings.Join(slices.Sorted(maps.Keys(known)), ", "))
 		}
 	}
