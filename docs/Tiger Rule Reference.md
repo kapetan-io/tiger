@@ -893,8 +893,22 @@ on every success path.
 
 A `Wait` may sit in a literal that a call after the start runs before it returns. It
 counts when the literal waits on every one of its own success paths. Such a call is a
-literal called where it is written, a call to a local variable that only ever holds one
-literal, or `t.Run` or `b.Run` with a body that does not call `t.Parallel`. A body calls
+literal called where it is written, a call to a local variable that holds that literal
+at the call, or `t.Run` or `b.Run` with a body that does not call `t.Parallel`. A local
+variable holds the literal at the call when no `&` or range clause reaches it and
+either it is assigned only that literal, or it is declared, assigned and called in one
+function body and the last assignment on every path to the call is that literal. A
+replacement after the call does not matter, but one that a loop brings back to the call
+does. Known gap: three safe shapes are reported. They are a call made from a nested
+literal, a replacement inside a deferred literal, and a loop whose first pass always
+calls the literal that waits before replacing it (ENG-989). A body that calls `t.Parallel` also counts when it is started on the `t` of a
+subtest whose body counts as running before its `t.Run` returns, from inside that
+subtest's body, and through no variable declared outside it. The testing package runs
+it after that body returns, and the `t.Run` that started the subtest waits for it. A
+parallel subtest only runs after the body of the subtest above it has returned, so one
+it starts on that outer `t` does not count; one it starts on its own `t` does. A `t`
+kept in a variable declared outside the body may be an earlier run's, whose `t.Run` has
+already returned, so it does not count either. A body calls
 `t.Parallel` when it calls it on its own `t`, on a copy of that `t`, through a struct
 literal that embeds it, or through a function or method of the same package that it
 hands `t` to. A call through a helper in another package, a method value, an interface,
@@ -902,8 +916,9 @@ a struct field or a called literal's parameter is not seen, so that body counts 
 running before `t.Run` returns. A body `t.Run` skips under `-run` or `-skip` does not run
 at all, and its `Wait` still counts. These do not count: a `Wait` after a `return`, on
 one branch only, in a literal saved and never called, in a literal passed to another
-function, in a parallel subtest, in a `t.Cleanup` literal, or inside the goroutine it
-waits for.
+function, in a parallel subtest started on any other `t` (no `t.Run` the function
+holding the start calls waits for it), in a `t.Cleanup` literal, or inside the goroutine
+it waits for.
 
 A path that returns a non-nil error is not a success path, so a `Shutdown` that returns
 its flush error before it waits is accepted. A path that ends in `t.Fatal`, `t.Fatalf` or
