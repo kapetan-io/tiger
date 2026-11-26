@@ -810,7 +810,7 @@ func TestGolangciAuditReportsKeysThatHideFindings(t *testing.T) {
 				"            - comments\n",
 				"            - comments\n            - std-error-handling\n",
 			},
-			want: "linters.exclusions.presets lists std-error-handling, which tiger's baseline " +
+			want: "TS-N10: linters.exclusions.presets lists std-error-handling, which tiger's baseline " +
 				"doesn't — remove std-error-handling from " +
 				"linters.exclusions.presets",
 		},
@@ -1036,7 +1036,7 @@ func TestGolangciOffStillReportsAPresetThatHidesFindings(t *testing.T) {
 	)
 	got := run(t, "golangci", "-C", dir, "--off", "revive")
 	assert.Equal(t, command.ExitFindings, got.code)
-	assert.Equal(t, "linters.exclusions.presets lists std-error-handling, which tiger's "+
+	assert.Equal(t, "TS-N10: linters.exclusions.presets lists std-error-handling, which tiger's "+
 		"baseline doesn't — remove std-error-handling from "+
 		"linters.exclusions.presets\n"+
 		"tiger: 1 auto rules unenforced\n", got.stdout)
@@ -1200,5 +1200,113 @@ func TestGolangciDisabledLinterFindsItsAutoRules(t *testing.T) {
 		"TS-S20: linters.disable lists errcheck, which switches off the rule "+
 		"\"type assertions are checked via errcheck\" — remove errcheck from linters.disable\n"+
 		"tiger: 2 auto rules unenforced\n", got.stdout)
+	assert.Empty(t, got.stderr)
+}
+
+// TestGolangciDisabledLinterWrittenAsTextFindsItsAutoRules covers a
+// linters.disable written as one string, which golangci-lint splits on commas.
+//
+// Goal: each baseline linter in the string is reported under its auto rules,
+// and a linters.disable holding a block is reported by key.
+func TestGolangciDisabledLinterWrittenAsTextFindsItsAutoRules(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		disable string
+		want    string
+	}{
+		{
+			name:    "commaSeparated",
+			disable: "    disable: wrapcheck, errcheck\n",
+			want: "TS-E01: linters.disable lists errcheck, which switches off the rule " +
+				"\"every error is handled\" — remove errcheck from linters.disable\n" +
+				"TS-E03: linters.disable lists wrapcheck, which switches off the rule " +
+				"\"wrap errors crossing package boundaries\" — remove wrapcheck from " +
+				"linters.disable\n" +
+				"TS-S20: linters.disable lists errcheck, which switches off the rule " +
+				"\"type assertions are checked via errcheck\" — remove errcheck from " +
+				"linters.disable\n" +
+				"tiger: 3 auto rules unenforced\n",
+		},
+		{
+			name:    "block",
+			disable: "    disable:\n        errcheck: true\n",
+			want: "linters.disable.errcheck is set, but tiger's baseline doesn't set it — " +
+				"remove linters.disable.errcheck\n" +
+				"tiger: 1 auto rules unenforced\n",
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			dir := initThenEdit(t, [2]string{
+				"    default: standard\n", "    default: standard\n" + test.disable,
+			})
+			got := run(t, "golangci", "-C", dir)
+			assert.Equal(t, command.ExitFindings, got.code)
+			assert.Equal(t, test.want, got.stdout)
+			assert.Empty(t, got.stderr)
+		})
+	}
+}
+
+// TestGolangciDisabledFormatterFindsItsAutoRule covers a formatter listed
+// under linters.disable.
+//
+// Goal: golangci-lint refuses to load such a config, so the audit reports it
+// under the formatter's auto rule.
+func TestGolangciDisabledFormatterFindsItsAutoRule(t *testing.T) {
+	dir := initThenEdit(t, [2]string{
+		"    default: standard\n", "    default: standard\n    disable:\n        - gofumpt\n",
+	})
+
+	got := run(t, "golangci", "-C", dir)
+	assert.Equal(t, command.ExitFindings, got.code)
+	assert.Contains(t, got.stdout, ": linters.disable lists gofumpt, a formatter, so "+
+		"golangci-lint refuses to load the config — remove gofumpt from linters.disable\n")
+	assert.Empty(t, got.stderr)
+}
+
+// TestGolangciOffLeavesADisabledStandardLinterUnreported covers a linter in
+// golangci-lint's standard set, which linters.default turns on unless
+// linters.disable lists it.
+//
+// Goal: a standard linter both disabled and named in --off has its settings
+// left unaudited, like a linter left out of linters.enable.
+func TestGolangciOffLeavesADisabledStandardLinterUnreported(t *testing.T) {
+	dir := initThenEdit(t,
+		[2]string{
+			"    default: standard\n",
+			"    default: standard\n    disable:\n        - errcheck\n",
+		},
+		[2]string{
+			"        errcheck:\n            check-blank: true\n" +
+				"            check-type-assertions: true\n",
+			"",
+		},
+	)
+
+	got := run(t, "golangci", "-C", dir, "--off", "errcheck")
+	assert.Equal(t, command.ExitClean, got.code)
+	assert.Empty(t, got.stdout)
+	assert.Empty(t, got.stderr)
+}
+
+// TestGolangciOffStillReportsAMisshapenExclusionsBlock covers a misshapen
+// linters.exclusions block whose only rule-owned key belongs to a linter named
+// in --off.
+//
+// Goal: with that rule skipped, the block is still reported.
+func TestGolangciOffStillReportsAMisshapenExclusionsBlock(t *testing.T) {
+	dir := initThenEdit(t,
+		[2]string{"        - revive\n", ""},
+		[2]string{
+			"    exclusions:\n        presets:\n            - comments\n",
+			"    exclusions: oops\n",
+		},
+	)
+
+	got := run(t, "golangci", "-C", dir, "--off", "revive")
+	assert.Equal(t, command.ExitFindings, got.code)
+	assert.Equal(t, "linters.exclusions isn't laid out as in tiger's baseline, which holds "+
+		"keys under it — copy linters.exclusions from tiger golangci --print\n"+
+		"tiger: 1 auto rules unenforced\n", got.stdout)
 	assert.Empty(t, got.stderr)
 }

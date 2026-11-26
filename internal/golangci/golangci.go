@@ -54,7 +54,7 @@ func Verify(dir string, off ...string) ([]Finding, error) {
 	autoRules := auto.AutoRules()
 	for i := range autoRules {
 		rule := &autoRules[i]
-		if slices.Contains(off, rule.Linter) && !enabled(document, rule) {
+		if slices.Contains(off, rule.Linter) && !switchedOn(document, rule) {
 			continue
 		}
 		findings = append(findings, verifyRule(document, rule, module)...)
@@ -261,6 +261,12 @@ func named(element any) string {
 		}
 	}
 	return fmt.Sprint(element)
+}
+
+func switchedOn(document map[string]any, rule *auto.AutoRule) bool {
+	value, _ := lookup(document, []string{auto.SectionLinters, "disable"})
+	names, _ := disabledNames(value)
+	return enabled(document, rule) && !slices.Contains(names, rule.Linter)
 }
 
 func enabled(document map[string]any, rule *auto.AutoRule) bool {

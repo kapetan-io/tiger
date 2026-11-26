@@ -36,7 +36,7 @@ type keyTask struct {
 
 type keyAudit struct {
 	work     []keyTask
-	owned    map[string]bool
+	owned    map[string]*auto.AutoRule
 	off      []string
 	findings []Finding
 }
@@ -54,12 +54,12 @@ func verifyKeys(document map[string]any, module string, off []string) []Finding 
 	return audit.findings
 }
 
-func ruleOwnedKeys() map[string]bool {
-	owned := map[string]bool{}
+func ruleOwnedKeys() map[string]*auto.AutoRule {
+	owned := map[string]*auto.AutoRule{}
 	autoRules := auto.AutoRules()
 	for i := range autoRules {
 		for j := range autoRules[i].Settings {
-			owned[strings.Join(autoRules[i].Settings[j].Path, ".")] = true
+			owned[strings.Join(autoRules[i].Settings[j].Path, ".")] = &autoRules[i]
 		}
 	}
 	return owned
@@ -71,11 +71,11 @@ func (a *keyAudit) expand(task keyTask) {
 		return
 	}
 	task.present = task.present && task.got != nil
-	if joined == "linters.disable" {
-		a.disabledLinters(task)
+	if names, listed := disabledNames(task.got); joined == "linters.disable" && listed {
+		a.disabledLinters(names)
 		return
 	}
-	if a.owned[joined] {
+	if _, owned := a.owned[joined]; owned {
 		a.addedElements(task, joined)
 		return
 	}
@@ -145,37 +145,71 @@ func (a *keyAudit) addedElements(task keyTask, joined string) {
 		if slices.Contains(wanted, element) || slices.Contains(harmlessValues[joined], element) {
 			continue
 		}
-		a.report(fmt.Sprintf("%[1]s lists %[2]s, which tiger's baseline doesn't — "+
-			"remove %[2]s from %[1]s", joined, describe(element)))
+		rule := a.owned[joined]
+		a.findings = append(a.findings, Finding{
+			RuleID: rule.RuleID,
+			Linter: rule.Linter,
+			Message: fmt.Sprintf("%[1]s: %[2]s lists %[3]s, which tiger's baseline doesn't — "+
+				"remove %[3]s from %[2]s", rule.RuleID, joined, describe(element)),
+		})
 	}
 }
 
-func (a *keyAudit) disabledLinters(task keyTask) {
-	listed, _ := task.got.([]any)
+func disabledNames(value any) ([]string, bool) {
+	switch value := value.(type) {
+	case nil:
+		return nil, true
+	case string:
+		return strings.Split(value, ","), true
+	case []any:
+		names := []string{}
+		for _, name := range value {
+			text, isText := name.(string)
+			if !isText {
+				return nil, false
+			}
+			names = append(names, text)
+		}
+		return names, true
+	default:
+		return nil, false
+	}
+}
+
+func (a *keyAudit) disabledLinters(names []string) {
 	autoRules := auto.AutoRules()
-	for _, name := range listed {
-		if slices.Contains(a.off, fmt.Sprint(name)) {
+	for _, name := range names {
+		name = strings.TrimSpace(name)
+		if slices.Contains(a.off, name) {
 			continue
 		}
 		for i := range autoRules {
 			rule := &autoRules[i]
-			if rule.Section != auto.SectionLinters || rule.Linter != name {
+			if rule.Linter != name {
 				continue
 			}
 			a.findings = append(a.findings, Finding{
-				RuleID: rule.RuleID,
-				Linter: rule.Linter,
-				Message: fmt.Sprintf("%[1]s: linters.disable lists %[2]s, which switches off the "+
-					"rule %[3]q — remove %[2]s from linters.disable",
-					rule.RuleID, rule.Linter, rule.Title),
+				RuleID:  rule.RuleID,
+				Linter:  rule.Linter,
+				Message: disabledMessage(rule),
 			})
 		}
 	}
 }
 
+func disabledMessage(rule *auto.AutoRule) string {
+	if rule.Section == auto.SectionLinters {
+		return fmt.Sprintf("%[1]s: linters.disable lists %[2]s, which switches off the "+
+			"rule %[3]q — remove %[2]s from linters.disable", rule.RuleID, rule.Linter, rule.Title)
+	}
+	return fmt.Sprintf("%[1]s: linters.disable lists %[2]s, a formatter, so golangci-lint "+
+		"refuses to load the config — remove %[2]s from linters.disable", rule.RuleID, rule.Linter)
+}
+
 func (a *keyAudit) ownsKeyUnder(joined string) bool {
 	for _, owned := range slices.Sorted(maps.Keys(a.owned)) {
-		if strings.HasPrefix(owned, joined+".") {
+		reported := !slices.Contains(a.off, a.owned[owned].Linter)
+		if reported && strings.HasPrefix(owned, joined+".") {
 			return true
 		}
 	}
