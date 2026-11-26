@@ -395,23 +395,6 @@ func (n *namedBranchWait) Closed(c bool) (err error) {
 	return err
 }
 
-// literalReturnsBranchWait calls a literal that returns only an error and
-// waits on one branch; a called literal is judged by whether it may wait.
-type literalReturnsBranchWait struct{ wg sync.WaitGroup }
-
-// Start runs the worker. Not reported.
-func (l *literalReturnsBranchWait) Start() { l.wg.Go(work) }
-
-// Close runs the literal and drops its error.
-func (l *literalReturnsBranchWait) Close(wait bool) {
-	_ = func() error {
-		if wait {
-			l.wg.Wait()
-		}
-		return errClosed
-	}()
-}
-
 // literalDeferForever calls a literal that defers its Wait and loops forever;
 // a called literal is judged by whether it may wait.
 type literalDeferForever struct{ wg sync.WaitGroup }

@@ -4,12 +4,16 @@
 // the call holding it returns: a literal called where it is written, a saved
 // literal that is called while the variable holds it, a t.Run or b.Run body
 // that does not call t.Parallel, or a parallel subtest that a subtest's body
-// starts on that subtest's own t.
+// starts on that subtest's own t. A literal that returns an error before its
+// Wait counts on the caller's branch where that error is nil when the other
+// branch returns the error or fails the test, and counts when the caller
+// returns the call's result or its named error result, handing the error up.
 package fixture
 
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"testing"
 	"testing/synctest"
@@ -655,4 +659,603 @@ func TestWaitInParallelSubtestFromSavedLiteralInSubtest(t *testing.T) {
 		}
 		start()
 	})
+}
+
+// calledLiteralErrorReturned returns the literal's error, so the path where
+// the literal skipped its Wait is this function's failure path.
+func calledLiteralErrorReturned() error {
+	var wg sync.WaitGroup
+	wg.Go(func() {})
+	if err := func() error {
+		if testing.Short() {
+			return context.Canceled
+		}
+		wg.Wait()
+		return nil
+	}(); err != nil {
+		return err
+	}
+	return nil
+}
+
+// calledLiteralErrorPassedUp hands the literal's error straight to its caller.
+func calledLiteralErrorPassedUp() error {
+	var wg sync.WaitGroup
+	wg.Go(func() {})
+	return func() error {
+		if testing.Short() {
+			return context.Canceled
+		}
+		wg.Wait()
+		return nil
+	}()
+}
+
+// TestCalledLiteralErrorFails fails the test on the literal's error.
+func TestCalledLiteralErrorFails(t *testing.T) {
+	var wg sync.WaitGroup
+	wg.Go(func() {})
+	if err := func() error {
+		if testing.Short() {
+			return context.Canceled
+		}
+		wg.Wait()
+		return nil
+	}(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestSavedLiteralErrorCheckedLater checks the saved literal's error in a
+// later statement, with the nil comparison written the other way round.
+func TestSavedLiteralErrorCheckedLater(t *testing.T) {
+	var wg sync.WaitGroup
+	wg.Go(func() {})
+	run := func() (int, error) {
+		if testing.Short() {
+			return 0, context.Canceled
+		}
+		wg.Wait()
+		return 1, nil
+	}
+	_, err := run()
+	if err == nil {
+		return
+	}
+	t.Fatalf("run: %v", err)
+}
+
+// TestCalledLiteralErrorCompared compares the call itself with nil.
+func TestCalledLiteralErrorCompared(t *testing.T) {
+	var wg sync.WaitGroup
+	wg.Go(func() {})
+	if func() error {
+		if testing.Short() {
+			return context.Canceled
+		}
+		wg.Wait()
+		return nil
+	}() != nil {
+		t.FailNow()
+	}
+}
+
+// TestVarLiteralErrorFails binds the literal's error with var and fails the
+// test on it.
+func TestVarLiteralErrorFails(t *testing.T) {
+	var wg sync.WaitGroup
+	wg.Go(func() {})
+	var err = func() error {
+		if testing.Short() {
+			return context.Canceled
+		}
+		wg.Wait()
+		return nil
+	}()
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestReassignedLiteralErrorFails assigns the literal's error to a variable
+// declared earlier and fails the test on it.
+func TestReassignedLiteralErrorFails(t *testing.T) {
+	var wg sync.WaitGroup
+	var err error
+	wg.Go(func() {})
+	err = func() error {
+		if testing.Short() {
+			return context.Canceled
+		}
+		wg.Wait()
+		return nil
+	}()
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestLiteralErrorFailsInSwitch fails the test on the literal's error from a
+// switch case.
+func TestLiteralErrorFailsInSwitch(t *testing.T) {
+	var wg sync.WaitGroup
+	wg.Go(func() {})
+	err := func() error {
+		if testing.Short() {
+			return context.Canceled
+		}
+		wg.Wait()
+		return nil
+	}()
+	switch {
+	case err != nil:
+		t.Fatal(err)
+	}
+}
+
+// TestLiteralErrorFailsWithOr fails the test when the literal's error is
+// non-nil or a second condition holds.
+func TestLiteralErrorFailsWithOr(t *testing.T) {
+	var wg sync.WaitGroup
+	wg.Go(func() {})
+	if err := func() error {
+		if testing.Short() {
+			return context.Canceled
+		}
+		wg.Wait()
+		return nil
+	}(); err != nil || testing.Verbose() {
+		t.Fatal(err)
+	}
+}
+
+// TestLiteralErrorFailsInSubtest starts and waits inside one subtest body.
+func TestLiteralErrorFailsInSubtest(t *testing.T) {
+	t.Run("x", func(t *testing.T) {
+		var wg sync.WaitGroup
+		wg.Go(func() {})
+		if err := func() error {
+			if testing.Short() {
+				return context.Canceled
+			}
+			wg.Wait()
+			return nil
+		}(); err != nil {
+			t.Fatal(err)
+		}
+	})
+}
+
+// TestLiteralCallErrorFails runs a literal that returns another call's error
+// before its Wait.
+func TestLiteralCallErrorFails(t *testing.T) {
+	var wg sync.WaitGroup
+	wg.Go(func() {})
+	if err := func() error {
+		if err := context.Background().Err(); err != nil {
+			return err
+		}
+		wg.Wait()
+		return nil
+	}(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestErrgroupLiteralErrorFails returns the errgroup's Wait from the literal.
+func TestErrgroupLiteralErrorFails(t *testing.T) {
+	var g errgroup.Group
+	g.Go(func() error { return nil })
+	if err := func() error {
+		if testing.Short() {
+			return context.Canceled
+		}
+		return g.Wait()
+	}(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestNestedLiteralErrorFails passes an inner literal's error up through an
+// outer literal and fails the test on it.
+func TestNestedLiteralErrorFails(t *testing.T) {
+	var wg sync.WaitGroup
+	wg.Go(func() {})
+	if err := func() error {
+		return func() error {
+			if testing.Short() {
+				return context.Canceled
+			}
+			wg.Wait()
+			return nil
+		}()
+	}(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// calledLiteralErrorJoinedAfterWait waits first, then wraps a literal's
+// error in its return.
+func calledLiteralErrorJoinedAfterWait() error {
+	var wg sync.WaitGroup
+	wg.Go(func() {})
+	wg.Wait()
+	return errors.Join(func() error {
+		if testing.Short() {
+			return context.Canceled
+		}
+		wg.Wait()
+		return nil
+	}())
+}
+
+// calledLiteralErrorWrapped wraps the literal's error on the way up.
+func calledLiteralErrorWrapped() error {
+	var wg sync.WaitGroup
+	wg.Go(func() {})
+	if err := func() error {
+		if testing.Short() {
+			return context.Canceled
+		}
+		wg.Wait()
+		return nil
+	}(); err != nil {
+		return errors.Join(errStop, err)
+	}
+	return nil
+}
+
+// deferredWaitAroundReturnedLiteral waits in a defer, so the literal's error
+// path is waited for however the return wraps it.
+func deferredWaitAroundReturnedLiteral() error {
+	var wg sync.WaitGroup
+	defer wg.Wait()
+	wg.Go(func() {})
+	return errors.Join(errStop, func() error {
+		if testing.Short() {
+			return context.Canceled
+		}
+		wg.Wait()
+		return nil
+	}())
+}
+
+// namedLiteralErrorHandedUp hands the literal's error up through a bare
+// return of the named result.
+func namedLiteralErrorHandedUp() (err error) {
+	var wg sync.WaitGroup
+	wg.Go(func() {})
+	err = func() error {
+		if testing.Short() {
+			return context.Canceled
+		}
+		wg.Wait()
+		return nil
+	}()
+	return
+}
+
+// namedLiteralErrorReturnedBare returns the named result on the branch where
+// it holds the literal's error.
+func namedLiteralErrorReturnedBare() (err error) {
+	var wg sync.WaitGroup
+	wg.Go(func() {})
+	if err = func() error {
+		if testing.Short() {
+			return context.Canceled
+		}
+		wg.Wait()
+		return nil
+	}(); err != nil {
+		return
+	}
+	return nil
+}
+
+// TestTryGoLiteralErrorDropped needs a Wait on only some path after TryGo,
+// and the literal waits on its nil path.
+func TestTryGoLiteralErrorDropped(t *testing.T) {
+	var g errgroup.Group
+	g.TryGo(func() error { return nil })
+	_ = func() error {
+		if testing.Short() {
+			return context.Canceled
+		}
+		_ = g.Wait()
+		return nil
+	}()
+}
+
+// literalErrorWrappedIntoNamedResult wraps the literal's error into another
+// named result and returns it.
+func literalErrorWrappedIntoNamedResult() (failure error) {
+	var wg sync.WaitGroup
+	wg.Go(func() {})
+	err := func() error {
+		if testing.Short() {
+			return context.Canceled
+		}
+		wg.Wait()
+		return nil
+	}()
+	if err != nil {
+		failure = errors.Join(errStop, err)
+		return
+	}
+	return nil
+}
+
+func passError(err error) error {
+	return err
+}
+
+// shadowedLiteralErrorReturned wraps the literal's error into a
+// shadowing err and returns it through a call.
+func shadowedLiteralErrorReturned() error {
+	var wg sync.WaitGroup
+	wg.Go(func() {})
+	err := func() error {
+		if testing.Short() {
+			return context.Canceled
+		}
+		wg.Wait()
+		return nil
+	}()
+	if err != nil {
+		err := fmt.Errorf("run: %w", err)
+		return passError(err)
+	}
+	return nil
+}
+
+// literalErrorRedeclaredWithCount redeclares err with a second
+// variable and returns the wrapped error through a call.
+func literalErrorRedeclaredWithCount() error {
+	var wg sync.WaitGroup
+	wg.Go(func() {})
+	err := func() error {
+		if testing.Short() {
+			return context.Canceled
+		}
+		wg.Wait()
+		return nil
+	}()
+	if err != nil {
+		n, err := 1, fmt.Errorf("x: %w", err)
+		_ = n
+		return passError(err)
+	}
+	return nil
+}
+
+// literalErrorWrappedIntoLocal keeps the wrapped error in a new
+// local and returns it joined with another.
+func literalErrorWrappedIntoLocal() error {
+	var wg sync.WaitGroup
+	wg.Go(func() {})
+	err := func() error {
+		if testing.Short() {
+			return context.Canceled
+		}
+		wg.Wait()
+		return nil
+	}()
+	if err != nil {
+		wrapped := fmt.Errorf("run: %w", err)
+		return errors.Join(wrapped, errStop)
+	}
+	return nil
+}
+
+// literalErrorWrappedIntoVar keeps the wrapped error in a var and
+// returns it through a call.
+func literalErrorWrappedIntoVar() error {
+	var wg sync.WaitGroup
+	wg.Go(func() {})
+	err := func() error {
+		if testing.Short() {
+			return context.Canceled
+		}
+		wg.Wait()
+		return nil
+	}()
+	if err != nil {
+		var wrapped = fmt.Errorf("run: %w", err)
+		return passError(wrapped)
+	}
+	return nil
+}
+
+// literalErrorAppended appends the literal's error to a slice
+// and returns the joined slice.
+func literalErrorAppended() error {
+	var wg sync.WaitGroup
+	wg.Go(func() {})
+	var errs []error
+	errs = append(errs, func() error {
+		if testing.Short() {
+			return context.Canceled
+		}
+		wg.Wait()
+		return nil
+	}())
+	return errors.Join(errs...)
+}
+
+// literalErrorWrappedInReturn wraps the call itself in the returned
+// error.
+func literalErrorWrappedInReturn() error {
+	var wg sync.WaitGroup
+	wg.Go(func() {})
+	return fmt.Errorf("x: %w", func() error {
+		if testing.Short() {
+			return context.Canceled
+		}
+		wg.Wait()
+		return nil
+	}())
+}
+
+// literalErrorAliased copies the literal's error into another
+// variable and checks that one.
+func literalErrorAliased() error {
+	var wg sync.WaitGroup
+	wg.Go(func() {})
+	err := func() error {
+		if testing.Short() {
+			return context.Canceled
+		}
+		wg.Wait()
+		return nil
+	}()
+	e := err
+	if e != nil {
+		return e
+	}
+	return nil
+}
+
+// literalErrorReplacedWithNew returns a fresh error on the branch
+// where the literal's error is not nil.
+func literalErrorReplacedWithNew() error {
+	var wg sync.WaitGroup
+	wg.Go(func() {})
+	if err := func() error {
+		if testing.Short() {
+			return context.Canceled
+		}
+		wg.Wait()
+		return nil
+	}(); err != nil {
+		return errors.New("run failed")
+	}
+	return nil
+}
+
+// literalErrorWrappedBesideOther wraps the error into one of two
+// variables assigned together and returns it.
+func literalErrorWrappedBesideOther() error {
+	var wg sync.WaitGroup
+	wg.Go(func() {})
+	err := func() error {
+		if testing.Short() {
+			return context.Canceled
+		}
+		wg.Wait()
+		return nil
+	}()
+	if err != nil {
+		wrapped, other := fmt.Errorf("run: %w", err), errStop
+		_ = other
+		return errors.Join(wrapped)
+	}
+	return nil
+}
+
+type runError struct {
+	err error
+}
+
+func (r *runError) Error() string {
+	return r.err.Error()
+}
+
+type causeError interface {
+	error
+}
+
+// literalErrorCopyReused reuses a copy of the literal's error for
+// another error and still checks the original.
+func literalErrorCopyReused() error {
+	var wg sync.WaitGroup
+	wg.Go(func() {})
+	err := func() error {
+		if testing.Short() {
+			return context.Canceled
+		}
+		wg.Wait()
+		return nil
+	}()
+	var e error
+	e = err
+	e = context.Canceled
+	_ = e
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+// literalErrorWrappedInCustomType wraps the literal's error in its own
+// error type and returns it joined with another.
+func literalErrorWrappedInCustomType() error {
+	var wg sync.WaitGroup
+	wg.Go(func() {})
+	err := func() error {
+		if testing.Short() {
+			return context.Canceled
+		}
+		wg.Wait()
+		return nil
+	}()
+	if err != nil {
+		wrapped := &runError{err: err}
+		return errors.Join(wrapped, errStop)
+	}
+	return nil
+}
+
+// literalErrorInEmbeddingInterface binds the literal's error to an
+// interface that embeds error.
+func literalErrorInEmbeddingInterface() error {
+	var wg sync.WaitGroup
+	wg.Go(func() {})
+	var err causeError = func() error {
+		if testing.Short() {
+			return context.Canceled
+		}
+		wg.Wait()
+		return nil
+	}()
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+// literalErrorInAny binds the literal's error to an any.
+func literalErrorInAny() error {
+	var wg sync.WaitGroup
+	wg.Go(func() {})
+	var v any = func() error {
+		if testing.Short() {
+			return context.Canceled
+		}
+		wg.Wait()
+		return nil
+	}()
+	if v != nil {
+		return errStop
+	}
+	return nil
+}
+
+// literalErrorCopiedTwice copies the literal's error twice and
+// checks the last copy.
+func literalErrorCopiedTwice() error {
+	var wg sync.WaitGroup
+	wg.Go(func() {})
+	err := func() error {
+		if testing.Short() {
+			return context.Canceled
+		}
+		wg.Wait()
+		return nil
+	}()
+	e := err
+	f := e
+	if f != nil {
+		return f
+	}
+	return nil
 }

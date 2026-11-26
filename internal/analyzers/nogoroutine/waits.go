@@ -24,19 +24,50 @@ type flowQuery struct {
 	shutdown    bool
 	failNowEnds bool
 	subtests    []*types.Var
+
+	errorReturnsNeedWait bool
 }
 
 type flowState struct {
-	block   *cfg.Block
-	passed  bool
-	covered bool
-	failed  bool
+	block     *cfg.Block
+	passed    bool
+	covered   bool
+	failed    bool
+	unchecked literalError
+	nonNil    nonNilError
 }
 
 type stateKey struct {
-	block   int32
-	passed  bool
-	covered bool
+	block     int32
+	passed    bool
+	covered   bool
+	unchecked literalError
+	nonNil    nonNilError
+}
+
+type literalError struct {
+	call  *ast.CallExpr
+	bound *types.Var
+	alias *types.Var
+}
+
+type nonNilError struct {
+	bound   *types.Var
+	named   *types.Var
+	wrapped *types.Var
+}
+
+type literalWait int
+
+const (
+	givesNoWait literalWait = iota
+	errorsBeforeWait
+	waitsOnEveryPath
+)
+
+type condition struct {
+	expr    ast.Expr
+	outcome bool
 }
 
 type waiters map[*ast.FuncDecl]bool
@@ -234,12 +265,15 @@ func (o *owners) uncovered(fn function, query flowQuery, always waiters) (unwait
 	i := 0
 	for ; i < len(work) && i < worklist.NodesMax; i++ {
 		state := work[i]
-		key := stateKey{block: state.block.Index, passed: state.passed, covered: state.covered}
+		key := stateKey{
+			block: state.block.Index, passed: state.passed, covered: state.covered,
+			unchecked: state.unchecked, nonNil: state.nonNil,
+		}
 		if seen[key] {
 			continue
 		}
 		seen[key] = true
-		state = o.walk(state, query, always)
+		state = o.walk(fn, state, query, always)
 		if state.failed {
 			exits = true
 			continue
@@ -251,10 +285,10 @@ func (o *owners) uncovered(fn function, query flowQuery, always waiters) (unwait
 			if state.block.Kind == cfg.KindSelectAfterCase {
 				continue
 			}
-			if !state.passed {
-				continue
-			}
-			if !query.noSuccess && !o.successExit(fn, state.block) {
+			failure := !o.successExit(fn, state.block) ||
+				o.returnsNonNilError(fn, state.block, state.nonNil)
+			excused := failure && !query.errorReturnsNeedWait
+			if !state.passed || excused {
 				continue
 			}
 			exits = true
@@ -262,15 +296,28 @@ func (o *owners) uncovered(fn function, query flowQuery, always waiters) (unwait
 				returns[state.block.Index].reach(state)
 				continue
 			}
-			if !state.covered && !query.anyPath {
+			handedUp := !query.errorReturnsNeedWait &&
+				o.handsUpError(fn, state.block, state.unchecked)
+			if !state.covered && !handedUp && !query.anyPath {
 				return true, true
 			}
 			continue
 		}
-		for _, next := range state.block.Succs {
-			work = append(work, flowState{
+		for branch, next := range state.block.Succs {
+			following := flowState{
 				block: next, passed: state.passed, covered: state.covered,
-			})
+				unchecked: state.unchecked, nonNil: state.nonNil,
+			}
+			isNil, compared := o.errorNilOn(state, branch)
+			switch {
+			case compared && isNil:
+				following.unchecked = literalError{}
+				following.covered = true
+			case compared:
+				following.unchecked = literalError{}
+				following.nonNil = nonNilError{bound: state.unchecked.bound}
+			}
+			work = append(work, following)
 		}
 	}
 	assert.Ok(i == len(work), "uncovered: worklist reached worklist.NodesMax")
@@ -305,16 +352,26 @@ func (o *owners) withShutdown(fn function, query flowQuery, always waiters) flow
 }
 
 func (o *owners) noSuccessUnwaited(fn function, group *types.Var, always waiters) bool {
-	unwaited, exits := o.uncovered(fn, flowQuery{group: group, noSuccess: true}, always)
+	returns := flowQuery{group: group, noSuccess: true, errorReturnsNeedWait: true}
+	unwaited, exits := o.uncovered(fn, returns, always)
 	if exits {
 		return unwaited
 	}
-	endless := flowQuery{group: group, noSuccess: true, endless: true, anyPath: true}
+	endless := returns
+	endless.endless = true
+	endless.anyPath = true
 	unwaited, _ = o.uncovered(fn, endless, always)
 	return unwaited
 }
 
-func (o *owners) walk(state flowState, query flowQuery, always waiters) flowState {
+func (o *owners) argsWait(call *ast.CallExpr, query flowQuery, always waiters) bool {
+	return slices.ContainsFunc(call.Args, func(arg ast.Expr) bool {
+		_, waits := o.waitsIn(arg, query, always)
+		return waits
+	})
+}
+
+func (o *owners) walk(fn function, state flowState, query flowQuery, always waiters) flowState {
 	for _, node := range state.block.Nodes {
 		if query.shutdown && state.passed && o.givesUp(node.Pos(), query.start) {
 			state.covered = true
@@ -326,12 +383,19 @@ func (o *owners) walk(state flowState, query flowQuery, always waiters) flowStat
 			state.failed = true
 			return state
 		}
+		state.unchecked = o.reassigned(node, state.unchecked)
+		state.nonNil = o.carried(fn, node, state.nonNil)
 		deferred, isDefer := node.(*ast.DeferStmt)
 		if isDefer && query.endless {
 			state.covered = state.covered || o.argsWait(deferred.Call, query, always)
 			continue
 		}
-		if !o.waitsIn(node, query, always) {
+		erring, waits := o.waitsIn(node, query, always)
+		if !waits && erring != nil && state.passed {
+			state = o.followError(fn, state, errorSite{node: node, call: erring}, query)
+			continue
+		}
+		if !waits {
 			continue
 		}
 		if isDefer || state.passed {
@@ -341,10 +405,301 @@ func (o *owners) walk(state flowState, query flowQuery, always waiters) flowStat
 	return state
 }
 
-func (o *owners) argsWait(call *ast.CallExpr, query flowQuery, always waiters) bool {
-	return slices.ContainsFunc(call.Args, func(arg ast.Expr) bool {
-		return o.waitsIn(arg, query, always)
+const thenBranch = 0
+
+type errorSite struct {
+	node ast.Node
+	call *ast.CallExpr
+}
+
+func (o *owners) followError(
+	fn function, state flowState, site errorSite, query flowQuery,
+) flowState {
+	switch stmt := site.node.(type) {
+	case *ast.ReturnStmt:
+		handedUp := !query.errorReturnsNeedWait && o.hasErrorResult(fn) &&
+			len(stmt.Results) > 0 && encloses(stmt.Results[len(stmt.Results)-1], site.call)
+		state.covered = state.covered || handedUp
+	case *ast.AssignStmt, *ast.ValueSpec:
+		state.unchecked = o.boundError(site.call, assignmentIn(site.node))
+	case ast.Expr:
+		state.unchecked = literalError{call: site.call}
+	}
+	state.covered = state.covered || query.anyPath
+	return state
+}
+
+func (o *owners) boundError(call *ast.CallExpr, found assignment) literalError {
+	for i, target := range found.targets {
+		value := found.valueOf(i)
+		bound := o.index.Object(target)
+		if value != nil && bound != nil && encloses(value, call) && holdsError(bound) {
+			return literalError{call: call, bound: bound}
+		}
+	}
+	return literalError{}
+}
+
+func (o *owners) reassigned(node ast.Node, unchecked literalError) literalError {
+	if unchecked.bound == nil {
+		return unchecked
+	}
+	found := assignmentIn(node)
+	for i, target := range found.targets {
+		assigned := o.index.Object(target)
+		value := found.valueOf(i)
+		names := value != nil && o.mentions(value, unchecked.bound)
+		ident, plain := ast.Unparen(value).(*ast.Ident)
+		switch {
+		case assigned == nil:
+		case assigned == unchecked.bound && names:
+		case assigned == unchecked.bound:
+			return literalError{}
+		case assigned == unchecked.alias:
+			unchecked.alias = nil
+		case plain && o.copies(ident, unchecked) && holdsError(assigned):
+			unchecked.alias = assigned
+		}
+	}
+	return unchecked
+}
+
+func (o *owners) copies(ident *ast.Ident, unchecked literalError) bool {
+	source := o.index.Object(ident)
+	return source != nil && (source == unchecked.bound || source == unchecked.alias)
+}
+
+func holdsError(local *types.Var) bool {
+	errorType := types.Universe.Lookup("error").Type()
+	held := local.Type()
+	if slice, ok := held.Underlying().(*types.Slice); ok {
+		held = slice.Elem()
+	}
+	return types.AssignableTo(held, errorType) || types.AssignableTo(errorType, held)
+}
+
+func encloses(expr ast.Expr, call *ast.CallExpr) bool {
+	found := false
+	ast.Inspect(expr, func(node ast.Node) bool {
+		if node == call {
+			found = true
+		}
+		_, isLiteral := node.(*ast.FuncLit)
+		binary, isBinary := node.(*ast.BinaryExpr)
+		compares := isBinary && comparison(binary.Op)
+		return !found && !isLiteral && !compares
 	})
+	return found
+}
+
+func (o *owners) carried(fn function, node ast.Node, nonNil nonNilError) nonNilError {
+	if nonNil == (nonNilError{}) {
+		return nonNil
+	}
+	found := assignmentIn(node)
+	named := o.namedError(fn)
+	for i, target := range found.targets {
+		assigned := o.index.Object(target)
+		value := found.valueOf(i)
+		uses := value != nil && assigned != nil && o.carries(value, nonNil) && holdsError(assigned)
+		switch {
+		case assigned == nil:
+		case assigned == named && uses:
+			nonNil.named = named
+		case uses:
+			nonNil.wrapped = assigned
+		case assigned == nonNil.bound:
+			nonNil.bound = nil
+		case assigned == nonNil.named:
+			nonNil.named = nil
+		case assigned == nonNil.wrapped:
+			nonNil.wrapped = nil
+		}
+	}
+	return nonNil
+}
+
+type assignment struct {
+	targets []ast.Expr
+	values  []ast.Expr
+}
+
+func assignmentIn(node ast.Node) assignment {
+	switch stmt := node.(type) {
+	case *ast.AssignStmt:
+		return assignment{targets: stmt.Lhs, values: stmt.Rhs}
+	case *ast.ValueSpec:
+		found := assignment{values: stmt.Values}
+		for _, name := range stmt.Names {
+			found.targets = append(found.targets, name)
+		}
+		return found
+	}
+	return assignment{}
+}
+
+func (a assignment) valueOf(i int) ast.Expr {
+	switch {
+	case len(a.values) == len(a.targets):
+		return a.values[i]
+	case len(a.values) == 1 && i == len(a.targets)-1:
+		return a.values[0]
+	}
+	return nil
+}
+
+func (o *owners) carries(expr ast.Expr, nonNil nonNilError) bool {
+	return o.mentions(expr, nonNil.bound) || o.mentions(expr, nonNil.named) ||
+		o.mentions(expr, nonNil.wrapped)
+}
+
+func (o *owners) mentions(expr ast.Expr, local *types.Var) bool {
+	if local == nil {
+		return false
+	}
+	found := false
+	ast.Inspect(expr, func(node ast.Node) bool {
+		switch inner := node.(type) {
+		case *ast.FuncLit:
+			return false
+		case *ast.BinaryExpr:
+			if comparison(inner.Op) {
+				return false
+			}
+		}
+		if ident, isIdent := node.(*ast.Ident); isIdent && o.index.Object(ident) == local {
+			found = true
+		}
+		return !found
+	})
+	return found
+}
+
+func comparison(op token.Token) bool {
+	return slices.Contains([]token.Token{
+		token.EQL, token.NEQ, token.LSS, token.GTR, token.LEQ, token.GEQ,
+	}, op)
+}
+
+func (o *owners) errorNilOn(state flowState, branch int) (isNil, compared bool) {
+	nodes := state.block.Nodes
+	if state.unchecked.call == nil || len(state.block.Succs) != 2 || len(nodes) == 0 {
+		return false, false
+	}
+	cond, ok := nodes[len(nodes)-1].(ast.Expr)
+	if !ok {
+		return false, false
+	}
+	work := []condition{{expr: cond, outcome: branch == thenBranch}}
+	i := 0
+	for ; i < len(work) && i < worklist.NodesMax; i++ {
+		item := work[i]
+		switch expr := ast.Unparen(item.expr).(type) {
+		case *ast.UnaryExpr:
+			if expr.Op == token.NOT {
+				work = append(work, condition{expr: expr.X, outcome: !item.outcome})
+			}
+		case *ast.BinaryExpr:
+			both := expr.Op == token.LAND && item.outcome || expr.Op == token.LOR && !item.outcome
+			if both {
+				work = append(work,
+					condition{expr: expr.X, outcome: item.outcome},
+					condition{expr: expr.Y, outcome: item.outcome})
+			}
+			comparison := expr.Op == token.EQL || expr.Op == token.NEQ
+			if comparison && o.comparedWithNil(expr, state.unchecked) {
+				return (expr.Op == token.EQL) == item.outcome, true
+			}
+		}
+	}
+	assert.Ok(i == len(work), "errorNilOn: worklist reached worklist.NodesMax")
+	return false, false
+}
+
+func (o *owners) returnsNonNilError(fn function, block *cfg.Block, nonNil nonNilError) bool {
+	ret := finalReturn(block)
+	if nonNil == (nonNilError{}) || ret == nil || !o.hasErrorResult(fn) {
+		return false
+	}
+	if len(ret.Results) == 0 {
+		named := o.namedError(fn)
+		return named != nil && (named == nonNil.bound || named == nonNil.named)
+	}
+	last := ret.Results[len(ret.Results)-1]
+	return o.carries(last, nonNil) || o.makesError(last)
+}
+
+func (o *owners) makesError(expr ast.Expr) bool {
+	call, ok := ast.Unparen(expr).(*ast.CallExpr)
+	if !ok {
+		return false
+	}
+	selector, ok := ast.Unparen(call.Fun).(*ast.SelectorExpr)
+	if !ok {
+		return false
+	}
+	name := o.calleeName(selector)
+	return name == "errors.New" || name == "fmt.Errorf"
+}
+
+func (o *owners) handsUpError(fn function, block *cfg.Block, unchecked literalError) bool {
+	ret := finalReturn(block)
+	if unchecked.bound == nil || ret == nil || !o.hasErrorResult(fn) {
+		return false
+	}
+	if len(ret.Results) == 0 {
+		named := o.namedError(fn)
+		return named != nil && (named == unchecked.bound || named == unchecked.alias)
+	}
+	last := ret.Results[len(ret.Results)-1]
+	return o.mentions(last, unchecked.bound) || o.mentions(last, unchecked.alias)
+}
+
+func finalReturn(block *cfg.Block) *ast.ReturnStmt {
+	if len(block.Nodes) == 0 {
+		return nil
+	}
+	ret, ok := block.Nodes[len(block.Nodes)-1].(*ast.ReturnStmt)
+	if !ok {
+		return nil
+	}
+	return ret
+}
+
+func (o *owners) hasErrorResult(fn function) bool {
+	if fn.typ.Results == nil {
+		return false
+	}
+	last := fn.typ.Results.List[len(fn.typ.Results.List)-1]
+	errorType := types.Universe.Lookup("error").Type()
+	return types.Identical(o.pass.TypesInfo.TypeOf(last.Type), errorType)
+}
+
+func (o *owners) namedError(fn function) *types.Var {
+	if !o.hasErrorResult(fn) {
+		return nil
+	}
+	names := fn.typ.Results.List[len(fn.typ.Results.List)-1].Names
+	if len(names) == 0 {
+		return nil
+	}
+	return o.index.Object(names[len(names)-1])
+}
+
+func (o *owners) comparedWithNil(cond *ast.BinaryExpr, unchecked literalError) bool {
+	isNil := func(expr ast.Expr) bool { return o.pass.TypesInfo.Types[expr].IsNil() }
+	result := cond.X
+	if isNil(cond.X) {
+		result = cond.Y
+	} else if !isNil(cond.Y) {
+		return false
+	}
+	result = ast.Unparen(result)
+	if result == unchecked.call {
+		return true
+	}
+	compared := o.index.Object(result)
+	return compared != nil && (compared == unchecked.bound || compared == unchecked.alias)
 }
 
 func covers(node ast.Node, start *ast.SelectorExpr) bool {
@@ -374,12 +729,13 @@ func (o *owners) givesUpIn(body *ast.BlockStmt) bool {
 	return false
 }
 
-func (o *owners) waitsIn(node ast.Node, query flowQuery, always waiters) bool {
+func (o *owners) waitsIn(
+	node ast.Node, query flowQuery, always waiters,
+) (erring *ast.CallExpr, waits bool) {
 	start := query.start
 	if start == nil {
 		start = query.held
 	}
-	waits := false
 	ast.Inspect(node, func(inner ast.Node) bool {
 		switch found := inner.(type) {
 		case *ast.FuncLit, *ast.GoStmt:
@@ -393,32 +749,45 @@ func (o *owners) waitsIn(node ast.Node, query flowQuery, always waiters) bool {
 			}
 			waits = waits || counted && o.waitCall(found, query.group, always)
 			if run := o.literalRunBy(found, query.subtests); !waits && run.literal != nil {
-				waits = o.literalWaits(run, query, always)
+				kind := o.waitOf(run, query, always)
+				waits = kind == waitsOnEveryPath
+				if kind == errorsBeforeWait && erring == nil {
+					erring = found
+				}
 			}
 		}
 		return !waits
 	})
-	return waits
+	return erring, waits
 }
 
-func (o *owners) literalWaits(run literalRun, query flowQuery, always waiters) bool {
+func (o *owners) waitOf(run literalRun, query flowQuery, always waiters) literalWait {
 	literal := run.literal
 	if o.walking[literal] {
-		return false
+		return givesNoWait
 	}
 	held := query.held
 	if query.start != nil {
 		held = query.start
 	}
 	if held != nil && covers(literal, held) {
-		return false
+		return givesNoWait
 	}
 	o.walking[literal] = true
 	defer delete(o.walking, literal)
 	fn := function{decl: o.index.DeclOf(literal), typ: literal.Type, body: literal.Body}
 	inner := flowQuery{group: query.group, held: held, subtests: run.within(query.subtests)}
-	unwaited, _ := o.uncovered(fn, inner, always)
-	return !unwaited
+	if unwaited, _ := o.uncovered(fn, inner, always); unwaited {
+		return givesNoWait
+	}
+	if !o.hasErrorResult(fn) {
+		return waitsOnEveryPath
+	}
+	inner.errorReturnsNeedWait = true
+	if unwaited, _ := o.uncovered(fn, inner, always); unwaited {
+		return errorsBeforeWait
+	}
+	return waitsOnEveryPath
 }
 
 type literalRun struct {
@@ -916,15 +1285,8 @@ func (o *owners) failsNow(node ast.Node) bool {
 }
 
 func (o *owners) successExit(fn function, block *cfg.Block) bool {
-	if len(block.Nodes) == 0 {
-		return true
-	}
-	ret, ok := block.Nodes[len(block.Nodes)-1].(*ast.ReturnStmt)
-	if !ok || len(ret.Results) == 0 || fn.typ.Results == nil {
-		return true
-	}
-	last := fn.typ.Results.List[len(fn.typ.Results.List)-1]
-	if !types.Identical(o.pass.TypesInfo.TypeOf(last.Type), types.Universe.Lookup("error").Type()) {
+	ret := finalReturn(block)
+	if ret == nil || len(ret.Results) == 0 || !o.hasErrorResult(fn) {
 		return true
 	}
 	result := ast.Unparen(ret.Results[len(ret.Results)-1])

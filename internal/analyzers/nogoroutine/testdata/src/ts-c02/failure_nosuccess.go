@@ -161,3 +161,22 @@ func (w *waitOnGiveUpOnly) Run(ctx context.Context) {
 		}
 	}
 }
+
+// literalReturnsBranchWait calls a literal that returns an error before it
+// waits on one branch, and drops the error.
+type literalReturnsBranchWait struct{ wg sync.WaitGroup }
+
+// Start runs the worker.
+func (l *literalReturnsBranchWait) Start() {
+	l.wg.Go(work) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+}
+
+// Close runs the literal and drops its error.
+func (l *literalReturnsBranchWait) Close(wait bool) {
+	_ = func() error {
+		if wait {
+			l.wg.Wait()
+		}
+		return errClosed
+	}()
+}
