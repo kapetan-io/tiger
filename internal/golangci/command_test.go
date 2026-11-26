@@ -810,7 +810,8 @@ func TestGolangciAuditReportsKeysThatHideFindings(t *testing.T) {
 				"            - comments\n",
 				"            - comments\n            - std-error-handling\n",
 			},
-			want: "TS-N10: linters.exclusions.presets lists std-error-handling, which tiger's baseline " +
+			want: "TS-N10: linters.exclusions.presets lists std-error-handling, " +
+				"which tiger's baseline " +
 				"doesn't — remove std-error-handling from " +
 				"linters.exclusions.presets",
 		},
@@ -1003,7 +1004,8 @@ func TestGolangciAuditReportsMoreKeysThatHideFindings(t *testing.T) {
 				"    default: standard\n    disable:\n        - wrapcheck\n",
 			},
 			want: "TS-E03: linters.disable lists wrapcheck, which switches off the rule " +
-				"\"wrap errors crossing package boundaries\" — remove wrapcheck from linters.disable",
+				"\"wrap errors crossing package boundaries\" — remove wrapcheck from " +
+				"linters.disable",
 		},
 		{
 			name: "formatterPathsExcluded",

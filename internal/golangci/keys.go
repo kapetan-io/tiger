@@ -140,7 +140,10 @@ func (a *keyAudit) addedElements(task keyTask, joined string) {
 	if !ok {
 		return
 	}
-	wanted, _ := task.want.([]any)
+	wanted, isList := task.want.([]any)
+	if !isList {
+		wanted = nil
+	}
 	for _, element := range listed {
 		if slices.Contains(wanted, element) || slices.Contains(harmlessValues[joined], element) {
 			continue
