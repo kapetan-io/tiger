@@ -19,7 +19,8 @@ import (
 // Goal, TS-C03: only a TestMain calling goleak.VerifyTestMain counts; naming
 // another goleak function or calling it inside an `if false` body checks
 // nothing (ts-c03verify, ts-c03dead).
-//  Goal, TS-C02: a Wait inside a select case on ctx.Done() is the early
+//
+// Goal, TS-C02: a Wait inside a select case on ctx.Done() is the early
 // return of a caller that gave up, so it does not count unless the case also
 // holds the start (fanOutOnExpiry). A path through that case needs no Wait,
 // but only after the start, only when the start is outside the case, and only
