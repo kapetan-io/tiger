@@ -78,7 +78,9 @@ worker goroutine at full speed forever, a denial of service that could be trigge
 **From:** Tiger. Neither [Power of Ten](https://spinroot.com/gerard/pdf/P10.pdf) nor
 [TigerStyle](https://github.com/tigerbeetle/tigerbeetle/blob/main/docs/TIGER_STYLE.md) has a rule about starting
 threads or waiting for them. TigerBeetle runs on a single-threaded event loop, while Go starts a
-goroutine with a two-letter keyword, so Tiger adds the rule.
+goroutine with a two-letter keyword, so Tiger adds the rule. It applies the general guidance in
+[TigerStyle's Safety section](https://github.com/tigerbeetle/tigerbeetle/blob/main/docs/TIGER_STYLE.md#safety),
+"Put a limit on everything", to goroutines, so every goroutine has an end its caller waits for.
 
 A goroutine that nothing waits for keeps running after its caller moves on. A server's memory
 climbs for no clear reason, and a shutdown can finish while the goroutine is still working.
