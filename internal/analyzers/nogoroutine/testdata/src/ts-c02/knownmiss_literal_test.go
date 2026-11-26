@@ -344,3 +344,60 @@ func literalErrorClearedInClosure() error {
 	}
 	return nil
 }
+
+func parseResult(error) (int, error) {
+	return 0, nil
+}
+
+// literalCallSwallowed leaks the goroutine.
+//
+// known-miss: the returned call holds the literal's call, so it is read
+// as handing the error up, but swallow returns nil (ENG-1002).
+func literalCallSwallowed() error {
+	var wg sync.WaitGroup
+	wg.Go(func() {})
+	return swallow(func() error {
+		if testing.Short() {
+			return context.Canceled
+		}
+		wg.Wait()
+		return nil
+	}())
+}
+
+// literalErrorSwallowedUnchecked leaks the goroutine.
+//
+// known-miss: the returned call mentions the error, so it is read as
+// handing the error up, but swallow returns nil (ENG-1002).
+func literalErrorSwallowedUnchecked() error {
+	var wg sync.WaitGroup
+	wg.Go(func() {})
+	err := func() error {
+		if testing.Short() {
+			return context.Canceled
+		}
+		wg.Wait()
+		return nil
+	}()
+	return swallow(err)
+}
+
+// literalErrorParsed leaks the goroutine.
+//
+// known-miss: err is bound to parseResult's error, which drops the
+// literal's error, so the nil branch counts as waited (ENG-1002).
+func literalErrorParsed() (int, error) {
+	var wg sync.WaitGroup
+	wg.Go(func() {})
+	v, err := parseResult(func() error {
+		if testing.Short() {
+			return context.Canceled
+		}
+		wg.Wait()
+		return nil
+	}())
+	if err != nil {
+		return 0, err
+	}
+	return v, nil
+}

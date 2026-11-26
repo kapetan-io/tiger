@@ -11,6 +11,7 @@ package fixture
 import (
 	"context"
 	"errors"
+	"io"
 	"sync"
 	"testing"
 
@@ -1464,4 +1465,98 @@ func literalErrorFlagReassigned() error {
 		return nil
 	}
 	return err
+}
+
+type literalResult struct {
+	err error
+}
+
+// literalErrorIndexed is an expected false positive (ENG-1004):
+// the error is stored at an index,
+// which the check does not follow.
+func literalErrorIndexed() error {
+	var wg sync.WaitGroup
+	wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+	errs := make([]error, 1)
+	errs[0] = func() error {
+		if testing.Short() {
+			return context.Canceled
+		}
+		wg.Wait()
+		return nil
+	}()
+	return errors.Join(errs...)
+}
+
+// literalErrorAsOk is an expected false positive (ENG-1004):
+// the check reads only a bool computed
+// from the error, which it does not follow.
+func literalErrorAsOk() error {
+	var wg sync.WaitGroup
+	wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+	ok := func() error {
+		if testing.Short() {
+			return context.Canceled
+		}
+		wg.Wait()
+		return nil
+	}() == nil
+	if !ok {
+		return errStop
+	}
+	return nil
+}
+
+// literalErrorInField is an expected false positive (ENG-1004):
+// the error is stored in a struct
+// field, which the check does not follow.
+func literalErrorInField() error {
+	var wg sync.WaitGroup
+	wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+	res := literalResult{err: func() error {
+		if testing.Short() {
+			return context.Canceled
+		}
+		wg.Wait()
+		return nil
+	}()}
+	if res.err != nil {
+		return res.err
+	}
+	return nil
+}
+
+// deferredLiteralErrorNamed is an expected false positive (ENG-1004):
+// a deferred literal assigns the
+// error to the named result, which the check does not follow.
+func deferredLiteralErrorNamed() (err error) {
+	var wg sync.WaitGroup
+	wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+	defer func() {
+		err = func() error {
+			if testing.Short() {
+				return context.Canceled
+			}
+			wg.Wait()
+			return nil
+		}()
+	}()
+	return nil
+}
+
+// literalErrorExceptEOF leaks the goroutine: the literal may return
+// io.EOF before its Wait, and the caller treats io.EOF as success.
+func literalErrorExceptEOF() error {
+	var wg sync.WaitGroup
+	wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+	if err := func() error {
+		if testing.Short() {
+			return context.Canceled
+		}
+		wg.Wait()
+		return nil
+	}(); err != nil && !errors.Is(err, io.EOF) {
+		return err
+	}
+	return nil
 }

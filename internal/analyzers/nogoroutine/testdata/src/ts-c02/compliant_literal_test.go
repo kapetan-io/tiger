@@ -1239,3 +1239,23 @@ func literalErrorInAny() error {
 	}
 	return nil
 }
+
+// literalErrorCopiedTwice copies the literal's error twice and
+// checks the last copy.
+func literalErrorCopiedTwice() error {
+	var wg sync.WaitGroup
+	wg.Go(func() {})
+	err := func() error {
+		if testing.Short() {
+			return context.Canceled
+		}
+		wg.Wait()
+		return nil
+	}()
+	e := err
+	f := e
+	if f != nil {
+		return f
+	}
+	return nil
+}

@@ -397,11 +397,16 @@ func (o *owners) reassigned(node ast.Node, unchecked literalError) literalError 
 			return literalError{}
 		case assigned == unchecked.alias:
 			unchecked.alias = nil
-		case plain && o.index.Object(ident) == unchecked.bound && holdsError(assigned):
+		case plain && o.copies(ident, unchecked) && holdsError(assigned):
 			unchecked.alias = assigned
 		}
 	}
 	return unchecked
+}
+
+func (o *owners) copies(ident *ast.Ident, unchecked literalError) bool {
+	source := o.index.Object(ident)
+	return source != nil && (source == unchecked.bound || source == unchecked.alias)
 }
 
 func holdsError(local *types.Var) bool {
@@ -420,7 +425,9 @@ func encloses(expr ast.Expr, call *ast.CallExpr) bool {
 			found = true
 		}
 		_, isLiteral := node.(*ast.FuncLit)
-		return !found && !isLiteral
+		binary, isBinary := node.(*ast.BinaryExpr)
+		compares := isBinary && comparison(binary.Op)
+		return !found && !isLiteral && !compares
 	})
 	return found
 }

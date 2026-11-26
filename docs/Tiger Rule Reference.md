@@ -919,8 +919,10 @@ at all, and its `Wait` still counts.
 A literal that returns an error before its `Wait` hands that error to the caller, which may
 go on without waiting. So the call counts only on the caller's paths where that error is
 nil. The check sees the error when the caller assigns it, with `:=`, `=` or `var`, to a
-variable that can hold an error, or a slice of them, either as the call itself or inside a
-larger expression such as `append(errs, run())`, or copies that variable into another. It
+local variable that can hold an error, or a slice of them, either as the call itself or
+inside a larger expression such as `append(errs, run())`, or copies that variable into
+another local, any number of times. A larger expression binds whatever it returns, so in
+`v, err := parse(run())` the check follows `parse`'s error, not the literal's. It
 reads a comparison of either variable, or of the call itself, with `nil`. The branch where
 the error is nil counts as waited, also through `&&`, `||` and `!` in the condition. The
 other branch must wait or end the path: it returns a non-nil error, or calls `t.Fatal`.
@@ -942,9 +944,14 @@ A caller that checks the error any other way, such as `require.NoError(t, err)` 
 positive (ENG-994). A `panic` on the error branch, or on any path before the `Wait`, is
 reported the same way (ENG-993). A check that fails only on some errors, such as
 `errors.Is(err, context.Canceled)`, lets every other error through, so it is reported as a
-leak. Three ways of dropping the error are not seen and go unreported (ENG-1002): a
-returned call that mentions the error but returns `nil`, such as `return swallow(err)`, an
-error cleared through a pointer, and an error cleared inside a closure.
+leak. So is `err != nil && !errors.Is(err, io.EOF)`, because the literal may return
+`io.EOF` before its `Wait`. An error stored at an index, in a struct field or only as a
+bool such as `ok := run() == nil`, or assigned to the named result inside a deferred
+literal, is not followed, so the call gives no `Wait` (ENG-1004). Some ways of dropping the
+error are not seen and go unreported (ENG-1002): a returned call that holds the call or
+the error but returns `nil`, such as `return swallow(err)`, a call such as `parse(run())`
+whose own error replaces the literal's, an error cleared through a pointer, and an error
+cleared inside a closure.
 
 A `Wait` does not count after a `return`, on one branch only, in a literal saved and never
 called, in a literal passed to another function, in a parallel subtest started on any other
