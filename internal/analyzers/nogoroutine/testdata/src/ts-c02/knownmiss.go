@@ -395,8 +395,9 @@ func (n *namedBranchWait) Closed(c bool) (err error) {
 	return err
 }
 
-// literalDeferForever calls a literal that defers its Wait and loops forever;
-// a called literal is judged by whether it may wait.
+// literalDeferForever calls a literal that defers its Wait and loops forever.
+// Close has a success path, so the literal is judged on its own, and a
+// literal with no exits and no error result counts as waiting (ENG-1007).
 type literalDeferForever struct{ wg sync.WaitGroup }
 
 // Start runs the worker. Not reported.
@@ -429,4 +430,23 @@ func (h *helperDeferForever) spin() {
 	defer h.wg.Wait()
 	for {
 	}
+}
+
+// literalHandedUpBranchWait returns the error of a literal that waits on one
+// branch only. The return of the call reads as a success exit that hands the
+// literal's error up, so the check for functions with no success path never
+// runs (ENG-1007).
+type literalHandedUpBranchWait struct{ wg sync.WaitGroup }
+
+// Start runs the worker. Not reported.
+func (l *literalHandedUpBranchWait) Start() { l.wg.Go(work) }
+
+// Closed returns what the literal returns.
+func (l *literalHandedUpBranchWait) Closed(wait bool) error {
+	return func() error {
+		if wait {
+			l.wg.Wait()
+		}
+		return errClosed
+	}()
 }

@@ -1010,8 +1010,11 @@ loop only, or whose `Wait` sits in a `once.Do` that already ran, that hands the 
 a call the check cannot follow that never waits, or that calls a same-package function or
 runs a literal whose `Wait` sits on one branch only or in a `defer` before a loop that
 never ends. So does one with a path that ends in `panic` or `select {}`, which is read as
-a success path, so a `defer` covers it though the function never returns (ENG-998). Those
-gaps are not caught.
+a success path, so a `defer` covers it though the function never returns (ENG-998). A
+function that has a success path counts too when it calls a literal that defers its
+`Wait` and never returns, or returns the error of a literal whose `Wait` sits on one
+branch only, as in `return func() error { if wait { s.wg.Wait() }; return errClosed }()`
+(ENG-1007). Those gaps are not caught.
 
 A call is treated as returning unless it is to the builtin `panic`. A start followed by a
 call to a function that loops forever still needs its `Wait`, though the same loop written

@@ -52,7 +52,9 @@ import (
 // handed to a call it cannot follow that never waits are documented gaps
 // (knownmiss.go); a path ending in panic never returns and should need none
 // either, but it and select {} are read as success paths
-// (falsepositive_panic.go, knownmiss.go, ENG-998).
+// (falsepositive_panic.go, knownmiss.go, ENG-998); and a called literal
+// that never returns, or whose one-branch error a function with a success
+// path returns, counts as waiting (knownmiss.go, ENG-1007).
 //
 // Goal, TS-C02: a function literal is a function. A start inside a literal is
 // waited when a Wait follows it on every success path of that literal, or of

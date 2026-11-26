@@ -258,6 +258,8 @@ func (o *owners) uncovered(fn function, query flowQuery, always waiters) (unwait
 	if len(graph.Blocks) == 0 {
 		return false, false
 	}
+	assert.Ok(!query.noSuccess || query.errorReturnsNeedWait,
+		"uncovered: a noSuccess query must also mark error returns as exits")
 	query = o.withShutdown(fn, query, always)
 	returns := make([]returnCover, len(graph.Blocks))
 	seen := map[stateKey]bool{}
