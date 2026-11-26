@@ -1,13 +1,14 @@
 // Documented TS-C02 coverage gaps in function literals: the literal holding
 // the Go runs after the Wait or alongside it, a t.Fatal skips the Wait, or a
 // function around the literal returns only a non-nil error, which excuses the
-// literal's own unwaited success path, a called literal returns an error
-// before its Wait and the caller goes on, or a subtest reaches t.Parallel in a
-// way the check does not see.
+// literal's own unwaited success path, or a subtest reaches t.Parallel in a
+// way the check does not see, or a called literal's error is dropped in a way
+// the check reads as handling it.
 package fixture
 
 import (
 	"context"
+	"fmt"
 	"subtesthelp"
 	"sync"
 	"testing"
@@ -135,25 +136,6 @@ func literalNoWaitInFailingFunc() error {
 	}
 	run()
 	return errStop
-}
-
-// TestCalledLiteralErrorSkipsWait leaks the goroutine: the literal returns an
-// error before its Wait, and the test logs it and returns.
-//
-// known-miss: the literal's error return is not a success path, so the call
-// counts as a Wait whatever the caller does with the error (ENG-966).
-func TestCalledLiteralErrorSkipsWait(t *testing.T) {
-	var wg sync.WaitGroup
-	wg.Go(func() {})
-	if err := func() error {
-		if testing.Short() {
-			return context.Canceled
-		}
-		wg.Wait()
-		return nil
-	}(); err != nil {
-		t.Log(err)
-	}
 }
 
 // TestParallelThroughCalledLiteralParam leaks the goroutine: the subtest is
@@ -291,4 +273,131 @@ func TestParallelThroughOtherPackageAboveParallelSubtest(t *testing.T) {
 			wg.Wait()
 		})
 	})
+}
+
+func swallow(error) error {
+	return nil
+}
+
+func clearError(err *error) {
+	*err = nil
+}
+
+// literalErrorSwallowed leaks the goroutine.
+//
+// known-miss: the returned call mentions the error, so it is read as
+// returning a non-nil error, but swallow returns nil (ENG-1002).
+func literalErrorSwallowed() error {
+	var wg sync.WaitGroup
+	wg.Go(func() {})
+	err := func() error {
+		if testing.Short() {
+			return context.Canceled
+		}
+		wg.Wait()
+		return nil
+	}()
+	if err != nil {
+		return swallow(err)
+	}
+	return nil
+}
+
+// literalErrorClearedThroughPointer leaks the goroutine.
+//
+// known-miss: clearError sets the error to nil through a pointer,
+// which the check does not see, so the nil branch counts as waited (ENG-1002).
+func literalErrorClearedThroughPointer() error {
+	var wg sync.WaitGroup
+	wg.Go(func() {})
+	err := func() error {
+		if testing.Short() {
+			return context.Canceled
+		}
+		wg.Wait()
+		return nil
+	}()
+	clearError(&err)
+	if err == nil {
+		return nil
+	}
+	return err
+}
+
+// literalErrorClearedInClosure leaks the goroutine.
+//
+// known-miss: the closure sets the error to nil, which the check does
+// not see, so the wrapped return counts as returning a non-nil error (ENG-1002).
+func literalErrorClearedInClosure() error {
+	var wg sync.WaitGroup
+	wg.Go(func() {})
+	err := func() error {
+		if testing.Short() {
+			return context.Canceled
+		}
+		wg.Wait()
+		return nil
+	}()
+	if err != nil {
+		func() { err = nil }()
+		return fmt.Errorf("%w", err)
+	}
+	return nil
+}
+
+func parseResult(error) (int, error) {
+	return 0, nil
+}
+
+// literalCallSwallowed leaks the goroutine.
+//
+// known-miss: the returned call holds the literal's call, so it is read
+// as handing the error up, but swallow returns nil (ENG-1002).
+func literalCallSwallowed() error {
+	var wg sync.WaitGroup
+	wg.Go(func() {})
+	return swallow(func() error {
+		if testing.Short() {
+			return context.Canceled
+		}
+		wg.Wait()
+		return nil
+	}())
+}
+
+// literalErrorSwallowedUnchecked leaks the goroutine.
+//
+// known-miss: the returned call mentions the error, so it is read as
+// handing the error up, but swallow returns nil (ENG-1002).
+func literalErrorSwallowedUnchecked() error {
+	var wg sync.WaitGroup
+	wg.Go(func() {})
+	err := func() error {
+		if testing.Short() {
+			return context.Canceled
+		}
+		wg.Wait()
+		return nil
+	}()
+	return swallow(err)
+}
+
+// literalErrorParsed leaks the goroutine.
+//
+// known-miss: err is bound to parseResult's error, which drops the
+// literal's error, so the nil branch counts as waited (ENG-1002).
+func literalErrorParsed() (int, error) {
+	var wg sync.WaitGroup
+	wg.Go(func() {})
+	v, err := parseResult(func() error {
+		if testing.Short() {
+			return context.Canceled
+		}
+		wg.Wait()
+		return nil
+	}())
+	if err != nil {
+		return 0, err
+	}
+	return v, nil
 }
