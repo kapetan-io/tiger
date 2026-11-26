@@ -59,10 +59,14 @@ import (
 // t.Run or b.Run body that does not call t.Parallel or is started on the t
 // of a subtest whose body counts, from inside that subtest's body and
 // through no variable declared outside it) when that literal waits on every
-// success path. A Wait in a literal saved and never called, in a literal
-// passed to another function, in a saved literal that another assignment may
-// replace on some path to the call, in a parallel subtest started on any
-// other t or in t.Cleanup does not count (failure_literal_test.go). Three
+// success path. A literal that returns an error before its Wait counts only
+// on the caller's branch where that error is nil, or when the caller returns
+// the call's result; a caller that drops the error or goes on after it is
+// reported (compliant_literal_test.go, failure_literal_test.go). A Wait in a
+// literal saved and never called, in a literal passed to another function,
+// in a saved literal that another assignment may replace on some path to the
+// call, in a parallel subtest started on any other t or in t.Cleanup does not
+// count (failure_literal_test.go). Three
 // safe shapes of a reassigned literal are reported as expected false
 // positives (ENG-989). The goroutine literal of the same group, and any
 // literal inside it, is not a place to Wait, because a Wait there waits on

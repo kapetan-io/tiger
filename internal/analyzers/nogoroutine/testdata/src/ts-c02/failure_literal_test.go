@@ -3,11 +3,15 @@
 // the group's own goroutine, or the Wait sits in a literal that may not run
 // before the call holding it returns (saved and never called, replaced on
 // some path before the call, passed to another function, a parallel subtest
-// that no t.Run the function holding the Go calls waits for, or t.Cleanup).
+// that no t.Run the function holding the Go calls waits for, or t.Cleanup),
+// or the literal returns an error before its Wait and the caller drops that
+// error or goes on.
 package fixture
 
 import (
 	"context"
+	"errors"
+	"io"
 	"sync"
 	"testing"
 
@@ -1022,4 +1026,537 @@ func TestSavedWaitReplacedInDeferredLiteral(t *testing.T) {
 	defer func() { wait = func() {} }()
 	wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
 	wait()
+}
+
+// TestCalledLiteralErrorSkipsWait leaks the goroutine: the literal returns an
+// error before its Wait, and the test logs it and returns.
+func TestCalledLiteralErrorSkipsWait(t *testing.T) {
+	var wg sync.WaitGroup
+	wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+	if err := func() error {
+		if testing.Short() {
+			return context.Canceled
+		}
+		wg.Wait()
+		return nil
+	}(); err != nil {
+		t.Log(err)
+	}
+}
+
+// TestCalledLiteralErrorDropped leaks the goroutine: the literal's error is
+// thrown away, so the test goes on after the path that skipped the Wait.
+func TestCalledLiteralErrorDropped(t *testing.T) {
+	var wg sync.WaitGroup
+	wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+	_ = func() error {
+		if testing.Short() {
+			return context.Canceled
+		}
+		wg.Wait()
+		return nil
+	}()
+}
+
+// TestSavedLiteralErrorIgnored leaks the goroutine: the saved literal's error
+// is never looked at.
+func TestSavedLiteralErrorIgnored(t *testing.T) {
+	var wg sync.WaitGroup
+	wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+	run := func() error {
+		if testing.Short() {
+			return context.Canceled
+		}
+		wg.Wait()
+		return nil
+	}
+	run()
+}
+
+// TestVarLiteralErrorLogged binds the literal's error with var and only logs
+// it.
+func TestVarLiteralErrorLogged(t *testing.T) {
+	var wg sync.WaitGroup
+	wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+	var err = func() error {
+		if testing.Short() {
+			return context.Canceled
+		}
+		wg.Wait()
+		return nil
+	}()
+	if err != nil {
+		t.Log(err)
+	}
+}
+
+// TestLiteralErrorOverwritten replaces the literal's error before the check,
+// so the test goes on after the path that skipped the Wait.
+func TestLiteralErrorOverwritten(t *testing.T) {
+	var wg sync.WaitGroup
+	wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+	err := func() error {
+		if testing.Short() {
+			return context.Canceled
+		}
+		wg.Wait()
+		return nil
+	}()
+	err = context.Background().Err()
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestLiteralErrorFailsOnlyWithAnd fails only when a second condition also
+// holds, so the test goes on after the error otherwise.
+func TestLiteralErrorFailsOnlyWithAnd(t *testing.T) {
+	var wg sync.WaitGroup
+	wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+	if err := func() error {
+		if testing.Short() {
+			return context.Canceled
+		}
+		wg.Wait()
+		return nil
+	}(); err != nil && testing.Verbose() {
+		t.Fatal(err)
+	}
+}
+
+// TestLiteralErrorFailsSubtestOnly runs the literal in a subtest; t.Fatal ends
+// only the subtest, and the test function goes on.
+func TestLiteralErrorFailsSubtestOnly(t *testing.T) {
+	var wg sync.WaitGroup
+	wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+	t.Run("x", func(t *testing.T) {
+		if err := func() error {
+			if testing.Short() {
+				return context.Canceled
+			}
+			wg.Wait()
+			return nil
+		}(); err != nil {
+			t.Fatal(err)
+		}
+	})
+}
+
+// TestLiteralErrorLoggedInSwitch only logs the literal's error from a switch
+// case.
+func TestLiteralErrorLoggedInSwitch(t *testing.T) {
+	var wg sync.WaitGroup
+	wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+	err := func() error {
+		if testing.Short() {
+			return context.Canceled
+		}
+		wg.Wait()
+		return nil
+	}()
+	switch {
+	case err != nil:
+		t.Log(err)
+	}
+}
+
+// TestErrgroupLiteralErrorLogged returns before the errgroup's Wait and the
+// test only logs the error.
+func TestErrgroupLiteralErrorLogged(t *testing.T) {
+	var g errgroup.Group
+	g.Go(func() error { return nil }) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+	if err := func() error {
+		if testing.Short() {
+			return context.Canceled
+		}
+		return g.Wait()
+	}(); err != nil {
+		t.Log(err)
+	}
+}
+
+// TestNestedLiteralErrorLogged passes an inner literal's error up through an
+// outer literal, and the test only logs it.
+func TestNestedLiteralErrorLogged(t *testing.T) {
+	var wg sync.WaitGroup
+	wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+	if err := func() error {
+		return func() error {
+			if testing.Short() {
+				return context.Canceled
+			}
+			wg.Wait()
+			return nil
+		}()
+	}(); err != nil {
+		t.Log(err)
+	}
+}
+
+// literalErrorClearedOnBranch leaks the goroutine when testing.Short clears
+// the literal's error before the check.
+func literalErrorClearedOnBranch() error {
+	var wg sync.WaitGroup
+	wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+	err := func() error {
+		if testing.Verbose() {
+			return context.Canceled
+		}
+		wg.Wait()
+		return nil
+	}()
+	if testing.Short() {
+		err = nil
+	}
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+// calledLiteralErrorSwallowed leaks the goroutine: the error branch returns
+// nil, so the caller's caller sees success.
+func calledLiteralErrorSwallowed() error {
+	var wg sync.WaitGroup
+	wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+	if err := func() error {
+		if testing.Short() {
+			return context.Canceled
+		}
+		wg.Wait()
+		return nil
+	}(); err != nil {
+		return nil
+	}
+	return nil
+}
+
+func requireNoError(t testing.TB, err error) {
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestLiteralErrorRequired is an expected false positive (ENG-994): the
+// helper fails the test on the literal's error, but the check reads it as a
+// call that returns.
+func TestLiteralErrorRequired(t *testing.T) {
+	var wg sync.WaitGroup
+	wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+	requireNoError(t, func() error {
+		if testing.Short() {
+			return context.Canceled
+		}
+		wg.Wait()
+		return nil
+	}())
+}
+
+// TestLiteralErrorSwitched is an expected false positive (ENG-994): the
+// switch fails the test on a non-nil error, but only a comparison with nil
+// is read.
+func TestLiteralErrorSwitched(t *testing.T) {
+	var wg sync.WaitGroup
+	wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+	err := func() error {
+		if testing.Short() {
+			return context.Canceled
+		}
+		wg.Wait()
+		return nil
+	}()
+	switch err {
+	case nil:
+	default:
+		t.Fatal(err)
+	}
+}
+
+// literalErrorPanics is an expected false positive (ENG-993): the error
+// branch panics, but a path ending in panic is read as a success path.
+func literalErrorPanics() {
+	var wg sync.WaitGroup
+	wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+	if err := func() error {
+		if testing.Short() {
+			return context.Canceled
+		}
+		wg.Wait()
+		return nil
+	}(); err != nil {
+		panic(err)
+	}
+}
+
+// literalErrorLoggedThenOtherReturn leaks the goroutine: the error branch only
+// logs, and the later return carries another error.
+func literalErrorLoggedThenOtherReturn(t *testing.T) error {
+	var wg sync.WaitGroup
+	wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+	err := func() error {
+		if testing.Short() {
+			return context.Canceled
+		}
+		wg.Wait()
+		return nil
+	}()
+	if err != nil {
+		t.Log(err)
+	}
+	return errors.Join(errors.ErrUnsupported)
+}
+
+// namedLiteralErrorReplaced leaks the goroutine: the named result no longer
+// holds the literal's error when it is returned.
+func namedLiteralErrorReplaced(t *testing.T) (err error) {
+	var wg sync.WaitGroup
+	wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+	err = func() error {
+		if testing.Short() {
+			return context.Canceled
+		}
+		wg.Wait()
+		return nil
+	}()
+	if err != nil {
+		t.Log(err)
+	}
+	err = errors.ErrUnsupported
+	return
+}
+
+// TestDeferredLiteralErrorDropped leaks the goroutine: the deferred literal's
+// error is thrown away, so the path that skipped the Wait goes unnoticed.
+func TestDeferredLiteralErrorDropped(t *testing.T) {
+	var wg sync.WaitGroup
+	wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+	defer func() error {
+		if testing.Short() {
+			return context.Canceled
+		}
+		wg.Wait()
+		return nil
+	}()
+}
+
+func ignoreAll(func()) error {
+	return nil
+}
+
+// literalErrorOnlyInClosure leaks the goroutine: the returned call
+// mentions the error only inside a closure it never returns.
+func literalErrorOnlyInClosure() error {
+	var wg sync.WaitGroup
+	wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+	err := func() error {
+		if testing.Short() {
+			return context.Canceled
+		}
+		wg.Wait()
+		return nil
+	}()
+	if err != nil {
+		return ignoreAll(func() { _ = err })
+	}
+	return nil
+}
+
+func maybe(bool) error {
+	return nil
+}
+
+// literalErrorAsBool leaks the goroutine: the error branch
+// returns a call that sees only whether the error was set, and returns nil.
+func literalErrorAsBool() error {
+	var wg sync.WaitGroup
+	wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+	err := func() error {
+		if testing.Short() {
+			return context.Canceled
+		}
+		wg.Wait()
+		return nil
+	}()
+	if err != nil {
+		failed := err != nil
+		return maybe(failed)
+	}
+	return nil
+}
+
+// TestLiteralErrorMatched leaks the goroutine: errors.Is fails the test
+// only on one error, and any other non-nil error lets the test go on.
+func TestLiteralErrorMatched(t *testing.T) {
+	var wg sync.WaitGroup
+	wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+	err := func() error {
+		if testing.Short() {
+			return context.Canceled
+		}
+		wg.Wait()
+		return nil
+	}()
+	if errors.Is(err, context.Canceled) {
+		t.Fatal(err)
+	}
+}
+
+func flagged(bool) error {
+	return nil
+}
+
+// literalCompletedAsBool leaks the goroutine: it returns only
+// whether the literal's error was nil, which hands no error up.
+func literalCompletedAsBool() bool {
+	var wg sync.WaitGroup
+	wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+	return func() error {
+		if testing.Short() {
+			return context.Canceled
+		}
+		wg.Wait()
+		return nil
+	}() == nil
+}
+
+// literalCompletedBesideNilError leaks the goroutine: the call sits
+// in the bool result, and the error result is nil.
+func literalCompletedBesideNilError() (bool, error) {
+	var wg sync.WaitGroup
+	wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+	return func() error {
+		if testing.Short() {
+			return context.Canceled
+		}
+		wg.Wait()
+		return nil
+	}() == nil, nil
+}
+
+// literalErrorFlagReturned leaks the goroutine: the returned call
+// sees only whether the error was set, and returns nil.
+func literalErrorFlagReturned() error {
+	var wg sync.WaitGroup
+	wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+	err := func() error {
+		if testing.Short() {
+			return context.Canceled
+		}
+		wg.Wait()
+		return nil
+	}()
+	return flagged(err != nil)
+}
+
+// literalErrorFlagReassigned leaks the goroutine: the error is
+// replaced by a call that sees only whether it was set.
+func literalErrorFlagReassigned() error {
+	var wg sync.WaitGroup
+	wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+	err := func() error {
+		if testing.Short() {
+			return context.Canceled
+		}
+		wg.Wait()
+		return nil
+	}()
+	err = flagged(err != nil)
+	if err == nil {
+		return nil
+	}
+	return err
+}
+
+type literalResult struct {
+	err error
+}
+
+// literalErrorIndexed is an expected false positive (ENG-1004):
+// the error is stored at an index,
+// which the check does not follow.
+func literalErrorIndexed() error {
+	var wg sync.WaitGroup
+	wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+	errs := make([]error, 1)
+	errs[0] = func() error {
+		if testing.Short() {
+			return context.Canceled
+		}
+		wg.Wait()
+		return nil
+	}()
+	return errors.Join(errs...)
+}
+
+// literalErrorAsOk is an expected false positive (ENG-1004):
+// the check reads only a bool computed
+// from the error, which it does not follow.
+func literalErrorAsOk() error {
+	var wg sync.WaitGroup
+	wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+	ok := func() error {
+		if testing.Short() {
+			return context.Canceled
+		}
+		wg.Wait()
+		return nil
+	}() == nil
+	if !ok {
+		return errStop
+	}
+	return nil
+}
+
+// literalErrorInField is an expected false positive (ENG-1004):
+// the error is stored in a struct
+// field, which the check does not follow.
+func literalErrorInField() error {
+	var wg sync.WaitGroup
+	wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+	res := literalResult{err: func() error {
+		if testing.Short() {
+			return context.Canceled
+		}
+		wg.Wait()
+		return nil
+	}()}
+	if res.err != nil {
+		return res.err
+	}
+	return nil
+}
+
+// deferredLiteralErrorNamed is an expected false positive (ENG-1004):
+// a deferred literal assigns the
+// error to the named result, which the check does not follow.
+func deferredLiteralErrorNamed() (err error) {
+	var wg sync.WaitGroup
+	wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+	defer func() {
+		err = func() error {
+			if testing.Short() {
+				return context.Canceled
+			}
+			wg.Wait()
+			return nil
+		}()
+	}()
+	return nil
+}
+
+// literalErrorExceptEOF leaks the goroutine: the literal may return
+// io.EOF before its Wait, and the caller treats io.EOF as success.
+func literalErrorExceptEOF() error {
+	var wg sync.WaitGroup
+	wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+	if err := func() error {
+		if testing.Short() {
+			return context.Canceled
+		}
+		wg.Wait()
+		return nil
+	}(); err != nil && !errors.Is(err, io.EOF) {
+		return err
+	}
+	return nil
 }
