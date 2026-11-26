@@ -1137,3 +1137,46 @@ func TestGolangciOffTrimsSpacesAroundNames(t *testing.T) {
 	assert.Empty(t, got.stdout)
 	assert.Empty(t, got.stderr)
 }
+
+// TestGolangciAuditKeepsEveryKeyFindingOnOneLine covers values the audit
+// can't print on one line.
+//
+// Goal: a key holding a list of blocks is reported on one line, and an
+// exclusions block of the wrong shape gets only the TS-N10 finding for the
+// presets the rule owns, not a second line for the block.
+func TestGolangciAuditKeepsEveryKeyFindingOnOneLine(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		edit [2]string
+		want string
+	}{
+		{
+			name: "listOfBlocks",
+			edit: [2]string{
+				"    max-same-issues: 0\n",
+				"    max-same-issues:\n        - a: 1\n        - b: 2\n",
+			},
+			want: "issues.max-same-issues is a block of keys, but tiger's baseline is 0 — " +
+				"set it to 0\n" +
+				"tiger: 1 auto rules unenforced\n",
+		},
+		{
+			name: "exclusionsAsAList",
+			edit: [2]string{
+				"    exclusions:\n        presets:\n            - comments\n",
+				"    exclusions: []\n",
+			},
+			want: "TS-N10: linters.exclusions.presets isn't set, and tiger's baseline for the " +
+				"rule \"no stutter\" needs it — set linters.exclusions.presets to [comments] " +
+				"(revive's exported rule demands doc comments without it)\n" +
+				"tiger: 1 auto rules unenforced\n",
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			got := run(t, "golangci", "-C", initThenEdit(t, test.edit))
+			assert.Equal(t, command.ExitFindings, got.code)
+			assert.Equal(t, test.want, got.stdout)
+			assert.Empty(t, got.stderr)
+		})
+	}
+}

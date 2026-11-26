@@ -103,6 +103,8 @@ func (a *keyAudit) compareLeaf(task keyTask, joined string) {
 	case !task.present:
 		a.report(fmt.Sprintf("%[1]s isn't set, but tiger's baseline sets it — set %[1]s to %[2]v",
 			joined, formatWant(task.want)))
+	case wantIsMap && a.ownsKeyUnder(joined):
+		return
 	case wantIsMap:
 		a.report(fmt.Sprintf("%[1]s isn't laid out as in tiger's baseline, which holds keys "+
 			"under it — copy %[1]s from tiger golangci --print", joined))
@@ -121,12 +123,11 @@ func (b baseline) sameLeaf(got any) bool {
 }
 
 func describe(got any) string {
-	switch got.(type) {
-	case map[string]any, map[any]any:
+	rendered := formatWant(got)
+	if strings.Contains(rendered, "\n") {
 		return "a block of keys"
-	default:
-		return formatWant(got)
 	}
+	return rendered
 }
 
 func (a *keyAudit) addedElements(task keyTask, joined string) {
@@ -139,9 +140,18 @@ func (a *keyAudit) addedElements(task keyTask, joined string) {
 		if slices.Contains(wanted, element) || slices.Contains(harmlessValues[joined], element) {
 			continue
 		}
-		a.report(fmt.Sprintf("%[1]s lists %[2]v, which tiger's baseline doesn't — "+
-			"remove %[2]v from %[1]s", joined, element))
+		a.report(fmt.Sprintf("%[1]s lists %[2]s, which tiger's baseline doesn't — "+
+			"remove %[2]s from %[1]s", joined, describe(element)))
 	}
+}
+
+func (a *keyAudit) ownsKeyUnder(joined string) bool {
+	for _, owned := range slices.Sorted(maps.Keys(a.owned)) {
+		if strings.HasPrefix(owned, joined+".") {
+			return true
+		}
+	}
+	return false
 }
 
 func (a *keyAudit) report(message string) {
