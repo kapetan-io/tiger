@@ -4,9 +4,9 @@
 // embedding one, in a test, a helper or a subtest. Every success path waits,
 // and a deferred Wait runs when the test fails. A t.Fatal before the start
 // ends nothing, since nothing has started, and a TryGo reads t.FailNow as a
-// call that returns, so its path goes on to the Wait. A literal the test calls,
-// where it is written or through a local variable, runs on the test's
-// goroutine, so a t.Fatal in it ends the test as one written in place would.
+// call that returns, so its path goes on to the Wait. A literal called where
+// it is written or through a local variable runs on its caller's goroutine, so
+// a t.Fatal in it ends the caller's path as one written in place would.
 package fixture
 
 import (

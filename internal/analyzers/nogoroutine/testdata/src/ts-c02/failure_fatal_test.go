@@ -4,8 +4,8 @@
 // subtest, so t.Run returns and its parent goes on without waiting. A start in
 // a deferred or t.Cleanup literal runs after the t.Fatal, so that t.Fatal
 // excuses nothing, even when the t.Fatal sits in a literal the test calls. A
-// t.Fatal in a literal that a t.Run body calls fails only the subtest, so the
-// parent goes on without waiting.
+// t.Fatal in a literal that a t.Run or b.Run body calls fails only the
+// subtest, so the parent goes on without waiting.
 package fixture
 
 import (
