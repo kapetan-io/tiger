@@ -184,10 +184,13 @@ func (w waitSearch) callMayWait(call *ast.CallExpr, group *types.Var, subtests [
 		return true
 	}
 	if saved := w.savedIn(call.Fun); run.literal == nil && saved != nil {
-		for _, literal := range w.valuesAt(call.Fun).literals {
-			if w.mayWait(literal.Body, group, declaredAround(subtests, saved)) {
-				return true
-			}
+		values := w.valuesAt(call.Fun)
+		every := !values.other && len(values.literals) > 0
+		for _, literal := range values.literals {
+			every = every && w.mayWait(literal.Body, group, declaredAround(subtests, saved))
+		}
+		if every {
+			return true
 		}
 	}
 	once := w.onceLiteral(call)

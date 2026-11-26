@@ -41,10 +41,12 @@ import (
 // that it hands the group, but not a builtin or a conversion
 // (failure_nowait.go, failure_nowait_more.go, compliant_nowait.go,
 // compliant_handoff.go); such a function whose Wait sits on one branch or in
-// a defer, or whose saved literal is replaced on one branch only, is a
-// documented gap (knownmiss.go, ENG-980), and so are a Wait after a call that
-// never returns, a Wait in a sync.Once that already fired, and a group handed
-// to a call it cannot follow that never waits (knownmiss.go); a
+// a defer is a documented gap (knownmiss.go, ENG-980), and so are a Wait
+// after a call that never returns, a Wait in a sync.Once that already fired,
+// and a group handed to a call it cannot follow that never waits
+// (knownmiss.go); a saved literal there counts only when every literal that
+// may reach the call waits, so one called on a loop's first pass and
+// replaced after it is an expected false positive (failure_nowait_more.go); a
 // path ending in panic never returns and needs none either, though no corpus
 // case covers panic.
 //

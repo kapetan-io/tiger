@@ -1,11 +1,15 @@
 // A function whose only Wait does not run before it returns (in a goroutine,
 // in a literal or method value saved and never called, in a saved literal
-// replaced before every call, or after a loop that never ends) waits on
-// nothing, even when it has no success exit.
+// that may be replaced before the call, or after a loop that never ends)
+// waits on nothing, even when it has no success exit. A saved literal called
+// on a loop's first pass and replaced after it is an expected false positive
+// here.
 package fixture
 
 import (
+	"os"
 	"sync"
+	"testing"
 	"time"
 )
 
@@ -208,5 +212,49 @@ func (r *replacedWaitSpin) Run() {
 	wait = func() {}
 	for {
 		wait()
+	}
+}
+
+// replacedOnBranch starts a worker, and its Closed may replace the waiting
+// literal before calling it.
+type replacedOnBranch struct{ wg sync.WaitGroup }
+
+// Start runs the worker.
+func (r *replacedOnBranch) Start() {
+	r.wg.Go(work) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+}
+
+// Closed waits unless the program got an argument, then reports the group
+// closed. Its saved literal counts only when every literal that may reach
+// the call waits.
+func (r *replacedOnBranch) Closed() error {
+	wait := func() { r.wg.Wait() }
+	if len(os.Args) > 1 {
+		wait = func() {}
+	}
+	wait()
+	return errClosed
+}
+
+// reassignedWaitLoop is an expected false positive: its Close calls the
+// saved literal on the first pass of a loop before replacing it, but a
+// method that Start relies on counts only when every literal that may reach
+// the call waits, and the replacement reaches it on a later pass.
+type reassignedWaitLoop struct{ wg sync.WaitGroup }
+
+// Start runs the worker.
+func (r *reassignedWaitLoop) Start() {
+	r.wg.Go(work) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+}
+
+// Close waits on the loop's first pass.
+func (r *reassignedWaitLoop) Close() {
+	wait := func() { r.wg.Wait() }
+	for {
+		wait()
+		wait = func() {}
+		if testing.Short() {
+			break
+		}
 	}
 }

@@ -1004,9 +1004,10 @@ is not followed. Such a function that does none of these satisfies nothing, whet
 is called after the start or exported as a method of the owning type or a function of
 the package. Such a function whose `Wait` sits on one branch only, or in a `defer` that
 never runs, still counts, and so does one whose `Wait` sits in a `once.Do` that already
-ran, or that hands the group to a call the check cannot follow that never waits, or
-whose saved literal waits on one path and is replaced on another before the call. Those
-gaps are not caught.
+ran, or that hands the group to a call the check cannot follow that never waits. Those
+gaps are not caught. A saved literal called in such a function, or in a method the start
+relies on, counts only when every literal that may reach the call waits, so a loop there
+that calls the waiting literal on its first pass and replaces it afterwards is reported.
 
 A call is treated as returning unless it is to the builtin `panic`. A start followed by a
 call to a function that loops forever still needs its `Wait`, though the same loop written

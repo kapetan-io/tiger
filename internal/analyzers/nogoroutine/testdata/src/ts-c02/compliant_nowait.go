@@ -137,25 +137,6 @@ func (r *reassignedWaitCalledInLiteral) Closed() error {
 	return errClosed
 }
 
-// reassignedWaitLoop calls its saved literal on the first pass of a loop
-// before replacing it.
-type reassignedWaitLoop struct{ wg sync.WaitGroup }
-
-// Start runs the worker.
-func (r *reassignedWaitLoop) Start() { r.wg.Go(work) }
-
-// Close waits on the loop's first pass.
-func (r *reassignedWaitLoop) Close() {
-	wait := func() { r.wg.Wait() }
-	for {
-		wait()
-		wait = func() {}
-		if testing.Short() {
-			break
-		}
-	}
-}
-
 // reassignedWaitDeferredReplace replaces its saved literal only in a deferred
 // literal.
 type reassignedWaitDeferredReplace struct{ wg sync.WaitGroup }
