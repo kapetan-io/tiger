@@ -3,7 +3,7 @@
 // that may be replaced before the call, or after a loop that never ends)
 // waits on nothing, even when it has no success exit. A saved literal called
 // on a loop's first pass and replaced after it is an expected false positive
-// here.
+// here (ENG-1045).
 package fixture
 
 import (
@@ -236,10 +236,10 @@ func (r *replacedOnBranch) Closed() error {
 	return errClosed
 }
 
-// reassignedWaitLoop is an expected false positive: its Close calls the
-// saved literal on the first pass of a loop before replacing it, but a
-// method that Start relies on counts only when every literal that may reach
-// the call waits, and the replacement reaches it on a later pass.
+// reassignedWaitLoop is an expected false positive (ENG-1045): its Close
+// calls the saved literal on the first pass of a loop before replacing it,
+// but a method that Start relies on counts only when every literal that may
+// reach the call waits, and the replacement reaches it on a later pass.
 type reassignedWaitLoop struct{ wg sync.WaitGroup }
 
 // Start runs the worker.

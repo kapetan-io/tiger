@@ -1007,7 +1007,8 @@ never runs, still counts, and so does one whose `Wait` sits in a `once.Do` that 
 ran, or that hands the group to a call the check cannot follow that never waits. Those
 gaps are not caught. A saved literal called in such a function, or in a method the start
 relies on, counts only when every literal that may reach the call waits, so a loop there
-that calls the waiting literal on its first pass and replaces it afterwards is reported.
+that calls the waiting literal on its first pass and replaces it afterwards is reported,
+a known gap (ENG-1045).
 
 A call is treated as returning unless it is to the builtin `panic`. A start followed by a
 call to a function that loops forever still needs its `Wait`, though the same loop written
