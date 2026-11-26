@@ -31,8 +31,8 @@ import (
 // path after it, since the path where it returned false started nothing
 // (tryGoWaited); a return of a non-nil error is the failure path, so it
 // needs no Wait (startThenOnlyError), and neither does a path ending in
-// t.Fatal, t.Fatalf or t.FailNow, which fails the test
-// (compliant_fatal_test.go), but a function that loops forever or
+// t.Fatal, t.Fatalf or t.FailNow, which fails the test, including one in a
+// literal the test calls (compliant_fatal_test.go), but a function that loops forever or
 // returns only a non-nil error counts as a Wait only when code it runs before
 // returning may wait on the group: a Wait called directly or through a local
 // bound to the Wait method value, a same-package function that may wait on

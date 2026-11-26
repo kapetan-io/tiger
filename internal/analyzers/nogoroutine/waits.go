@@ -355,7 +355,7 @@ func (o *owners) literalWaits(run literalRun, query flowQuery, always waiters) b
 	inner := flowQuery{
 		group:       query.group,
 		held:        held,
-		failNowEnds: query.failNowEnds && run.subtest == nil,
+		failNowEnds: query.failNowEnds && !run.subtestBody,
 		subtests:    run.within(query.subtests),
 	}
 	unwaited, _ := o.uncovered(fn, inner, always)
@@ -363,10 +363,11 @@ func (o *owners) literalWaits(run literalRun, query flowQuery, always waiters) b
 }
 
 type literalRun struct {
-	literal  *ast.FuncLit
-	saved    *types.Var
-	subtest  *types.Var
-	parallel bool
+	literal     *ast.FuncLit
+	saved       *types.Var
+	subtest     *types.Var
+	subtestBody bool
+	parallel    bool
 }
 
 func (o *owners) literalRunBy(call *ast.CallExpr, subtests []*types.Var) literalRun {
@@ -386,10 +387,11 @@ func (o *owners) literalRunBy(call *ast.CallExpr, subtests []*types.Var) literal
 		return literalRun{}
 	}
 	return literalRun{
-		literal:  body,
-		saved:    o.savedIn(call.Args[1]),
-		subtest:  o.subtestOf(body),
-		parallel: parallel,
+		literal:     body,
+		saved:       o.savedIn(call.Args[1]),
+		subtest:     o.subtestOf(body),
+		subtestBody: true,
+		parallel:    parallel,
 	}
 }
 

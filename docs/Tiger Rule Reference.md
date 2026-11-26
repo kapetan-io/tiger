@@ -935,13 +935,14 @@ fails the test, such as `requireReady(t)`, is a call that returns, so the path g
 past it, and a helper that only fails the test never counts as waiting on a group. A
 `t.Run` body that holds the `Wait` is read like that helper. A subtest that fails returns
 from `t.Run` to a parent that goes on, so the body waits only when every path through it
-waits, `t.Fatal` paths included. Any other literal that holds the `Wait` and that a call
-runs, such as `func() { ... }()` or a saved literal called by name, runs on the test's
-own goroutine, so a `t.Fatal` in it ends the test as one written in place would, and a
-path through it needs no `Wait`. That holds only where a `t.Fatal` written in place at
-the call would excuse the start, so not after a deferred or `t.Cleanup` start, and not
-inside a `t.Run` body. A `TryGo` needs a `Wait` on some path, and a path
-through `t.Fatal` still goes on to it.
+waits, `t.Fatal` paths included. A literal called where it is written, or through a
+local variable that holds it at the call, runs on the goroutine of the function that
+calls it, so a `t.Fatal` in it ends that path as one written in place at the call would,
+and that path needs no `Wait`. This holds only where a `t.Fatal` written in place at the
+call would excuse the start, so it does not hold for a start in a deferred or
+`t.Cleanup` literal, or for a literal that a `t.Run` body calls when the start is
+outside that body. A `TryGo` needs a `Wait` on some path, and a path through `t.Fatal`
+still goes on to it.
 
 A function that loops forever or returns only a non-nil error has no success path to
 check. It counts as a `Wait` on a group when code it runs before returning may wait on

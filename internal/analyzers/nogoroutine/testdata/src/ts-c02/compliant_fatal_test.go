@@ -4,8 +4,9 @@
 // embedding one, in a test, a helper or a subtest. Every success path waits,
 // and a deferred Wait runs when the test fails. A t.Fatal before the start
 // ends nothing, since nothing has started, and a TryGo reads t.FailNow as a
-// call that returns, so its path goes on to the Wait. A literal the test calls
-// directly runs on the test's goroutine, so its t.Fatal ends the test too.
+// call that returns, so its path goes on to the Wait. A literal the test calls,
+// where it is written or through a local variable, runs on the test's
+// goroutine, so a t.Fatal in it ends the test as one written in place would.
 package fixture
 
 import (
@@ -204,6 +205,8 @@ func TestCalledLiteralFatalOrWait(t *testing.T) {
 	}()
 }
 
+// TestSavedLiteralFatalOrWait replaces the saved literal only after the call,
+// so the call runs the literal that may t.Fatal.
 func TestSavedLiteralFatalOrWait(t *testing.T) {
 	var wg sync.WaitGroup
 	wait := func() {
@@ -217,4 +220,120 @@ func TestSavedLiteralFatalOrWait(t *testing.T) {
 	wait()
 	wait = func() {}
 	_ = wait
+}
+
+func TestDeferredLiteralCallsFatalOrWait(t *testing.T) {
+	var wg sync.WaitGroup
+	wg.Go(work)
+	defer func() {
+		func() {
+			if testing.Short() {
+				t.Fatal("x")
+			} else {
+				wg.Wait()
+			}
+		}()
+	}()
+}
+
+func TestNestedCalledLiteralFatalOrWait(t *testing.T) {
+	var wg sync.WaitGroup
+	wg.Go(work)
+	func() {
+		func() {
+			if testing.Short() {
+				t.Fatal("x")
+			} else {
+				wg.Wait()
+			}
+		}()
+	}()
+}
+
+func TestSubtestStartThenCalledLiteralFatalOrWait(t *testing.T) {
+	t.Run("x", func(t *testing.T) {
+		var wg sync.WaitGroup
+		wg.Go(work)
+		func() {
+			if testing.Short() {
+				t.Fatal("x")
+			} else {
+				wg.Wait()
+			}
+		}()
+	})
+}
+
+func BenchmarkSubStartThenCalledLiteralFatalOrWait(b *testing.B) {
+	b.Run("x", func(b *testing.B) {
+		var wg sync.WaitGroup
+		wg.Go(work)
+		func() {
+			if testing.Short() {
+				b.Fatal("x")
+			} else {
+				wg.Wait()
+			}
+		}()
+	})
+}
+
+func TestCalledLiteralFailNowOrWait(t *testing.T) {
+	var wg sync.WaitGroup
+	wg.Go(work)
+	func() {
+		if testing.Short() {
+			t.FailNow()
+		} else {
+			wg.Wait()
+		}
+	}()
+}
+
+func TestCalledLiteralFatalfOrWait(t *testing.T) {
+	var wg sync.WaitGroup
+	wg.Go(work)
+	func() {
+		if testing.Short() {
+			t.Fatalf("mode %v", testing.Verbose())
+		} else {
+			wg.Wait()
+		}
+	}()
+}
+
+func calledLiteralFatalOrWaitTB(tb testing.TB) {
+	var wg sync.WaitGroup
+	wg.Go(work)
+	func() {
+		if testing.Short() {
+			tb.Fatal("x")
+		} else {
+			wg.Wait()
+		}
+	}()
+}
+
+func BenchmarkCalledLiteralFatalOrWait(b *testing.B) {
+	var wg sync.WaitGroup
+	wg.Go(work)
+	func() {
+		if testing.Short() {
+			b.Fatal("x")
+		} else {
+			wg.Wait()
+		}
+	}()
+}
+
+func TestCalledLiteralTakesTFatalOrWait(t *testing.T) {
+	var wg sync.WaitGroup
+	wg.Go(work)
+	func(t *testing.T) {
+		if testing.Short() {
+			t.Fatal("x")
+		} else {
+			wg.Wait()
+		}
+	}(t)
 }
