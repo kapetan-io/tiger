@@ -899,15 +899,17 @@ variable holds the literal at the call when no `&` or range clause reaches it an
 either it is assigned only that literal, or it is declared and assigned in one function
 body and the last assignment on the path to the call is that literal. Every assignment
 must sit in that body itself or in a literal it defers where it is written, which runs
-as the body returns, after every call in it. A call inside a literal that is called where
-it is written counts as made where that literal is called; one inside a deferred
-literal or a goroutine does not. Each path is followed on its own, so a loop that calls
-the waiting literal on its first pass and replaces it afterwards waits on every path,
-while a replacement that reaches the call on a path that has not waited yet does not.
-Known gap: a call from a nested literal counts only when the waiting literal reaches it
-on every path, so that loop is reported when its call sits in a nested literal
-(ENG-1043). Past four such variables in one function, the rest count only where the
-same literal reaches the call on every path. A body that calls `t.Parallel` also counts when it is started on the `t` of a
+as the body returns, after every call in it. A call inside a literal called where it is
+written, or inside a `t.Run` or `b.Run` body that does not call `t.Parallel`, counts as
+made where that literal runs. A call inside a deferred literal, a goroutine or a
+parallel subtest does not. Each path is followed on its own, so a loop that calls the
+waiting literal on its first pass and replaces it afterwards waits on every path, while
+a replacement that reaches the call on a path that has not waited yet does not. Each
+path is followed only for the first four variables in a function, in source order, with
+a literal that may wait, and assigned at most 62 times. For the others, and for a call
+from a nested literal, the call counts only when the waiting literal reaches it on every
+path. So the loop above is reported when its call sits in a nested literal, a known gap
+(ENG-1043). A body that calls `t.Parallel` also counts when it is started on the `t` of a
 subtest whose body counts as running before its `t.Run` returns, from inside that
 subtest's body, and through no variable declared outside it. The testing package runs
 it after that body returns, and the `t.Run` that started the subtest waits for it. A
@@ -999,7 +1001,8 @@ is not followed. Such a function that does none of these satisfies nothing, whet
 is called after the start or exported as a method of the owning type or a function of
 the package. Such a function whose `Wait` sits on one branch only, or in a `defer` that
 never runs, still counts, and so does one whose `Wait` sits in a `once.Do` that already
-ran, or that hands the group to a call the check cannot follow that never waits. Those
+ran, or that hands the group to a call the check cannot follow that never waits, or
+whose saved literal waits on one path and is replaced on another before the call. Those
 gaps are not caught.
 
 A call is treated as returning unless it is to the builtin `panic`. A start followed by a

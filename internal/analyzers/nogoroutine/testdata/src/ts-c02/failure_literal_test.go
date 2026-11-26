@@ -1,11 +1,12 @@
 // TS-C02 findings inside function literals: no Wait follows the Go on every
 // success path of the literal or a function around it, the Wait runs inside
 // the group's own goroutine, or the Wait sits in a literal that may not run
-// before the call holding it returns (saved and never called, replaced on
-// some path before the call, passed to another function, a parallel subtest
-// that no t.Run the function holding the Go calls waits for, or t.Cleanup),
-// or the literal returns an error before its Wait and the caller drops that
-// error or goes on.
+// before the call holding it returns (saved and never called, replaced on a
+// path to the call that has not waited yet, passed to another function, a
+// parallel subtest that no t.Run the function holding the Go calls waits
+// for, or t.Cleanup), or the literal returns an error before its Wait and the
+// caller drops that error or goes on. One saved literal called from a nested
+// literal in a loop is an expected false positive (ENG-1043).
 package fixture
 
 import (
@@ -778,9 +779,10 @@ func TestParallelSubtestInParallelSubtest(t *testing.T) {
 	})
 }
 
-// TestSavedWaitReplacedInCalledLiteral replaces the saved literal inside
-// another literal. An assignment in another literal is not followed, so the
-// call may run the literal that does not wait.
+// TestSavedWaitReplacedInCalledLiteral replaces the saved literal inside a
+// literal called where it is written. Only assignments in the declaring body
+// or a literal it defers are followed, so the call may run the literal that
+// does not wait.
 func TestSavedWaitReplacedInCalledLiteral(t *testing.T) {
 	var wg sync.WaitGroup
 	wait := func() { wg.Wait() }

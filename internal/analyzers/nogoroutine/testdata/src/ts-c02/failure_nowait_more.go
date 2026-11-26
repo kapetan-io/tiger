@@ -1,6 +1,7 @@
 // A function whose only Wait does not run before it returns (in a goroutine,
-// in a literal or method value saved and never called, or after a loop that
-// never ends) waits on nothing, even when it has no success exit.
+// in a literal or method value saved and never called, in a saved literal
+// replaced before every call, or after a loop that never ends) waits on
+// nothing, even when it has no success exit.
 package fixture
 
 import (
@@ -192,8 +193,8 @@ func (a *appendHanded) Closed() error {
 	return errClosed
 }
 
-// replacedWaitSpin replaces its waiting literal before the loop that calls
-// it forever.
+// replacedWaitSpin replaces its waiting literal before a loop that calls
+// the replacement forever.
 type replacedWaitSpin struct{ wg sync.WaitGroup }
 
 // Start runs the worker.

@@ -10,6 +10,27 @@ import (
 
 func startOnParameter(wg *sync.WaitGroup) { wg.Go(work) }
 
+// replacedOnBranch starts a worker, and its Closed may replace the waiting
+// literal before calling it.
+type replacedOnBranch struct{ wg sync.WaitGroup }
+
+// Start runs the worker.
+func (r *replacedOnBranch) Start() { r.wg.Go(work) }
+
+// Closed waits unless the program got an argument, then reports the group
+// closed.
+//
+// known-miss: a function with no success path counts when any literal that
+// may reach the call waits, the same as a Wait on one branch only.
+func (r *replacedOnBranch) Closed() error {
+	wait := func() { r.wg.Wait() }
+	if len(os.Args) > 1 {
+		wait = func() {}
+	}
+	wait()
+	return errClosed
+}
+
 // callerNeverWaits passes its group to a function that starts a goroutine on
 // it and never waits.
 //
