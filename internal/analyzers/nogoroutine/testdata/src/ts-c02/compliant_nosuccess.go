@@ -1,6 +1,5 @@
 // A function with no success exit that waits before every return it has, or
-// on every path that goes round a loop forever, counts as a Wait. A for or
-// range loop it can leave is taken to leave.
+// that never returns and may reach a Wait outside a defer, counts as a Wait.
 package fixture
 
 import (
@@ -323,5 +322,22 @@ func (r *switchAllWait) Run(v func() int) {
 		default:
 			r.wg.Wait()
 		}
+	}
+}
+
+// gotoRetryThenWait retries through goto, then waits on every pass.
+type gotoRetryThenWait struct{ wg sync.WaitGroup }
+
+// Start runs the worker.
+func (r *gotoRetryThenWait) Start() { r.wg.Go(work) }
+
+// Run loops forever.
+func (r *gotoRetryThenWait) Run(ok func() bool) {
+	for {
+	retry:
+		if !ok() {
+			goto retry
+		}
+		r.wg.Wait()
 	}
 }

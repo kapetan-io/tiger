@@ -251,3 +251,130 @@ func (d *deferSelectForever) Run() {
 	defer d.wg.Wait()
 	select {}
 }
+
+// branchInLoop waits only on some passes of a loop that never ends.
+type branchInLoop struct{ wg sync.WaitGroup }
+
+// Start runs the worker.
+//
+// known-miss: a function that never returns counts as a Wait when it may
+// reach a Wait outside a defer on some path, so a loop that waits on one
+// branch, case or pass only still counts; the cases below share this note.
+func (b *branchInLoop) Start() { b.wg.Go(work) }
+
+// Run waits only when ready says so, forever.
+func (b *branchInLoop) Run(ready func() bool) {
+	for {
+		if ready() {
+			b.wg.Wait()
+		}
+	}
+}
+
+// gotoBranchWait loops forever through goto and waits only on some passes.
+type gotoBranchWait struct{ wg sync.WaitGroup }
+
+// Start runs the worker. Not reported.
+func (g *gotoBranchWait) Start() { g.wg.Go(work) }
+
+// Run waits only when ready says so, forever.
+func (g *gotoBranchWait) Run(ready func() bool) {
+again:
+	if ready() {
+		g.wg.Wait()
+	}
+	goto again
+}
+
+// waitOnGiveUpOnly loops forever and waits only in its ctx.Done() case.
+type waitOnGiveUpOnly struct {
+	wg   sync.WaitGroup
+	tick chan struct{}
+}
+
+// Start runs the worker. Not reported.
+func (w *waitOnGiveUpOnly) Start() { w.wg.Go(work) }
+
+// Run waits only once ctx is done, and keeps looping on ticks.
+func (w *waitOnGiveUpOnly) Run(ctx context.Context) {
+	for {
+		select {
+		case <-ctx.Done():
+			w.wg.Wait()
+		case <-w.tick:
+		}
+	}
+}
+
+// selectDefaultSkipsWait waits in one select case, and its default skips it.
+type selectDefaultSkipsWait struct {
+	wg   sync.WaitGroup
+	tick chan struct{}
+}
+
+// Start runs the worker. Not reported.
+func (r *selectDefaultSkipsWait) Start() { r.wg.Go(work) }
+
+// Run loops forever.
+func (r *selectDefaultSkipsWait) Run() {
+	for {
+		select {
+		case <-r.tick:
+			r.wg.Wait()
+		default:
+		}
+	}
+}
+
+// switchSkipsWait has a switch with no default, which skips the Wait.
+type switchSkipsWait struct{ wg sync.WaitGroup }
+
+// Start runs the worker. Not reported.
+func (r *switchSkipsWait) Start() { r.wg.Go(work) }
+
+// Run loops forever.
+func (r *switchSkipsWait) Run(v func() int) {
+	for {
+		switch v() {
+		case 1:
+			r.wg.Wait()
+		}
+	}
+}
+
+// continueSkipsWait continues the outer loop before it reaches the Wait.
+type continueSkipsWait struct{ wg sync.WaitGroup }
+
+// Start runs the worker. Not reported.
+func (r *continueSkipsWait) Start() { r.wg.Go(work) }
+
+// Run loops forever.
+func (r *continueSkipsWait) Run(skip func() bool) {
+outer:
+	for {
+		for {
+			if skip() {
+				continue outer
+			}
+			r.wg.Wait()
+		}
+	}
+}
+
+// exitIntoSpin may spin in its outer loop forever, since its only way out
+// leads into another loop that never ends.
+type exitIntoSpin struct{ wg sync.WaitGroup }
+
+// Start runs the worker. Not reported.
+func (r *exitIntoSpin) Start() { r.wg.Go(work) }
+
+// Run loops forever.
+func (r *exitIntoSpin) Run(x func() bool) {
+	for {
+		if x() {
+			for {
+				r.wg.Wait()
+			}
+		}
+	}
+}

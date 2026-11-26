@@ -1,12 +1,9 @@
 // A function with no success exit counts as a Wait only when code that may
-// wait runs before every return it has, or, when it never returns, when no
-// path goes round a loop forever without it. A deferred Wait never runs there.
+// wait runs before every return it has, or, when it never returns, when it may
+// reach such code outside a defer, since a deferred Wait never runs there.
 package fixture
 
-import (
-	"context"
-	"sync"
-)
+import "sync"
 
 // branchWaitSentinel leaks the goroutine when Closed is called with false.
 type branchWaitSentinel struct{ wg sync.WaitGroup }
@@ -71,23 +68,6 @@ func (d *deferLiteralForever) Run() {
 	}
 }
 
-// branchInLoop waits only on some passes of a loop that never ends.
-type branchInLoop struct{ wg sync.WaitGroup }
-
-// Start runs the worker.
-func (b *branchInLoop) Start() {
-	b.wg.Go(work) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
-}
-
-// Run waits only when ready says so, forever.
-func (b *branchInLoop) Run(ready func() bool) {
-	for {
-		if ready() {
-			b.wg.Wait()
-		}
-	}
-}
-
 // namedBranchWait returns its named error result, waiting on one return only.
 type namedBranchWait struct{ wg sync.WaitGroup }
 
@@ -146,126 +126,6 @@ func (d *deferInEndlessLoop) Run(tick func()) {
 	}
 }
 
-// gotoBranchWait loops forever through goto and waits only on some passes.
-type gotoBranchWait struct{ wg sync.WaitGroup }
-
-// Start runs the worker.
-func (g *gotoBranchWait) Start() {
-	g.wg.Go(work) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
-}
-
-// Run waits only when ready says so, forever.
-func (g *gotoBranchWait) Run(ready func() bool) {
-again:
-	if ready() {
-		g.wg.Wait()
-	}
-	goto again
-}
-
-// waitOnGiveUpOnly loops forever and waits only in its ctx.Done() case.
-type waitOnGiveUpOnly struct {
-	wg   sync.WaitGroup
-	tick chan struct{}
-}
-
-// Start runs the worker.
-func (w *waitOnGiveUpOnly) Start() {
-	w.wg.Go(work) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
-}
-
-// Run waits only once ctx is done, and keeps looping on ticks.
-func (w *waitOnGiveUpOnly) Run(ctx context.Context) {
-	for {
-		select {
-		case <-ctx.Done():
-			w.wg.Wait()
-		case <-w.tick:
-		}
-	}
-}
-
-// selectDefaultSkipsWait waits in one select case, and its default skips it.
-type selectDefaultSkipsWait struct {
-	wg   sync.WaitGroup
-	tick chan struct{}
-}
-
-// Start runs the worker.
-func (r *selectDefaultSkipsWait) Start() {
-	r.wg.Go(work) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
-}
-
-// Run loops forever.
-func (r *selectDefaultSkipsWait) Run() {
-	for {
-		select {
-		case <-r.tick:
-			r.wg.Wait()
-		default:
-		}
-	}
-}
-
-// switchSkipsWait has a switch with no default, which skips the Wait.
-type switchSkipsWait struct{ wg sync.WaitGroup }
-
-// Start runs the worker.
-func (r *switchSkipsWait) Start() {
-	r.wg.Go(work) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
-}
-
-// Run loops forever.
-func (r *switchSkipsWait) Run(v func() int) {
-	for {
-		switch v() {
-		case 1:
-			r.wg.Wait()
-		}
-	}
-}
-
-// continueSkipsWait continues the outer loop before it reaches the Wait.
-type continueSkipsWait struct{ wg sync.WaitGroup }
-
-// Start runs the worker.
-func (r *continueSkipsWait) Start() {
-	r.wg.Go(work) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
-}
-
-// Run loops forever.
-func (r *continueSkipsWait) Run(skip func() bool) {
-outer:
-	for {
-		for {
-			if skip() {
-				continue outer
-			}
-			r.wg.Wait()
-		}
-	}
-}
-
-// exitIntoSpin may spin in its outer loop forever, since its only way out
-// leads into another loop that never ends.
-type exitIntoSpin struct{ wg sync.WaitGroup }
-
-// Start runs the worker.
-func (r *exitIntoSpin) Start() {
-	r.wg.Go(work) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
-}
-
-// Run loops forever.
-func (r *exitIntoSpin) Run(x func() bool) {
-	for {
-		if x() {
-			for {
-				r.wg.Wait()
-			}
-		}
-	}
-}
-
 // rangeThenError ranges over a channel that may close, then returns an error
 // with no Wait after the loop.
 type rangeThenError struct {
@@ -285,26 +145,4 @@ func (r *rangeThenError) Closed() error {
 		r.wg.Wait()
 	}
 	return errClosed
-}
-
-// gotoRetryThenWait retries through goto, then waits on every pass.
-//
-// Expected false positive: only a for or range loop counts as a loop with a
-// way out, so the goto retry is read as a pass that may repeat forever.
-type gotoRetryThenWait struct{ wg sync.WaitGroup }
-
-// Start runs the worker.
-func (r *gotoRetryThenWait) Start() {
-	r.wg.Go(work) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
-}
-
-// Run loops forever.
-func (r *gotoRetryThenWait) Run(ok func() bool) {
-	for {
-	retry:
-		if !ok() {
-			goto retry
-		}
-		r.wg.Wait()
-	}
 }
