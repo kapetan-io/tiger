@@ -4,7 +4,8 @@
 // embedding one, in a test, a helper or a subtest. Every success path waits,
 // and a deferred Wait runs when the test fails. A t.Fatal before the start
 // ends nothing, since nothing has started, and a TryGo reads t.FailNow as a
-// call that returns, so its path goes on to the Wait.
+// call that returns, so its path goes on to the Wait. A literal the test calls
+// directly runs on the test's goroutine, so its t.Fatal ends the test too.
 package fixture
 
 import (
@@ -189,4 +190,31 @@ func TestFatalInsideSubtestAfterStart(t *testing.T) {
 		wg.Go(work)
 		t.Fatal("subtest failed")
 	})
+}
+
+func TestCalledLiteralFatalOrWait(t *testing.T) {
+	var wg sync.WaitGroup
+	wg.Go(work)
+	func() {
+		if testing.Short() {
+			t.Fatal("x")
+		} else {
+			wg.Wait()
+		}
+	}()
+}
+
+func TestSavedLiteralFatalOrWait(t *testing.T) {
+	var wg sync.WaitGroup
+	wait := func() {
+		if testing.Short() {
+			t.Fatal("x")
+		} else {
+			wg.Wait()
+		}
+	}
+	wg.Go(work)
+	wait()
+	wait = func() {}
+	_ = wait
 }

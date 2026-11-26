@@ -352,7 +352,12 @@ func (o *owners) literalWaits(run literalRun, query flowQuery, always waiters) b
 	o.walking[literal] = true
 	defer delete(o.walking, literal)
 	fn := function{decl: o.index.DeclOf(literal), typ: literal.Type, body: literal.Body}
-	inner := flowQuery{group: query.group, held: held, subtests: run.within(query.subtests)}
+	inner := flowQuery{
+		group:       query.group,
+		held:        held,
+		failNowEnds: query.failNowEnds && run.subtest == nil,
+		subtests:    run.within(query.subtests),
+	}
 	unwaited, _ := o.uncovered(fn, inner, always)
 	return !unwaited
 }

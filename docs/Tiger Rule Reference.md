@@ -933,9 +933,14 @@ excuses nothing. A `t.Fatal` after the start inside the same literal, a `t.Run` 
 included, ends that literal's path and excuses the start the same way. A call to a helper that
 fails the test, such as `requireReady(t)`, is a call that returns, so the path goes on
 past it, and a helper that only fails the test never counts as waiting on a group. A
-literal that holds the `Wait` and that a call runs, such as a `t.Run` body, is read like
-that helper. A subtest that fails returns from `t.Run` to a parent that goes on, so the
-literal waits only when every path through it waits, `t.Fatal` paths included. A `TryGo` needs a `Wait` on some path, and a path
+`t.Run` body that holds the `Wait` is read like that helper. A subtest that fails returns
+from `t.Run` to a parent that goes on, so the body waits only when every path through it
+waits, `t.Fatal` paths included. Any other literal that holds the `Wait` and that a call
+runs, such as `func() { ... }()` or a saved literal called by name, runs on the test's
+own goroutine, so a `t.Fatal` in it ends the test as one written in place would, and a
+path through it needs no `Wait`. That holds only where a `t.Fatal` written in place at
+the call would excuse the start, so not after a deferred or `t.Cleanup` start, and not
+inside a `t.Run` body. A `TryGo` needs a `Wait` on some path, and a path
 through `t.Fatal` still goes on to it.
 
 A function that loops forever or returns only a non-nil error has no success path to
