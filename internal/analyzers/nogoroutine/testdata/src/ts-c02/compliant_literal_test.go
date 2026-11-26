@@ -1065,3 +1065,89 @@ func literalErrorWrappedIntoVar() error {
 	}
 	return nil
 }
+
+// literalErrorAppended appends the literal's error to a slice
+// and returns the joined slice.
+func literalErrorAppended() error {
+	var wg sync.WaitGroup
+	wg.Go(func() {})
+	var errs []error
+	errs = append(errs, func() error {
+		if testing.Short() {
+			return context.Canceled
+		}
+		wg.Wait()
+		return nil
+	}())
+	return errors.Join(errs...)
+}
+
+// literalErrorWrappedInReturn wraps the call itself in the returned
+// error.
+func literalErrorWrappedInReturn() error {
+	var wg sync.WaitGroup
+	wg.Go(func() {})
+	return fmt.Errorf("x: %w", func() error {
+		if testing.Short() {
+			return context.Canceled
+		}
+		wg.Wait()
+		return nil
+	}())
+}
+
+// literalErrorAliased copies the literal's error into another
+// variable and checks that one.
+func literalErrorAliased() error {
+	var wg sync.WaitGroup
+	wg.Go(func() {})
+	err := func() error {
+		if testing.Short() {
+			return context.Canceled
+		}
+		wg.Wait()
+		return nil
+	}()
+	e := err
+	if e != nil {
+		return e
+	}
+	return nil
+}
+
+// literalErrorReplacedWithNew returns a fresh error on the branch
+// where the literal's error is not nil.
+func literalErrorReplacedWithNew() error {
+	var wg sync.WaitGroup
+	wg.Go(func() {})
+	if err := func() error {
+		if testing.Short() {
+			return context.Canceled
+		}
+		wg.Wait()
+		return nil
+	}(); err != nil {
+		return errors.New("run failed")
+	}
+	return nil
+}
+
+// literalErrorWrappedBesideOther wraps the error into one of two
+// variables assigned together and returns it.
+func literalErrorWrappedBesideOther() error {
+	var wg sync.WaitGroup
+	wg.Go(func() {})
+	err := func() error {
+		if testing.Short() {
+			return context.Canceled
+		}
+		wg.Wait()
+		return nil
+	}()
+	if err != nil {
+		wrapped, other := fmt.Errorf("run: %w", err), errStop
+		_ = other
+		return errors.Join(wrapped)
+	}
+	return nil
+}

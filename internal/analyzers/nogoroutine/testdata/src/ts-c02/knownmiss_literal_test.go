@@ -2,10 +2,13 @@
 // the Go runs after the Wait or alongside it, a t.Fatal skips the Wait, or a
 // function around the literal returns only a non-nil error, which excuses the
 // literal's own unwaited success path, or a subtest reaches t.Parallel in a
-// way the check does not see.
+// way the check does not see, or a called literal's error is dropped in a way
+// the check reads as handling it.
 package fixture
 
 import (
+	"context"
+	"fmt"
 	"subtesthelp"
 	"sync"
 	"testing"
@@ -270,4 +273,74 @@ func TestParallelThroughOtherPackageAboveParallelSubtest(t *testing.T) {
 			wg.Wait()
 		})
 	})
+}
+
+func swallow(error) error {
+	return nil
+}
+
+func clearError(err *error) {
+	*err = nil
+}
+
+// literalErrorSwallowed leaks the goroutine.
+//
+// known-miss: the returned call mentions the error, so it is read as
+// returning a non-nil error, but swallow returns nil (ENG-1002).
+func literalErrorSwallowed() error {
+	var wg sync.WaitGroup
+	wg.Go(func() {})
+	err := func() error {
+		if testing.Short() {
+			return context.Canceled
+		}
+		wg.Wait()
+		return nil
+	}()
+	if err != nil {
+		return swallow(err)
+	}
+	return nil
+}
+
+// literalErrorClearedThroughPointer leaks the goroutine.
+//
+// known-miss: clearError sets the error to nil through a pointer,
+// which the check does not see, so the nil branch counts as waited (ENG-1002).
+func literalErrorClearedThroughPointer() error {
+	var wg sync.WaitGroup
+	wg.Go(func() {})
+	err := func() error {
+		if testing.Short() {
+			return context.Canceled
+		}
+		wg.Wait()
+		return nil
+	}()
+	clearError(&err)
+	if err == nil {
+		return nil
+	}
+	return err
+}
+
+// literalErrorClearedInClosure leaks the goroutine.
+//
+// known-miss: the closure sets the error to nil, which the check does
+// not see, so the wrapped return counts as returning a non-nil error (ENG-1002).
+func literalErrorClearedInClosure() error {
+	var wg sync.WaitGroup
+	wg.Go(func() {})
+	err := func() error {
+		if testing.Short() {
+			return context.Canceled
+		}
+		wg.Wait()
+		return nil
+	}()
+	if err != nil {
+		func() { err = nil }()
+		return fmt.Errorf("%w", err)
+	}
+	return nil
 }

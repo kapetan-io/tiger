@@ -1359,3 +1359,43 @@ func literalErrorOnlyInClosure() error {
 	}
 	return nil
 }
+
+func maybe(bool) error {
+	return nil
+}
+
+// literalErrorAsBool leaks the goroutine: the error branch
+// returns a call that sees only whether the error was set, and returns nil.
+func literalErrorAsBool() error {
+	var wg sync.WaitGroup
+	wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+	err := func() error {
+		if testing.Short() {
+			return context.Canceled
+		}
+		wg.Wait()
+		return nil
+	}()
+	if err != nil {
+		failed := err != nil
+		return maybe(failed)
+	}
+	return nil
+}
+
+// TestLiteralErrorMatched leaks the goroutine: errors.Is fails the test
+// only on one error, and any other non-nil error lets the test go on.
+func TestLiteralErrorMatched(t *testing.T) {
+	var wg sync.WaitGroup
+	wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+	err := func() error {
+		if testing.Short() {
+			return context.Canceled
+		}
+		wg.Wait()
+		return nil
+	}()
+	if errors.Is(err, context.Canceled) {
+		t.Fatal(err)
+	}
+}

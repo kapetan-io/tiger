@@ -46,6 +46,7 @@ type stateKey struct {
 type literalError struct {
 	call  *ast.CallExpr
 	bound *types.Var
+	alias *types.Var
 }
 
 type nonNilError struct {
@@ -288,7 +289,7 @@ func (o *owners) uncovered(fn function, query flowQuery, always waiters) (unwait
 			}
 			exits = true
 			handedUp := !query.errorReturnsNeedWait &&
-				o.handsUpNamedResult(fn, state.block, state.unchecked)
+				o.handsUpError(fn, state.block, state.unchecked)
 			if !state.covered && !handedUp && !query.anyPath {
 				return true, true
 			}
@@ -327,9 +328,7 @@ func (o *owners) walk(fn function, state flowState, query flowQuery, always wait
 			state.failed = true
 			return state
 		}
-		if o.reassigns(node, state.unchecked) {
-			state.unchecked = literalError{}
-		}
+		state.unchecked = o.reassigned(node, state.unchecked)
 		state.nonNil = o.carried(fn, node, state.nonNil)
 		erring, waits := o.waitsIn(node, query, always)
 		if !waits && erring != nil && state.passed {
@@ -354,16 +353,10 @@ func (o *owners) followError(
 	switch stmt := node.(type) {
 	case *ast.ReturnStmt:
 		handedUp := !query.errorReturnsNeedWait && slices.ContainsFunc(stmt.Results,
-			func(result ast.Expr) bool { return ast.Unparen(result) == call })
+			func(result ast.Expr) bool { return encloses(result, call) })
 		state.covered = state.covered || handedUp
-	case *ast.AssignStmt:
-		if len(stmt.Rhs) == 1 && ast.Unparen(stmt.Rhs[0]) == call {
-			state.unchecked = o.boundError(call, stmt.Lhs[len(stmt.Lhs)-1])
-		}
-	case *ast.ValueSpec:
-		if len(stmt.Values) == 1 && ast.Unparen(stmt.Values[0]) == call {
-			state.unchecked = o.boundError(call, stmt.Names[len(stmt.Names)-1])
-		}
+	case *ast.AssignStmt, *ast.ValueSpec:
+		state.unchecked = o.boundError(call, assignmentIn(node))
 	case ast.Expr:
 		state.unchecked = literalError{call: call}
 	}
@@ -371,35 +364,69 @@ func (o *owners) followError(
 	return state
 }
 
-func (o *owners) boundError(call *ast.CallExpr, target ast.Expr) literalError {
-	bound := o.index.Object(target)
-	if bound == nil {
-		return literalError{}
+func (o *owners) boundError(call *ast.CallExpr, found assignment) literalError {
+	for i, target := range found.targets {
+		value := found.valueOf(i)
+		bound := o.index.Object(target)
+		if value != nil && bound != nil && encloses(value, call) && holdsError(bound) {
+			return literalError{call: call, bound: bound}
+		}
 	}
-	return literalError{call: call, bound: bound}
+	return literalError{}
 }
 
-func (o *owners) reassigns(node ast.Node, unchecked literalError) bool {
-	stmt, ok := node.(*ast.AssignStmt)
-	if !ok || unchecked.bound == nil {
-		return false
+func (o *owners) reassigned(node ast.Node, unchecked literalError) literalError {
+	if unchecked.bound == nil {
+		return unchecked
 	}
-	return slices.ContainsFunc(stmt.Lhs, func(target ast.Expr) bool {
-		return o.index.Object(target) == unchecked.bound
+	found := assignmentIn(node)
+	for i, target := range found.targets {
+		assigned := o.index.Object(target)
+		value := found.valueOf(i)
+		names := value != nil && o.mentions(value, unchecked.bound)
+		ident, plain := ast.Unparen(value).(*ast.Ident)
+		switch {
+		case assigned == nil:
+		case assigned == unchecked.bound && names:
+		case assigned == unchecked.bound || assigned == unchecked.alias:
+			return literalError{}
+		case plain && o.index.Object(ident) == unchecked.bound && holdsError(assigned):
+			unchecked.alias = assigned
+		}
+	}
+	return unchecked
+}
+
+func holdsError(local *types.Var) bool {
+	errorType := types.Universe.Lookup("error").Type()
+	if slice, ok := local.Type().Underlying().(*types.Slice); ok {
+		return types.Identical(slice.Elem(), errorType)
+	}
+	return types.Identical(local.Type(), errorType)
+}
+
+func encloses(expr ast.Expr, call *ast.CallExpr) bool {
+	found := false
+	ast.Inspect(expr, func(node ast.Node) bool {
+		if node == call {
+			found = true
+		}
+		_, isLiteral := node.(*ast.FuncLit)
+		return !found && !isLiteral
 	})
+	return found
 }
 
 func (o *owners) carried(fn function, node ast.Node, nonNil nonNilError) nonNilError {
 	if nonNil == (nonNilError{}) {
 		return nonNil
 	}
-	stmt := assignmentIn(node)
-	uses := slices.ContainsFunc(stmt.values, func(value ast.Expr) bool {
-		return o.carries(value, nonNil)
-	})
+	found := assignmentIn(node)
 	named := o.namedError(fn)
-	for _, target := range stmt.targets {
+	for i, target := range found.targets {
 		assigned := o.index.Object(target)
+		value := found.valueOf(i)
+		uses := value != nil && assigned != nil && o.carries(value, nonNil) && holdsError(assigned)
 		switch {
 		case assigned == nil:
 		case assigned == named && uses:
@@ -434,6 +461,16 @@ func assignmentIn(node ast.Node) assignment {
 		return found
 	}
 	return assignment{}
+}
+
+func (a assignment) valueOf(i int) ast.Expr {
+	switch {
+	case len(a.values) == len(a.targets):
+		return a.values[i]
+	case len(a.values) == 1 && i == len(a.targets)-1:
+		return a.values[0]
+	}
+	return nil
 }
 
 func (o *owners) carries(expr ast.Expr, nonNil nonNilError) bool {
@@ -502,15 +539,34 @@ func (o *owners) returnsNonNilError(fn function, block *cfg.Block, nonNil nonNil
 		named := o.namedError(fn)
 		return named != nil && (named == nonNil.bound || named == nonNil.named)
 	}
-	return o.carries(ret.Results[len(ret.Results)-1], nonNil)
+	last := ret.Results[len(ret.Results)-1]
+	return o.carries(last, nonNil) || o.makesError(last)
 }
 
-func (o *owners) handsUpNamedResult(fn function, block *cfg.Block, unchecked literalError) bool {
-	ret := finalReturn(block)
-	if unchecked.bound == nil || ret == nil || len(ret.Results) != 0 {
+func (o *owners) makesError(expr ast.Expr) bool {
+	call, ok := ast.Unparen(expr).(*ast.CallExpr)
+	if !ok {
 		return false
 	}
-	return o.namedError(fn) == unchecked.bound
+	selector, ok := ast.Unparen(call.Fun).(*ast.SelectorExpr)
+	if !ok {
+		return false
+	}
+	name := o.calleeName(selector)
+	return name == "errors.New" || name == "fmt.Errorf"
+}
+
+func (o *owners) handsUpError(fn function, block *cfg.Block, unchecked literalError) bool {
+	ret := finalReturn(block)
+	if unchecked.bound == nil || ret == nil || !o.hasErrorResult(fn) {
+		return false
+	}
+	if len(ret.Results) == 0 {
+		named := o.namedError(fn)
+		return named != nil && (named == unchecked.bound || named == unchecked.alias)
+	}
+	last := ret.Results[len(ret.Results)-1]
+	return o.mentions(last, unchecked.bound) || o.mentions(last, unchecked.alias)
 }
 
 func finalReturn(block *cfg.Block) *ast.ReturnStmt {
@@ -556,7 +612,8 @@ func (o *owners) comparedWithNil(cond *ast.BinaryExpr, unchecked literalError) b
 	if result == unchecked.call {
 		return true
 	}
-	return unchecked.bound != nil && o.index.Object(result) == unchecked.bound
+	compared := o.index.Object(result)
+	return compared != nil && (compared == unchecked.bound || compared == unchecked.alias)
 }
 
 func covers(node ast.Node, start *ast.SelectorExpr) bool {
@@ -631,6 +688,9 @@ func (o *owners) waitOf(run literalRun, query flowQuery, always waiters) literal
 	inner := flowQuery{group: query.group, held: held, subtests: run.within(query.subtests)}
 	if unwaited, _ := o.uncovered(fn, inner, always); unwaited {
 		return givesNoWait
+	}
+	if !o.hasErrorResult(fn) {
+		return waitsOnEveryPath
 	}
 	inner.errorReturnsNeedWait = true
 	if unwaited, _ := o.uncovered(fn, inner, always); unwaited {
