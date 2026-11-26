@@ -956,6 +956,10 @@ func TestGolangciAuditPassesAConfigThatDiffersOnlyWhereAllowed(t *testing.T) {
 			"            - path: internal/client/\n" +
 			"              linters:\n                - mnd\n" +
 			"        presets:\n"},
+		[2]string{"version: \"2\"\n", "version: \"2\"\nrun:\n    timeout: 5m\n" +
+			"    concurrency: 4\noutput:\n    formats:\n        text:\n" +
+			"            path: stdout\n    sort-order:\n        - file\n" +
+			"    show-stats: true\n"},
 	)
 
 	got := run(t, "golangci", "-C", dir,
@@ -1310,5 +1314,77 @@ func TestGolangciOffStillReportsAMisshapenExclusionsBlock(t *testing.T) {
 	assert.Equal(t, "linters.exclusions isn't laid out as in tiger's baseline, which holds "+
 		"keys under it — copy linters.exclusions from tiger golangci --print\n"+
 		"tiger: 1 auto rules unenforced\n", got.stdout)
+	assert.Empty(t, got.stderr)
+}
+
+// TestGolangciAuditPassesGolangciLintDefaults covers keys set to the value
+// golangci-lint already uses when the key is absent, or that only change
+// warnings.
+//
+// Goal: each passes, since it hides nothing, and the value that does hide
+// findings is still reported.
+func TestGolangciAuditPassesGolangciLintDefaults(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		edit [2]string
+	}{
+		{
+			name: "testsLinted",
+			edit: [2]string{"version: \"2\"\n", "version: \"2\"\nrun:\n    tests: true\n"},
+		},
+		{
+			name: "allIssuesReported",
+			edit: [2]string{"    max-same-issues: 0\n", "    max-same-issues: 0\n    new: false\n"},
+		},
+		{
+			name: "unusedExclusionsWarned",
+			edit: [2]string{"    exclusions:\n", "    exclusions:\n        warn-unused: true\n"},
+		},
+		{
+			name: "unusedFormatterExclusionsWarned",
+			edit: [2]string{
+				"formatters:\n",
+				"formatters:\n    exclusions:\n        warn-unused: false\n",
+			},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			got := run(t, "golangci", "-C", initThenEdit(t, test.edit))
+			assert.Equal(t, command.ExitClean, got.code)
+			assert.Empty(t, got.stdout)
+			assert.Empty(t, got.stderr)
+		})
+	}
+
+	got := run(t, "golangci", "-C", initThenEdit(t, [2]string{
+		"    max-same-issues: 0\n", "    max-same-issues: 0\n    new: true\n",
+	}))
+	assert.Equal(t, command.ExitFindings, got.code)
+	assert.Equal(t, "issues.new is set, but tiger's baseline doesn't set it — remove issues.new\n"+
+		"tiger: 1 auto rules unenforced\n", got.stdout)
+}
+
+// TestGolangciOffMatchesSpacedNamesInADisableString covers a text-form
+// linters.disable with spaces after its commas.
+//
+// Goal: a staged standard linter written that way has its settings left
+// unaudited, as in the list form.
+func TestGolangciOffMatchesSpacedNamesInADisableString(t *testing.T) {
+	dir := initThenEdit(t,
+		[2]string{
+			"    default: standard\n",
+			"    default: standard\n    disable: \"lll, errcheck\"\n",
+		},
+		[2]string{"        - lll\n", ""},
+		[2]string{
+			"        errcheck:\n            check-blank: true\n" +
+				"            check-type-assertions: true\n",
+			"",
+		},
+	)
+
+	got := run(t, "golangci", "-C", dir, "--off", "errcheck,lll")
+	assert.Equal(t, command.ExitClean, got.code)
+	assert.Empty(t, got.stdout)
 	assert.Empty(t, got.stderr)
 }

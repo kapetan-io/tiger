@@ -73,9 +73,11 @@ The baseline sets govet's `enable-all` for the shadow check TS-S14 needs and dis
 
 Outside the `linters.settings` and `formatters.settings` blocks, the audit compares every key
 with the baseline and names the one that differs. A config may change only the two `enable`
-lists, `linters.default`, `issues.uniq-by-line` and `linters.exclusions.rules`, and may add
-`linters.exclusions.generated: strict` or `disable`, or the `common-false-positives` preset, which
-hide nothing the baseline reports. A baseline linter listed under `linters.disable` is reported
+lists, `linters.default`, `issues.uniq-by-line`, `linters.exclusions.rules`, `run.timeout`,
+`run.concurrency` and the `output` block. It may also add keys that hide nothing the baseline
+reports: `linters.exclusions.generated: strict` or `disable`, the `common-false-positives`
+preset, `warn-unused` under either `exclusions` block, and golangci-lint's own defaults
+`run.tests: true` and `issues.new: false`. A baseline linter listed under `linters.disable` is reported
 under each rule it enforces, like a linter missing from `linters.enable`. Any other key that
 differs is a finding. Some of those keys,
 such as `linters.exclusions.paths` or `run.tests: false`, hide findings while every linter still

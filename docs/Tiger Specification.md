@@ -1941,9 +1941,11 @@ writes that config for a project that has none, `tiger golangci --print` writes 
 merging into an existing one, and `tiger golangci` audits the project's config against it. The audit
 compares exactly, so a looser value and a stricter one both fail. Within the settings blocks it
 checks the settings each rule names. Every other key must match the baseline too, except the
-`enable` lists, `linters.default`, `issues.uniq-by-line` and `linters.exclusions.rules`, which a
-project may change. A project may also add `linters.exclusions.generated: strict` or `disable`,
-and the `common-false-positives` preset, since neither hides a finding the baseline reports. Any
+`enable` lists, `linters.default`, `issues.uniq-by-line`, `linters.exclusions.rules`,
+`run.timeout`, `run.concurrency` and the `output` block, which a project may change. A project may
+also add `linters.exclusions.generated: strict` or `disable`, the `common-false-positives` preset,
+`warn-unused` under either `exclusions` block, `run.tests: true` and `issues.new: false`, since
+none of them hides a finding the baseline reports. Any
 other key that differs, such as `linters.exclusions.paths`, is reported by name. `--off` names
 linters a project leaves off on purpose, and the audit does not report them missing.
 

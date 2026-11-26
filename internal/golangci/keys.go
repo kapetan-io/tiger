@@ -19,11 +19,18 @@ var changeableKeys = []string{
 	"linters.exclusions.rules",
 	"linters.settings",
 	"formatters.settings",
+	"run.timeout",
+	"run.concurrency",
+	"output",
 }
 
 var harmlessValues = map[string][]any{
-	"linters.exclusions.generated": {"strict", "disable"},
-	"linters.exclusions.presets":   {"common-false-positives"},
+	"linters.exclusions.generated":      {"strict", "disable"},
+	"linters.exclusions.presets":        {"common-false-positives"},
+	"linters.exclusions.warn-unused":    {true, false},
+	"formatters.exclusions.warn-unused": {true, false},
+	"run.tests":                         {true},
+	"issues.new":                        {false},
 }
 
 type keyTask struct {
@@ -163,7 +170,11 @@ func disabledNames(value any) ([]string, bool) {
 	case nil:
 		return nil, true
 	case string:
-		return strings.Split(value, ","), true
+		names := strings.Split(value, ",")
+		for i := range names {
+			names[i] = strings.TrimSpace(names[i])
+		}
+		return names, true
 	case []any:
 		names := []string{}
 		for _, name := range value {
@@ -182,7 +193,6 @@ func disabledNames(value any) ([]string, bool) {
 func (a *keyAudit) disabledLinters(names []string) {
 	autoRules := auto.AutoRules()
 	for _, name := range names {
-		name = strings.TrimSpace(name)
 		if slices.Contains(a.off, name) {
 			continue
 		}
