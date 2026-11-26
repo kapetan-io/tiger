@@ -68,7 +68,7 @@ eats a gigabyte and dies far from the cause.
 "all loops and all queues must have a fixed upper bound".
 
 A loop with no stated limit assumes its input is always well-formed. When it is not, the loop
-hangs and reports nothing. In trials on two real codebases, two git tags pointing at each other spun a git server's
+hangs and reports nothing. [In trials](docs/Tiger%20Rule%20Reference.md#ts-s02--every-loop-has-an-upper-bound) on two real codebases, two git tags pointing at each other spun a git server's
 worker goroutine at full speed forever, a denial of service that could be triggered remotely.
 
 ![TS-S02 loop bound: before, a for loop runs until converged returns true, so if refine stalls it never ends and reports nothing; after, the loop counts tries up to triesMax and returns errNoConvergence when it runs out](docs/loop-bound.svg)
@@ -81,8 +81,9 @@ threads or waiting for them. TigerBeetle runs on a single-threaded event loop, w
 goroutine with a two-letter keyword, so Tiger adds the rule.
 
 A goroutine that nothing waits for keeps running after its caller moves on. A server's memory
-climbs for no clear reason, and a shutdown can finish while the goroutine is still working. In trials, a daemon's `WaitGroup` went
-unwaited, so its `Shutdown` returned before its HTTP goroutines had exited.
+climbs for no clear reason, and a shutdown can finish while the goroutine is still working.
+[In trials](docs/Tiger%20Rule%20Reference.md#ts-c02--every-goroutine-starts-through-a-group-that-waits-for-it), a daemon's
+`WaitGroup` went unwaited, so its `Shutdown` could return before its HTTP goroutines exited.
 
 ![TS-C02 goroutine group: before, Launch starts a goroutine with a bare go statement and returns, so nothing waits for it and it can outlive its caller; after, Start launches it with wg.Go and Shutdown closes stop and calls wg.Wait on the same group until it exits](docs/goroutine-group.svg)
 
@@ -91,13 +92,15 @@ unwaited, so its `Shutdown` returned before its HTTP goroutines had exited.
 **From:** Tiger. Neither [Power of Ten](https://spinroot.com/gerard/pdf/P10.pdf) nor
 [TigerStyle](https://github.com/tigerbeetle/tigerbeetle/blob/main/docs/TIGER_STYLE.md) requires a switch to
 handle every value of its type. Go has no enum type, so the compiler cannot check that a switch
-covers every constant, and Tiger adds the rule. The crash in the default arm follows
-TigerStyle's Safety section, which says "The only correct way to handle corrupt code is to crash."
+covers every constant, and Tiger adds the rule. The default arm follows TigerStyle's Safety
+section, which asks whether an `if` needs "a matching `else` branch, to ensure that the positive
+and negative spaces are handled or asserted".
 
 Adding a value to a type should break every switch that has not handled it. Without a default arm,
-the new value falls out of the switch and the code carries on as if nothing happened, with no error. In
-trials, two storage backends silently dropped an action this way, and a git pack writer wrote an
-invalid type code for a value it did not expect.
+the new value falls out of the switch and the code carries on as if nothing happened, with no error.
+[In trials](docs/Tiger%20Rule%20Reference.md#ts-s08--a-switch-over-a-closed-set-ends-in-assertunreachable), two storage
+backends silently dropped an action this way, and a pack writer wrote an invalid type code for a
+value it did not expect.
 
 ![TS-S08 closed switch: before, a switch over Status handles Active and Inactive with no default arm, so a new StatusArchived falls out and returns an empty string with no error; after, golangci-lint's exhaustive check reports the missing StatusArchived case, and a default arm that calls assert.Unreachable crashes if the value still arrives at run time](docs/closed-switch.svg)
 
