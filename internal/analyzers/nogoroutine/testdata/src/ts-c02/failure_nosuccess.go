@@ -1,6 +1,7 @@
-// A function with no success exit counts as a Wait only when code that may
-// wait runs before every return it has, or, when it never returns, when it may
-// reach such code outside a defer, since a deferred Wait never runs there.
+// A function with no success exit counts as a Wait only when some return it
+// has is reached only after code that may wait, or, when it never returns,
+// when it may reach such code outside a defer, since a deferred Wait never
+// runs there.
 package fixture
 
 import (
@@ -39,23 +40,6 @@ func (d *deferForever) Run() {
 	}
 }
 
-// errorBeforeDefer returns an error before it reaches its deferred Wait.
-type errorBeforeDefer struct{ wg sync.WaitGroup }
-
-// Start runs the worker.
-func (e *errorBeforeDefer) Start() {
-	e.wg.Go(work) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
-}
-
-// Closed reports the flush error before it defers the Wait.
-func (e *errorBeforeDefer) Closed(flush func() error) error {
-	if err := flush(); err != nil {
-		return err
-	}
-	defer e.wg.Wait()
-	return errClosed
-}
-
 // deferLiteralForever defers a literal that waits, and never returns.
 type deferLiteralForever struct{ wg sync.WaitGroup }
 
@@ -69,24 +53,6 @@ func (d *deferLiteralForever) Run() {
 	defer func() { d.wg.Wait() }()
 	for {
 	}
-}
-
-// namedBranchWait returns its named error result, waiting on one return only.
-type namedBranchWait struct{ wg sync.WaitGroup }
-
-// Start runs the worker.
-func (n *namedBranchWait) Start() {
-	n.wg.Go(work) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
-}
-
-// Closed waits only when c is set, and returns the set error either way.
-func (n *namedBranchWait) Closed(c bool) (err error) {
-	err = errClosed
-	if c {
-		n.wg.Wait()
-		return err
-	}
-	return err
 }
 
 // stopWithoutWait returns its stop error from a select loop without waiting.

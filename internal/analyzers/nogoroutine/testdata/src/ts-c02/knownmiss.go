@@ -223,7 +223,8 @@ func (l *literalBranchWait) Closed(wait bool) error {
 }
 
 // deferPanicForever never runs its deferred Wait unless it panics, and a
-// path that ends in panic is read as a success path the defer covers.
+// path that ends in panic is read as a success path the defer covers
+// (ENG-998).
 type deferPanicForever struct{ wg sync.WaitGroup }
 
 // Start runs the worker. Not reported.
@@ -240,7 +241,7 @@ func (d *deferPanicForever) Run(bad func() bool) {
 }
 
 // deferSelectForever blocks forever in select {}, which is read as a success
-// path the deferred Wait covers.
+// path the deferred Wait covers (ENG-998).
 type deferSelectForever struct{ wg sync.WaitGroup }
 
 // Start runs the worker. Not reported.
@@ -355,5 +356,94 @@ func (r *exitIntoSpin) Run(x func() bool) {
 				r.wg.Wait()
 			}
 		}
+	}
+}
+
+// errorBeforeDefer returns an error before it reaches its deferred Wait.
+type errorBeforeDefer struct{ wg sync.WaitGroup }
+
+// Start runs the worker.
+//
+// known-miss: a function with no success exit counts as a Wait when one of
+// its returns is reached only after waiting, so an early error return that
+// skips the Wait is read as a failure path, the same as a guard in Close
+// (guardThenWait); namedBranchWait shares this note (ENG-1003).
+func (e *errorBeforeDefer) Start() { e.wg.Go(work) }
+
+// Closed reports the flush error before it defers the Wait.
+func (e *errorBeforeDefer) Closed(flush func() error) error {
+	if err := flush(); err != nil {
+		return err
+	}
+	defer e.wg.Wait()
+	return errClosed
+}
+
+// namedBranchWait returns its named error result, waiting on one return only.
+type namedBranchWait struct{ wg sync.WaitGroup }
+
+// Start runs the worker. Not reported.
+func (n *namedBranchWait) Start() { n.wg.Go(work) }
+
+// Closed waits only when c is set, and returns the set error either way.
+func (n *namedBranchWait) Closed(c bool) (err error) {
+	err = errClosed
+	if c {
+		n.wg.Wait()
+		return err
+	}
+	return err
+}
+
+// literalReturnsBranchWait calls a literal that returns only an error and
+// waits on one branch; a called literal is judged by whether it may wait.
+type literalReturnsBranchWait struct{ wg sync.WaitGroup }
+
+// Start runs the worker. Not reported.
+func (l *literalReturnsBranchWait) Start() { l.wg.Go(work) }
+
+// Close runs the literal and drops its error.
+func (l *literalReturnsBranchWait) Close(wait bool) {
+	_ = func() error {
+		if wait {
+			l.wg.Wait()
+		}
+		return errClosed
+	}()
+}
+
+// literalDeferForever calls a literal that defers its Wait and loops forever;
+// a called literal is judged by whether it may wait.
+type literalDeferForever struct{ wg sync.WaitGroup }
+
+// Start runs the worker. Not reported.
+func (l *literalDeferForever) Start() { l.wg.Go(work) }
+
+// Close runs the endless literal.
+func (l *literalDeferForever) Close() {
+	func() {
+		defer l.wg.Wait()
+		for {
+		}
+	}()
+}
+
+// helperDeferForever calls a same-package helper whose only Wait is deferred
+// before an endless loop; in a function with no success path, a call counts
+// when it may wait.
+type helperDeferForever struct{ wg sync.WaitGroup }
+
+// Start runs the worker. Not reported.
+func (h *helperDeferForever) Start() { h.wg.Go(work) }
+
+// Closed spins and reports the group closed.
+func (h *helperDeferForever) Closed() error {
+	h.spin()
+	return errClosed
+}
+
+func (h *helperDeferForever) spin() {
+	defer h.wg.Wait()
+	for {
 	}
 }

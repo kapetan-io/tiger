@@ -20,36 +20,38 @@ import (
 // another goleak function or calling it inside an `if false` body checks
 // nothing (ts-c03verify, ts-c03dead).
 //
-// Goal, TS-C02: a Wait inside a select case on ctx.Done() is the early
-// return of a caller that gave up, so it does not count unless the case also
-// holds the start (fanOutOnExpiry). A path through that case needs no Wait,
-// but only after the start, only when the start is outside the case, and
-// only in a function that waits on the group elsewhere (expiredBeforeGo,
-// expiredBeforeTryGo, startInExpired, expiredNoWaitAnywhere, and the
-// expiredOnlyIdle type, whose Idle method never waits); a goroutine waiting
-// on its own group never finishes (waitsOnItself); TryGo needs a Wait on
-// only some path after it, since the path where it returned false started
-// nothing (tryGoWaited); a return of a non-nil error is the failure path, so
-// it needs no Wait (startThenOnlyError), and neither does a path ending in
+// Goal, TS-C02: a Wait inside a select case on ctx.Done() is the early return
+// of a caller that gave up, so it does not count unless the case also holds
+// the start (fanOutOnExpiry). A path through that case
+// needs no Wait, but only after the start, only when the start is outside the
+// case, and only in a function that waits on the group elsewhere
+// (expiredBeforeGo, expiredBeforeTryGo, startInExpired, expiredNoWaitAnywhere,
+// and the expiredOnlyIdle type, whose Idle method never waits); a goroutine waiting on its
+// own group never finishes (waitsOnItself); TryGo needs a Wait on only some
+// path after it, since the path where it returned false started nothing
+// (tryGoWaited); a return of a non-nil error is the failure path, so it
+// needs no Wait (startThenOnlyError), and neither does a path ending in
 // t.Fatal, t.Fatalf or t.FailNow, which fails the test
-// (compliant_fatal_test.go), but a function that loops forever or returns
-// only a non-nil error counts as a Wait only when every return it has first
-// runs code that may wait on the group, or, when it has none, when some path
-// may reach such code outside a defer, since a deferred call never runs
-// (failure_nosuccess.go, compliant_nosuccess.go). Code may wait on the group
-// through a Wait called directly or through a local bound to the Wait method
-// value, a same-package function that may wait on it, a literal it runs
-// (including through sync.Once.Do), a same-package function it hands the
-// group that may wait on it, or a call it cannot follow that it hands the
-// group, but not a builtin or a conversion (failure_nowait.go,
-// failure_nowait_more.go, compliant_nowait.go, compliant_handoff.go); a Wait
-// after a call that never returns, a function that never returns and waits
-// on one branch, case or pass of its loop only, a Wait in a sync.Once that
-// already fired, a same-package function or literal called with its Wait on
-// one branch only, and a group handed to a call it cannot follow that never
-// waits (knownmiss.go); a path ending in panic never returns and should need
-// none either, but it and select {} are read as success paths, so a deferred
-// Wait covers them (knownmiss.go, ENG-998).
+// (compliant_fatal_test.go), but a function that loops forever or
+// returns only a non-nil error counts as a Wait only when one of its returns
+// is reached only after code that may wait on the group, or, when it never
+// returns, when some path may reach such code outside a defer, since a
+// deferred call never runs (failure_nosuccess.go, compliant_nosuccess.go).
+// Code may wait on the group through a Wait called directly or through a local
+// bound to the Wait method value, a same-package function that may wait on
+// it, a literal it runs (including through sync.Once.Do), a same-package
+// function it hands the group that may wait on it, or a call it cannot follow
+// that it hands the group, but not a builtin or a conversion
+// (failure_nowait.go, failure_nowait_more.go, compliant_nowait.go,
+// compliant_handoff.go); an early error return that skips the Wait another
+// return runs (ENG-1003), a function that never returns and waits on one
+// branch, case or pass of its loop only, a same-package function or literal
+// called with its Wait on one branch only or deferred before a loop that
+// never ends, a Wait after a call that never returns, a Wait in a sync.Once
+// that already fired, and a group handed to a call it cannot follow that
+// never waits are documented gaps (knownmiss.go); a path ending in panic never
+// returns and should need none either, but it and select {} are read as
+// success paths (falsepositive_panic.go, knownmiss.go, ENG-998).
 //
 // Goal, TS-C02: a function literal is a function. A start inside a literal is
 // waited when a Wait follows it on every success path of that literal, or of

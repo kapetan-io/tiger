@@ -228,6 +228,7 @@ func (o *owners) uncovered(fn function, query flowQuery, always waiters) (unwait
 		return false, false
 	}
 	query = o.withShutdown(fn, query, always)
+	returns := make([]returnCover, len(graph.Blocks))
 	seen := map[stateKey]bool{}
 	work := []flowState{{block: graph.Blocks[0], passed: query.start == nil}}
 	i := 0
@@ -257,6 +258,10 @@ func (o *owners) uncovered(fn function, query flowQuery, always waiters) (unwait
 				continue
 			}
 			exits = true
+			if query.noSuccess {
+				returns[state.block.Index].reach(state)
+				continue
+			}
 			if !state.covered && !query.anyPath {
 				return true, true
 			}
@@ -269,7 +274,24 @@ func (o *owners) uncovered(fn function, query flowQuery, always waiters) (unwait
 		}
 	}
 	assert.Ok(i == len(work), "uncovered: worklist reached worklist.NodesMax")
+	if query.noSuccess && exits {
+		return !slices.ContainsFunc(returns, returnCover.waited), true
+	}
 	return query.anyPath, exits
+}
+
+type returnCover struct {
+	covered   bool
+	uncovered bool
+}
+
+func (r *returnCover) reach(state flowState) {
+	r.covered = r.covered || state.covered
+	r.uncovered = r.uncovered || !state.covered
+}
+
+func (r returnCover) waited() bool {
+	return r.covered && !r.uncovered
 }
 
 func (o *owners) withShutdown(fn function, query flowQuery, always waiters) flowQuery {

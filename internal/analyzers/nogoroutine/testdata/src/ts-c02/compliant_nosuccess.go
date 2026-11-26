@@ -1,9 +1,11 @@
-// A function with no success exit that waits before every return it has, or
-// that never returns and may reach a Wait outside a defer, counts as a Wait.
+// A function with no success exit counts as a Wait when some return it has is
+// reached only after code that may wait, or, when it never returns, when it
+// may reach a Wait outside a defer.
 package fixture
 
 import (
 	"context"
+	"errors"
 	"sync"
 )
 
@@ -354,4 +356,91 @@ func (w *waitInDeferArgument) Run(use func(error)) {
 	defer use(func() error { w.wg.Wait(); return nil }())
 	for {
 	}
+}
+
+var errStopped = errors.New("stopped")
+
+// guardThenWait returns errClosed on a second Close, and otherwise waits and
+// returns the stored error; the guard return is a failure path.
+type guardThenWait struct {
+	wg     sync.WaitGroup
+	closed bool
+	err    error
+}
+
+// Start runs the worker.
+func (g *guardThenWait) Start() { g.wg.Go(work) }
+
+// Close waits unless it already closed.
+func (g *guardThenWait) Close() error {
+	if g.closed {
+		return errClosed
+	}
+	g.closed = true
+	g.wg.Wait()
+	return g.err
+}
+
+// guardThenSentinel returns a sentinel error from both its guard and its
+// waiting return.
+type guardThenSentinel struct {
+	wg     sync.WaitGroup
+	closed bool
+}
+
+// Start runs the worker.
+func (g *guardThenSentinel) Start() { g.wg.Go(work) }
+
+// Close waits unless it already closed.
+func (g *guardThenSentinel) Close() error {
+	if g.closed {
+		return errClosed
+	}
+	g.wg.Wait()
+	return errStopped
+}
+
+// flushThenStopError returns its flush error before it waits, and the stop
+// error after.
+type flushThenStopError struct {
+	wg    sync.WaitGroup
+	flush func() error
+	stop  func() error
+}
+
+// Start runs the worker.
+func (f *flushThenStopError) Start() { f.wg.Go(work) }
+
+// Shutdown flushes, stops and waits.
+func (f *flushThenStopError) Shutdown() error {
+	if err := f.flush(); err != nil {
+		return err
+	}
+	err := f.stop()
+	f.wg.Wait()
+	return err
+}
+
+// closeThroughGuard calls a guarded stop that waits.
+type closeThroughGuard struct {
+	wg     sync.WaitGroup
+	closed bool
+}
+
+// Start runs the worker.
+func (c *closeThroughGuard) Start() { c.wg.Go(work) }
+
+// Close stops the group.
+func (c *closeThroughGuard) Close() error {
+	_ = c.stop()
+	return nil
+}
+
+func (c *closeThroughGuard) stop() error {
+	if c.closed {
+		return errClosed
+	}
+	c.closed = true
+	c.wg.Wait()
+	return errStopped
 }
