@@ -185,7 +185,8 @@ func (o *otherInstance) Closed() error {
 func (o *otherInstance) stop() { o.wg.Wait() }
 
 // helperBranchWait calls a same-package helper that waits on one branch only,
-// and a call is judged by whether it may wait, not whether it always does.
+// and, in a function with no success path, a call counts when it may wait,
+// not only when it always does.
 type helperBranchWait struct{ wg sync.WaitGroup }
 
 // Start runs the worker. Not reported.
@@ -201,4 +202,52 @@ func (h *helperBranchWait) maybeWait(wait bool) {
 	if wait {
 		h.wg.Wait()
 	}
+}
+
+// literalBranchWait runs a literal that waits on one branch only, and, in a
+// function with no success path, a call counts when it may wait, not only
+// when it always does.
+type literalBranchWait struct{ wg sync.WaitGroup }
+
+// Start runs the worker. Not reported.
+func (l *literalBranchWait) Start() { l.wg.Go(work) }
+
+// Closed runs the literal and reports the group closed.
+func (l *literalBranchWait) Closed(wait bool) error {
+	func() {
+		if wait {
+			l.wg.Wait()
+		}
+	}()
+	return errClosed
+}
+
+// deferPanicForever never runs its deferred Wait unless it panics, and a
+// path that ends in panic is read as a success path the defer covers.
+type deferPanicForever struct{ wg sync.WaitGroup }
+
+// Start runs the worker. Not reported.
+func (d *deferPanicForever) Start() { d.wg.Go(work) }
+
+// Run defers a Wait and loops forever, panicking when bad says so.
+func (d *deferPanicForever) Run(bad func() bool) {
+	defer d.wg.Wait()
+	for {
+		if bad() {
+			panic("bad")
+		}
+	}
+}
+
+// deferSelectForever blocks forever in select {}, which is read as a success
+// path the deferred Wait covers.
+type deferSelectForever struct{ wg sync.WaitGroup }
+
+// Start runs the worker. Not reported.
+func (d *deferSelectForever) Start() { d.wg.Go(work) }
+
+// Run defers a Wait and blocks forever.
+func (d *deferSelectForever) Run() {
+	defer d.wg.Wait()
+	select {}
 }
