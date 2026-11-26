@@ -365,9 +365,9 @@ type errorBeforeDefer struct{ wg sync.WaitGroup }
 // Start runs the worker.
 //
 // known-miss: a function with no success exit counts as a Wait when one of
-// its returns is reached only after waiting, so an early error return that
-// skips the Wait is read as a failure path, the same as a guard in Close
-// (guardThenWait); namedBranchWait shares this note (ENG-1003).
+// its returns is reached only after waiting, so any other return that skips
+// the Wait, before or after it, is read as a failure path, the same as a
+// guard in Close (guardThenWait); namedBranchWait shares this note (ENG-1003).
 func (e *errorBeforeDefer) Start() { e.wg.Go(work) }
 
 // Closed reports the flush error before it defers the Wait.

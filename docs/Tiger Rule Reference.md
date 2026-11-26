@@ -961,17 +961,19 @@ and returns `s.err` counts, while one that waits in `once.Do` and returns `nil` 
 success path and is judged as above, where `once.Do` is not followed. Such a function
 that does none of these satisfies nothing, whether it is called after the start or
 exported as a method of the owning type or a function of the package. Such a function
-that returns and reaches each of its returns without waiting on some path, such as one
-whose `Wait` sits on one branch before its only return, does not count, and neither does
-one that never returns and whose only `Wait` is deferred. One that returns an error
-early, before a `Wait` its other return runs, still counts, since its shape is the
-guarded `Close` above (ENG-1003). So does one that never returns and waits on one branch,
-case or pass of its loop only, or whose `Wait` sits in a `once.Do` that already ran, that
-hands the group to a call the check cannot follow that never waits, or that calls a
-same-package function or runs a literal whose `Wait` sits on one branch only or in a
-`defer` before a loop that never ends. So does one with a path that ends in `panic` or
-`select {}`, which is read as a success path, so a `defer` covers it though the function
-never returns (ENG-998). Those gaps are not caught.
+that returns, and reaches every one of its returns without waiting on some path, such as
+one whose `Wait` sits on one branch before its only return, does not count, and neither
+does one that never returns and whose only `Wait` is deferred. One with a return reached
+only after waiting still counts, wherever its other returns sit and whether or not they
+wait, since that is the shape of the guarded `Close` above. So `if wait { s.wg.Wait();
+return errA }; return errB` counts, as does an error returned before a deferred `Wait`
+(ENG-1003). So does one that never returns and waits on one branch, case or pass of its
+loop only, or whose `Wait` sits in a `once.Do` that already ran, that hands the group to
+a call the check cannot follow that never waits, or that calls a same-package function or
+runs a literal whose `Wait` sits on one branch only or in a `defer` before a loop that
+never ends. So does one with a path that ends in `panic` or `select {}`, which is read as
+a success path, so a `defer` covers it though the function never returns (ENG-998). Those
+gaps are not caught.
 
 A call is treated as returning unless it is to the builtin `panic`. A start followed by a
 call to a function that loops forever still needs its `Wait`, though the same loop written

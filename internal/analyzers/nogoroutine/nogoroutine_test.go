@@ -43,15 +43,16 @@ import (
 // function it hands the group that may wait on it, or a call it cannot follow
 // that it hands the group, but not a builtin or a conversion
 // (failure_nowait.go, failure_nowait_more.go, compliant_nowait.go,
-// compliant_handoff.go); an early error return that skips the Wait another
-// return runs (ENG-1003), a function that never returns and waits on one
-// branch, case or pass of its loop only, a same-package function or literal
-// called with its Wait on one branch only or deferred before a loop that
-// never ends, a Wait after a call that never returns, a Wait in a sync.Once
-// that already fired, and a group handed to a call it cannot follow that
-// never waits are documented gaps (knownmiss.go); a path ending in panic never
-// returns and should need none either, but it and select {} are read as
-// success paths (falsepositive_panic.go, knownmiss.go, ENG-998).
+// compliant_handoff.go); a function with one return reached only after a
+// Wait and another that skips it, wherever the two sit (ENG-1003), a
+// function that never returns and waits on one branch, case or pass of its
+// loop only, a same-package function or literal called with its Wait on one
+// branch only or deferred before a loop that never ends, a Wait after a call
+// that never returns, a Wait in a sync.Once that already fired, and a group
+// handed to a call it cannot follow that never waits are documented gaps
+// (knownmiss.go); a path ending in panic never returns and should need none
+// either, but it and select {} are read as success paths
+// (falsepositive_panic.go, knownmiss.go, ENG-998).
 //
 // Goal, TS-C02: a function literal is a function. A start inside a literal is
 // waited when a Wait follows it on every success path of that literal, or of
