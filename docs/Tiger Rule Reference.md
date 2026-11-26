@@ -921,7 +921,10 @@ holding the start calls waits for it), in a `t.Cleanup` literal, or inside the g
 it waits for.
 
 A path that returns a non-nil error is not a success path, so a `Shutdown` that returns
-its flush error before it waits is accepted. A path that ends in `t.Fatal`, `t.Fatalf` or
+its flush error before it waits is accepted. A return of an error variable or field,
+such as `return err` or `return s.err`, counts as a non-nil error unless it is a named
+result only ever set to nil, and a return of a call, such as `return flush()`, counts
+as success. A path that ends in `t.Fatal`, `t.Fatalf` or
 `t.FailNow` is not a success path either, since it fails the test. The goroutine can
 outlive that failed test, and this is not caught. `t.Fatal` stops the test but runs its
 deferred calls, so a deferred `Wait` still waits on such a path, and a start in a
@@ -934,6 +937,31 @@ literal that holds the `Wait` and that a call runs, such as a `t.Run` body, is r
 that helper. A subtest that fails returns from `t.Run` to a parent that goes on, so the
 literal waits only when every path through it waits, `t.Fatal` paths included. A `TryGo` needs a `Wait` on some path, and a path
 through `t.Fatal` still goes on to it.
+
+A function that loops forever or returns only a non-nil error has no success path to
+check. It counts as a `Wait` on a group when code it runs before returning may wait on
+that group: it calls `Wait` on the group, directly or through a local bound once to the
+group's `Wait` method, calls a function of the same package that may wait on the group
+the same way, runs a literal that does one of these (as listed above, or through
+`sync.Once.Do`), or hands the group to a function of the same package that may wait on it
+the same way, or to any call the check cannot follow: a function of another package, a
+func value, an interface method or a variadic parameter. Handing the group to a builtin
+such as `append` or `panic`, or to a type conversion, does not count. A `Wait` inside a
+goroutine, in a literal or method value saved and never called, or in a literal or method
+value handed to a call that runs it later, such as `time.AfterFunc`, does not count. So
+a `Close` that waits in `once.Do` and returns `s.err` counts, while one that waits in
+`once.Do` and returns `nil` has a success path and is judged as above, where `once.Do`
+is not followed. Such a function that does none of these satisfies nothing, whether it
+is called after the start or exported as a method of the owning type or a function of
+the package. Such a function whose `Wait` sits on one branch only, or in a `defer` that
+never runs, still counts, and so does one whose `Wait` sits in a `once.Do` that already
+ran, or that hands the group to a call the check cannot follow that never waits. Those
+gaps are not caught.
+
+A call is treated as returning unless it is to the builtin `panic`. A start followed by a
+call to a function that loops forever still needs its `Wait`, though the same loop written
+in place needs none, and a `Wait` after a call to `os.Exit`, `log.Fatal` or such a
+function counts though it never runs. That gap is not caught.
 
 A `Wait` that only runs in the branch where the caller's context expired does not count.
 That branch is a `Shutdown` giving up early, and the early return is exempt from the

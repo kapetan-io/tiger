@@ -64,6 +64,14 @@ func (h *helperWaiter) join() { h.wg.Wait() }
 
 var errFlush = errors.New("flush failed")
 
+// startThenOnlyError starts and returns only a non-nil error, so it has no
+// success path that needs a Wait.
+func startThenOnlyError() error {
+	var wg sync.WaitGroup
+	wg.Go(work)
+	return errFlush
+}
+
 // errorBeforeWait returns an error before it waits, which is not the success
 // path.
 type errorBeforeWait struct {

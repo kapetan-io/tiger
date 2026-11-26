@@ -1,10 +1,12 @@
 package nogoroutine
 
 import (
+	"fmt"
 	"go/ast"
 	"go/token"
 	"go/types"
 	"slices"
+	"strings"
 
 	"golang.org/x/tools/go/cfg"
 
@@ -57,7 +59,7 @@ func (o *owners) summary(group *types.Var) waiters {
 	for round := 0; round <= len(decls); round++ {
 		changed := false
 		for _, decl := range decls {
-			if always[decl] {
+			if always[decl] || !o.searchFor(always).mayWait(decl.Body, group, nil) {
 				continue
 			}
 			unwaited, _ := o.uncovered(functionOf(decl), flowQuery{group: group}, always)
@@ -74,6 +76,145 @@ func (o *owners) summary(group *types.Var) waiters {
 	assert.Ok(settled, "summary: no fixpoint within len(decls)+1 rounds")
 	o.summaries[group] = always
 	return always
+}
+
+type searchedBody struct {
+	body     *ast.BlockStmt
+	group    *types.Var
+	subtests string
+}
+
+type searchedBodies map[searchedBody]bool
+
+func subtestKey(subtests []*types.Var) string {
+	var key strings.Builder
+	for _, subtest := range subtests {
+		fmt.Fprintf(&key, "%p,", subtest)
+	}
+	return key.String()
+}
+
+type waitSearch struct {
+	*owners
+	always waiters
+	seen   searchedBodies
+}
+
+func (o *owners) searchFor(always waiters) waitSearch {
+	return waitSearch{owners: o, always: always, seen: searchedBodies{}}
+}
+
+func (w waitSearch) mayWait(body *ast.BlockStmt, group *types.Var, subtests []*types.Var) bool {
+	key := searchedBody{body: body, group: group, subtests: subtestKey(subtests)}
+	if w.seen[key] {
+		return false
+	}
+	w.seen[key] = true
+	found := false
+	for _, block := range w.graph(body).Blocks {
+		if !block.Live {
+			continue
+		}
+		for _, node := range block.Nodes {
+			ast.Inspect(node, func(inner ast.Node) bool {
+				switch expr := inner.(type) {
+				case *ast.FuncLit, *ast.GoStmt:
+					return false
+				case *ast.CallExpr:
+					found = found || w.callMayWait(expr, group, subtests)
+				}
+				return !found
+			})
+			if found {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func (w waitSearch) callMayWait(call *ast.CallExpr, group *types.Var, subtests []*types.Var) bool {
+	if w.callsWait(call.Fun, group) || w.helperWaits(call, w.always) {
+		return true
+	}
+	decl := w.calledDecl(call)
+	if bound, ok := w.soleDefinition(call.Fun).(*ast.SelectorExpr); ok && decl == nil {
+		decl = w.calledDecl(&ast.CallExpr{Fun: bound})
+	}
+	if decl != nil && w.mayWait(decl.Body, group, nil) {
+		return true
+	}
+	run := w.literalRunBy(call, subtests)
+	if run.literal != nil && w.mayWait(run.literal.Body, group, run.within(subtests)) {
+		return true
+	}
+	once := w.onceLiteral(call)
+	if once != nil && w.mayWait(once.Body, group, subtests) {
+		return true
+	}
+	callee := w.pass.TypesInfo.Types[ast.Unparen(call.Fun)]
+	if callee.IsBuiltin() || callee.IsType() {
+		return false
+	}
+	for i, arg := range call.Args {
+		if w.names(arg, group) && w.handedWait(call, i) {
+			return true
+		}
+	}
+	return false
+}
+
+func (o *owners) callsWait(fun ast.Expr, group *types.Var) bool {
+	selector, ok := ast.Unparen(fun).(*ast.SelectorExpr)
+	if !ok {
+		selector, ok = o.soleDefinition(fun).(*ast.SelectorExpr)
+	}
+	if !ok {
+		return false
+	}
+	waited, isWait := o.groupMethod(selector, "Wait")
+	return isWait && waited == group
+}
+
+func (w waitSearch) handedWait(call *ast.CallExpr, arg int) bool {
+	decl := w.calledDecl(call)
+	if decl == nil {
+		return true
+	}
+	selector, isSelector := ast.Unparen(call.Fun).(*ast.SelectorExpr)
+	if isSelector && w.pass.TypesInfo.Types[selector.X].IsType() {
+		arg--
+	}
+	params := paramNames(decl)
+	if decl.Type.Params != nil && arg >= len(params)-1 && w.variadic(decl) {
+		return true
+	}
+	if arg < 0 || arg >= len(params) || params[arg] == nil {
+		return false
+	}
+	handed := waitSearch{owners: w.owners, always: waiters{}, seen: w.seen}
+	return handed.mayWait(decl.Body, w.index.Object(params[arg]), nil)
+}
+
+func (o *owners) variadic(decl *ast.FuncDecl) bool {
+	fn, ok := o.pass.TypesInfo.Defs[decl.Name].(*types.Func)
+	return ok && fn.Signature().Variadic()
+}
+
+func (o *owners) onceLiteral(call *ast.CallExpr) *ast.FuncLit {
+	selector, ok := ast.Unparen(call.Fun).(*ast.SelectorExpr)
+	if !ok || len(call.Args) != 1 || o.calleeName(selector) != "(*sync.Once).Do" {
+		return nil
+	}
+	return o.literalOf(call.Args[0])
+}
+
+func (o *owners) names(arg ast.Expr, group *types.Var) bool {
+	arg = ast.Unparen(arg)
+	if address, ok := arg.(*ast.UnaryExpr); ok && address.Op == token.AND {
+		arg = ast.Unparen(address.X)
+	}
+	return o.unalias(o.index.Object(arg), arg) == group
 }
 
 func (o *owners) uncovered(fn function, query flowQuery, always waiters) (unwaited, exits bool) {
@@ -211,18 +352,7 @@ func (o *owners) literalWaits(run literalRun, query flowQuery, always waiters) b
 	o.walking[literal] = true
 	defer delete(o.walking, literal)
 	fn := function{decl: o.index.DeclOf(literal), typ: literal.Type, body: literal.Body}
-	subtests := query.subtests
-	if run.saved != nil {
-		subtests = declaredAround(subtests, run.saved)
-	}
-	switch {
-	case run.subtest == nil:
-	case run.parallel:
-		subtests = []*types.Var{run.subtest}
-	default:
-		subtests = append(slices.Clip(subtests), run.subtest)
-	}
-	inner := flowQuery{group: query.group, held: held, subtests: subtests}
+	inner := flowQuery{group: query.group, held: held, subtests: run.within(query.subtests)}
 	unwaited, _ := o.uncovered(fn, inner, always)
 	return !unwaited
 }
@@ -256,6 +386,20 @@ func (o *owners) literalRunBy(call *ast.CallExpr, subtests []*types.Var) literal
 		subtest:  o.subtestOf(body),
 		parallel: parallel,
 	}
+}
+
+func (run literalRun) within(subtests []*types.Var) []*types.Var {
+	if run.saved != nil {
+		subtests = declaredAround(subtests, run.saved)
+	}
+	switch {
+	case run.subtest == nil:
+	case run.parallel:
+		subtests = []*types.Var{run.subtest}
+	default:
+		subtests = append(slices.Clip(subtests), run.subtest)
+	}
+	return subtests
 }
 
 func (o *owners) savedIn(expr ast.Expr) *types.Var {
@@ -336,6 +480,26 @@ func (o *owners) literalOf(expr ast.Expr) *ast.FuncLit {
 		return nil
 	}
 	return literal
+}
+
+func (o *owners) soleDefinition(expr ast.Expr) ast.Expr {
+	expr = ast.Unparen(expr)
+	local := o.index.Object(expr)
+	if _, isIdent := expr.(*ast.Ident); !isIdent || local == nil || local.IsField() {
+		return nil
+	}
+	if o.index.IsParameter(local) || local.Parent() == local.Pkg().Scope() {
+		return nil
+	}
+	decl := o.index.DeclOf(expr)
+	if decl == nil || o.rebound(local, decl) {
+		return nil
+	}
+	defs := o.index.Definitions(local, decl)
+	if len(defs) != 1 {
+		return nil
+	}
+	return ast.Unparen(defs[0])
 }
 
 type reaching struct {
