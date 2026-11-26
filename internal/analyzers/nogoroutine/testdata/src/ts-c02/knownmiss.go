@@ -69,39 +69,6 @@ func expiredWaitBeforeGiveUp(ctx context.Context) {
 	}
 }
 
-// branchWaitSentinel leaks the goroutine when Closed is called with false.
-type branchWaitSentinel struct{ wg sync.WaitGroup }
-
-// Start runs the worker.
-//
-// known-miss: Closed returns only a non-nil error, so it has no success path
-// to check, and its Wait on one branch makes it count as a Wait on every path (ENG-980).
-func (b *branchWaitSentinel) Start() { b.wg.Go(work) }
-
-// Closed waits only when asked to, then reports the group closed.
-func (b *branchWaitSentinel) Closed(wait bool) error {
-	if wait {
-		b.wg.Wait()
-	}
-	return errClosed
-}
-
-// deferForever never runs its deferred Wait, because Run never returns.
-type deferForever struct{ wg sync.WaitGroup }
-
-// Start runs the worker.
-//
-// known-miss: Run has no success path to check, and its deferred Wait makes it
-// count as a Wait though the Wait never runs (ENG-980).
-func (d *deferForever) Start() { d.wg.Go(work) }
-
-// Run defers a Wait and loops forever.
-func (d *deferForever) Run() {
-	defer d.wg.Wait()
-	for {
-	}
-}
-
 // spinBeforeWait never reaches its Wait, because spin never returns.
 type spinBeforeWait struct{ wg sync.WaitGroup }
 
@@ -216,3 +183,22 @@ func (o *otherInstance) Closed() error {
 }
 
 func (o *otherInstance) stop() { o.wg.Wait() }
+
+// helperBranchWait calls a same-package helper that waits on one branch only,
+// and a call is judged by whether it may wait, not whether it always does.
+type helperBranchWait struct{ wg sync.WaitGroup }
+
+// Start runs the worker. Not reported.
+func (h *helperBranchWait) Start() { h.wg.Go(work) }
+
+// Closed asks maybeWait not to wait and reports the group closed.
+func (h *helperBranchWait) Closed() error {
+	h.maybeWait(false)
+	return errClosed
+}
+
+func (h *helperBranchWait) maybeWait(wait bool) {
+	if wait {
+		h.wg.Wait()
+	}
+}

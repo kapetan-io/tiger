@@ -19,6 +19,8 @@ type flowQuery struct {
 	start       *ast.SelectorExpr
 	held        *ast.SelectorExpr
 	anyPath     bool
+	anyExit     bool
+	endless     bool
 	shutdown    bool
 	failNowEnds bool
 	subtests    []*types.Var
@@ -62,7 +64,10 @@ func (o *owners) summary(group *types.Var) waiters {
 			if always[decl] || !o.searchFor(always).mayWait(decl.Body, group, nil) {
 				continue
 			}
-			unwaited, _ := o.uncovered(functionOf(decl), flowQuery{group: group}, always)
+			unwaited, exits := o.uncovered(functionOf(decl), flowQuery{group: group}, always)
+			if !unwaited && !exits {
+				unwaited = o.failureUnwaited(functionOf(decl), group, always)
+			}
 			if !unwaited {
 				always[decl] = true
 				changed = true
@@ -222,9 +227,7 @@ func (o *owners) uncovered(fn function, query flowQuery, always waiters) (unwait
 	if len(graph.Blocks) == 0 {
 		return false, false
 	}
-	query.shutdown = o.givesUpIn(fn.body) && o.callsIn(fn.body, func(call *ast.CallExpr) bool {
-		return o.waitCall(call, query.group, always)
-	})
+	query = o.withShutdown(fn, query, always)
 	seen := map[stateKey]bool{}
 	work := []flowState{{block: graph.Blocks[0], passed: query.start == nil}}
 	i := 0
@@ -247,7 +250,10 @@ func (o *owners) uncovered(fn function, query flowQuery, always waiters) (unwait
 			if state.block.Kind == cfg.KindSelectAfterCase {
 				continue
 			}
-			if !state.passed || !o.successExit(fn, state.block) {
+			if !state.passed {
+				continue
+			}
+			if !query.anyExit && !o.successExit(fn, state.block) {
 				continue
 			}
 			exits = true
@@ -266,6 +272,75 @@ func (o *owners) uncovered(fn function, query flowQuery, always waiters) (unwait
 	return query.anyPath, exits
 }
 
+func (o *owners) withShutdown(fn function, query flowQuery, always waiters) flowQuery {
+	query.shutdown = o.givesUpIn(fn.body) && o.callsIn(fn.body, func(call *ast.CallExpr) bool {
+		return o.waitCall(call, query.group, always)
+	})
+	return query
+}
+
+func (o *owners) failureUnwaited(fn function, group *types.Var, always waiters) bool {
+	unwaited, exits := o.uncovered(fn, flowQuery{group: group, anyExit: true}, always)
+	if exits {
+		return unwaited
+	}
+	return o.spinsUnwaited(fn, flowQuery{group: group, endless: true}, always)
+}
+
+func (o *owners) spinsUnwaited(fn function, query flowQuery, always waiters) bool {
+	graph := o.graph(fn.body)
+	if len(graph.Blocks) == 0 {
+		return false
+	}
+	query = o.withShutdown(fn, query, always)
+	entered := make([]bool, len(graph.Blocks))
+	into := make([]int, len(graph.Blocks))
+	next := make([][]*cfg.Block, len(graph.Blocks))
+	var reached []*cfg.Block
+	work := []*cfg.Block{graph.Blocks[0]}
+	i := 0
+	for ; i < len(work) && i < worklist.NodesMax; i++ {
+		block := work[i]
+		if entered[block.Index] {
+			continue
+		}
+		entered[block.Index] = true
+		reached = append(reached, block)
+		state := o.walk(flowState{block: block, passed: query.start == nil}, query, always)
+		if state.covered {
+			continue
+		}
+		next[block.Index] = block.Succs
+		for _, succ := range block.Succs {
+			into[succ.Index]++
+			work = append(work, succ)
+		}
+	}
+	assert.Ok(i == len(work), "spinsUnwaited: worklist reached worklist.NodesMax")
+	var free []*cfg.Block
+	for _, block := range reached {
+		if into[block.Index] == 0 {
+			free = append(free, block)
+		}
+	}
+	peeled := 0
+	for range reached {
+		if len(free) == 0 {
+			break
+		}
+		block := free[len(free)-1]
+		free = free[:len(free)-1]
+		peeled++
+		for _, succ := range next[block.Index] {
+			into[succ.Index]--
+			if into[succ.Index] == 0 {
+				free = append(free, succ)
+			}
+		}
+	}
+	return peeled < len(reached)
+}
+
 func (o *owners) walk(state flowState, query flowQuery, always waiters) flowState {
 	for _, node := range state.block.Nodes {
 		if query.shutdown && state.passed && o.givesUp(node.Pos(), query.start) {
@@ -278,10 +353,14 @@ func (o *owners) walk(state flowState, query flowQuery, always waiters) flowStat
 			state.failed = true
 			return state
 		}
+		_, deferred := node.(*ast.DeferStmt)
+		if deferred && query.endless {
+			continue
+		}
 		if !o.waitsIn(node, query, always) {
 			continue
 		}
-		if _, deferred := node.(*ast.DeferStmt); deferred || state.passed {
+		if deferred || state.passed {
 			state.covered = true
 		}
 	}
@@ -327,6 +406,10 @@ func (o *owners) waitsIn(node ast.Node, query flowQuery, always waiters) bool {
 			return false
 		case *ast.CallExpr:
 			counted := !o.givesUp(found.Pos(), start)
+			if query.anyExit || query.endless {
+				waits = counted && o.searchFor(always).callMayWait(found, query.group, query.subtests)
+				return !waits
+			}
 			waits = waits || counted && o.waitCall(found, query.group, always)
 			if run := o.literalRunBy(found, query.subtests); !waits && run.literal != nil {
 				waits = o.literalWaits(run, query, always)

@@ -939,8 +939,13 @@ literal waits only when every path through it waits, `t.Fatal` paths included. A
 through `t.Fatal` still goes on to it.
 
 A function that loops forever or returns only a non-nil error has no success path to
-check. It counts as a `Wait` on a group when code it runs before returning may wait on
-that group: it calls `Wait` on the group, directly or through a local bound once to the
+check. It counts as a `Wait` on a group when every return it has runs code that may wait
+on that group first, and a deferred `Wait` covers the returns after its `defer`. One
+that never returns counts
+when every path that loops forever runs such code, and a deferred call never runs on
+those paths. A function with some return is judged by its returns alone, so a loop that
+waits before it returns its stop error counts. Code may wait on the group when it calls
+`Wait` on the group, directly or through a local bound once to the
 group's `Wait` method, calls a function of the same package that may wait on the group
 the same way, runs a literal that does one of these (as listed above, or through
 `sync.Once.Do`), or hands the group to a function of the same package that may wait on it
@@ -953,10 +958,11 @@ a `Close` that waits in `once.Do` and returns `s.err` counts, while one that wai
 `once.Do` and returns `nil` has a success path and is judged as above, where `once.Do`
 is not followed. Such a function that does none of these satisfies nothing, whether it
 is called after the start or exported as a method of the owning type or a function of
-the package. Such a function whose `Wait` sits on one branch only, or in a `defer` that
-never runs, still counts, and so does one whose `Wait` sits in a `once.Do` that already
-ran, or that hands the group to a call the check cannot follow that never waits. Those
-gaps are not caught.
+the package. Such a function whose `Wait` sits on one branch only, in a `defer` it never
+reaches or one that never runs does not count. One whose `Wait` sits in a `once.Do` that
+already ran, that hands the group to a call the check cannot follow that never waits, or
+that calls a same-package function whose `Wait` sits on one branch only, still counts.
+Those gaps are not caught.
 
 A call is treated as returning unless it is to the builtin `panic`. A start followed by a
 call to a function that loops forever still needs its `Wait`, though the same loop written
