@@ -918,21 +918,21 @@ at all, and its `Wait` still counts.
 
 A literal that returns an error before its `Wait` hands that error to the caller, which may
 go on without waiting. So the call counts only on the caller's paths where that error is
-nil. The check sees the error when the caller assigns it, with `:=`, `=` or `var`, to an
-`error` or `[]error` variable, either as the call itself or inside a larger expression
-such as `append(errs, run())`, or copies that variable into another `error` variable. It
+nil. The check sees the error when the caller assigns it, with `:=`, `=` or `var`, to a
+variable that can hold an error, or a slice of them, either as the call itself or inside a
+larger expression such as `append(errs, run())`, or copies that variable into another. It
 reads a comparison of either variable, or of the call itself, with `nil`. The branch where
 the error is nil counts as waited, also through `&&`, `||` and `!` in the condition. The
 other branch must wait or end the path: it returns a non-nil error, or calls `t.Fatal`.
 After that comparison, a return of `errors.New(...)` or `fmt.Errorf(...)` counts as a
 non-nil error, and so does a return whose error result uses the literal's error or an
 `error` variable assigned from it, or a bare return of a named error result that holds it.
-A use inside a function literal does not count. Any other return of a call counts as
+A use inside a function literal or a comparison, such as `flag(err != nil)`, does not
+count. Any other return of a call counts as
 success, as it does elsewhere, so a branch that only logs the error and goes on to
 `return save()` needs a `Wait`, and so does one that returns `nil`. Reassigning the bound
 variable before the comparison drops the error, unless the new value uses it, and so does
-a `defer` of the call. A caller that returns an expression holding the call or its bound
-variable, as in `return run()` or `return fmt.Errorf("run: %w", run())`, or binds it to
+a `defer` of the call. A caller whose error result holds the call or its bound variable, as in `return run()` or `return fmt.Errorf("run: %w", run())`, or binds it to
 its named error result and returns, hands the error up and counts as waited. A caller that
 drops the error gets no `Wait` from the call. A `TryGo` needs a `Wait` on only some path,
 so the call counts for it whatever the caller does with the error.

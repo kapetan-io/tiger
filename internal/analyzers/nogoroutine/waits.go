@@ -332,7 +332,7 @@ func (o *owners) walk(fn function, state flowState, query flowQuery, always wait
 		state.nonNil = o.carried(fn, node, state.nonNil)
 		erring, waits := o.waitsIn(node, query, always)
 		if !waits && erring != nil && state.passed {
-			state = o.followError(state, node, erring, query)
+			state = o.followError(fn, state, errorSite{node: node, call: erring}, query)
 			continue
 		}
 		if !waits {
@@ -347,18 +347,23 @@ func (o *owners) walk(fn function, state flowState, query flowQuery, always wait
 
 const thenBranch = 0
 
+type errorSite struct {
+	node ast.Node
+	call *ast.CallExpr
+}
+
 func (o *owners) followError(
-	state flowState, node ast.Node, call *ast.CallExpr, query flowQuery,
+	fn function, state flowState, site errorSite, query flowQuery,
 ) flowState {
-	switch stmt := node.(type) {
+	switch stmt := site.node.(type) {
 	case *ast.ReturnStmt:
-		handedUp := !query.errorReturnsNeedWait && slices.ContainsFunc(stmt.Results,
-			func(result ast.Expr) bool { return encloses(result, call) })
+		handedUp := !query.errorReturnsNeedWait && o.hasErrorResult(fn) &&
+			len(stmt.Results) > 0 && encloses(stmt.Results[len(stmt.Results)-1], site.call)
 		state.covered = state.covered || handedUp
 	case *ast.AssignStmt, *ast.ValueSpec:
-		state.unchecked = o.boundError(call, assignmentIn(node))
+		state.unchecked = o.boundError(site.call, assignmentIn(site.node))
 	case ast.Expr:
-		state.unchecked = literalError{call: call}
+		state.unchecked = literalError{call: site.call}
 	}
 	state.covered = state.covered || query.anyPath
 	return state
@@ -388,8 +393,10 @@ func (o *owners) reassigned(node ast.Node, unchecked literalError) literalError 
 		switch {
 		case assigned == nil:
 		case assigned == unchecked.bound && names:
-		case assigned == unchecked.bound || assigned == unchecked.alias:
+		case assigned == unchecked.bound:
 			return literalError{}
+		case assigned == unchecked.alias:
+			unchecked.alias = nil
 		case plain && o.index.Object(ident) == unchecked.bound && holdsError(assigned):
 			unchecked.alias = assigned
 		}
@@ -399,10 +406,11 @@ func (o *owners) reassigned(node ast.Node, unchecked literalError) literalError 
 
 func holdsError(local *types.Var) bool {
 	errorType := types.Universe.Lookup("error").Type()
-	if slice, ok := local.Type().Underlying().(*types.Slice); ok {
-		return types.Identical(slice.Elem(), errorType)
+	held := local.Type()
+	if slice, ok := held.Underlying().(*types.Slice); ok {
+		held = slice.Elem()
 	}
-	return types.Identical(local.Type(), errorType)
+	return types.AssignableTo(held, errorType) || types.AssignableTo(errorType, held)
 }
 
 func encloses(expr ast.Expr, call *ast.CallExpr) bool {
@@ -484,8 +492,13 @@ func (o *owners) mentions(expr ast.Expr, local *types.Var) bool {
 	}
 	found := false
 	ast.Inspect(expr, func(node ast.Node) bool {
-		if _, isLiteral := node.(*ast.FuncLit); isLiteral {
+		switch inner := node.(type) {
+		case *ast.FuncLit:
 			return false
+		case *ast.BinaryExpr:
+			if comparison(inner.Op) {
+				return false
+			}
 		}
 		if ident, isIdent := node.(*ast.Ident); isIdent && o.index.Object(ident) == local {
 			found = true
@@ -493,6 +506,12 @@ func (o *owners) mentions(expr ast.Expr, local *types.Var) bool {
 		return !found
 	})
 	return found
+}
+
+func comparison(op token.Token) bool {
+	return slices.Contains([]token.Token{
+		token.EQL, token.NEQ, token.LSS, token.GTR, token.LEQ, token.GEQ,
+	}, op)
 }
 
 func (o *owners) errorNilOn(state flowState, branch int) (isNil, compared bool) {

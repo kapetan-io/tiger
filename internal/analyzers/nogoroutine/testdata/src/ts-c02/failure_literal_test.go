@@ -1399,3 +1399,69 @@ func TestLiteralErrorMatched(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func flagged(bool) error {
+	return nil
+}
+
+// literalCompletedAsBool leaks the goroutine: it returns only
+// whether the literal's error was nil, which hands no error up.
+func literalCompletedAsBool() bool {
+	var wg sync.WaitGroup
+	wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+	return func() error {
+		if testing.Short() {
+			return context.Canceled
+		}
+		wg.Wait()
+		return nil
+	}() == nil
+}
+
+// literalCompletedBesideNilError leaks the goroutine: the call sits
+// in the bool result, and the error result is nil.
+func literalCompletedBesideNilError() (bool, error) {
+	var wg sync.WaitGroup
+	wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+	return func() error {
+		if testing.Short() {
+			return context.Canceled
+		}
+		wg.Wait()
+		return nil
+	}() == nil, nil
+}
+
+// literalErrorFlagReturned leaks the goroutine: the returned call
+// sees only whether the error was set, and returns nil.
+func literalErrorFlagReturned() error {
+	var wg sync.WaitGroup
+	wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+	err := func() error {
+		if testing.Short() {
+			return context.Canceled
+		}
+		wg.Wait()
+		return nil
+	}()
+	return flagged(err != nil)
+}
+
+// literalErrorFlagReassigned leaks the goroutine: the error is
+// replaced by a call that sees only whether it was set.
+func literalErrorFlagReassigned() error {
+	var wg sync.WaitGroup
+	wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+	err := func() error {
+		if testing.Short() {
+			return context.Canceled
+		}
+		wg.Wait()
+		return nil
+	}()
+	err = flagged(err != nil)
+	if err == nil {
+		return nil
+	}
+	return err
+}

@@ -1151,3 +1151,91 @@ func literalErrorWrappedBesideOther() error {
 	}
 	return nil
 }
+
+type runError struct {
+	err error
+}
+
+func (r *runError) Error() string {
+	return r.err.Error()
+}
+
+type causeError interface {
+	error
+}
+
+// literalErrorCopyReused reuses a copy of the literal's error for
+// another error and still checks the original.
+func literalErrorCopyReused() error {
+	var wg sync.WaitGroup
+	wg.Go(func() {})
+	err := func() error {
+		if testing.Short() {
+			return context.Canceled
+		}
+		wg.Wait()
+		return nil
+	}()
+	var e error
+	e = err
+	e = context.Canceled
+	_ = e
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+// literalErrorWrappedInCustomType wraps the literal's error in its own
+// error type and returns it joined with another.
+func literalErrorWrappedInCustomType() error {
+	var wg sync.WaitGroup
+	wg.Go(func() {})
+	err := func() error {
+		if testing.Short() {
+			return context.Canceled
+		}
+		wg.Wait()
+		return nil
+	}()
+	if err != nil {
+		wrapped := &runError{err: err}
+		return errors.Join(wrapped, errStop)
+	}
+	return nil
+}
+
+// literalErrorInEmbeddingInterface binds the literal's error to an
+// interface that embeds error.
+func literalErrorInEmbeddingInterface() error {
+	var wg sync.WaitGroup
+	wg.Go(func() {})
+	var err causeError = func() error {
+		if testing.Short() {
+			return context.Canceled
+		}
+		wg.Wait()
+		return nil
+	}()
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+// literalErrorInAny binds the literal's error to an any.
+func literalErrorInAny() error {
+	var wg sync.WaitGroup
+	wg.Go(func() {})
+	var v any = func() error {
+		if testing.Short() {
+			return context.Canceled
+		}
+		wg.Wait()
+		return nil
+	}()
+	if v != nil {
+		return errStop
+	}
+	return nil
+}
