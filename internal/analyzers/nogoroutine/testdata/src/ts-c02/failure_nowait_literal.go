@@ -44,7 +44,7 @@ func (r *replacedBeforeCall) Closed() error {
 	return errClosed
 }
 
-// fatalOnly only fails the test and returns an error.
+// fatalOnly fails the test on one path and returns an error on the other.
 type fatalOnly struct{ wg sync.WaitGroup }
 
 // Start runs the worker.
@@ -52,7 +52,7 @@ func (f *fatalOnly) Start() {
 	f.wg.Go(work) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
 }
 
-// Closed fails the test, then reports the group closed.
+// Closed fails the test under -short and otherwise reports the group closed.
 func (f *fatalOnly) Closed(t *testing.T) error {
 	if testing.Short() {
 		t.Fatal("short")
@@ -60,7 +60,7 @@ func (f *fatalOnly) Closed(t *testing.T) error {
 	return errClosed
 }
 
-// closedFatal only fails the test and returns an error.
+// closedFatal fails the test, then returns an error.
 func closedFatal(t *testing.T) error {
 	t.Fatal("closed")
 	return errClosed
