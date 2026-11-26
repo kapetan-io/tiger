@@ -884,10 +884,12 @@ function. A function literal is a function: a start inside a literal is waited w
 `Wait` follows it in that literal or in a function around it, whoever calls the literal.
 A start inside a literal that runs after that outer `Wait` or alongside it is not
 caught: a parallel subtest, a literal saved and called later, a deferred or `t.Cleanup`
-literal, or a goroutine of another group. A `t.Fatal`, `t.FailNow` or `t.Skip` between the
-start and the `Wait` skips the `Wait`, and is not caught either. For a group held in a struct field, it
-must be reached in an exported method of the owning type, or in a method such a method
-calls. The `Wait` must follow the start on every success path.
+literal, or a goroutine of another group. A `t.Skip` between the start and the `Wait`
+skips the `Wait`, and is not caught either. A skipped test passes, so its path is a
+success path, but the check reads `t.Skip` as a call that returns and goes on to the
+`Wait`. For a group held in a struct field, it must be reached in an exported method of
+the owning type, or in a method such a method calls. The `Wait` must follow the start
+on every success path.
 
 A `Wait` may sit in a literal that a call after the start runs before it returns. It
 counts when the literal waits on every one of its own success paths. Such a call is a
@@ -904,9 +906,22 @@ function, in a parallel subtest, in a `t.Cleanup` literal, or inside the gorouti
 waits for.
 
 A path that returns a non-nil error is not a success path, so a `Shutdown` that returns
-its flush error before it waits is accepted. A return of an error variable or field, such
-as `return err` or `return s.err`, counts as a non-nil error unless it is a named result
-only ever set to nil, and a return of a call, such as `return flush()`, counts as success.
+its flush error before it waits is accepted. A return of an error variable or field,
+such as `return err` or `return s.err`, counts as a non-nil error unless it is a named
+result only ever set to nil, and a return of a call, such as `return flush()`, counts
+as success. A path that ends in `t.Fatal`, `t.Fatalf` or
+`t.FailNow` is not a success path either, since it fails the test. The goroutine can
+outlive that failed test, and this is not caught. `t.Fatal` stops the test but runs its
+deferred calls, so a deferred `Wait` still waits on such a path, and a start in a
+deferred or `t.Cleanup` literal runs after a `t.Fatal` outside that literal, which then
+excuses nothing. A `t.Fatal` after the start inside the same literal, a `t.Run` body
+included, ends that literal's path and excuses the start the same way. A call to a helper that
+fails the test, such as `requireReady(t)`, is a call that returns, so the path goes on
+past it, and a helper that only fails the test never counts as waiting on a group. A
+literal that holds the `Wait` and that a call runs, such as a `t.Run` body, is read like
+that helper. A subtest that fails returns from `t.Run` to a parent that goes on, so the
+literal waits only when every path through it waits, `t.Fatal` paths included. A `TryGo` needs a `Wait` on some path, and a path
+through `t.Fatal` still goes on to it.
 
 A function that loops forever or returns only a non-nil error has no success path to
 check. It counts as a `Wait` on a group when code it runs before returning may wait on
@@ -936,13 +951,14 @@ function counts though it never runs. That gap is not caught.
 A `Wait` that only runs in the branch where the caller's context expired does not count.
 That branch is a `Shutdown` giving up early, and the early return is exempt from the
 check. The exemption needs a `Wait` on the group somewhere in the same function, that
-branch included, and covers only a branch the path reaches after the start. A branch the
-path passes before the start, a branch the start itself sits in, and a function that never
-calls `Wait` exempt nothing. A `Wait` after the start inside the branch that holds the
-start counts as usual, also when it sits in a literal called there. Any `Wait` on the
-group in the function satisfies the exemption, even one the path never reaches or reaches
-only before the start, and that gap is not caught. A group handed in as a parameter is the
-caller's to wait on, and this check does not follow it.
+branch included, and covers only a branch the path reaches after the start. A branch
+the path passes before the start, a branch the start itself sits in, and a function
+that never calls `Wait` exempt nothing.
+A `Wait` after the start inside the branch that holds the start counts as usual, also
+when it sits in a literal called there. Any `Wait` on the group in the function
+satisfies the exemption, even one the path never reaches or reaches only before the
+start, and that gap is not caught. A group handed in as a parameter is the caller's to
+wait on, and this check does not follow it.
 
 Code that fires it:
 

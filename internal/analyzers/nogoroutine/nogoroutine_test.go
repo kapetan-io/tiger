@@ -30,7 +30,9 @@ import (
 // own group never finishes (waitsOnItself); TryGo needs a Wait on only some
 // path after it, since the path where it returned false started nothing
 // (tryGoWaited); a return of a non-nil error is the failure path, so it
-// needs no Wait (startThenOnlyError), but a function that loops forever or
+// needs no Wait (startThenOnlyError), and neither does a path ending in
+// t.Fatal, t.Fatalf or t.FailNow, which fails the test
+// (compliant_fatal_test.go), but a function that loops forever or
 // returns only a non-nil error counts as a Wait only when code it runs before
 // returning may wait on the group: a Wait called directly or through a local
 // bound to the Wait method value, a same-package function that may wait on
@@ -61,7 +63,9 @@ import (
 // after the outer Wait or alongside it (a parallel subtest, a saved literal
 // called later, a deferred or t.Cleanup literal, another group's goroutine),
 // a t.Fatal that skips the Wait, and a literal inside a function that returns
-// only a non-nil error are documented gaps (knownmiss_literal_test.go).
+// only a non-nil error are documented gaps (knownmiss_literal_test.go), and so
+// are a t.Fatal or t.Skip that skips the Wait outside any subtest and a helper
+// that fails the test on some of its paths (knownmiss_fatal_test.go).
 func TestCorpus(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), nogoroutine.Analyzer,
 		"ts-c02", "ts-c03", "ts-c03eg", "ts-c03go", "ts-c03ignore", "ts-c03ok",
