@@ -75,12 +75,10 @@ worker goroutine at full speed forever, a denial of service that could be trigge
 
 ### TS-C02: every goroutine starts through a group that waits for it
 
-**From:** Tiger. Neither [Power of Ten](https://spinroot.com/gerard/pdf/P10.pdf) nor
-[TigerStyle](https://github.com/tigerbeetle/tigerbeetle/blob/main/docs/TIGER_STYLE.md) has a rule about starting
-threads or waiting for them. TigerBeetle runs on a single-threaded event loop, while Go starts a
-goroutine with a two-letter keyword, so Tiger adds the rule. It applies the general guidance in
-[TigerStyle's Safety section](https://github.com/tigerbeetle/tigerbeetle/blob/main/docs/TIGER_STYLE.md#safety),
-"Put a limit on everything", to goroutines, so every goroutine has an end its caller waits for.
+**From:** TigerStyle's general guidance. Its [Safety section](https://github.com/tigerbeetle/tigerbeetle/blob/main/docs/TIGER_STYLE.md#safety) says
+"Put a limit on everything", and Tiger applies that to goroutines, so every goroutine has an end its
+caller waits for. TigerStyle has no goroutine rule of its own because TigerBeetle runs on a
+single-threaded event loop, while Go starts a goroutine with a two-letter keyword.
 
 A goroutine that nothing waits for keeps running after its caller moves on. A server's memory
 climbs for no clear reason, and a shutdown can finish while the goroutine is still working.
@@ -91,12 +89,11 @@ climbs for no clear reason, and a shutdown can finish while the goroutine is sti
 
 ### TS-S08: a switch over a closed set ends in assert.Unreachable
 
-**From:** Tiger. Neither [Power of Ten](https://spinroot.com/gerard/pdf/P10.pdf) nor
-[TigerStyle](https://github.com/tigerbeetle/tigerbeetle/blob/main/docs/TIGER_STYLE.md) requires a switch to
-handle every value of its type. Go has no enum type, so the compiler cannot check that a switch
-covers every constant, and Tiger adds the rule. The default arm follows TigerStyle's Safety
-section, which asks whether an `if` needs "a matching `else` branch, to ensure that the positive
-and negative spaces are handled or asserted".
+**From:** TigerStyle's general guidance. Its [Safety section](https://github.com/tigerbeetle/tigerbeetle/blob/main/docs/TIGER_STYLE.md#safety) asks
+whether an `if` needs "a matching `else` branch, to ensure that the positive and negative spaces
+are handled or asserted", and Tiger applies that to a switch. The default arm asserts every value
+no case handles. Go has no enum type, so the compiler cannot check that a switch covers every
+constant.
 
 Adding a value to a type should break every switch that has not handled it. Without a default arm,
 the new value falls out of the switch and the code carries on as if nothing happened, with no error.
