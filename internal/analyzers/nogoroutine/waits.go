@@ -293,9 +293,12 @@ func (o *owners) spinsUnwaited(fn function, group *types.Var, always waiters) bo
 		return false
 	}
 	query := o.withShutdown(fn, flowQuery{group: group, noSuccess: true, endless: true}, always)
+	spin := spinning{
+		within: make([]bool, len(graph.Blocks)),
+		leaves: make([]bool, len(graph.Blocks)),
+	}
 	entered := make([]bool, len(graph.Blocks))
-	unwaited := make([][]*cfg.Block, len(graph.Blocks))
-	var reached []*cfg.Block
+	var unwaited []*cfg.Block
 	work := []*cfg.Block{graph.Blocks[0]}
 	i := 0
 	for ; i < len(work) && i < worklist.NodesMax; i++ {
@@ -304,95 +307,75 @@ func (o *owners) spinsUnwaited(fn function, group *types.Var, always waiters) bo
 			continue
 		}
 		entered[block.Index] = true
-		reached = append(reached, block)
 		if o.walk(flowState{block: block, passed: true}, query, always).covered {
 			continue
 		}
-		unwaited[block.Index] = block.Succs
+		spin.within[block.Index] = true
+		unwaited = append(unwaited, block)
 		work = append(work, block.Succs...)
 	}
 	assert.Ok(i == len(work), "spinsUnwaited: worklist reached worklist.NodesMax")
-	reach := reachable(graph)
-	trapped := make([]bool, len(graph.Blocks))
-	var spinning []*cfg.Block
-	for _, block := range reached {
-		if noWayOut(reach, block.Index) {
-			trapped[block.Index] = true
-			spinning = append(spinning, block)
-		}
-	}
-	into := make([]int, len(graph.Blocks))
-	for _, block := range spinning {
-		for _, succ := range unwaited[block.Index] {
-			if trapped[succ.Index] {
-				into[succ.Index]++
+	for range len(unwaited) + 1 {
+		reach := reachableWithin(graph, spin.within)
+		left := false
+		for _, block := range unwaited {
+			if spin.within[block.Index] && spin.leavesLoop(block, reach) {
+				spin.within[block.Index] = false
+				spin.leaves[block.Index] = true
+				left = true
 			}
 		}
-	}
-	var free []*cfg.Block
-	for _, block := range spinning {
-		if into[block.Index] == 0 {
-			free = append(free, block)
+		if !left {
+			return slices.ContainsFunc(unwaited, func(block *cfg.Block) bool {
+				return spin.within[block.Index] && reach[block.Index][block.Index]
+			})
 		}
 	}
-	peeled := 0
-	for range spinning {
-		if len(free) == 0 {
-			break
-		}
-		block := free[len(free)-1]
-		free = free[:len(free)-1]
-		peeled++
-		for _, succ := range unwaited[block.Index] {
-			if !trapped[succ.Index] {
-				continue
-			}
-			into[succ.Index]--
-			if into[succ.Index] == 0 {
-				free = append(free, succ)
-			}
-		}
-	}
-	return peeled < len(spinning)
+	assert.Ok(false, "spinsUnwaited: no fixpoint within len(unwaited)+1 rounds")
+	return false
 }
 
-func reachable(graph *cfg.CFG) [][]bool {
+type spinning struct {
+	within []bool
+	leaves []bool
+}
+
+func (spin spinning) leavesLoop(block *cfg.Block, reach [][]bool) bool {
+	for _, succ := range block.Succs {
+		if spin.leaves[succ.Index] {
+			return true
+		}
+		if succ.Kind != cfg.KindForDone && succ.Kind != cfg.KindRangeDone {
+			continue
+		}
+		if !spin.within[succ.Index] || !reach[succ.Index][block.Index] {
+			return true
+		}
+	}
+	return false
+}
+
+func reachableWithin(graph *cfg.CFG, within []bool) [][]bool {
 	reach := make([][]bool, len(graph.Blocks))
 	for _, from := range graph.Blocks {
 		seen := make([]bool, len(graph.Blocks))
+		reach[from.Index] = seen
+		if !within[from.Index] {
+			continue
+		}
 		work := []*cfg.Block{from}
 		i := 0
 		for ; i < len(work) && i < worklist.NodesMax; i++ {
 			for _, succ := range work[i].Succs {
-				if neverTaken(succ) {
-					continue
-				}
-				if !seen[succ.Index] {
+				if within[succ.Index] && !seen[succ.Index] {
 					seen[succ.Index] = true
 					work = append(work, succ)
 				}
 			}
 		}
-		assert.Ok(i == len(work), "reachable: worklist reached worklist.NodesMax")
-		reach[from.Index] = seen
+		assert.Ok(i == len(work), "reachableWithin: worklist reached worklist.NodesMax")
 	}
 	return reach
-}
-
-func neverTaken(block *cfg.Block) bool {
-	return block.Kind == cfg.KindSelectAfterCase && len(block.Succs) == 0
-}
-
-func noWayOut(reach [][]bool, block int32) bool {
-	if !reach[block][block] {
-		return false
-	}
-	for other, reaches := range reach[block] {
-		if reaches && !reach[other][block] {
-			return false
-		}
-	}
-	return true
 }
 
 func (o *owners) walk(state flowState, query flowQuery, always waiters) flowState {

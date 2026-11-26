@@ -941,12 +941,15 @@ through `t.Fatal` still goes on to it.
 A function that loops forever or returns only a non-nil error has no success path to
 check, so it is judged by the paths it has. If it returns at all, it counts as a `Wait`
 on a group when every return first runs code that may wait on that group. A deferred
-`Wait` covers the returns after its `defer`, and loops are not checked, so a loop that
-waits before it returns its stop error counts. If it never returns, it counts when every
-pass of each loop it can never leave runs such code, before the loop or inside it, and a
-deferred call never runs there. A loop with a way out, such as `for i := 0; i < n; i++`,
-is taken to leave. Code may wait on the group when it calls
-`Wait` on the group, directly or through a local bound once to the
+`Wait` covers the returns after its `defer`. Only the returns are judged, so a loop that
+waits before it returns its stop error counts, even when a pass through the loop never
+waits. If it never returns, it counts when no path can go round a loop forever without
+running such code, and a deferred call never runs on such a path. A path is taken to
+leave any `for` or `range` loop it can leave, through the loop's condition, its range or
+a `break`, but not to take any particular branch inside it, so a loop that waits on one
+branch only does not count. A `goto` that jumps back is read as a loop with no way out,
+so a `goto` retry before the `Wait` is reported though the retry ends.
+Code may wait on the group when it calls `Wait` on the group, directly or through a local bound once to the
 group's `Wait` method, calls a function of the same package that may wait on the group
 the same way, runs a literal that does one of these (as listed above, or through
 `sync.Once.Do`), or hands the group to a function of the same package that may wait on it
@@ -965,7 +968,7 @@ sits in a `once.Do` that already ran, that hands the group to a call the check c
 follow that never waits, or that calls a same-package function or runs a literal whose
 `Wait` sits on one branch only, still counts. So does one with a path that ends in
 `panic` or `select {}`, which is read as a success path, so a `defer` covers it though
-the function never returns (ENG-NNN). Those gaps are not caught.
+the function never returns (ENG-998). Those gaps are not caught.
 
 A call is treated as returning unless it is to the builtin `panic`. A start followed by a
 call to a function that loops forever still needs its `Wait`, though the same loop written

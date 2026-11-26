@@ -34,10 +34,11 @@ import (
 // t.Fatal, t.Fatalf or t.FailNow, which fails the test
 // (compliant_fatal_test.go), but a function that loops forever or
 // returns only a non-nil error counts as a Wait only when every return it has
-// first runs code that may wait on the group, or, when it has none, every pass
-// of each loop it can never leave runs such code, where a deferred call never
-// runs; a loop with a way out is taken to leave (failure_nosuccess.go,
-// compliant_nosuccess.go). Code may wait on the
+// first runs code that may wait on the group, or, when it has none, no path
+// goes round a loop forever without running such code, where a deferred call
+// never runs; a path is taken to leave a for or range loop it can leave, but
+// not to take any branch, and a goto retry is reported as an expected false
+// positive (failure_nosuccess.go, compliant_nosuccess.go). Code may wait on the
 // group through a Wait called directly or through a local
 // bound to the Wait method value, a same-package function that may wait on
 // it, a literal it runs (including through sync.Once.Do), a same-package

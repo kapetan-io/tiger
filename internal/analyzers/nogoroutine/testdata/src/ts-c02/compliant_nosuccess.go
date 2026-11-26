@@ -1,5 +1,6 @@
 // A function with no success exit that waits before every return it has, or
-// before or on every pass of each loop it can never leave, counts as a Wait.
+// on every path that goes round a loop forever, counts as a Wait. A for or
+// range loop it can leave is taken to leave.
 package fixture
 
 import (
@@ -216,5 +217,111 @@ func (b *boundedThenSpin) Run(tick func()) {
 	for {
 		b.wg.Wait()
 		tick()
+	}
+}
+
+// boundedInnerThenWait waits on every pass, after an inner loop that ends.
+type boundedInnerThenWait struct{ wg sync.WaitGroup }
+
+// Start runs the worker.
+func (r *boundedInnerThenWait) Start() { r.wg.Go(work) }
+
+// Run loops forever.
+func (r *boundedInnerThenWait) Run(tick func()) {
+	for {
+		for i := 0; i < 3; i++ {
+			tick()
+		}
+		r.wg.Wait()
+	}
+}
+
+// condInnerThenWait waits on every pass, after an inner loop on a condition.
+type condInnerThenWait struct{ wg sync.WaitGroup }
+
+// Start runs the worker.
+func (r *condInnerThenWait) Start() { r.wg.Go(work) }
+
+// Run loops forever.
+func (r *condInnerThenWait) Run(ready func() bool) {
+	for {
+		for !ready() {
+		}
+		r.wg.Wait()
+	}
+}
+
+// rangeInnerThenWait waits on every pass, after ranging over a channel.
+type rangeInnerThenWait struct {
+	wg   sync.WaitGroup
+	jobs chan func()
+}
+
+// Start runs the worker.
+func (r *rangeInnerThenWait) Start() { r.wg.Go(work) }
+
+// Run loops forever.
+func (r *rangeInnerThenWait) Run() {
+	for {
+		for job := range r.jobs {
+			job()
+		}
+		r.wg.Wait()
+	}
+}
+
+// breakInnerThenWait waits on every pass, after an inner loop left by break.
+type breakInnerThenWait struct{ wg sync.WaitGroup }
+
+// Start runs the worker.
+func (r *breakInnerThenWait) Start() { r.wg.Go(work) }
+
+// Run loops forever.
+func (r *breakInnerThenWait) Run(done func() bool) {
+	for {
+		for {
+			if done() {
+				break
+			}
+		}
+		r.wg.Wait()
+	}
+}
+
+// selectDefaultThenWait waits after a select with a default, on every pass.
+type selectDefaultThenWait struct {
+	wg   sync.WaitGroup
+	tick chan struct{}
+}
+
+// Start runs the worker.
+func (r *selectDefaultThenWait) Start() { r.wg.Go(work) }
+
+// Run loops forever.
+func (r *selectDefaultThenWait) Run() {
+	for {
+		select {
+		case <-r.tick:
+		default:
+		}
+		r.wg.Wait()
+	}
+}
+
+// switchAllWait waits in every case of its switch.
+type switchAllWait struct{ wg sync.WaitGroup }
+
+// Start runs the worker.
+func (r *switchAllWait) Start() { r.wg.Go(work) }
+
+// Run loops forever.
+func (r *switchAllWait) Run(v func() int) {
+	for {
+		switch v() {
+		case 1:
+			r.wg.Wait()
+		default:
+			r.wg.Wait()
+		}
 	}
 }
