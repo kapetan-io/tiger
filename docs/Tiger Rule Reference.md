@@ -914,11 +914,35 @@ literal that embeds it, or through a function or method of the same package that
 hands `t` to. A call through a helper in another package, a method value, an interface,
 a struct field or a called literal's parameter is not seen, so that body counts as
 running before `t.Run` returns. A body `t.Run` skips under `-run` or `-skip` does not run
-at all, and its `Wait` still counts. These do not count: a `Wait` after a `return`, on
-one branch only, in a literal saved and never called, in a literal passed to another
-function, in a parallel subtest started on any other `t` (no `t.Run` the function
-holding the start calls waits for it), in a `t.Cleanup` literal, or inside the goroutine
-it waits for.
+at all, and its `Wait` still counts.
+
+A literal that returns an error before its `Wait` hands that error to the caller, which may
+go on without waiting. So the call counts only on the caller's paths where that error is
+nil. The check sees the error when the caller binds the result, with `:=`, `=` or `var`,
+and compares it with `nil`, or compares the call itself with `nil`. The branch where the
+error is nil counts as waited, also through `&&`, `||` and `!` in the condition. The other
+branch must wait or end the path: it returns a non-nil error, or calls `t.Fatal`. After
+that comparison, a return whose error result uses the literal's error or a variable
+assigned from it, as in `return fmt.Errorf("run: %w", err)`, counts as a non-nil error,
+and so does a bare return of a named error result that holds it. A use inside a function
+literal does not count. Any other return of a call counts as success, as it does
+elsewhere, so a branch that only logs the error and goes on to `return save()` needs a
+`Wait`, and so does one that returns `nil`. Reassigning the bound variable before the
+comparison drops the error, and so does a `defer` of the call. A caller that returns
+the call's result directly, as in `return run()`, or binds it to its named error result and
+returns, hands the error up and counts as waited. A caller that drops the error gets no
+`Wait` from the call. A `TryGo` needs a `Wait` on only some path, so the call counts for it
+whatever the caller does with the error.
+
+A caller that checks the error any other way, such as `require.NoError(t, err)`, `errors.Is`
+or `switch err`, is reported even when that check fails the test. This is a known false
+positive (ENG-994). A `panic` on the error branch, or on any path before the `Wait`, is
+reported the same way (ENG-993).
+
+A `Wait` does not count after a `return`, on one branch only, in a literal saved and never
+called, in a literal passed to another function, in a parallel subtest started on any other
+`t` (no `t.Run` the function holding the start calls waits for it), in a `t.Cleanup`
+literal, or inside the goroutine it waits for.
 
 A path that returns a non-nil error is not a success path, so a `Shutdown` that returns
 its flush error before it waits is accepted. A return of an error variable or field,
