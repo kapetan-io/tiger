@@ -32,7 +32,7 @@ type flowState struct {
 	passed    bool
 	covered   bool
 	failed    bool
-	held      heldIndexes
+	literals  heldIndexes
 	unchecked literalError
 	nonNil    nonNilError
 }
@@ -43,7 +43,7 @@ type stateKey struct {
 	covered   bool
 	unchecked literalError
 	nonNil    nonNilError
-	held      heldIndexes
+	literals  heldIndexes
 }
 
 type literalError struct {
@@ -268,10 +268,10 @@ func (o *owners) uncovered(fn function, query flowQuery, always waiters) (unwait
 		return o.waitCall(call, query.group, always)
 	})
 	fn.followed = o.followedLocals(fn, query.group, always)
-	walked, err := o.coverage(fn, graph, query, always)
+	walked, err := o.walkPaths(fn, graph, query, always)
 	if err != nil {
 		fn.followed = nil
-		walked, err = o.coverage(fn, graph, query, always)
+		walked, err = o.walkPaths(fn, graph, query, always)
 	}
 	assert.Ok(err == nil, "uncovered: worklist reached worklist.NodesMax")
 	return walked.unwaited, walked.exits
@@ -284,7 +284,7 @@ type coverage struct {
 	exits    bool
 }
 
-func (o *owners) coverage(
+func (o *owners) walkPaths(
 	fn function, graph *cfg.CFG, query flowQuery, always waiters,
 ) (coverage, error) {
 	exits := false
@@ -295,7 +295,7 @@ func (o *owners) coverage(
 		state := work[i]
 		key := stateKey{
 			block: state.block.Index, passed: state.passed, covered: state.covered,
-			unchecked: state.unchecked, nonNil: state.nonNil, held: state.held,
+			unchecked: state.unchecked, nonNil: state.nonNil, literals: state.literals,
 		}
 		if seen[key] {
 			continue
@@ -330,7 +330,7 @@ func (o *owners) coverage(
 		for branch, next := range state.block.Succs {
 			following := flowState{
 				block: next, passed: state.passed, covered: state.covered,
-				unchecked: state.unchecked, nonNil: state.nonNil, held: state.held,
+				unchecked: state.unchecked, nonNil: state.nonNil, literals: state.literals,
 			}
 			isNil, compared := o.errorNilOn(state, branch)
 			switch {
@@ -364,8 +364,8 @@ func (o *owners) walk(fn function, state flowState, query flowQuery, always wait
 		}
 		state.unchecked = o.reassigned(node, state.unchecked)
 		state.nonNil = o.carried(fn, node, state.nonNil)
-		erring, waits := o.waitsIn(node, query, heldOnPath{fn.followed, state.held}, always)
-		state.held = o.heldAfter(node, fn.followed, state.held)
+		erring, waits := o.waitsIn(node, query, heldOnPath{fn.followed, state.literals}, always)
+		state.literals = o.heldAfter(node, fn.followed, state.literals)
 		if !waits && erring != nil && state.passed {
 			state = o.followError(fn, state, errorSite{node: node, call: erring}, query)
 			continue

@@ -1696,3 +1696,32 @@ func TestSavedWaitAssignedLastCalledInParallelSubtest(t *testing.T) {
 		wait()
 	})
 }
+
+// TestSavedWaitReplacedBeforeNextPassAfterFourFollowed replaces the waiting
+// literal as the fifth variable with a literal that may wait. Only four are
+// followed path by path, and the rest count only where the same literal
+// reaches the call on every path, so the safe loop is reported.
+func TestSavedWaitReplacedBeforeNextPassAfterFourFollowed(t *testing.T) {
+	var wg sync.WaitGroup
+	first := func() { wg.Wait() }
+	first = func() {}
+	second := func() { wg.Wait() }
+	second = func() {}
+	third := func() { wg.Wait() }
+	third = func() {}
+	fourth := func() { wg.Wait() }
+	fourth = func() {}
+	wait := func() { wg.Wait() }
+	wg.Go(func() {}) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+	for {
+		wait()
+		wait = func() {}
+		if testing.Short() {
+			break
+		}
+	}
+	first()
+	second()
+	third()
+	fourth()
+}

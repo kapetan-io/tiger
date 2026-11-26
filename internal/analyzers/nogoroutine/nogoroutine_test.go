@@ -41,7 +41,8 @@ import (
 // that it hands the group, but not a builtin or a conversion
 // (failure_nowait.go, failure_nowait_more.go, compliant_nowait.go,
 // compliant_handoff.go); such a function whose Wait sits on one branch or in a
-// defer is a documented gap (knownmiss.go, ENG-980), and so are a Wait after a
+// defer, or whose saved literal waits on one branch only, is a documented gap
+// (knownmiss.go, ENG-980), and so are a Wait after a
 // call that never returns, a Wait in a sync.Once that already fired, and a
 // group handed to a call it cannot follow that never waits (knownmiss.go); a
 // path ending in panic never returns and needs none either, though no corpus
@@ -56,13 +57,14 @@ import (
 // through & or rebound by a range clause and whose only definition is a
 // literal, or that is declared in one function body, assigned only there or
 // in a literal it defers, and whose last assignment on the path to that call
-// is a literal, with the call in that body or in a literal it runs where the
-// literal is written, or a t.Run or b.Run body that does not call t.Parallel
-// or is started on the t of a subtest whose body counts, from inside that
+// is a literal, where the call sits in that body itself, in a literal called
+// where it is written or in a t.Run or b.Run body that does not call
+// t.Parallel; or a t.Run or b.Run body that does not call t.Parallel or is
+// started on the t of a subtest whose body counts, from inside that
 // subtest's body and through no variable declared outside it) when that
-// literal waits on every success path. A literal that returns an error before its Wait counts only
-// on the caller's branch where that error is nil, or when the caller returns
-// the call's result; a caller that drops the error or goes on after it is
+// literal waits on every success path. A literal that returns an error
+// before its Wait counts only on the caller's branch where that error is nil,
+// or when the caller returns the call's result; a caller that drops the error or goes on after it is
 // reported (compliant_literal_test.go, failure_literal_test.go). A Wait in a
 // literal saved and never called, in a literal passed to another function,
 // in a saved literal that another assignment may replace on a path to the

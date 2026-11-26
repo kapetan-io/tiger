@@ -901,14 +901,15 @@ body and the last assignment on the path to the call is that literal. Every assi
 must sit in that body itself or in a literal it defers where it is written, which runs
 as the body returns, after every call in it. A call inside a literal called where it is
 written, or inside a `t.Run` or `b.Run` body that does not call `t.Parallel`, counts as
-made where that literal runs. A call inside a deferred literal, a goroutine or a
-parallel subtest does not. Each path is followed on its own, so a loop that calls the
+made where that literal runs. A call inside any other literal, such as a deferred one, a
+goroutine, a parallel subtest or one handed to `once.Do`, does not. Each path is followed on its own, so a loop that calls the
 waiting literal on its first pass and replaces it afterwards waits on every path, while
 a replacement that reaches the call on a path that has not waited yet does not. Each
 path is followed only for the first four variables in a function, in source order, with
-a literal that may wait, and assigned at most 62 times. For the others, and for a call
-from a nested literal, the call counts only when the waiting literal reaches it on every
-path. So the loop above is reported when its call sits in a nested literal, a known gap
+a literal that may wait, and only while the function is small enough to walk every path
+with them. For the others, and for a call from a nested literal, the call counts only
+when the waiting literal reaches it on every path. A variable assigned more than 62
+times never counts. So the loop above is reported when its call sits in a nested literal, a known gap
 (ENG-1043). A body that calls `t.Parallel` also counts when it is started on the `t` of a
 subtest whose body counts as running before its `t.Run` returns, from inside that
 subtest's body, and through no variable declared outside it. The testing package runs

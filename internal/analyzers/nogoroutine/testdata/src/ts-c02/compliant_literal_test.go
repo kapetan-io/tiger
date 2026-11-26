@@ -1296,6 +1296,7 @@ func TestSavedWaitReplacedInDeferredLiteral(t *testing.T) {
 	wait()
 }
 
+// step is a function that returns the step to run next.
 type step func() step
 
 // TestSavedWaitCalledInItsReplacement replaces the saved literal with the
@@ -1377,10 +1378,11 @@ func TestSavedWaitReplacedBeforeNextPassInCalledLiteral(t *testing.T) {
 }
 
 // TestSavedWaitReplacedBeforeNextPassBesideOther follows a second reassigned
-// literal declared first, so each variable keeps the literal it last held.
+// waiting literal declared first, so each variable keeps the literal it last
+// held.
 func TestSavedWaitReplacedBeforeNextPassBesideOther(t *testing.T) {
 	var wg sync.WaitGroup
-	other := func() {}
+	other := func() { wg.Wait() }
 	other = func() {}
 	wait := func() { wg.Wait() }
 	wg.Go(func() {})
@@ -1399,11 +1401,11 @@ func TestSavedWaitReplacedBeforeNextPassBesideOther(t *testing.T) {
 // path.
 func TestSavedWaitReplacedBeforeNextPassFourth(t *testing.T) {
 	var wg sync.WaitGroup
-	first := func() {}
+	first := func() { wg.Wait() }
 	first = func() {}
-	second := func() {}
+	second := func() { wg.Wait() }
 	second = func() {}
-	third := func() {}
+	third := func() { wg.Wait() }
 	third = func() {}
 	wait := func() { wg.Wait() }
 	wg.Go(func() {})

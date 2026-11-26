@@ -21,7 +21,7 @@ func (r *replacedOnBranch) Start() { r.wg.Go(work) }
 // closed.
 //
 // known-miss: a function with no success path counts when any literal that
-// may reach the call waits, the same as a Wait on one branch only.
+// may reach the call waits, the same as a Wait on one branch only (ENG-980).
 func (r *replacedOnBranch) Closed() error {
 	wait := func() { r.wg.Wait() }
 	if len(os.Args) > 1 {
