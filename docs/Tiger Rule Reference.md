@@ -1032,8 +1032,8 @@ function that has a success path counts too when it calls a literal that defers 
 `Wait` and never returns, or returns the error of a literal whose `Wait` sits on one
 branch only, as in `return func() error { if wait { s.wg.Wait() }; return errClosed }()`
 (ENG-1007). Those gaps are not caught. In a method the start relies on and in a function
-with no success exit, a call to a local variable assigned more than one literal is followed
-path by path, as described above for a `Wait` after a start inside a literal. So a loop
+with no success exit, a call to a local variable assigned more than once is followed path
+by path, as described above for a `Wait` after a start inside a literal. So a loop
 that calls the waiting literal on its first pass and replaces it afterwards counts, and so
 does `if fast { wait = func() { s.wg.Wait() } } else { s.wg.Wait() }; wait(); return
 errClosed`. A call reached on some path by a replacement that does not wait, before any
