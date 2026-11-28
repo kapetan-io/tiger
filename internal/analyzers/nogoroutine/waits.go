@@ -96,7 +96,9 @@ func (o *owners) summary(group *types.Var) waiters {
 	for round := 0; round <= len(decls); round++ {
 		changed := false
 		for _, decl := range decls {
-			if always[decl] || !o.searchFor(always).mayWait(decl.Body, group, nil) {
+			reach := o.searchFor(always)
+			reach.anySavedWaits = true
+			if always[decl] || !reach.mayWait(decl.Body, group, nil) {
 				continue
 			}
 			unwaited, exits := o.uncovered(functionOf(decl), flowQuery{group: group}, always)
@@ -136,8 +138,9 @@ func subtestKey(subtests []*types.Var) string {
 
 type waitSearch struct {
 	*owners
-	always waiters
-	seen   searchedBodies
+	always        waiters
+	seen          searchedBodies
+	anySavedWaits bool
 }
 
 func (o *owners) searchFor(always waiters) waitSearch {
@@ -161,7 +164,7 @@ func (w waitSearch) mayWait(body *ast.BlockStmt, group *types.Var, subtests []*t
 				case *ast.FuncLit, *ast.GoStmt:
 					return false
 				case *ast.CallExpr:
-					found = found || w.callMayWait(expr, group, subtests)
+					found = found || w.callMayWait(expr, group, subtests, heldOnPath{})
 				}
 				return !found
 			})
@@ -173,7 +176,9 @@ func (w waitSearch) mayWait(body *ast.BlockStmt, group *types.Var, subtests []*t
 	return false
 }
 
-func (w waitSearch) callMayWait(call *ast.CallExpr, group *types.Var, subtests []*types.Var) bool {
+func (w waitSearch) callMayWait(
+	call *ast.CallExpr, group *types.Var, subtests []*types.Var, onPath heldOnPath,
+) bool {
 	if w.callsWait(call.Fun, group) || w.helperWaits(call, w.always) {
 		return true
 	}
@@ -184,19 +189,14 @@ func (w waitSearch) callMayWait(call *ast.CallExpr, group *types.Var, subtests [
 	if decl != nil && w.mayWait(decl.Body, group, nil) {
 		return true
 	}
-	run := w.literalRunBy(call, subtests, heldOnPath{})
+	run := w.literalRunBy(call, subtests, onPath)
 	if run.literal != nil && w.mayWait(run.literal.Body, group, run.within(subtests)) {
 		return true
 	}
-	if saved := w.savedIn(call.Fun); run.literal == nil && saved != nil {
-		values := w.valuesAt(call.Fun)
-		every := !values.other && len(values.literals) > 0
-		for _, literal := range values.literals {
-			every = every && w.mayWait(literal.Body, group, declaredAround(subtests, saved))
-		}
-		if every {
-			return true
-		}
+	saved := w.savedIn(call.Fun)
+	if run.literal == nil && saved != nil && !onPath.follows(saved) &&
+		w.savedMayWait(call, group, subtests) {
+		return true
 	}
 	once := w.onceLiteral(call)
 	if once != nil && w.mayWait(once.Body, group, subtests) {
@@ -212,6 +212,21 @@ func (w waitSearch) callMayWait(call *ast.CallExpr, group *types.Var, subtests [
 		}
 	}
 	return false
+}
+
+func (w waitSearch) savedMayWait(call *ast.CallExpr, group *types.Var, subtests []*types.Var) bool {
+	saved := w.savedIn(call.Fun)
+	values := w.valuesAt(call.Fun)
+	waiting := 0
+	for _, literal := range values.literals {
+		if w.mayWait(literal.Body, group, declaredAround(subtests, saved)) {
+			waiting++
+		}
+	}
+	if w.anySavedWaits {
+		return waiting > 0
+	}
+	return !values.other && waiting > 0 && waiting == len(values.literals)
 }
 
 func (o *owners) callsWait(fun ast.Expr, group *types.Var) bool {
@@ -242,7 +257,8 @@ func (w waitSearch) handedWait(call *ast.CallExpr, arg int) bool {
 	if arg < 0 || arg >= len(params) || params[arg] == nil {
 		return false
 	}
-	handed := waitSearch{owners: w.owners, always: waiters{}, seen: w.seen}
+	handed := w
+	handed.always = waiters{}
 	return handed.mayWait(decl.Body, w.index.Object(params[arg]), nil)
 }
 
@@ -787,8 +803,13 @@ func (o *owners) waitsIn(
 		case *ast.CallExpr:
 			counted := !o.givesUp(found.Pos(), start)
 			if query.noSuccess {
+				held := onPath
+				if query.endless {
+					held = heldOnPath{}
+				}
 				search := o.searchFor(always)
-				waits = waits || counted && search.callMayWait(found, query.group, query.subtests)
+				waits = waits || counted &&
+					search.callMayWait(found, query.group, query.subtests, held)
 				return !waits
 			}
 			waits = waits || counted && o.waitCall(found, query.group, always)

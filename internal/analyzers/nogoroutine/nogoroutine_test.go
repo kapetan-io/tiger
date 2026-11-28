@@ -54,10 +54,13 @@ import (
 // either, but it and select {} are read as success paths
 // (falsepositive_panic.go, knownmiss.go, ENG-998); and a called literal
 // that never returns, or whose one-branch error a function with a success
-// path returns, counts as waiting (knownmiss.go, ENG-1007); a saved literal
-// there counts only when every literal that may reach the call waits, so one
-// called on a loop's first pass and replaced after it is an expected false
-// positive (failure_nowait_more.go, ENG-1045).
+// path returns, counts as waiting (knownmiss.go, ENG-1007); and a method the
+// start relies on, or a function with no success exit, follows the literal a
+// local variable holds on each path, as described for literals below, so one
+// called on a loop's first pass and replaced after it waits, while one
+// replaced on a branch before the call does not, and a function that never
+// returns counts the call only when every literal that may reach it waits
+// (compliant_nowait.go, failure_nowait_more.go).
 //
 // Goal, TS-C02: a function literal is a function. A start inside a literal is
 // waited when a Wait follows it on every success path of that literal, or of
