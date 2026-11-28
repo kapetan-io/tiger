@@ -982,10 +982,16 @@ excuses nothing. A `t.Fatal` after the start inside the same literal, a `t.Run` 
 included, ends that literal's path and excuses the start the same way. A call to a helper that
 fails the test, such as `requireReady(t)`, is a call that returns, so the path goes on
 past it, and a helper that only fails the test never counts as waiting on a group. A
-literal that holds the `Wait` and that a call runs, such as a `t.Run` body, is read like
-that helper. A subtest that fails returns from `t.Run` to a parent that goes on, so the
-literal waits only when every path through it waits, `t.Fatal` paths included. A `TryGo` needs a `Wait` on some path, and a path
-through `t.Fatal` still goes on to it.
+`t.Run` or `b.Run` body that holds the `Wait` is read like that helper. A subtest that
+fails returns from `t.Run` to a parent that goes on, so the body waits only when every
+path through it waits, `t.Fatal` paths included. A literal called where it is written,
+`defer func() { ... }()` included, or through a local variable that holds it at the call,
+runs on the goroutine of the function that calls it, so a `t.Fatal` in it ends that
+path, and that path needs no `Wait`. This holds only for a start written in place, not
+inside a literal, `defer` or `go` statement of its own, in the body that makes the call
+or in a body that reaches the call through literals it calls this way. It does not hold
+when a `t.Run` or `b.Run` body makes the call for a start outside that body. A `TryGo`
+needs a `Wait` on some path, and a path through `t.Fatal` still goes on to it.
 
 A function that loops forever or returns only a non-nil error has no success path to
 check, so it is judged by the paths it has. If it returns at all, it counts as a `Wait`

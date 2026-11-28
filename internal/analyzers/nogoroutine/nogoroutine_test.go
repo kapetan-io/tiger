@@ -31,12 +31,12 @@ import (
 // path after it, since the path where it returned false started nothing
 // (tryGoWaited); a return of a non-nil error is the failure path, so it
 // needs no Wait (startThenOnlyError), and neither does a path ending in
-// t.Fatal, t.Fatalf or t.FailNow, which fails the test
-// (compliant_fatal_test.go), but a function that loops forever or
-// returns only a non-nil error counts as a Wait only when one of its returns
-// is reached only after code that may wait on the group, or, when it never
-// returns, when some path may reach such code outside a defer, since a
-// deferred call never runs (failure_nosuccess.go, compliant_nosuccess.go).
+// t.Fatal, t.Fatalf or t.FailNow, which fails the test, including one in a
+// literal the test calls (compliant_fatal_test.go), but a function that loops
+// forever or returns only a non-nil error counts as a Wait only when one of
+// its returns is reached only after code that may wait on the group, or, when
+// it never returns, when some path may reach such code outside a defer, since
+// a deferred call never runs (failure_nosuccess.go, compliant_nosuccess.go).
 // Code may wait on the group through a Wait called directly or through a local
 // bound to the Wait method value, a same-package function that may wait on
 // it, a literal it runs (including through sync.Once.Do), a same-package

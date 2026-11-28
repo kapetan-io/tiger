@@ -820,7 +820,12 @@ func (o *owners) waitOf(run literalRun, query flowQuery, always waiters) literal
 	o.walking[literal] = true
 	defer delete(o.walking, literal)
 	fn := function{decl: o.index.DeclOf(literal), typ: literal.Type, body: literal.Body}
-	inner := flowQuery{group: query.group, held: held, subtests: run.within(query.subtests)}
+	inner := flowQuery{
+		group:       query.group,
+		held:        held,
+		failNowEnds: query.failNowEnds && !run.subtestBody,
+		subtests:    run.within(query.subtests),
+	}
 	if unwaited, _ := o.uncovered(fn, inner, always); unwaited {
 		return givesNoWait
 	}
@@ -835,10 +840,11 @@ func (o *owners) waitOf(run literalRun, query flowQuery, always waiters) literal
 }
 
 type literalRun struct {
-	literal  *ast.FuncLit
-	saved    *types.Var
-	subtest  *types.Var
-	parallel bool
+	literal     *ast.FuncLit
+	saved       *types.Var
+	subtest     *types.Var
+	subtestBody bool
+	parallel    bool
 }
 
 func (o *owners) literalRunBy(
@@ -860,10 +866,11 @@ func (o *owners) literalRunBy(
 		return literalRun{}
 	}
 	return literalRun{
-		literal:  body,
-		saved:    o.savedIn(call.Args[1]),
-		subtest:  o.subtestOf(body),
-		parallel: parallel,
+		literal:     body,
+		saved:       o.savedIn(call.Args[1]),
+		subtest:     o.subtestOf(body),
+		subtestBody: true,
+		parallel:    parallel,
 	}
 }
 
