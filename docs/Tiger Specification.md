@@ -1946,8 +1946,8 @@ checks the settings each rule names. Every other key must match the baseline too
 also add `linters.exclusions.generated: strict` or `disable`, the `common-false-positives` preset,
 `warn-unused` under either `exclusions` block, `run.tests: true` and `issues.new: false`, since
 none of them hides a finding the baseline reports. Any
-other key that differs, such as `linters.exclusions.paths`, is reported by name. `--off` names
-linters a project leaves off on purpose, and the audit does not report them missing.
+other key that differs, such as `linters.exclusions.paths`, is reported by name. A linter listed
+under `linters.disable` is left off on purpose, and the audit skips the rules it enforces.
 
 `tiger.yaml` carries the facts a repository tells the analyzers about its world. It is versioned,
 and each entry is a value, a reason a reviewer accepted, and an optional list of packages it applies

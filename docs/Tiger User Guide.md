@@ -44,7 +44,6 @@ tiger check --show-facts ./...  # also print computed facts in pin syntax
 tiger budget ./...              # report packages over their budget rows
 tiger budget --write ./...      # lower tiger.budget.yaml to the current counts
 tiger golangci                  # audit .golangci.yml against the auto-rule baseline
-tiger golangci --off lll,mnd    # the same audit, with lll and mnd left off on purpose
 tiger golangci --init           # generate the baseline config for a new project
 tiger golangci --print          # write the baseline to stdout for hand merging
 tiger pattern                   # list every pattern
@@ -77,15 +76,15 @@ lists, `linters.default`, `issues.uniq-by-line`, `linters.exclusions.rules`, `ru
 `run.concurrency` and the `output` block. It may also add keys that hide nothing the baseline
 reports: `linters.exclusions.generated: strict` or `disable`, the `common-false-positives`
 preset, `warn-unused` under either `exclusions` block, and golangci-lint's own defaults
-`run.tests: true` and `issues.new: false`. A baseline linter listed under `linters.disable` is reported
-under each rule it enforces, like a linter missing from `linters.enable`. Any other key that
-differs is a finding. Some of those keys,
+`run.tests: true` and `issues.new: false`. Any other key that differs is a finding. Some of those keys,
 such as `linters.exclusions.paths` or `run.tests: false`, hide findings while every linter still
 looks turned on.
 
-A project that turns linters on one at a time names the ones still off with `--off`, comma
-separated or repeated. Every line the audit prints is then something to fix. A name that is not
-a linter in the baseline exits 2, so a typo can't hide a missing linter.
+A project that turns linters on one at a time lists the ones still off under `linters.disable`.
+The audit skips the rules those linters enforce, settings included, so every line it prints is
+something to fix. A linter missing from `linters.enable` with no `linters.disable` entry is still
+reported, so a line deleted by mistake doesn't pass. A formatter can't be listed there, since
+golangci-lint refuses to load such a config, and the audit reports one that is.
 
 The analysis is deterministic static analysis and never a language model (ADR-0015). Tiger
 itself calls no outside service. It loads packages through the `go` command, which fetches a

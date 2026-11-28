@@ -38,10 +38,7 @@ type baseline struct {
 	want any
 }
 
-func Verify(dir string, off ...string) ([]Finding, error) {
-	if err := rejectUnknownLinters(off); err != nil {
-		return nil, err
-	}
+func Verify(dir string) ([]Finding, error) {
 	document, err := readConfig(dir)
 	if err != nil {
 		return nil, err
@@ -50,16 +47,17 @@ func Verify(dir string, off ...string) ([]Finding, error) {
 	if err != nil {
 		return nil, err
 	}
+	disabled := disabledLinters(document)
 	findings := []Finding{}
 	autoRules := auto.AutoRules()
 	for i := range autoRules {
 		rule := &autoRules[i]
-		if slices.Contains(off, rule.Linter) && !switchedOn(document, rule) {
+		if rule.Section == auto.SectionLinters && slices.Contains(disabled, rule.Linter) {
 			continue
 		}
 		findings = append(findings, verifyRule(document, rule, module)...)
 	}
-	findings = append(findings, verifyKeys(document, module, off)...)
+	findings = append(findings, verifyKeys(document, module, disabled)...)
 	sort.Slice(findings, func(i, j int) bool {
 		coded := findings[i].RuleID != ""
 		if coded != (findings[j].RuleID != "") {
@@ -74,21 +72,6 @@ func Verify(dir string, off ...string) ([]Finding, error) {
 		return findings[i].Message < findings[j].Message
 	})
 	return findings, nil
-}
-
-func rejectUnknownLinters(off []string) error {
-	known := map[string]bool{}
-	autoRules := auto.AutoRules()
-	for i := range autoRules {
-		known[autoRules[i].Linter] = true
-	}
-	for _, name := range off {
-		if !known[name] {
-			return fmt.Errorf("--off names %q, which is not a linter in tiger's baseline — "+
-				"name one of %s", name, strings.Join(slices.Sorted(maps.Keys(known)), ", "))
-		}
-	}
-	return nil
 }
 
 func verifyRule(document map[string]any, rule *auto.AutoRule, module string) []Finding {
@@ -263,10 +246,10 @@ func named(element any) string {
 	return fmt.Sprint(element)
 }
 
-func switchedOn(document map[string]any, rule *auto.AutoRule) bool {
+func disabledLinters(document map[string]any) []string {
 	value, _ := lookup(document, []string{auto.SectionLinters, "disable"})
 	names, _ := disabledNames(value)
-	return enabled(document, rule) && !slices.Contains(names, rule.Linter)
+	return names
 }
 
 func enabled(document map[string]any, rule *auto.AutoRule) bool {
