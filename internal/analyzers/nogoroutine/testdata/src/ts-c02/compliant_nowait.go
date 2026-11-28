@@ -1,7 +1,8 @@
 // A function counts as a Wait when it calls Wait on the group, directly,
 // through a chain of helpers that wait, inside a literal it calls, inside a
-// t.Run body or inside a saved literal it calls, including when it then
-// returns a stored error or only an error, or loops forever after the Wait.
+// t.Run body or inside a saved literal it calls (on every path, or on a
+// loop's first pass before replacing it), including when it then returns a
+// stored error or only an error, or loops forever after the Wait.
 package fixture
 
 import (
@@ -149,4 +150,61 @@ func (r *reassignedWaitDeferredReplace) Close() {
 	wait := func() { r.wg.Wait() }
 	defer func() { wait = func() {} }()
 	wait()
+}
+
+// reassignedWaitLoop calls its saved literal on the first pass of a loop and
+// replaces it after that call.
+type reassignedWaitLoop struct{ wg sync.WaitGroup }
+
+// Start runs the worker.
+func (r *reassignedWaitLoop) Start() { r.wg.Go(work) }
+
+// Close waits on the loop's first pass.
+func (r *reassignedWaitLoop) Close() {
+	wait := func() { r.wg.Wait() }
+	for {
+		wait()
+		wait = func() {}
+		if testing.Short() {
+			break
+		}
+	}
+}
+
+// reassignedWaitLoopClosed runs the same loop, then returns only an error.
+type reassignedWaitLoopClosed struct{ wg sync.WaitGroup }
+
+// Start runs the worker.
+func (r *reassignedWaitLoopClosed) Start() { r.wg.Go(work) }
+
+// Closed waits on the loop's first pass and reports the group closed.
+func (r *reassignedWaitLoopClosed) Closed() error {
+	wait := func() { r.wg.Wait() }
+	for {
+		wait()
+		wait = func() {}
+		if testing.Short() {
+			break
+		}
+	}
+	return errClosed
+}
+
+// savedWaitOnOneBranch waits through a saved literal on one branch and
+// directly on the other, then returns only an error.
+type savedWaitOnOneBranch struct{ wg sync.WaitGroup }
+
+// Start runs the worker.
+func (s *savedWaitOnOneBranch) Start() { s.wg.Go(work) }
+
+// Closed waits on both branches and reports the group closed.
+func (s *savedWaitOnOneBranch) Closed(fast bool) error {
+	wait := func() {}
+	if fast {
+		wait = func() { s.wg.Wait() }
+	} else {
+		s.wg.Wait()
+	}
+	wait()
+	return errClosed
 }

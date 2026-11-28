@@ -36,6 +36,15 @@ type heldOnPath struct {
 	holding  heldIndexes
 }
 
+func (h heldOnPath) follows(local *types.Var) bool {
+	for _, followed := range h.followed {
+		if followed.local == local {
+			return true
+		}
+	}
+	return false
+}
+
 func (o *owners) literalOnPath(expr ast.Expr, onPath heldOnPath) *ast.FuncLit {
 	if ident, ok := ast.Unparen(expr).(*ast.Ident); ok {
 		local := o.index.Object(ident)

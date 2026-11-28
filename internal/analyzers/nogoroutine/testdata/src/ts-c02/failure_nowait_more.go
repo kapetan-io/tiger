@@ -1,15 +1,12 @@
 // A function whose only Wait does not run before it returns (in a goroutine,
 // in a literal or method value saved and never called, in a saved literal
 // that may be replaced before the call, or after a loop that never ends)
-// waits on nothing, even when it has no success exit. A saved literal called
-// on a loop's first pass and replaced after it is an expected false positive
-// here (ENG-1045).
+// waits on nothing, even when it has no success exit.
 package fixture
 
 import (
 	"os"
 	"sync"
-	"testing"
 	"time"
 )
 
@@ -236,25 +233,20 @@ func (r *replacedOnBranch) Closed() error {
 	return errClosed
 }
 
-// reassignedWaitLoop is an expected false positive (ENG-1045): its Close
-// calls the saved literal on the first pass of a loop before replacing it,
-// but a method that Start relies on counts only when every literal that may
-// reach the call waits, and the replacement reaches it on a later pass.
-type reassignedWaitLoop struct{ wg sync.WaitGroup }
+// replacedOnBranchClose has a success path, and its Close may replace the
+// waiting literal before calling it.
+type replacedOnBranchClose struct{ wg sync.WaitGroup }
 
 // Start runs the worker.
-func (r *reassignedWaitLoop) Start() {
+func (r *replacedOnBranchClose) Start() {
 	r.wg.Go(work) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
 }
 
-// Close waits on the loop's first pass.
-func (r *reassignedWaitLoop) Close() {
+// Close waits unless the program got an argument.
+func (r *replacedOnBranchClose) Close() {
 	wait := func() { r.wg.Wait() }
-	for {
-		wait()
+	if len(os.Args) > 1 {
 		wait = func() {}
-		if testing.Short() {
-			break
-		}
 	}
+	wait()
 }
