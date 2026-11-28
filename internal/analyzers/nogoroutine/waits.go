@@ -20,6 +20,8 @@ type flowQuery struct {
 	start       *ast.SelectorExpr
 	held        *ast.SelectorExpr
 	anyPath     bool
+	noSuccess   bool
+	endless     bool
 	shutdown    bool
 	failNowEnds bool
 	subtests    []*types.Var
@@ -97,7 +99,10 @@ func (o *owners) summary(group *types.Var) waiters {
 			if always[decl] || !o.searchFor(always).mayWait(decl.Body, group, nil) {
 				continue
 			}
-			unwaited, _ := o.uncovered(functionOf(decl), flowQuery{group: group}, always)
+			unwaited, exits := o.uncovered(functionOf(decl), flowQuery{group: group}, always)
+			if !unwaited && !exits {
+				unwaited = o.noSuccessUnwaited(functionOf(decl), group, always)
+			}
 			if !unwaited {
 				always[decl] = true
 				changed = true
@@ -267,9 +272,9 @@ func (o *owners) uncovered(fn function, query flowQuery, always waiters) (unwait
 	if len(graph.Blocks) == 0 {
 		return false, false
 	}
-	query.shutdown = o.givesUpIn(fn.body) && o.callsIn(fn.body, func(call *ast.CallExpr) bool {
-		return o.waitCall(call, query.group, always)
-	})
+	assert.Ok(!query.noSuccess || query.errorReturnsNeedWait,
+		"uncovered: a noSuccess query must also mark error returns as exits")
+	query = o.withShutdown(fn, query, always)
 	fn.followed = o.followedLocals(fn, query.group, always)
 	walked, err := o.walkPaths(fn, graph, query, always)
 	if err != nil {
@@ -291,6 +296,7 @@ func (o *owners) walkPaths(
 	fn function, graph *cfg.CFG, query flowQuery, always waiters,
 ) (coverage, error) {
 	exits := false
+	returns := make([]returnCover, len(graph.Blocks))
 	seen := map[stateKey]bool{}
 	work := []flowState{{block: graph.Blocks[0], passed: query.start == nil}}
 	i := 0
@@ -323,6 +329,10 @@ func (o *owners) walkPaths(
 				continue
 			}
 			exits = true
+			if query.noSuccess {
+				returns[state.block.Index].reach(state)
+				continue
+			}
 			handedUp := !query.errorReturnsNeedWait &&
 				o.handsUpError(fn, state.block, state.unchecked)
 			if !state.covered && !handedUp && !query.anyPath {
@@ -350,7 +360,57 @@ func (o *owners) walkPaths(
 	if i < len(work) {
 		return coverage{}, errWorklistFull
 	}
+	if query.noSuccess && exits {
+		unwaited := !slices.ContainsFunc(returns, returnCover.waited)
+		return coverage{unwaited: unwaited, exits: true}, nil
+	}
 	return coverage{unwaited: query.anyPath, exits: exits}, nil
+}
+
+type returnCover struct {
+	covered   bool
+	uncovered bool
+}
+
+func (r *returnCover) reach(state flowState) {
+	r.covered = r.covered || state.covered
+	r.uncovered = r.uncovered || !state.covered
+}
+
+func (r returnCover) waited() bool {
+	return r.covered && !r.uncovered
+}
+
+func (o *owners) withShutdown(fn function, query flowQuery, always waiters) flowQuery {
+	if query.endless {
+		return query
+	}
+	query.shutdown = o.givesUpIn(fn.body) && o.callsIn(fn.body, func(call *ast.CallExpr) bool {
+		return o.waitCall(call, query.group, always)
+	})
+	return query
+}
+
+func (o *owners) noSuccessUnwaited(fn function, group *types.Var, always waiters) bool {
+	returns := flowQuery{group: group, noSuccess: true, errorReturnsNeedWait: true}
+	unwaited, exits := o.uncovered(fn, returns, always)
+	if exits {
+		return unwaited
+	}
+	endless := returns
+	endless.endless = true
+	endless.anyPath = true
+	unwaited, _ = o.uncovered(fn, endless, always)
+	return unwaited
+}
+
+func (o *owners) argsWait(
+	call *ast.CallExpr, query flowQuery, onPath heldOnPath, always waiters,
+) bool {
+	return slices.ContainsFunc(call.Args, func(arg ast.Expr) bool {
+		_, waits := o.waitsIn(arg, query, onPath, always)
+		return waits
+	})
 }
 
 func (o *owners) walk(fn function, state flowState, query flowQuery, always waiters) flowState {
@@ -367,8 +427,14 @@ func (o *owners) walk(fn function, state flowState, query flowQuery, always wait
 		}
 		state.unchecked = o.reassigned(node, state.unchecked)
 		state.nonNil = o.carried(fn, node, state.nonNil)
-		erring, waits := o.waitsIn(node, query, heldOnPath{fn.followed, state.holding}, always)
+		onPath := heldOnPath{fn.followed, state.holding}
 		state.holding = o.heldAfter(node, fn.followed, state.holding)
+		deferred, isDefer := node.(*ast.DeferStmt)
+		if isDefer && query.endless {
+			state.covered = state.covered || o.argsWait(deferred.Call, query, onPath, always)
+			continue
+		}
+		erring, waits := o.waitsIn(node, query, onPath, always)
 		if !waits && erring != nil && state.passed {
 			state = o.followError(fn, state, errorSite{node: node, call: erring}, query)
 			continue
@@ -376,7 +442,7 @@ func (o *owners) walk(fn function, state flowState, query flowQuery, always wait
 		if !waits {
 			continue
 		}
-		if _, deferred := node.(*ast.DeferStmt); deferred || state.passed {
+		if isDefer || state.passed {
 			state.covered = true
 		}
 	}
@@ -720,6 +786,11 @@ func (o *owners) waitsIn(
 			return false
 		case *ast.CallExpr:
 			counted := !o.givesUp(found.Pos(), start)
+			if query.noSuccess {
+				search := o.searchFor(always)
+				waits = waits || counted && search.callMayWait(found, query.group, query.subtests)
+				return !waits
+			}
 			waits = waits || counted && o.waitCall(found, query.group, always)
 			if run := o.literalRunBy(found, query.subtests, onPath); !waits && run.literal != nil {
 				kind := o.waitOf(run, query, always)
