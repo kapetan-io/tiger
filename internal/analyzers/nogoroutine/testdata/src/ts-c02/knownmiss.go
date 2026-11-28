@@ -69,39 +69,6 @@ func expiredWaitBeforeGiveUp(ctx context.Context) {
 	}
 }
 
-// branchWaitSentinel leaks the goroutine when Closed is called with false.
-type branchWaitSentinel struct{ wg sync.WaitGroup }
-
-// Start runs the worker.
-//
-// known-miss: Closed returns only a non-nil error, so it has no success path
-// to check, and its Wait on one branch makes it count as a Wait on every path (ENG-980).
-func (b *branchWaitSentinel) Start() { b.wg.Go(work) }
-
-// Closed waits only when asked to, then reports the group closed.
-func (b *branchWaitSentinel) Closed(wait bool) error {
-	if wait {
-		b.wg.Wait()
-	}
-	return errClosed
-}
-
-// deferForever never runs its deferred Wait, because Run never returns.
-type deferForever struct{ wg sync.WaitGroup }
-
-// Start runs the worker.
-//
-// known-miss: Run has no success path to check, and its deferred Wait makes it
-// count as a Wait though the Wait never runs (ENG-980).
-func (d *deferForever) Start() { d.wg.Go(work) }
-
-// Run defers a Wait and loops forever.
-func (d *deferForever) Run() {
-	defer d.wg.Wait()
-	for {
-	}
-}
-
 // spinBeforeWait never reaches its Wait, because spin never returns.
 type spinBeforeWait struct{ wg sync.WaitGroup }
 
@@ -216,3 +183,270 @@ func (o *otherInstance) Closed() error {
 }
 
 func (o *otherInstance) stop() { o.wg.Wait() }
+
+// helperBranchWait calls a same-package helper that waits on one branch only,
+// and, in a function with no success path, a call counts when it may wait,
+// not only when it always does.
+type helperBranchWait struct{ wg sync.WaitGroup }
+
+// Start runs the worker. Not reported.
+func (h *helperBranchWait) Start() { h.wg.Go(work) }
+
+// Closed asks maybeWait not to wait and reports the group closed.
+func (h *helperBranchWait) Closed() error {
+	h.maybeWait(false)
+	return errClosed
+}
+
+func (h *helperBranchWait) maybeWait(wait bool) {
+	if wait {
+		h.wg.Wait()
+	}
+}
+
+// literalBranchWait runs a literal that waits on one branch only, and, in a
+// function with no success path, a call counts when it may wait, not only
+// when it always does.
+type literalBranchWait struct{ wg sync.WaitGroup }
+
+// Start runs the worker. Not reported.
+func (l *literalBranchWait) Start() { l.wg.Go(work) }
+
+// Closed runs the literal and reports the group closed.
+func (l *literalBranchWait) Closed(wait bool) error {
+	func() {
+		if wait {
+			l.wg.Wait()
+		}
+	}()
+	return errClosed
+}
+
+// deferPanicForever never runs its deferred Wait unless it panics, and a
+// path that ends in panic is read as a success path the defer covers
+// (ENG-998).
+type deferPanicForever struct{ wg sync.WaitGroup }
+
+// Start runs the worker. Not reported.
+func (d *deferPanicForever) Start() { d.wg.Go(work) }
+
+// Run defers a Wait and loops forever, panicking when bad says so.
+func (d *deferPanicForever) Run(bad func() bool) {
+	defer d.wg.Wait()
+	for {
+		if bad() {
+			panic("bad")
+		}
+	}
+}
+
+// deferSelectForever blocks forever in select {}, which is read as a success
+// path the deferred Wait covers (ENG-998).
+type deferSelectForever struct{ wg sync.WaitGroup }
+
+// Start runs the worker. Not reported.
+func (d *deferSelectForever) Start() { d.wg.Go(work) }
+
+// Run defers a Wait and blocks forever.
+func (d *deferSelectForever) Run() {
+	defer d.wg.Wait()
+	select {}
+}
+
+// branchInLoop waits only on some passes of a loop that never ends.
+type branchInLoop struct{ wg sync.WaitGroup }
+
+// Start runs the worker.
+//
+// known-miss: a function that never returns counts as a Wait when it may
+// reach a Wait outside a defer on some path, so a loop that waits on one
+// branch, case or pass only still counts; the cases below share this note.
+func (b *branchInLoop) Start() { b.wg.Go(work) }
+
+// Run waits only when ready says so, forever.
+func (b *branchInLoop) Run(ready func() bool) {
+	for {
+		if ready() {
+			b.wg.Wait()
+		}
+	}
+}
+
+// gotoBranchWait loops forever through goto and waits only on some passes.
+type gotoBranchWait struct{ wg sync.WaitGroup }
+
+// Start runs the worker. Not reported.
+func (g *gotoBranchWait) Start() { g.wg.Go(work) }
+
+// Run waits only when ready says so, forever.
+func (g *gotoBranchWait) Run(ready func() bool) {
+again:
+	if ready() {
+		g.wg.Wait()
+	}
+	goto again
+}
+
+// selectDefaultSkipsWait waits in one select case, and its default skips it.
+type selectDefaultSkipsWait struct {
+	wg   sync.WaitGroup
+	tick chan struct{}
+}
+
+// Start runs the worker. Not reported.
+func (r *selectDefaultSkipsWait) Start() { r.wg.Go(work) }
+
+// Run loops forever.
+func (r *selectDefaultSkipsWait) Run() {
+	for {
+		select {
+		case <-r.tick:
+			r.wg.Wait()
+		default:
+		}
+	}
+}
+
+// switchSkipsWait has a switch with no default, which skips the Wait.
+type switchSkipsWait struct{ wg sync.WaitGroup }
+
+// Start runs the worker. Not reported.
+func (r *switchSkipsWait) Start() { r.wg.Go(work) }
+
+// Run loops forever.
+func (r *switchSkipsWait) Run(v func() int) {
+	for {
+		switch v() {
+		case 1:
+			r.wg.Wait()
+		}
+	}
+}
+
+// continueSkipsWait continues the outer loop before it reaches the Wait.
+type continueSkipsWait struct{ wg sync.WaitGroup }
+
+// Start runs the worker. Not reported.
+func (r *continueSkipsWait) Start() { r.wg.Go(work) }
+
+// Run loops forever.
+func (r *continueSkipsWait) Run(skip func() bool) {
+outer:
+	for {
+		for {
+			if skip() {
+				continue outer
+			}
+			r.wg.Wait()
+		}
+	}
+}
+
+// exitIntoSpin waits only on the branch that enters its inner loop.
+type exitIntoSpin struct{ wg sync.WaitGroup }
+
+// Start runs the worker. Not reported.
+func (r *exitIntoSpin) Start() { r.wg.Go(work) }
+
+// Run loops forever.
+func (r *exitIntoSpin) Run(x func() bool) {
+	for {
+		if x() {
+			for {
+				r.wg.Wait()
+			}
+		}
+	}
+}
+
+// errorBeforeDefer returns an error before it reaches its deferred Wait.
+type errorBeforeDefer struct{ wg sync.WaitGroup }
+
+// Start runs the worker.
+//
+// known-miss: a function with no success exit counts as a Wait when one of
+// its returns is reached only after waiting, so any other return that skips
+// the Wait, before or after it, is read as a failure path, the same as a
+// guard in Close (guardThenWait); namedBranchWait shares this note (ENG-1003).
+func (e *errorBeforeDefer) Start() { e.wg.Go(work) }
+
+// Closed reports the flush error before it defers the Wait.
+func (e *errorBeforeDefer) Closed(flush func() error) error {
+	if err := flush(); err != nil {
+		return err
+	}
+	defer e.wg.Wait()
+	return errClosed
+}
+
+// namedBranchWait returns its named error result, waiting on one return only.
+type namedBranchWait struct{ wg sync.WaitGroup }
+
+// Start runs the worker. Not reported.
+func (n *namedBranchWait) Start() { n.wg.Go(work) }
+
+// Closed waits only when c is set, and returns the set error either way.
+func (n *namedBranchWait) Closed(c bool) (err error) {
+	err = errClosed
+	if c {
+		n.wg.Wait()
+		return err
+	}
+	return err
+}
+
+// literalDeferForever calls a literal that defers its Wait and loops forever.
+// Close has a success path, so the literal is judged on its own, and a
+// literal with no exits and no error result counts as waiting (ENG-1007).
+type literalDeferForever struct{ wg sync.WaitGroup }
+
+// Start runs the worker. Not reported.
+func (l *literalDeferForever) Start() { l.wg.Go(work) }
+
+// Close runs the endless literal.
+func (l *literalDeferForever) Close() {
+	func() {
+		defer l.wg.Wait()
+		for {
+		}
+	}()
+}
+
+// helperDeferForever calls a same-package helper whose only Wait is deferred
+// before an endless loop; in a function with no success path, a call counts
+// when it may wait.
+type helperDeferForever struct{ wg sync.WaitGroup }
+
+// Start runs the worker. Not reported.
+func (h *helperDeferForever) Start() { h.wg.Go(work) }
+
+// Closed spins and reports the group closed.
+func (h *helperDeferForever) Closed() error {
+	h.spin()
+	return errClosed
+}
+
+func (h *helperDeferForever) spin() {
+	defer h.wg.Wait()
+	for {
+	}
+}
+
+// literalHandedUpBranchWait returns the error of a literal that waits on one
+// branch only. The return of the call reads as a success exit that hands the
+// literal's error up, so the check for functions with no success path never
+// runs (ENG-1007).
+type literalHandedUpBranchWait struct{ wg sync.WaitGroup }
+
+// Start runs the worker. Not reported.
+func (l *literalHandedUpBranchWait) Start() { l.wg.Go(work) }
+
+// Closed returns what the literal returns.
+func (l *literalHandedUpBranchWait) Closed(wait bool) error {
+	return func() error {
+		if wait {
+			l.wg.Wait()
+		}
+		return errClosed
+	}()
+}
