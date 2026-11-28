@@ -1031,13 +1031,16 @@ a success path, so a `defer` covers it though the function never returns (ENG-99
 function that has a success path counts too when it calls a literal that defers its
 `Wait` and never returns, or returns the error of a literal whose `Wait` sits on one
 branch only, as in `return func() error { if wait { s.wg.Wait() }; return errClosed }()`
-(ENG-1007). Those gaps are not caught. A function with no success exit that calls a
-local variable holding a literal follows each path the same way, so a loop that calls the
-waiting literal on its first pass and replaces it afterwards counts, and so does `if fast
-{ wait = func() { s.wg.Wait() } } else { s.wg.Wait() }; wait(); return errClosed`, while
-one branch that replaces the waiting literal before the call does not. Where that
-variable is not followed path by path, the call counts only when every literal that may
-reach it waits.
+(ENG-1007). Those gaps are not caught. In a method the start relies on and in a function
+with no success exit, a call to a local variable assigned more than one literal is followed
+path by path, as described above for a `Wait` after a start inside a literal. So a loop
+that calls the waiting literal on its first pass and replaces it afterwards counts, and so
+does `if fast { wait = func() { s.wg.Wait() } } else { s.wg.Wait() }; wait(); return
+errClosed`. A call reached on some path by a replacement that does not wait, before any
+`Wait`, does not count. Beyond the limits listed there (the first four such variables, a
+function too large to walk, a call from a nested literal), and in a function that never
+returns, the call counts only when every literal that may reach it waits, so the same loop
+is reported when it never ends.
 
 A call is treated as returning unless it is to the builtin `panic`. A start followed by a
 call to a function that loops forever still needs its `Wait`, though the same loop written

@@ -1,12 +1,15 @@
 // A function whose only Wait does not run before it returns (in a goroutine,
 // in a literal or method value saved and never called, in a saved literal
 // that may be replaced before the call, or after a loop that never ends)
-// waits on nothing, even when it has no success exit.
+// waits on nothing, even when it has no success exit. A saved literal called
+// on the first pass of a loop that never ends and replaced after it is an
+// expected false positive here.
 package fixture
 
 import (
 	"os"
 	"sync"
+	"testing"
 	"time"
 )
 
@@ -222,8 +225,7 @@ func (r *replacedOnBranch) Start() {
 }
 
 // Closed waits unless the program got an argument, then reports the group
-// closed. Its saved literal counts only when every literal that may reach
-// the call waits.
+// closed.
 func (r *replacedOnBranch) Closed() error {
 	wait := func() { r.wg.Wait() }
 	if len(os.Args) > 1 {
@@ -249,4 +251,85 @@ func (r *replacedOnBranchClose) Close() {
 		wait = func() {}
 	}
 	wait()
+}
+
+// waitAfterFirstPass calls a literal that does not wait on the first pass of
+// a loop, and only then saves the waiting one.
+type waitAfterFirstPass struct{ wg sync.WaitGroup }
+
+// Start runs the worker.
+func (r *waitAfterFirstPass) Start() {
+	r.wg.Go(work) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+}
+
+// Closed may break after a first pass that waits on nothing, then reports the
+// group closed.
+func (r *waitAfterFirstPass) Closed() error {
+	wait := func() {}
+	for {
+		wait()
+		wait = func() { r.wg.Wait() }
+		if testing.Short() {
+			break
+		}
+	}
+	return errClosed
+}
+
+// replacedThenSpin may replace the waiting literal before calling it, then
+// loops forever.
+type replacedThenSpin struct{ wg sync.WaitGroup }
+
+// Start runs the worker.
+func (r *replacedThenSpin) Start() {
+	r.wg.Go(work) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+}
+
+// Run waits unless the program got an argument, then spins forever.
+func (r *replacedThenSpin) Run() {
+	wait := func() { r.wg.Wait() }
+	if len(os.Args) > 1 {
+		wait = func() {}
+	}
+	wait()
+	for {
+	}
+}
+
+// calledBeforeSaved calls its local before saving the waiting literal in it.
+type calledBeforeSaved struct{ wg sync.WaitGroup }
+
+// Start runs the worker.
+func (c *calledBeforeSaved) Start() {
+	c.wg.Go(work) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+}
+
+// Closed calls a literal that waits on nothing, saves the waiting one too
+// late, and reports the group closed.
+func (c *calledBeforeSaved) Closed() error {
+	wait := func() {}
+	wait()
+	wait = func() { c.wg.Wait() }
+	_ = wait
+	return errClosed
+}
+
+// savedWaitThenSpin is an expected false positive: a function that never
+// returns counts a call through a saved local only when every literal that
+// may reach the call waits, and the replacement reaches it on a later pass.
+type savedWaitThenSpin struct{ wg sync.WaitGroup }
+
+// Start runs the worker.
+func (s *savedWaitThenSpin) Start() {
+	s.wg.Go(work) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+}
+
+// Run waits through the saved literal on the first pass of a loop that never
+// ends, and replaces it on every pass.
+func (s *savedWaitThenSpin) Run() {
+	wait := func() { s.wg.Wait() }
+	for {
+		wait()
+		wait = func() {}
+	}
 }
