@@ -3,7 +3,9 @@
 // returns, so the path goes on past it, and a subtest that fails ends only the
 // subtest, so t.Run returns and its parent goes on without waiting. A start in
 // a deferred or t.Cleanup literal runs after the t.Fatal, so that t.Fatal
-// excuses nothing.
+// excuses nothing, even when the t.Fatal sits in a literal the test calls. A
+// t.Fatal in a literal that a t.Run or b.Run body calls fails only the
+// subtest, so the parent goes on without waiting.
 package fixture
 
 import (
@@ -53,4 +55,149 @@ func TestCleanupStartThenFatal(t *testing.T) {
 		wg.Go(work) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
 	})
 	t.Fatal("before the cleanup start runs")
+}
+
+func TestSubtestCallsLiteralFatalOrWait(t *testing.T) {
+	var wg sync.WaitGroup
+	wg.Go(work) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+	t.Run("wait", func(t *testing.T) {
+		func() {
+			if testing.Short() {
+				t.Fatal("short")
+			} else {
+				wg.Wait()
+			}
+		}()
+	})
+}
+
+func TestDeferredStartThenCalledLiteralFatal(t *testing.T) {
+	var wg sync.WaitGroup
+	defer func() {
+		wg.Go(work) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+	}()
+	func() {
+		if testing.Short() {
+			t.Fatal("before the deferred start runs")
+		} else {
+			wg.Wait()
+		}
+	}()
+}
+
+func TestSubtestCallsSavedLiteralFatalOrWait(t *testing.T) {
+	var wg sync.WaitGroup
+	wg.Go(work) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+	t.Run("wait", func(t *testing.T) {
+		wait := func() {
+			if testing.Short() {
+				t.Fatal("short")
+			} else {
+				wg.Wait()
+			}
+		}
+		wait()
+	})
+}
+
+func TestSubtestCallsNestedLiteralFatalOrWait(t *testing.T) {
+	var wg sync.WaitGroup
+	wg.Go(work) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+	t.Run("wait", func(t *testing.T) {
+		func() {
+			func() {
+				if testing.Short() {
+					t.Fatal("short")
+				} else {
+					wg.Wait()
+				}
+			}()
+		}()
+	})
+}
+
+func BenchmarkSubCallsLiteralFatalOrWait(b *testing.B) {
+	var wg sync.WaitGroup
+	wg.Go(work) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+	b.Run("wait", func(b *testing.B) {
+		func() {
+			if testing.Short() {
+				b.Fatal("short")
+			} else {
+				wg.Wait()
+			}
+		}()
+	})
+}
+
+func TestCleanupStartThenCalledLiteralFatal(t *testing.T) {
+	var wg sync.WaitGroup
+	t.Cleanup(func() {
+		wg.Go(work) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+	})
+	func() {
+		if testing.Short() {
+			t.Fatal("before the cleanup start runs")
+		} else {
+			wg.Wait()
+		}
+	}()
+}
+
+func TestDeferredStartThenNestedLiteralFatal(t *testing.T) {
+	var wg sync.WaitGroup
+	defer func() {
+		wg.Go(work) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+	}()
+	func() {
+		func() {
+			if testing.Short() {
+				t.Fatal("before the deferred start runs")
+			} else {
+				wg.Wait()
+			}
+		}()
+	}()
+}
+
+func TestCalledLiteralFatalNoWait(t *testing.T) {
+	var wg sync.WaitGroup
+	wg.Go(work) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+	func() {
+		if testing.Short() {
+			t.Fatal("short")
+		}
+	}()
+}
+
+// BenchmarkUnnamedSubCallsParentFatalOrWait leaks on the b.Fatal path: b.Run
+// returns to the parent even when its body calls the parent's b.Fatal.
+func BenchmarkUnnamedSubCallsParentFatalOrWait(b *testing.B) {
+	var wg sync.WaitGroup
+	wg.Go(work) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+	b.Run("wait", func(*testing.B) {
+		if testing.Short() {
+			b.Fatal("short")
+		} else {
+			wg.Wait()
+		}
+	})
+}
+
+// TestStartInCalledLiteralThenFatal is an expected false positive (ENG-1001):
+// the literal holding the start runs at once on the test's goroutine, so the
+// t.Fatal ends the test, but a start inside any literal is not read as
+// written in place.
+func TestStartInCalledLiteralThenFatal(t *testing.T) {
+	var wg sync.WaitGroup
+	func() {
+		wg.Go(work) // want `TS-C02: this Go call starts a goroutine, but no Wait on the group is reached`
+	}()
+	func() {
+		if testing.Short() {
+			t.Fatal("short")
+		} else {
+			wg.Wait()
+		}
+	}()
 }

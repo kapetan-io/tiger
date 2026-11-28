@@ -1,9 +1,10 @@
 // Documented TS-C02 coverage gaps in function literals: the literal holding
 // the Go runs after the Wait or alongside it, a t.Fatal skips the Wait, or a
 // function around the literal returns only a non-nil error, which excuses the
-// literal's own unwaited success path, or a subtest reaches t.Parallel in a
-// way the check does not see, or a called literal's error is dropped in a way
-// the check reads as handling it.
+// literal's own unwaited success path, a subtest reaches t.Parallel in a way
+// the check does not see, a called literal's error is dropped in a way the
+// check reads as handling it, or a deferred call's argument waits before the
+// start.
 package fixture
 
 import (
@@ -400,4 +401,33 @@ func literalErrorParsed() (int, error) {
 		return 0, err
 	}
 	return v, nil
+}
+
+func keep(bool) {}
+
+// TestDeferArgWaitsBeforeStart leaks the goroutine.
+//
+// known-miss: a deferred call's argument runs at the defer statement, before
+// the start, but the check counts every Wait under a defer as running last
+// (ENG-1000).
+func TestDeferArgWaitsBeforeStart(t *testing.T) {
+	var wg sync.WaitGroup
+	defer keep(func() bool { wg.Wait(); return true }())
+	wg.Go(work)
+}
+
+// TestDeferArgFatalThenWait leaks the goroutine.
+//
+// known-miss: the same deferred argument, with a t.Fatal that falls through
+// to the Wait (ENG-1000).
+func TestDeferArgFatalThenWait(t *testing.T) {
+	var wg sync.WaitGroup
+	defer keep(func() bool {
+		if testing.Short() {
+			t.Fatal("short")
+		}
+		wg.Wait()
+		return true
+	}())
+	wg.Go(work)
 }
