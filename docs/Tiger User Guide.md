@@ -66,6 +66,26 @@ config that names `hugeParam` or `rangeValCopy` in `disabled-checks`, or `perfor
 `disabled-tags`, since either switches the check off. To silence one finding, use
 `//nolint:gocritic` at its site.
 
+The baseline sets govet's `enable-all` for the shadow check TS-S14 needs and disables
+`fieldalignment`, which orders struct fields by size, a thing no Tiger rule asks for.
+`tiger golangci` reports a `govet.disable` list that is missing or names any other analyzer.
+
+Outside the `linters.settings` and `formatters.settings` blocks, the audit compares every key
+with the baseline and names the one that differs. A config may change only the two `enable`
+lists, `linters.default`, `issues.uniq-by-line`, `linters.exclusions.rules`, `run.timeout`,
+`run.concurrency` and the `output` block. It may also add keys that hide nothing the baseline
+reports: `linters.exclusions.generated: strict` or `disable`, the `common-false-positives`
+preset, `warn-unused` under either `exclusions` block, and golangci-lint's own defaults
+`run.tests: true` and `issues.new: false`. Any other key that differs is a finding. Some of those keys,
+such as `linters.exclusions.paths` or `run.tests: false`, hide findings while every linter still
+looks turned on.
+
+A project that turns linters on one at a time lists the ones still off under `linters.disable`.
+The audit skips the rules those linters enforce, settings included, so every line it prints is
+something to fix. A linter missing from `linters.enable` with no `linters.disable` entry is still
+reported, so a line deleted by mistake doesn't pass. A formatter can't be listed there, since
+golangci-lint refuses to load such a config, and the audit reports one that is.
+
 The analysis is deterministic static analysis and never a language model (ADR-0015). Tiger
 itself calls no outside service. It loads packages through the `go` command, which fetches a
 missing module the way `go build` would.

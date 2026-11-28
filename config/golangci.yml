@@ -99,8 +99,8 @@ linters:
           # TS-S14. Shadowed err is the most common silent failure in Go.
           strict: true
       disable:
-        # Enable fieldalignment only on wire and hot types via a path rule
-        # below. Globally it is too noisy to be blocking.
+        # No Tiger rule orders struct fields by size. tiger golangci requires
+        # this list to be exactly fieldalignment.
         - fieldalignment
 
     errcheck:
@@ -326,12 +326,6 @@ linters:
         linters:
           - forbidigo
         text: 'time\.Now'
-
-      # TS-M06. fieldalignment is blocking only where layout is semantic.
-      - path-except: 'internal/wire/.*\.go'
-        linters:
-          - govet
-        text: fieldalignment
 
       # Generated code is not held to the style guide, it is held to TS-D04.
       - path: 'zz_generated\..*\.go$'

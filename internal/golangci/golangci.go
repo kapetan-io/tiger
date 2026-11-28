@@ -47,12 +47,22 @@ func Verify(dir string) ([]Finding, error) {
 	if err != nil {
 		return nil, err
 	}
+	disabled := disabledLinters(document)
 	findings := []Finding{}
 	autoRules := auto.AutoRules()
 	for i := range autoRules {
-		findings = append(findings, verifyRule(document, &autoRules[i], module)...)
+		rule := &autoRules[i]
+		if rule.Section == auto.SectionLinters && slices.Contains(disabled, rule.Linter) {
+			continue
+		}
+		findings = append(findings, verifyRule(document, rule, module)...)
 	}
+	findings = append(findings, verifyKeys(document, module, disabled)...)
 	sort.Slice(findings, func(i, j int) bool {
+		coded := findings[i].RuleID != ""
+		if coded != (findings[j].RuleID != "") {
+			return coded
+		}
 		if findings[i].RuleID != findings[j].RuleID {
 			return findings[i].RuleID < findings[j].RuleID
 		}
@@ -234,6 +244,12 @@ func named(element any) string {
 		}
 	}
 	return fmt.Sprint(element)
+}
+
+func disabledLinters(document map[string]any) []string {
+	value, _ := lookup(document, []string{auto.SectionLinters, "disable"})
+	names, _ := disabledNames(value)
+	return names
 }
 
 func enabled(document map[string]any, rule *auto.AutoRule) bool {

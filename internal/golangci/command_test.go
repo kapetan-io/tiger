@@ -687,3 +687,557 @@ func TestGolangciAuditRejectsBareStringBan(t *testing.T) {
 	assert.Equal(t, command.ExitFindings, got.code)
 	assert.Contains(t, got.stdout, `doesn't include ^time\.Now$`)
 }
+
+// TestGolangciGeneratedConfigLeavesFieldAlignmentOff covers the generated baseline.
+//
+// Goal: govet keeps enable-all for the shadow check TS-S14 needs, and names
+// fieldalignment as its one exception, since no Tiger rule orders struct
+// fields by size.
+func TestGolangciGeneratedConfigLeavesFieldAlignmentOff(t *testing.T) {
+	dir := t.TempDir()
+	moduleFile{dir: dir, module: "aligned.example/project"}.write(t)
+	require.Equal(t, command.ExitClean, run(t, "golangci", "-C", dir, "--init").code)
+
+	var document struct {
+		Linters struct {
+			Settings struct {
+				Govet struct {
+					EnableAll bool     `yaml:"enable-all"`
+					Disable   []string `yaml:"disable"`
+				} `yaml:"govet"`
+			} `yaml:"settings"`
+		} `yaml:"linters"`
+	}
+	generated := readFile(t, filepath.Join(dir, ".golangci.yml"))
+	require.NoError(t, yaml.Unmarshal([]byte(generated), &document))
+	assert.True(t, document.Linters.Settings.Govet.EnableAll)
+	assert.Equal(t, []string{"fieldalignment"}, document.Linters.Settings.Govet.Disable)
+}
+
+// TestGolangciGovetDisableOtherThanFieldAlignmentFindsTheAutoRule covers the audit contract.
+//
+// Goal: a config must leave govet's disable list at exactly fieldalignment.
+// Dropping the line turns fieldalignment back on, and naming another
+// analyzer, such as shadow, switches off a check a Tiger rule needs.
+func TestGolangciGovetDisableOtherThanFieldAlignmentFindsTheAutoRule(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		replace string
+		want    string
+	}{
+		{
+			name:    "missing",
+			replace: "",
+			want:    "TS-S14: linters.settings.govet.disable isn't set",
+		},
+		{
+			name: "shadow added",
+			replace: "            disable:\n" +
+				"                - fieldalignment\n                - shadow\n",
+			want: "TS-S14: linters.settings.govet.disable is [fieldalignment, shadow]",
+		},
+		{
+			name:    "empty",
+			replace: "            disable: []\n",
+			want:    "TS-S14: linters.settings.govet.disable is []",
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			dir := t.TempDir()
+			moduleFile{dir: dir, module: "govet.example/project"}.write(t)
+			require.Equal(t, command.ExitClean, run(t, "golangci", "-C", dir, "--init").code)
+
+			path := filepath.Join(dir, ".golangci.yml")
+			config := readFile(t, path)
+			const line = "            disable:\n                - fieldalignment\n"
+			require.Contains(t, config, line)
+			config = strings.Replace(config, line, test.replace, 1)
+			require.NoError(t, os.WriteFile(path, []byte(config), 0o644))
+
+			got := run(t, "golangci", "-C", dir)
+			assert.Equal(t, command.ExitFindings, got.code)
+			assert.Contains(t, got.stdout, test.want)
+		})
+	}
+}
+
+// initThenEdit writes the baseline with --init, applies each replacement once,
+// and returns the module dir.
+func initThenEdit(t *testing.T, edits ...[2]string) string {
+	t.Helper()
+	dir := t.TempDir()
+	moduleFile{dir: dir, module: "keys.example/project"}.write(t)
+	require.Equal(t, command.ExitClean, run(t, "golangci", "-C", dir, "--init").code)
+	path := filepath.Join(dir, ".golangci.yml")
+	config := readFile(t, path)
+	for _, edit := range edits {
+		require.Contains(t, config, edit[0])
+		config = strings.Replace(config, edit[0], edit[1], 1)
+	}
+	require.NoError(t, os.WriteFile(path, []byte(config), 0o644))
+	return dir
+}
+
+// TestGolangciAuditReportsKeysThatHideFindings covers the whole-file comparison.
+//
+// Goal: outside the settings blocks, the enable lists, linters.default,
+// issues.uniq-by-line and the exclusion rules, a key that differs from the
+// baseline is reported by name, since keys such as exclusions.paths and
+// run.tests hide findings while every linter still looks turned on.
+func TestGolangciAuditReportsKeysThatHideFindings(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		edit [2]string
+		want string
+	}{
+		{
+			name: "exclusionPathsAdded",
+			edit: [2]string{
+				"    exclusions:\n",
+				"    exclusions:\n        paths:\n            - internal/\n",
+			},
+			want: "linters.exclusions.paths is set, but tiger's baseline doesn't set it — " +
+				"remove linters.exclusions.paths",
+		},
+		{
+			name: "testsSkipped",
+			edit: [2]string{"version: \"2\"\n", "version: \"2\"\nrun:\n    tests: false\n"},
+			want: "run.tests is set, but tiger's baseline doesn't set it",
+		},
+		{
+			name: "presetAdded",
+			edit: [2]string{
+				"            - comments\n",
+				"            - comments\n            - std-error-handling\n",
+			},
+			want: "TS-N10: linters.exclusions.presets lists std-error-handling, " +
+				"which tiger's baseline " +
+				"doesn't — remove std-error-handling from " +
+				"linters.exclusions.presets",
+		},
+		{
+			name: "laxGeneratedCode",
+			edit: [2]string{"    exclusions:\n", "    exclusions:\n        generated: lax\n"},
+			want: "linters.exclusions.generated is set, but tiger's baseline doesn't set it",
+		},
+		{
+			name: "issueCapDropped",
+			edit: [2]string{"    max-same-issues: 0\n", ""},
+			want: "issues.max-same-issues isn't set, but tiger's baseline sets it — set " +
+				"issues.max-same-issues to 0",
+		},
+		{
+			name: "issueCapChanged",
+			edit: [2]string{"    max-same-issues: 0\n", "    max-same-issues: 3\n"},
+			want: "issues.max-same-issues is 3, but tiger's baseline is 0 — set it to 0",
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			got := run(t, "golangci", "-C", initThenEdit(t, test.edit))
+			assert.Equal(t, command.ExitFindings, got.code)
+			assert.Contains(t, got.stdout, test.want)
+			assert.Empty(t, got.stderr)
+		})
+	}
+}
+
+// TestGolangciAuditPassesKeysThatHideNothing covers the values the comparison
+// lets through.
+//
+// Goal: generated: strict is golangci-lint's own default, and the
+// common-false-positives preset drops only gosec checks the baseline never
+// enables, so neither is reported.
+func TestGolangciAuditPassesKeysThatHideNothing(t *testing.T) {
+	got := run(t, "golangci", "-C", initThenEdit(t, [2]string{
+		"    exclusions:\n        presets:\n            - comments\n",
+		"    exclusions:\n        generated: strict\n        presets:\n            - comments\n" +
+			"            - common-false-positives\n",
+	}))
+	assert.Equal(t, command.ExitClean, got.code)
+	assert.Empty(t, got.stdout)
+	assert.Empty(t, got.stderr)
+}
+
+// TestGolangciDisabledLintersAreLeftUnreported covers linters.disable, where a
+// project lists the linters it leaves off on purpose.
+//
+// Goal: a linter listed under linters.disable is not reported missing from
+// linters.enable, and one left out of both lists still is.
+func TestGolangciDisabledLintersAreLeftUnreported(t *testing.T) {
+	const disable = "    default: standard\n    disable:\n        - wrapcheck\n        - lll\n"
+	dir := initThenEdit(t,
+		[2]string{"        - wrapcheck\n", ""},
+		[2]string{"        - lll\n", ""},
+		[2]string{"        - varnamelen\n", ""},
+		[2]string{"    default: standard\n", disable},
+	)
+	got := run(t, "golangci", "-C", dir)
+	assert.Equal(t, command.ExitFindings, got.code)
+	assert.Equal(t, "TS-N02: varnamelen is missing from linters.enable, so nothing enforces the "+
+		"rule \"no invented abbreviations\" — add varnamelen to linters.enable\n"+
+		"tiger: 1 auto rules unenforced\n", got.stdout)
+
+	dir = initThenEdit(t,
+		[2]string{"        - wrapcheck\n", ""},
+		[2]string{"        - lll\n", ""},
+		[2]string{"        - varnamelen\n", ""},
+		[2]string{"    default: standard\n", disable + "        - varnamelen\n"},
+	)
+	got = run(t, "golangci", "-C", dir)
+	assert.Equal(t, command.ExitClean, got.code)
+	assert.Empty(t, got.stdout)
+	assert.Empty(t, got.stderr)
+}
+
+// TestGolangciAuditPassesAConfigThatDiffersOnlyWhereAllowed covers a config
+// cut down for adoption.
+//
+// Goal: a config that differs from the baseline only in its enable lists,
+// linters.default, issues.uniq-by-line and its exclusion rules passes, with
+// the linters it has not turned on yet listed under linters.disable. This is
+// the shape a repository adopting the baseline one linter at a time commits
+// first.
+func TestGolangciAuditPassesAConfigThatDiffersOnlyWhereAllowed(t *testing.T) {
+	dir := initThenEdit(t,
+		[2]string{"    default: standard\n", "    default: none\n    disable:\n" +
+			"        - wrapcheck\n        - lll\n        - govet\n" +
+			"        - ineffassign\n        - staticcheck\n"},
+		[2]string{"    max-same-issues: 0\n", "    max-same-issues: 0\n    uniq-by-line: false\n"},
+		[2]string{"        - wrapcheck\n", "        - errcheck\n"},
+		[2]string{"        - lll\n", ""},
+		[2]string{"        presets:\n", "        rules:\n" +
+			"            # waiver: the generated client is not ours to fix.\n" +
+			"            - path: internal/client/\n" +
+			"              linters:\n                - mnd\n" +
+			"        presets:\n"},
+		[2]string{"version: \"2\"\n", "version: \"2\"\nrun:\n    timeout: 5m\n" +
+			"    concurrency: 4\noutput:\n    formats:\n        text:\n" +
+			"            path: stdout\n    sort-order:\n        - file\n" +
+			"    show-stats: true\n"},
+	)
+
+	got := run(t, "golangci", "-C", dir)
+	assert.Equal(t, command.ExitClean, got.code)
+	assert.Empty(t, got.stdout)
+	assert.Empty(t, got.stderr)
+}
+
+// TestGolangciAuditPassesGeneratedCodeExcludedEitherWay covers the values of
+// linters.exclusions.generated the comparison lets through.
+//
+// Goal: generated: disable lints generated files too, so it hides nothing
+// and passes, as strict does.
+func TestGolangciAuditPassesGeneratedCodeExcludedEitherWay(t *testing.T) {
+	for _, value := range []string{"strict", "disable"} {
+		t.Run(value, func(t *testing.T) {
+			got := run(t, "golangci", "-C", initThenEdit(t, [2]string{
+				"    exclusions:\n",
+				"    exclusions:\n        generated: " + value + "\n",
+			}))
+			assert.Equal(t, command.ExitClean, got.code)
+			assert.Empty(t, got.stdout)
+			assert.Empty(t, got.stderr)
+		})
+	}
+}
+
+// TestGolangciAuditReportsMoreKeysThatHideFindings covers the whole-file
+// comparison beyond linters.exclusions and run.
+//
+// Goal: formatters.exclusions.paths hides formatting findings, so it is
+// reported by name.
+func TestGolangciAuditReportsMoreKeysThatHideFindings(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		edit [2]string
+		want string
+	}{
+		{
+			name: "formatterPathsExcluded",
+			edit: [2]string{
+				"formatters:\n",
+				"formatters:\n    exclusions:\n        paths:\n            - internal/\n",
+			},
+			want: "formatters.exclusions.paths is set, but tiger's baseline doesn't set it",
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			got := run(t, "golangci", "-C", initThenEdit(t, test.edit))
+			assert.Equal(t, command.ExitFindings, got.code)
+			assert.Contains(t, got.stdout, test.want)
+			assert.Empty(t, got.stderr)
+		})
+	}
+}
+
+// TestGolangciDisabledReviveStillReportsAPresetThatHidesFindings covers a
+// disabled linter whose rule owns linters.exclusions.presets.
+//
+// Goal: with revive under linters.disable, the comments preset is no longer
+// needed, but an extra preset still hides other linters' findings and is
+// still reported.
+func TestGolangciDisabledReviveStillReportsAPresetThatHidesFindings(t *testing.T) {
+	dir := initThenEdit(t,
+		[2]string{"        - revive\n", ""},
+		[2]string{
+			"    default: standard\n",
+			"    default: standard\n    disable:\n        - revive\n",
+		},
+		[2]string{"            - comments\n", "            - std-error-handling\n"},
+	)
+	got := run(t, "golangci", "-C", dir)
+	assert.Equal(t, command.ExitFindings, got.code)
+	assert.Equal(t, "TS-N10: linters.exclusions.presets lists std-error-handling, which tiger's "+
+		"baseline doesn't — remove std-error-handling from "+
+		"linters.exclusions.presets\n"+
+		"tiger: 1 auto rules unenforced\n", got.stdout)
+	assert.Empty(t, got.stderr)
+}
+
+// TestGolangciAuditNamesTheKeysOfABlockLeftEmptyOrMisshapen covers blocks
+// whose body is missing or the wrong shape.
+//
+// Goal: a block with no body is read as absent, so the audit names each
+// baseline key under it once, on one line; a block written as a list says so
+// on one line; the TS-N10 presets finding is not repeated.
+func TestGolangciAuditNamesTheKeysOfABlockLeftEmptyOrMisshapen(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		edit [2]string
+		want string
+	}{
+		{
+			name: "issuesWithNoBody",
+			edit: [2]string{
+				"issues:\n    max-issues-per-linter: 0\n    max-same-issues: 0\n",
+				"issues:\n",
+			},
+			want: "issues.max-issues-per-linter isn't set, but tiger's baseline sets it — set " +
+				"issues.max-issues-per-linter to 0\n" +
+				"issues.max-same-issues isn't set, but tiger's baseline sets it — set " +
+				"issues.max-same-issues to 0\n" +
+				"tiger: 2 auto rules unenforced\n",
+		},
+		{
+			name: "exclusionsWithNoBody",
+			edit: [2]string{
+				"    exclusions:\n        presets:\n            - comments\n",
+				"    exclusions:\n",
+			},
+			want: "TS-N10: linters.exclusions.presets isn't set, and tiger's baseline for the " +
+				"rule \"no stutter\" needs it — set linters.exclusions.presets to [comments] " +
+				"(revive's exported rule demands doc comments without it)\n" +
+				"tiger: 1 auto rules unenforced\n",
+		},
+		{
+			name: "issuesAsAList",
+			edit: [2]string{
+				"issues:\n    max-issues-per-linter: 0\n    max-same-issues: 0\n",
+				"issues: []\n",
+			},
+			want: "issues isn't laid out as in tiger's baseline, which holds keys under it — " +
+				"copy issues from tiger golangci --print\n" +
+				"tiger: 1 auto rules unenforced\n",
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			got := run(t, "golangci", "-C", initThenEdit(t, test.edit))
+			assert.Equal(t, command.ExitFindings, got.code)
+			assert.Equal(t, test.want, got.stdout)
+			assert.Empty(t, got.stderr)
+		})
+	}
+}
+
+// TestGolangciAuditReadsAnUnquotedVersion covers version: 2 written as a
+// number.
+//
+// Goal: golangci-lint reads version: 2 the same as version: "2", so the audit
+// does not report it.
+func TestGolangciAuditReadsAnUnquotedVersion(t *testing.T) {
+	got := run(t, "golangci", "-C", initThenEdit(t, [2]string{"version: \"2\"\n", "version: 2\n"}))
+	assert.Equal(t, command.ExitClean, got.code)
+	assert.Empty(t, got.stdout)
+	assert.Empty(t, got.stderr)
+}
+
+// TestGolangciAuditKeepsEveryKeyFindingOnOneLine covers values the audit
+// can't print on one line.
+//
+// Goal: a key holding a list of blocks is reported on one line, and an
+// exclusions block of the wrong shape gets only the TS-N10 finding for the
+// presets the rule owns, not a second line for the block.
+func TestGolangciAuditKeepsEveryKeyFindingOnOneLine(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		edit [2]string
+		want string
+	}{
+		{
+			name: "listOfBlocks",
+			edit: [2]string{
+				"    max-same-issues: 0\n",
+				"    max-same-issues:\n        - a: 1\n        - b: 2\n",
+			},
+			want: "issues.max-same-issues is a block of keys, but tiger's baseline is 0 — " +
+				"set it to 0\n" +
+				"tiger: 1 auto rules unenforced\n",
+		},
+		{
+			name: "exclusionsAsAList",
+			edit: [2]string{
+				"    exclusions:\n        presets:\n            - comments\n",
+				"    exclusions: []\n",
+			},
+			want: "TS-N10: linters.exclusions.presets isn't set, and tiger's baseline for the " +
+				"rule \"no stutter\" needs it — set linters.exclusions.presets to [comments] " +
+				"(revive's exported rule demands doc comments without it)\n" +
+				"tiger: 1 auto rules unenforced\n",
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			got := run(t, "golangci", "-C", initThenEdit(t, test.edit))
+			assert.Equal(t, command.ExitFindings, got.code)
+			assert.Equal(t, test.want, got.stdout)
+			assert.Empty(t, got.stderr)
+		})
+	}
+}
+
+// TestGolangciDisabledLinterSkipsItsAutoRules covers a baseline linter listed
+// under linters.disable.
+//
+// Goal: none of the auto rules it enforces is reported, including the rules
+// on its settings, and a linter no auto rule uses may be listed too.
+func TestGolangciDisabledLinterSkipsItsAutoRules(t *testing.T) {
+	dir := initThenEdit(t,
+		[2]string{
+			"    default: standard\n",
+			"    default: standard\n    disable:\n        - errcheck\n        - unused\n",
+		},
+		[2]string{"            check-blank: true\n", "            check-blank: false\n"},
+	)
+	got := run(t, "golangci", "-C", dir)
+	assert.Equal(t, command.ExitClean, got.code)
+	assert.Empty(t, got.stdout)
+	assert.Empty(t, got.stderr)
+}
+
+// TestGolangciDisabledLinterWrittenAsTextSkipsItsAutoRules covers a
+// linters.disable written as one string, which golangci-lint splits on commas.
+//
+// Goal: each linter in the string is skipped as in the list form, and a
+// linters.disable holding a block is reported by key.
+func TestGolangciDisabledLinterWrittenAsTextSkipsItsAutoRules(t *testing.T) {
+	dir := initThenEdit(t,
+		[2]string{"        - wrapcheck\n", ""},
+		[2]string{
+			"    default: standard\n",
+			"    default: standard\n    disable: wrapcheck, errcheck\n",
+		},
+	)
+	got := run(t, "golangci", "-C", dir)
+	assert.Equal(t, command.ExitClean, got.code)
+	assert.Empty(t, got.stdout)
+	assert.Empty(t, got.stderr)
+
+	dir = initThenEdit(t, [2]string{
+		"    default: standard\n",
+		"    default: standard\n    disable:\n        errcheck: true\n",
+	})
+	got = run(t, "golangci", "-C", dir)
+	assert.Equal(t, command.ExitFindings, got.code)
+	assert.Equal(t, "linters.disable.errcheck is set, but tiger's baseline doesn't set it — "+
+		"remove linters.disable.errcheck\n"+
+		"tiger: 1 auto rules unenforced\n", got.stdout)
+	assert.Empty(t, got.stderr)
+}
+
+// TestGolangciDisabledFormatterFindsItsAutoRule covers a formatter listed
+// under linters.disable.
+//
+// Goal: golangci-lint refuses to load such a config, so the audit reports it
+// under the formatter's auto rule.
+func TestGolangciDisabledFormatterFindsItsAutoRule(t *testing.T) {
+	dir := initThenEdit(t, [2]string{
+		"    default: standard\n", "    default: standard\n    disable:\n        - gofumpt\n",
+	})
+
+	got := run(t, "golangci", "-C", dir)
+	assert.Equal(t, command.ExitFindings, got.code)
+	assert.Contains(t, got.stdout, ": linters.disable lists gofumpt, a formatter, so "+
+		"golangci-lint refuses to load the config — remove gofumpt from linters.disable\n")
+	assert.Empty(t, got.stderr)
+}
+
+// TestGolangciDisabledReviveStillReportsAMisshapenExclusionsBlock covers a
+// misshapen linters.exclusions block whose only rule-owned key belongs to a
+// disabled linter.
+//
+// Goal: with that rule skipped, the block is still reported.
+func TestGolangciDisabledReviveStillReportsAMisshapenExclusionsBlock(t *testing.T) {
+	dir := initThenEdit(t,
+		[2]string{"        - revive\n", ""},
+		[2]string{
+			"    default: standard\n",
+			"    default: standard\n    disable:\n        - revive\n",
+		},
+		[2]string{
+			"    exclusions:\n        presets:\n            - comments\n",
+			"    exclusions: oops\n",
+		},
+	)
+	got := run(t, "golangci", "-C", dir)
+	assert.Equal(t, command.ExitFindings, got.code)
+	assert.Equal(t, "linters.exclusions isn't laid out as in tiger's baseline, which holds "+
+		"keys under it — copy linters.exclusions from tiger golangci --print\n"+
+		"tiger: 1 auto rules unenforced\n", got.stdout)
+	assert.Empty(t, got.stderr)
+}
+
+// TestGolangciAuditPassesGolangciLintDefaults covers keys set to the value
+// golangci-lint already uses when the key is absent, or that only change
+// warnings.
+//
+// Goal: each passes, since it hides nothing, and the value that does hide
+// findings is still reported.
+func TestGolangciAuditPassesGolangciLintDefaults(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		edit [2]string
+	}{
+		{
+			name: "testsLinted",
+			edit: [2]string{"version: \"2\"\n", "version: \"2\"\nrun:\n    tests: true\n"},
+		},
+		{
+			name: "allIssuesReported",
+			edit: [2]string{"    max-same-issues: 0\n", "    max-same-issues: 0\n    new: false\n"},
+		},
+		{
+			name: "unusedExclusionsWarned",
+			edit: [2]string{"    exclusions:\n", "    exclusions:\n        warn-unused: true\n"},
+		},
+		{
+			name: "unusedFormatterExclusionsWarned",
+			edit: [2]string{
+				"formatters:\n",
+				"formatters:\n    exclusions:\n        warn-unused: false\n",
+			},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			got := run(t, "golangci", "-C", initThenEdit(t, test.edit))
+			assert.Equal(t, command.ExitClean, got.code)
+			assert.Empty(t, got.stdout)
+			assert.Empty(t, got.stderr)
+		})
+	}
+
+	got := run(t, "golangci", "-C", initThenEdit(t, [2]string{
+		"    max-same-issues: 0\n", "    max-same-issues: 0\n    new: true\n",
+	}))
+	assert.Equal(t, command.ExitFindings, got.code)
+	assert.Equal(t, "issues.new is set, but tiger's baseline doesn't set it — remove issues.new\n"+
+		"tiger: 1 auto rules unenforced\n", got.stdout)
+}
