@@ -1259,3 +1259,226 @@ func literalErrorCopiedTwice() error {
 	}
 	return nil
 }
+
+// TestSavedWaitReplacedBeforeNextPass replaces the saved literal only after
+// the first pass called it, so every path out of the loop has run the
+// literal that waits.
+func TestSavedWaitReplacedBeforeNextPass(t *testing.T) {
+	var wg sync.WaitGroup
+	wait := func() { wg.Wait() }
+	wg.Go(func() {})
+	for {
+		wait()
+		wait = func() {}
+		if testing.Short() {
+			break
+		}
+	}
+}
+
+// TestSavedWaitCalledFromCalledLiteral calls the saved literal from a literal
+// called where it is written, after the last assignment.
+func TestSavedWaitCalledFromCalledLiteral(t *testing.T) {
+	var wg sync.WaitGroup
+	wait := func() {}
+	wait = func() { wg.Wait() }
+	wg.Go(func() {})
+	func() { wait() }()
+}
+
+// TestSavedWaitReplacedInDeferredLiteral replaces the saved literal in a
+// deferred literal, which runs only after the call.
+func TestSavedWaitReplacedInDeferredLiteral(t *testing.T) {
+	var wg sync.WaitGroup
+	wait := func() { wg.Wait() }
+	defer func() { wait = func() {} }()
+	wg.Go(func() {})
+	wait()
+}
+
+// step is a function that returns the step to run next.
+type step func() step
+
+// TestSavedWaitCalledInItsReplacement replaces the saved literal with the
+// value its own call returns, so the call runs the literal that waits.
+func TestSavedWaitCalledInItsReplacement(t *testing.T) {
+	var wg sync.WaitGroup
+	var wait step = func() step {
+		wg.Wait()
+		return nil
+	}
+	wg.Go(func() {})
+	wait = wait()
+	_ = wait
+}
+
+// TestSavedSubtestBodyReplacedBeforeNextPass runs the saved subtest body that
+// waits on the loop's first pass and replaces it afterwards, so every path
+// out of the loop has run the body that waits.
+func TestSavedSubtestBodyReplacedBeforeNextPass(t *testing.T) {
+	var wg sync.WaitGroup
+	body := func(t *testing.T) { wg.Wait() }
+	wg.Go(func() {})
+	for {
+		t.Run("x", body)
+		body = func(t *testing.T) {}
+		if testing.Short() {
+			break
+		}
+	}
+}
+
+// TestSavedParallelSubtestBodyReplacedBeforeRun replaces a parallel subtest
+// body with a plain one that waits before t.Run, so the subtest runs before
+// t.Run returns.
+func TestSavedParallelSubtestBodyReplacedBeforeRun(t *testing.T) {
+	var wg sync.WaitGroup
+	body := func(t *testing.T) {
+		t.Parallel()
+		wg.Wait()
+	}
+	body = func(t *testing.T) { wg.Wait() }
+	wg.Go(func() {})
+	t.Run("x", body)
+}
+
+// TestSavedWaitReplacedBeforeNextPassInSubtest declares, starts and loops in
+// a subtest body; the first pass calls the literal that waits.
+func TestSavedWaitReplacedBeforeNextPassInSubtest(t *testing.T) {
+	t.Run("x", func(t *testing.T) {
+		var wg sync.WaitGroup
+		wait := func() { wg.Wait() }
+		wg.Go(func() {})
+		for {
+			wait()
+			wait = func() {}
+			if testing.Short() {
+				break
+			}
+		}
+	})
+}
+
+// TestSavedWaitReplacedBeforeNextPassInCalledLiteral declares the saved
+// literal and loops inside a literal called where it is written, after the
+// Go; the first pass calls the literal that waits.
+func TestSavedWaitReplacedBeforeNextPassInCalledLiteral(t *testing.T) {
+	var wg sync.WaitGroup
+	wg.Go(func() {})
+	func() {
+		wait := func() { wg.Wait() }
+		for {
+			wait()
+			wait = func() {}
+			if testing.Short() {
+				break
+			}
+		}
+	}()
+}
+
+// TestSavedWaitReplacedBeforeNextPassBesideOther follows a second variable,
+// declared first, that is reassigned and holds a literal that may wait. Each
+// variable keeps the literal it last held.
+func TestSavedWaitReplacedBeforeNextPassBesideOther(t *testing.T) {
+	var wg sync.WaitGroup
+	other := func() { wg.Wait() }
+	other = func() {}
+	wait := func() { wg.Wait() }
+	wg.Go(func() {})
+	for {
+		wait()
+		wait = func() {}
+		other()
+		if testing.Short() {
+			break
+		}
+	}
+}
+
+// TestSavedWaitReplacedBeforeNextPassFourth follows the waiting variable as
+// the fourth reassigned variable with a literal that may wait, the last one
+// followed path by path.
+func TestSavedWaitReplacedBeforeNextPassFourth(t *testing.T) {
+	var wg sync.WaitGroup
+	first := func() { wg.Wait() }
+	first = func() {}
+	second := func() { wg.Wait() }
+	second = func() {}
+	third := func() { wg.Wait() }
+	third = func() {}
+	wait := func() { wg.Wait() }
+	wg.Go(func() {})
+	for {
+		wait()
+		wait = func() {}
+		if testing.Short() {
+			break
+		}
+	}
+	first()
+	second()
+	third()
+}
+
+// TestSavedWaitReplacedInDeferredLiteralInLoop defers the replacement inside
+// a loop. A deferred literal runs only as the test returns, after the call.
+func TestSavedWaitReplacedInDeferredLiteralInLoop(t *testing.T) {
+	var wg sync.WaitGroup
+	wait := func() { wg.Wait() }
+	for range 2 {
+		defer func() { wait = func() {} }()
+	}
+	wg.Go(func() {})
+	wait()
+}
+
+// TestSavedWaitCalledFromNestedCalledLiterals calls the saved literal two
+// literals down, each called where it is written, after the last assignment.
+func TestSavedWaitCalledFromNestedCalledLiterals(t *testing.T) {
+	var wg sync.WaitGroup
+	wait := func() {}
+	wait = func() { wg.Wait() }
+	wg.Go(func() {})
+	func() {
+		func() { wait() }()
+	}()
+}
+
+// TestSavedWaitReplacedBeforeNextPassFifth replaces the waiting literal as the
+// fifth reassigned variable in the function. The four before it hold no
+// literal that waits, so they are not followed and leave room for it.
+func TestSavedWaitReplacedBeforeNextPassFifth(t *testing.T) {
+	var wg sync.WaitGroup
+	first := func() {}
+	first = func() {}
+	second := func() {}
+	second = func() {}
+	third := func() {}
+	third = func() {}
+	fourth := func() {}
+	fourth = func() {}
+	wait := func() { wg.Wait() }
+	wg.Go(func() {})
+	for {
+		wait()
+		wait = func() {}
+		if testing.Short() {
+			break
+		}
+	}
+	first()
+	second()
+	third()
+	fourth()
+}
+
+// TestSavedWaitAssignedLastCalledInSubtest calls the saved literal from a
+// subtest body that does not call t.Parallel, after the last assignment.
+func TestSavedWaitAssignedLastCalledInSubtest(t *testing.T) {
+	var wg sync.WaitGroup
+	wait := func() {}
+	wait = func() { wg.Wait() }
+	wg.Go(func() {})
+	t.Run("x", func(t *testing.T) { wait() })
+}

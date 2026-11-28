@@ -1,6 +1,7 @@
 package nogoroutine
 
 import (
+	"errors"
 	"fmt"
 	"go/ast"
 	"go/token"
@@ -33,6 +34,7 @@ type flowState struct {
 	passed    bool
 	covered   bool
 	failed    bool
+	holding   heldIndexes
 	unchecked literalError
 	nonNil    nonNilError
 }
@@ -43,6 +45,7 @@ type stateKey struct {
 	covered   bool
 	unchecked literalError
 	nonNil    nonNilError
+	holding   heldIndexes
 }
 
 type literalError struct {
@@ -73,9 +76,10 @@ type condition struct {
 type waiters map[*ast.FuncDecl]bool
 
 type function struct {
-	decl *ast.FuncDecl
-	typ  *ast.FuncType
-	body *ast.BlockStmt
+	decl     *ast.FuncDecl
+	typ      *ast.FuncType
+	body     *ast.BlockStmt
+	followed []followedLocal
 }
 
 func functionOf(decl *ast.FuncDecl) function {
@@ -180,9 +184,19 @@ func (w waitSearch) callMayWait(call *ast.CallExpr, group *types.Var, subtests [
 	if decl != nil && w.mayWait(decl.Body, group, nil) {
 		return true
 	}
-	run := w.literalRunBy(call, subtests)
+	run := w.literalRunBy(call, subtests, heldOnPath{})
 	if run.literal != nil && w.mayWait(run.literal.Body, group, run.within(subtests)) {
 		return true
+	}
+	if saved := w.savedIn(call.Fun); run.literal == nil && saved != nil {
+		values := w.valuesAt(call.Fun)
+		every := !values.other && len(values.literals) > 0
+		for _, literal := range values.literals {
+			every = every && w.mayWait(literal.Body, group, declaredAround(subtests, saved))
+		}
+		if every {
+			return true
+		}
 	}
 	once := w.onceLiteral(call)
 	if once != nil && w.mayWait(once.Body, group, subtests) {
@@ -261,6 +275,27 @@ func (o *owners) uncovered(fn function, query flowQuery, always waiters) (unwait
 	assert.Ok(!query.noSuccess || query.errorReturnsNeedWait,
 		"uncovered: a noSuccess query must also mark error returns as exits")
 	query = o.withShutdown(fn, query, always)
+	fn.followed = o.followedLocals(fn, query.group, always)
+	walked, err := o.walkPaths(fn, graph, query, always)
+	if err != nil {
+		fn.followed = nil
+		walked, err = o.walkPaths(fn, graph, query, always)
+	}
+	assert.Ok(err == nil, "uncovered: worklist reached worklist.NodesMax")
+	return walked.unwaited, walked.exits
+}
+
+var errWorklistFull = errors.New("worklist reached worklist.NodesMax")
+
+type coverage struct {
+	unwaited bool
+	exits    bool
+}
+
+func (o *owners) walkPaths(
+	fn function, graph *cfg.CFG, query flowQuery, always waiters,
+) (coverage, error) {
+	exits := false
 	returns := make([]returnCover, len(graph.Blocks))
 	seen := map[stateKey]bool{}
 	work := []flowState{{block: graph.Blocks[0], passed: query.start == nil}}
@@ -269,7 +304,7 @@ func (o *owners) uncovered(fn function, query flowQuery, always waiters) (unwait
 		state := work[i]
 		key := stateKey{
 			block: state.block.Index, passed: state.passed, covered: state.covered,
-			unchecked: state.unchecked, nonNil: state.nonNil,
+			unchecked: state.unchecked, nonNil: state.nonNil, holding: state.holding,
 		}
 		if seen[key] {
 			continue
@@ -281,7 +316,7 @@ func (o *owners) uncovered(fn function, query flowQuery, always waiters) (unwait
 			continue
 		}
 		if query.anyPath && state.passed && state.covered {
-			return false, true
+			return coverage{exits: true}, nil
 		}
 		if len(state.block.Succs) == 0 {
 			if state.block.Kind == cfg.KindSelectAfterCase {
@@ -301,14 +336,14 @@ func (o *owners) uncovered(fn function, query flowQuery, always waiters) (unwait
 			handedUp := !query.errorReturnsNeedWait &&
 				o.handsUpError(fn, state.block, state.unchecked)
 			if !state.covered && !handedUp && !query.anyPath {
-				return true, true
+				return coverage{unwaited: true, exits: true}, nil
 			}
 			continue
 		}
 		for branch, next := range state.block.Succs {
 			following := flowState{
 				block: next, passed: state.passed, covered: state.covered,
-				unchecked: state.unchecked, nonNil: state.nonNil,
+				unchecked: state.unchecked, nonNil: state.nonNil, holding: state.holding,
 			}
 			isNil, compared := o.errorNilOn(state, branch)
 			switch {
@@ -322,11 +357,14 @@ func (o *owners) uncovered(fn function, query flowQuery, always waiters) (unwait
 			work = append(work, following)
 		}
 	}
-	assert.Ok(i == len(work), "uncovered: worklist reached worklist.NodesMax")
-	if query.noSuccess && exits {
-		return !slices.ContainsFunc(returns, returnCover.waited), true
+	if i < len(work) {
+		return coverage{}, errWorklistFull
 	}
-	return query.anyPath, exits
+	if query.noSuccess && exits {
+		unwaited := !slices.ContainsFunc(returns, returnCover.waited)
+		return coverage{unwaited: unwaited, exits: true}, nil
+	}
+	return coverage{unwaited: query.anyPath, exits: exits}, nil
 }
 
 type returnCover struct {
@@ -366,9 +404,11 @@ func (o *owners) noSuccessUnwaited(fn function, group *types.Var, always waiters
 	return unwaited
 }
 
-func (o *owners) argsWait(call *ast.CallExpr, query flowQuery, always waiters) bool {
+func (o *owners) argsWait(
+	call *ast.CallExpr, query flowQuery, onPath heldOnPath, always waiters,
+) bool {
 	return slices.ContainsFunc(call.Args, func(arg ast.Expr) bool {
-		_, waits := o.waitsIn(arg, query, always)
+		_, waits := o.waitsIn(arg, query, onPath, always)
 		return waits
 	})
 }
@@ -387,12 +427,14 @@ func (o *owners) walk(fn function, state flowState, query flowQuery, always wait
 		}
 		state.unchecked = o.reassigned(node, state.unchecked)
 		state.nonNil = o.carried(fn, node, state.nonNil)
+		onPath := heldOnPath{fn.followed, state.holding}
+		state.holding = o.heldAfter(node, fn.followed, state.holding)
 		deferred, isDefer := node.(*ast.DeferStmt)
 		if isDefer && query.endless {
-			state.covered = state.covered || o.argsWait(deferred.Call, query, always)
+			state.covered = state.covered || o.argsWait(deferred.Call, query, onPath, always)
 			continue
 		}
-		erring, waits := o.waitsIn(node, query, always)
+		erring, waits := o.waitsIn(node, query, onPath, always)
 		if !waits && erring != nil && state.passed {
 			state = o.followError(fn, state, errorSite{node: node, call: erring}, query)
 			continue
@@ -732,7 +774,7 @@ func (o *owners) givesUpIn(body *ast.BlockStmt) bool {
 }
 
 func (o *owners) waitsIn(
-	node ast.Node, query flowQuery, always waiters,
+	node ast.Node, query flowQuery, onPath heldOnPath, always waiters,
 ) (erring *ast.CallExpr, waits bool) {
 	start := query.start
 	if start == nil {
@@ -750,7 +792,7 @@ func (o *owners) waitsIn(
 				return !waits
 			}
 			waits = waits || counted && o.waitCall(found, query.group, always)
-			if run := o.literalRunBy(found, query.subtests); !waits && run.literal != nil {
+			if run := o.literalRunBy(found, query.subtests, onPath); !waits && run.literal != nil {
 				kind := o.waitOf(run, query, always)
 				waits = kind == waitsOnEveryPath
 				if kind == errorsBeforeWait && erring == nil {
@@ -805,15 +847,17 @@ type literalRun struct {
 	parallel    bool
 }
 
-func (o *owners) literalRunBy(call *ast.CallExpr, subtests []*types.Var) literalRun {
-	if literal := o.literalOf(call.Fun); literal != nil {
+func (o *owners) literalRunBy(
+	call *ast.CallExpr, subtests []*types.Var, onPath heldOnPath,
+) literalRun {
+	if literal := o.literalOnPath(call.Fun, onPath); literal != nil {
 		return literalRun{literal: literal, saved: o.savedIn(call.Fun)}
 	}
 	selector, ok := ast.Unparen(call.Fun).(*ast.SelectorExpr)
 	if !ok || len(call.Args) != 2 || !subtestRuns[o.calleeName(selector)] {
 		return literalRun{}
 	}
-	body := o.literalOf(call.Args[1])
+	body := o.literalOnPath(call.Args[1], onPath)
 	if body == nil {
 		return literalRun{}
 	}
@@ -896,178 +940,6 @@ func (o *owners) subtestOf(body *ast.FuncLit) *types.Var {
 }
 
 var subtestRuns = map[string]bool{"(*testing.T).Run": true, "(*testing.B).Run": true}
-
-func (o *owners) literalOf(expr ast.Expr) *ast.FuncLit {
-	expr = ast.Unparen(expr)
-	if literal, ok := expr.(*ast.FuncLit); ok {
-		return literal
-	}
-	local := o.index.Object(expr)
-	if _, isIdent := expr.(*ast.Ident); !isIdent || local == nil || local.IsField() {
-		return nil
-	}
-	if o.index.IsParameter(local) || local.Parent() == local.Pkg().Scope() {
-		return nil
-	}
-	decl := o.index.DeclOf(expr)
-	if decl == nil || o.rebound(local, decl) {
-		return nil
-	}
-	defs := o.index.Definitions(local, decl)
-	if len(defs) != 1 {
-		return o.reachingLiteral(local, expr, decl, defs)
-	}
-	literal, ok := ast.Unparen(defs[0]).(*ast.FuncLit)
-	if !ok {
-		return nil
-	}
-	return literal
-}
-
-func (o *owners) soleDefinition(expr ast.Expr) ast.Expr {
-	expr = ast.Unparen(expr)
-	local := o.index.Object(expr)
-	if _, isIdent := expr.(*ast.Ident); !isIdent || local == nil || local.IsField() {
-		return nil
-	}
-	if o.index.IsParameter(local) || local.Parent() == local.Pkg().Scope() {
-		return nil
-	}
-	decl := o.index.DeclOf(expr)
-	if decl == nil || o.rebound(local, decl) {
-		return nil
-	}
-	defs := o.index.Definitions(local, decl)
-	if len(defs) != 1 {
-		return nil
-	}
-	return ast.Unparen(defs[0])
-}
-
-type reaching struct {
-	value ast.Expr
-	many  bool
-}
-
-func (r reaching) join(other reaching) reaching {
-	if r.many || other.many || r.value != other.value {
-		return reaching{many: true}
-	}
-	return r
-}
-
-func (o *owners) reachingLiteral(
-	local *types.Var, use ast.Expr, decl *ast.FuncDecl, defs []ast.Expr,
-) *ast.FuncLit {
-	body := innermostBody(decl, use.Pos())
-	if innermostBody(decl, local.Pos()) != body {
-		return nil
-	}
-	graph := o.graph(body)
-	placed := map[ast.Expr]bool{}
-	for _, block := range graph.Blocks {
-		for _, node := range block.Nodes {
-			for _, value := range o.assignments(node, local) {
-				placed[value] = true
-			}
-		}
-	}
-	for _, def := range defs {
-		if !placed[def] {
-			return nil
-		}
-	}
-	entry := map[*cfg.Block]reaching{graph.Blocks[0]: {}}
-	work := []*cfg.Block{graph.Blocks[0]}
-	var found *reaching
-	i := 0
-	for ; i < len(work) && i < worklist.NodesMax; i++ {
-		block := work[i]
-		state := entry[block]
-		for _, node := range block.Nodes {
-			if node.Pos() <= use.Pos() && use.End() <= node.End() {
-				at := state
-				found = &at
-			}
-			for _, value := range o.assignments(node, local) {
-				state = reaching{value: value}
-			}
-		}
-		for _, next := range block.Succs {
-			before, seen := entry[next]
-			after := state
-			if seen {
-				after = before.join(state)
-			}
-			if !seen || after != before {
-				entry[next] = after
-				work = append(work, next)
-			}
-		}
-	}
-	assert.Ok(i == len(work), "reachingLiteral: worklist reached worklist.NodesMax")
-	if found == nil || found.many {
-		return nil
-	}
-	literal, ok := ast.Unparen(found.value).(*ast.FuncLit)
-	if !ok {
-		return nil
-	}
-	return literal
-}
-
-func (o *owners) assignments(node ast.Node, local *types.Var) []ast.Expr {
-	var out []ast.Expr
-	assign := func(targets, values []ast.Expr) {
-		for i, target := range targets {
-			if o.index.Object(target) != local {
-				continue
-			}
-			switch {
-			case len(targets) == len(values):
-				out = append(out, values[i])
-			case len(values) == 0:
-				out = append(out, nil)
-			default:
-				out = append(out, values[0])
-			}
-		}
-	}
-	ast.Inspect(node, func(inner ast.Node) bool {
-		switch stmt := inner.(type) {
-		case *ast.FuncLit:
-			return false
-		case *ast.AssignStmt:
-			if stmt.Tok == token.ASSIGN || stmt.Tok == token.DEFINE {
-				assign(stmt.Lhs, stmt.Rhs)
-			}
-		case *ast.ValueSpec:
-			names := make([]ast.Expr, len(stmt.Names))
-			for i, name := range stmt.Names {
-				names[i] = name
-			}
-			assign(names, stmt.Values)
-		}
-		return true
-	})
-	return out
-}
-
-func innermostBody(decl *ast.FuncDecl, pos token.Pos) *ast.BlockStmt {
-	body := decl.Body
-	ast.Inspect(decl.Body, func(node ast.Node) bool {
-		literal, ok := node.(*ast.FuncLit)
-		if !ok {
-			return true
-		}
-		if pos < literal.Pos() || literal.End() <= pos {
-			return false
-		}
-		body = literal.Body
-		return true
-	})
-	return body
-}
 
 func (o *owners) rebound(local *types.Var, decl *ast.FuncDecl) bool {
 	found := false

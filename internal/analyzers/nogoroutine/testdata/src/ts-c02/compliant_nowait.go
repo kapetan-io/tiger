@@ -120,3 +120,33 @@ func Drain(t *testing.T) error {
 	})
 	return errClosed
 }
+
+// reassignedWaitCalledInLiteral calls its reassigned literal from a literal
+// called where it is written, then returns only an error.
+type reassignedWaitCalledInLiteral struct{ wg sync.WaitGroup }
+
+// Start runs the worker.
+func (r *reassignedWaitCalledInLiteral) Start() { r.wg.Go(work) }
+
+// Closed waits through the literal last assigned and reports the group
+// closed.
+func (r *reassignedWaitCalledInLiteral) Closed() error {
+	wait := func() {}
+	wait = func() { r.wg.Wait() }
+	func() { wait() }()
+	return errClosed
+}
+
+// reassignedWaitDeferredReplace replaces its saved literal only in a deferred
+// literal.
+type reassignedWaitDeferredReplace struct{ wg sync.WaitGroup }
+
+// Start runs the worker.
+func (r *reassignedWaitDeferredReplace) Start() { r.wg.Go(work) }
+
+// Close waits before the deferred replacement runs.
+func (r *reassignedWaitDeferredReplace) Close() {
+	wait := func() { r.wg.Wait() }
+	defer func() { wait = func() {} }()
+	wait()
+}
